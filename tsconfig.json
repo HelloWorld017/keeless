@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    // Strictness
+    "strict": true,
+    "exactOptionalPropertyTypes": false,
+
+    // Module / Resolution
+    "module": "preserve",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "paths": {
+      "@/*": ["./packages/keeless/src/*"]
+    },
+
+    // Types
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "types": ["node", "react", "react-dom"],
+
+    // Others
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["packages/**/*.ts", "packages/**/*.tsx", "oxfmt.config.ts", "oxlint.config.ts"]
+}

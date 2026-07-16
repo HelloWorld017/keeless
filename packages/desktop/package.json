@@ -1,0 +1,14 @@
+{
+  "name": "@keeless/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "desktop application for keeless",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "dependencies": {
+    "@keeless/app": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^43.1.0"
+  }
+}

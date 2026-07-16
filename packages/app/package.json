@@ -1,0 +1,25 @@
+{
+  "name": "@keeless/app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "keeless: minimal password manager",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "main": "dist-electron/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "generate": "simplei18n generate -D && oxfmt ./src/i18n"
+  },
+  "dependencies": {
+    "@keeless/kdbx": "workspace:*",
+    "@simplei18n/core": "^0.1.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.3",
+    "vite": "^8.0.16",
+    "vite-plugin-electron": "^1.0.0"
+  }
+}

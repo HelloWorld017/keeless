@@ -1,0 +1,11 @@
+{
+  "name": "@keeless/extension",
+  "version": "0.0.0",
+  "private": true,
+  "description": "browser application for keeless",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "devDependencies": {
+    "electron": "^43.1.0"
+  }
+}
