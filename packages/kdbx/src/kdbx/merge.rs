@@ -180,20 +180,31 @@ impl DatabaseMerger {
     fn merge_entries(&self, target: &mut Database, source: &Database, result: &mut MergeResult) {
         for (id, source_entry) in &source.entries {
             if let Some(target_entry) = target.entries.get_mut(id) {
-                if source_entry.last_modified() > target_entry.last_modified() {
-                    match self.strategy {
-                        MergeStrategy::Overwrite | MergeStrategy::NewestWins => {
-                            *target_entry = source_entry.clone();
-                            result.entries_modified += 1;
-                        }
-                        MergeStrategy::KeepExisting => {}
-                        MergeStrategy::KeepBoth => {
-                            let mut duplicate = source_entry.clone();
-                            duplicate.id = NodeId::new_uuid();
-                            add_entry_from(target, source, duplicate, *id);
-                            result.entries_added += 1;
-                        }
-                    }
+                let original = target_entry.clone();
+                let source_is_newer = source_entry.last_modified() > original.last_modified();
+
+                if source_is_newer && self.strategy == MergeStrategy::KeepBoth {
+                    let mut duplicate = source_entry.clone();
+                    duplicate.id = NodeId::new_uuid();
+                    let duplicate = merge_entry_histories(duplicate, &[source_entry]);
+                    add_entry_from(target, source, duplicate, *id);
+                    result.entries_added += 1;
+                    continue;
+                }
+
+                let winner = if source_is_newer
+                    && matches!(
+                        self.strategy,
+                        MergeStrategy::Overwrite | MergeStrategy::NewestWins
+                    ) {
+                    source_entry.clone()
+                } else {
+                    original.clone()
+                };
+                let merged = merge_entry_histories(winner, &[&original, source_entry]);
+                if merged != original {
+                    *target_entry = merged;
+                    result.entries_modified += 1;
                 }
             } else {
                 add_entry_from(target, source, source_entry.clone(), *id);
@@ -208,30 +219,63 @@ impl DatabaseMerger {
         source: &Database,
         source_entry: &Entry,
         id: &NodeId,
+        base_entry: Option<&Entry>,
         result: &mut MergeResult,
     ) -> ConflictResolution {
+        let target_entry = target.entries.get(id).expect("entry exists").clone();
+        let mut common_history = vec![&target_entry, source_entry];
+        if let Some(base_entry) = base_entry {
+            common_history.push(base_entry);
+        }
+
         match self.strategy {
-            MergeStrategy::KeepExisting => ConflictResolution::KeptExisting,
-            MergeStrategy::Overwrite => {
-                if let Some(t) = target.entries.get_mut(id) {
-                    *t = source_entry.clone();
+            MergeStrategy::KeepExisting => {
+                let merged = merge_entry_histories(target_entry.clone(), &common_history);
+                if merged != target_entry {
+                    target.entries.insert(*id, merged);
+                    result.entries_modified += 1;
                 }
-                result.entries_modified += 1;
+                ConflictResolution::KeptExisting
+            }
+            MergeStrategy::Overwrite => {
+                let merged = merge_entry_histories(source_entry.clone(), &common_history);
+                if merged != target_entry {
+                    target.entries.insert(*id, merged);
+                    result.entries_modified += 1;
+                }
                 ConflictResolution::TookIncoming
             }
             MergeStrategy::KeepBoth => {
+                let mut target_history = vec![&target_entry];
+                if let Some(base_entry) = base_entry {
+                    target_history.push(base_entry);
+                }
+                let merged_target = merge_entry_histories(target_entry.clone(), &target_history);
+                if merged_target != target_entry {
+                    target.entries.insert(*id, merged_target);
+                    result.entries_modified += 1;
+                }
+
                 let mut duplicate = source_entry.clone();
                 duplicate.id = NodeId::new_uuid();
+                let mut source_history = vec![source_entry];
+                if let Some(base_entry) = base_entry {
+                    source_history.push(base_entry);
+                }
+                let duplicate = merge_entry_histories(duplicate, &source_history);
                 add_entry_from(target, source, duplicate, *id);
                 result.entries_added += 1;
                 ConflictResolution::Duplicated
             }
             MergeStrategy::NewestWins => {
-                let target_time = target.entries.get(id).map_or(0, |e| e.last_modified());
-                if source_entry.last_modified() > target_time {
-                    if let Some(t) = target.entries.get_mut(id) {
-                        *t = source_entry.clone();
-                    }
+                let winner = if source_entry.last_modified() > target_entry.last_modified() {
+                    source_entry.clone()
+                } else {
+                    target_entry.clone()
+                };
+                let merged = merge_entry_histories(winner, &common_history);
+                if merged != target_entry {
+                    target.entries.insert(*id, merged);
                     result.entries_modified += 1;
                 }
                 ConflictResolution::NewestUsed
@@ -242,7 +286,60 @@ impl DatabaseMerger {
 
 /// Check if two entries have different content.
 fn entry_differs(a: &Entry, b: &Entry) -> bool {
-    a != b
+    entry_snapshot(a, a.id) != entry_snapshot(b, a.id)
+}
+
+fn entry_history_differs(a: &Entry, b: &Entry) -> bool {
+    a.history != b.history || a.xml_extensions.history != b.xml_extensions.history
+}
+
+fn entry_snapshot(entry: &Entry, id: NodeId) -> Entry {
+    let mut snapshot = entry.clone();
+    snapshot.id = id;
+    snapshot.history.clear();
+    snapshot.xml_extensions.history.clear();
+    snapshot
+}
+
+fn merge_entry_histories(mut winner: Entry, sources: &[&Entry]) -> Entry {
+    let winner_id = winner.id;
+    let winner_current = entry_snapshot(&winner, winner_id);
+    let mut history = Vec::new();
+
+    collect_history(&mut history, &winner.history, winner_id, &winner_current);
+    for source in sources {
+        collect_history(&mut history, &source.history, winner_id, &winner_current);
+        push_history_snapshot(&mut history, source, winner_id, &winner_current);
+
+        for extension in &source.xml_extensions.history {
+            if !winner.xml_extensions.history.contains(extension) {
+                winner.xml_extensions.history.push(extension.clone());
+            }
+        }
+    }
+
+    history.sort_by_key(Node::last_modified);
+    winner.history = history;
+    winner
+}
+
+fn collect_history(merged: &mut Vec<Entry>, entries: &[Entry], id: NodeId, winner_current: &Entry) {
+    for entry in entries {
+        collect_history(merged, &entry.history, id, winner_current);
+        push_history_snapshot(merged, entry, id, winner_current);
+    }
+}
+
+fn push_history_snapshot(
+    merged: &mut Vec<Entry>,
+    entry: &Entry,
+    id: NodeId,
+    winner_current: &Entry,
+) {
+    let snapshot = entry_snapshot(entry, id);
+    if snapshot != *winner_current && !merged.contains(&snapshot) {
+        merged.push(snapshot);
+    }
 }
 
 fn group_content_differs(a: &Group, b: &Group) -> bool {

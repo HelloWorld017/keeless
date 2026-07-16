@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::core::date::DateInstant;
 use crate::model::core::security::ProtectedString;
 use crate::model::db::database::DatabaseVersion;
 use crate::model::meta::DeletedObject;
@@ -22,6 +23,14 @@ fn make_entry_newer(id: NodeId, title: &str) -> Entry {
     entry.last_modification_time = crate::model::core::date::DateInstant::EpochMillis(
         entry.last_modification_time.as_millis().unwrap_or(0) + 100_000,
     );
+    entry
+}
+
+fn entry_version(seed: &Entry, title: &str, modified: i64) -> Entry {
+    let mut entry = seed.clone();
+    entry.title = title.to_string();
+    entry.last_modification_time = DateInstant::EpochMillis(modified);
+    entry.history.clear();
     entry
 }
 
@@ -318,4 +327,224 @@ fn three_way_group_parent_keeps_target_only_and_takes_source_only_move() {
     DatabaseMerger::new(MergeStrategy::Overwrite).merge_three_way(&mut target, &source, &base);
     assert_eq!(group_parent(&target, &child_id), Some(right_id));
     target.validate().unwrap();
+}
+
+#[test]
+fn overwrite_preserves_both_histories_and_previous_target() {
+    let entry_id = NodeId::new_uuid();
+    let seed = Entry::new(entry_id);
+    let shared = entry_version(&seed, "shared", 50);
+
+    let mut target_entry = entry_version(&seed, "target", 200);
+    target_entry.history = vec![shared.clone(), entry_version(&seed, "target-old", 100)];
+    let mut source_entry = entry_version(&seed, "source", 300);
+    source_entry.history = vec![shared, entry_version(&seed, "source-old", 100)];
+
+    let mut target = Database::new(DatabaseVersion::KDBX4);
+    target.entries.insert(entry_id, target_entry);
+    let mut source = Database::new(DatabaseVersion::KDBX4);
+    source.entries.insert(entry_id, source_entry);
+
+    let result = DatabaseMerger::new(MergeStrategy::Overwrite).merge(&mut target, &source);
+    let merged = &target.entries[&entry_id];
+
+    assert_eq!(result.entries_modified, 1);
+    assert_eq!(merged.title, "source");
+    assert_eq!(
+        merged
+            .history
+            .iter()
+            .map(|entry| entry.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["shared", "source-old", "target-old", "target"]
+    );
+    assert!(merged
+        .history
+        .iter()
+        .all(|entry| entry.id == entry_id && entry.history.is_empty()));
+
+    let repeated = DatabaseMerger::new(MergeStrategy::Overwrite).merge(&mut target, &source);
+    assert_eq!(repeated.entries_modified, 0);
+    assert_eq!(target.entries[&entry_id].history.len(), 4);
+}
+
+#[test]
+fn keep_existing_records_incoming_current_state() {
+    let entry_id = NodeId::new_uuid();
+    let seed = Entry::new(entry_id);
+    let target_entry = entry_version(&seed, "target", 200);
+    let mut source_entry = entry_version(&seed, "source", 300);
+    source_entry.history = vec![entry_version(&seed, "source-old", 100)];
+
+    let mut target = Database::new(DatabaseVersion::KDBX4);
+    target.entries.insert(entry_id, target_entry);
+    let mut source = Database::new(DatabaseVersion::KDBX4);
+    source.entries.insert(entry_id, source_entry);
+
+    let result = DatabaseMerger::new(MergeStrategy::KeepExisting).merge(&mut target, &source);
+    let merged = &target.entries[&entry_id];
+
+    assert_eq!(result.entries_modified, 1);
+    assert_eq!(merged.title, "target");
+    assert_eq!(
+        merged
+            .history
+            .iter()
+            .map(|entry| entry.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["source-old", "source"]
+    );
+}
+
+#[test]
+fn three_way_history_only_changes_merge_without_conflict() {
+    let entry_id = NodeId::new_uuid();
+    let seed = Entry::new(entry_id);
+    let mut base_entry = entry_version(&seed, "current", 300);
+    base_entry.history = vec![entry_version(&seed, "base-old", 50)];
+
+    let mut target_entry = base_entry.clone();
+    target_entry
+        .history
+        .push(entry_version(&seed, "target-old", 100));
+    let mut source_entry = base_entry.clone();
+    source_entry
+        .history
+        .push(entry_version(&seed, "source-old", 200));
+
+    let mut base = Database::new(DatabaseVersion::KDBX4);
+    base.entries.insert(entry_id, base_entry);
+    let mut target = Database::new(DatabaseVersion::KDBX4);
+    target.entries.insert(entry_id, target_entry);
+    let mut source = Database::new(DatabaseVersion::KDBX4);
+    source.entries.insert(entry_id, source_entry);
+
+    let result =
+        DatabaseMerger::new(MergeStrategy::Overwrite).merge_three_way(&mut target, &source, &base);
+    let merged = &target.entries[&entry_id];
+
+    assert!(result.conflicts.is_empty());
+    assert_eq!(result.entries_modified, 1);
+    assert_eq!(
+        merged
+            .history
+            .iter()
+            .map(|entry| entry.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["base-old", "target-old", "source-old"]
+    );
+}
+
+#[test]
+fn three_way_conflict_preserves_base_and_losing_current_state() {
+    let entry_id = NodeId::new_uuid();
+    let seed = Entry::new(entry_id);
+    let base_entry = entry_version(&seed, "base", 100);
+    let target_entry = entry_version(&seed, "target", 200);
+    let source_entry = entry_version(&seed, "source", 300);
+
+    let mut base = Database::new(DatabaseVersion::KDBX4);
+    base.entries.insert(entry_id, base_entry);
+    let mut target = Database::new(DatabaseVersion::KDBX4);
+    target.entries.insert(entry_id, target_entry);
+    let mut source = Database::new(DatabaseVersion::KDBX4);
+    source.entries.insert(entry_id, source_entry);
+
+    let result =
+        DatabaseMerger::new(MergeStrategy::Overwrite).merge_three_way(&mut target, &source, &base);
+    let merged = &target.entries[&entry_id];
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(merged.title, "source");
+    assert_eq!(
+        merged
+            .history
+            .iter()
+            .map(|entry| entry.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["base", "target"]
+    );
+}
+
+#[test]
+fn keep_both_rewrites_duplicate_history_ids() {
+    let entry_id = NodeId::new_uuid();
+    let seed = Entry::new(entry_id);
+    let mut target_entry = entry_version(&seed, "target", 200);
+    target_entry.history = vec![entry_version(&seed, "target-old", 100)];
+    let mut source_entry = entry_version(&seed, "source", 300);
+    source_entry.history = vec![entry_version(&seed, "source-old", 150)];
+
+    let mut target = Database::new(DatabaseVersion::KDBX4);
+    target.entries.insert(entry_id, target_entry.clone());
+    let mut source = Database::new(DatabaseVersion::KDBX4);
+    source.entries.insert(entry_id, source_entry);
+
+    DatabaseMerger::new(MergeStrategy::KeepBoth).merge(&mut target, &source);
+
+    assert_eq!(target.entries[&entry_id], target_entry);
+    let duplicate = target
+        .entries
+        .values()
+        .find(|entry| entry.id != entry_id)
+        .expect("duplicate exists");
+    assert_eq!(duplicate.title, "source");
+    assert!(duplicate
+        .history
+        .iter()
+        .all(|history| history.id == duplicate.id));
+}
+
+#[test]
+fn merge_does_not_truncate_history() {
+    let entry_id = NodeId::new_uuid();
+    let seed = Entry::new(entry_id);
+    let mut target_entry = entry_version(&seed, "target", 20);
+    target_entry.history = (0..12)
+        .map(|version| entry_version(&seed, &format!("v{version}"), version))
+        .collect();
+    let source_entry = entry_version(&seed, "source", 30);
+
+    let mut target = Database::new(DatabaseVersion::KDBX4);
+    target.entries.insert(entry_id, target_entry);
+    let mut source = Database::new(DatabaseVersion::KDBX4);
+    source.entries.insert(entry_id, source_entry);
+
+    DatabaseMerger::new(MergeStrategy::Overwrite).merge(&mut target, &source);
+
+    assert_eq!(target.entries[&entry_id].history.len(), 13);
+    assert_eq!(target.entries[&entry_id].history[12].title, "target");
+}
+
+#[test]
+fn three_way_history_change_conflicts_with_deletion() {
+    let entry_id = NodeId::new_uuid();
+    let seed = Entry::new(entry_id);
+    let base_entry = entry_version(&seed, "current", 200);
+    let mut source_entry = base_entry.clone();
+    source_entry.history = vec![entry_version(&seed, "old", 100)];
+
+    let mut base = Database::new(DatabaseVersion::KDBX4);
+    base.entries.insert(entry_id, base_entry);
+    let mut target = Database::new(DatabaseVersion::KDBX4);
+    target.deleted_objects.push(DeletedObject {
+        id: entry_id,
+        deletion_time: 300,
+    });
+    let mut source = Database::new(DatabaseVersion::KDBX4);
+    source.entries.insert(entry_id, source_entry);
+
+    let result =
+        DatabaseMerger::new(MergeStrategy::Overwrite).merge_three_way(&mut target, &source, &base);
+
+    assert_eq!(result.conflicts.len(), 1);
+    assert_eq!(
+        result.conflicts[0].conflict_type,
+        ConflictType::EntryDeleteVsModify
+    );
+    assert_eq!(target.entries[&entry_id].history.len(), 1);
+    assert!(!target
+        .deleted_objects
+        .iter()
+        .any(|deleted| deleted.id == entry_id));
 }

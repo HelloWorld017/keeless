@@ -22,12 +22,14 @@ impl DatabaseMerger {
                     result.entries_added += 1;
                 }
                 (None, Some(target_entry)) => {
-                    if entry_differs(target_entry, source_entry) {
+                    let target_entry = target_entry.clone();
+                    if entry_differs(&target_entry, source_entry) {
                         let resolution = self.resolve_entry_conflict(
                             target,
                             source,
                             source_entry,
                             id,
+                            None,
                             &mut result,
                         );
                         result.conflicts.push(MergeConflict {
@@ -35,10 +37,21 @@ impl DatabaseMerger {
                             conflict_type: ConflictType::EntryModified,
                             resolution,
                         });
+                    } else {
+                        let merged = merge_entry_histories(
+                            target_entry.clone(),
+                            &[&target_entry, source_entry],
+                        );
+                        if merged != target_entry {
+                            target.entries.insert(*id, merged);
+                            result.entries_modified += 1;
+                        }
                     }
                 }
                 (Some(base_entry), None) => {
-                    if entry_differs(source_entry, base_entry) {
+                    if entry_differs(source_entry, base_entry)
+                        || entry_history_differs(source_entry, base_entry)
+                    {
                         let deletion_time = deleted_time(target, id).unwrap_or(0);
                         let take_source = match self.strategy {
                             MergeStrategy::Overwrite => true,
@@ -48,13 +61,19 @@ impl DatabaseMerger {
                             MergeStrategy::KeepExisting | MergeStrategy::KeepBoth => false,
                         };
                         let resolution = if take_source {
-                            add_entry_from(target, source, source_entry.clone(), *id);
+                            let entry = merge_entry_histories(
+                                source_entry.clone(),
+                                &[source_entry, base_entry],
+                            );
+                            add_entry_from(target, source, entry, *id);
                             clear_deleted(target, id);
                             result.entries_added += 1;
                             ConflictResolution::TookIncoming
                         } else if self.strategy == MergeStrategy::KeepBoth {
                             let mut duplicate = source_entry.clone();
                             duplicate.id = NodeId::new_uuid();
+                            let duplicate =
+                                merge_entry_histories(duplicate, &[source_entry, base_entry]);
                             add_entry_from(target, source, duplicate, *id);
                             result.entries_added += 1;
                             ConflictResolution::Duplicated
@@ -69,23 +88,39 @@ impl DatabaseMerger {
                     }
                 }
                 (Some(base_entry), Some(target_entry)) => {
+                    let target_entry = target_entry.clone();
                     let source_modified = entry_differs(source_entry, base_entry);
-                    let target_modified = entry_differs(target_entry, base_entry);
+                    let target_modified = entry_differs(&target_entry, base_entry);
 
                     match (source_modified, target_modified) {
                         (true, false) => {
-                            *target.entries.get_mut(id).expect("entry exists") =
-                                source_entry.clone();
-                            result.entries_modified += 1;
+                            let merged = merge_entry_histories(
+                                source_entry.clone(),
+                                &[&target_entry, source_entry, base_entry],
+                            );
+                            if merged != target_entry {
+                                target.entries.insert(*id, merged);
+                                result.entries_modified += 1;
+                            }
                         }
-                        (false, true) => {}
+                        (false, true) => {
+                            let merged = merge_entry_histories(
+                                target_entry.clone(),
+                                &[&target_entry, source_entry, base_entry],
+                            );
+                            if merged != target_entry {
+                                target.entries.insert(*id, merged);
+                                result.entries_modified += 1;
+                            }
+                        }
                         (true, true) => {
-                            if entry_differs(target_entry, source_entry) {
+                            if entry_differs(&target_entry, source_entry) {
                                 let resolution = self.resolve_entry_conflict(
                                     target,
                                     source,
                                     source_entry,
                                     id,
+                                    Some(base_entry),
                                     &mut result,
                                 );
                                 result.conflicts.push(MergeConflict {
@@ -93,9 +128,27 @@ impl DatabaseMerger {
                                     conflict_type: ConflictType::EntryModified,
                                     resolution,
                                 });
+                            } else {
+                                let merged = merge_entry_histories(
+                                    target_entry.clone(),
+                                    &[&target_entry, source_entry, base_entry],
+                                );
+                                if merged != target_entry {
+                                    target.entries.insert(*id, merged);
+                                    result.entries_modified += 1;
+                                }
                             }
                         }
-                        (false, false) => {}
+                        (false, false) => {
+                            let merged = merge_entry_histories(
+                                target_entry.clone(),
+                                &[&target_entry, source_entry, base_entry],
+                            );
+                            if merged != target_entry {
+                                target.entries.insert(*id, merged);
+                                result.entries_modified += 1;
+                            }
+                        }
                     }
                 }
             }
@@ -105,7 +158,8 @@ impl DatabaseMerger {
         for id in &ids_to_check {
             if let (Some(base_entry), None) = (base.entries.get(id), source.entries.get(id)) {
                 let target_entry = &target.entries[id];
-                let target_modified = entry_differs(target_entry, base_entry);
+                let target_modified = entry_differs(target_entry, base_entry)
+                    || entry_history_differs(target_entry, base_entry);
                 if target_modified {
                     let deletion_time = deleted_time(source, id).unwrap_or(0);
                     let delete = match self.strategy {
