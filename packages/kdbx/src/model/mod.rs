@@ -16,6 +16,8 @@ pub mod entry;
 pub mod exception;
 pub mod group;
 pub mod meta;
+#[doc(hidden)]
+pub mod xml;
 
 // Re-export key types
 pub use binary::{BinaryCache, BinaryData, BinaryPool, BinaryStreamReader, BinaryStreamWriter};

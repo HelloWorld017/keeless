@@ -29,6 +29,8 @@ pub(super) fn write_group(
             group.expires,
             group.usage_count,
             group.location_changed,
+            &group.xml_extensions.times,
+            inner_stream,
         )?;
         write_tag(writer, "IsExpanded", bool_xml(group.is_expanded))?;
         write_tag(
@@ -36,7 +38,8 @@ pub(super) fn write_group(
             "DefaultAutoTypeSequence",
             &group.default_autotype_sequence,
         )?;
-        super::data::write_custom_data(writer, &group.custom_data)?;
+        write_tag(writer, "EnableSearching", bool_xml(group.enable_searching))?;
+        super::data::write_custom_data(writer, &group.custom_data, inner_stream)?;
 
         for child_id in &group.child_group_ids {
             if let Some(child) = db.groups.get(child_id) {
@@ -61,6 +64,7 @@ pub(super) fn write_group(
                 )?;
             }
         }
+        write_preserved_elements(writer, &group.xml_extensions.children, inner_stream)?;
         Ok(())
     })
 }

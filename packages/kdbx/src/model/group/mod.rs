@@ -10,6 +10,7 @@ use crate::model::core::date::DateInstant;
 use crate::model::core::node::{NodeId, NodeType};
 use crate::model::meta::custom_data::CustomData;
 use crate::model::meta::icon::IconImage;
+use crate::model::xml::GroupXmlExtensions;
 
 /// A KeePass database group (folder).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -52,6 +53,10 @@ pub struct Group {
     pub default_autotype_sequence: String,
     /// Extensible KDBX custom data.
     pub custom_data: CustomData,
+    /// Opaque XML elements retained for forward-compatible round-trips.
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub xml_extensions: GroupXmlExtensions,
 }
 
 impl Group {
@@ -77,6 +82,7 @@ impl Group {
             is_autotype_navigating: false,
             default_autotype_sequence: String::new(),
             custom_data: CustomData::default(),
+            xml_extensions: GroupXmlExtensions::default(),
         }
     }
 

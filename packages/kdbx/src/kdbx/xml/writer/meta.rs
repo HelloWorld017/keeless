@@ -1,6 +1,10 @@
 use super::*;
 
-pub(super) fn write_meta(writer: &mut XmlWriter, db: &Database) -> DatabaseResult<()> {
+pub(super) fn write_meta(
+    writer: &mut XmlWriter,
+    db: &Database,
+    inner_stream: &mut dyn InnerStreamCipher,
+) -> DatabaseResult<()> {
     write_element(writer, "Meta", |writer| {
         write_tag(writer, "Generator", "KeePassFR Rust")?;
         write_tag(writer, "DatabaseName", &db.name)?;
@@ -12,13 +16,18 @@ pub(super) fn write_meta(writer: &mut XmlWriter, db: &Database) -> DatabaseResul
         if let Some(uuid) = db.entry_templates_uuid {
             write_tag(writer, "EntryTemplatesGroup", &uuid_to_b64(&uuid))?;
         }
-        write_memory_protection(writer, db)?;
-        write_custom_icons(writer, db)?;
-        super::data::write_custom_data(writer, &db.custom_data)
+        write_memory_protection(writer, db, inner_stream)?;
+        write_custom_icons(writer, db, inner_stream)?;
+        super::data::write_custom_data(writer, &db.custom_data, inner_stream)?;
+        write_preserved_elements(writer, &db.xml_extensions.meta, inner_stream)
     })
 }
 
-fn write_memory_protection(writer: &mut XmlWriter, db: &Database) -> DatabaseResult<()> {
+fn write_memory_protection(
+    writer: &mut XmlWriter,
+    db: &Database,
+    inner_stream: &mut dyn InnerStreamCipher,
+) -> DatabaseResult<()> {
     write_element(writer, "MemoryProtection", |writer| {
         write_tag(
             writer,
@@ -49,12 +58,17 @@ fn write_memory_protection(writer: &mut XmlWriter, db: &Database) -> DatabaseRes
             writer,
             "AutoEnableVisualHiding",
             bool_xml(db.memory_protection.auto_enable_visual_hiding),
-        )
+        )?;
+        write_preserved_elements(writer, &db.xml_extensions.memory_protection, inner_stream)
     })
 }
 
-fn write_custom_icons(writer: &mut XmlWriter, db: &Database) -> DatabaseResult<()> {
-    if db.custom_icons.is_empty() {
+fn write_custom_icons(
+    writer: &mut XmlWriter,
+    db: &Database,
+    inner_stream: &mut dyn InnerStreamCipher,
+) -> DatabaseResult<()> {
+    if db.custom_icons.is_empty() && db.xml_extensions.custom_icons.is_empty() {
         return Ok(());
     }
     write_element(writer, "CustomIcons", |writer| {
@@ -69,9 +83,19 @@ fn write_custom_icons(writer: &mut XmlWriter, db: &Database) -> DatabaseResult<(
                 if !icon.name.is_empty() {
                     write_tag(writer, "Name", &icon.name)?;
                 }
+                if icon.last_modification_time != 0 {
+                    write_tag(
+                        writer,
+                        "LastModificationTime",
+                        &date_to_xml(&DateInstant::EpochMillis(icon.last_modification_time)),
+                    )?;
+                }
+                if let Some(extensions) = db.xml_extensions.custom_icon.get(&icon.uuid) {
+                    write_preserved_elements(writer, extensions, inner_stream)?;
+                }
                 Ok(())
             })?;
         }
-        Ok(())
+        write_preserved_elements(writer, &db.xml_extensions.custom_icons, inner_stream)
     })
 }

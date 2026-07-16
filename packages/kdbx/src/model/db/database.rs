@@ -19,6 +19,7 @@ use crate::model::entry::Entry;
 use crate::model::group::Group;
 use crate::model::meta::icon::IconImageCustom;
 use crate::model::meta::{CustomData, DeletedObject};
+use crate::model::xml::DatabaseXmlExtensions;
 /// Database version
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseVersion {
@@ -86,8 +87,11 @@ pub struct Database {
     pub memory_protection: MemoryProtectionConfig,
     /// Extensible database-level custom data.
     pub custom_data: CustomData,
-    /// Set when parsing encountered XML that cannot be losslessly rewritten.
+    /// Set when parsing encountered XML understood only as an opaque extension.
     pub contains_unsupported_xml: bool,
+    /// Opaque XML elements retained for forward-compatible round-trips.
+    #[doc(hidden)]
+    pub xml_extensions: DatabaseXmlExtensions,
 }
 
 impl Database {
@@ -125,6 +129,7 @@ impl Database {
             },
             custom_data: CustomData::default(),
             contains_unsupported_xml: false,
+            xml_extensions: DatabaseXmlExtensions::default(),
         }
     }
 

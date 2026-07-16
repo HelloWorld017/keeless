@@ -29,9 +29,9 @@ pub(super) fn write_entry(
         }
 
         write_fields(writer, entry, inner_stream)?;
-        write_auto_type(writer, entry)?;
-        write_binaries(writer, entry, use_binary_refs, binary_index)?;
-        super::data::write_custom_data(writer, &entry.custom_data)?;
+        write_auto_type(writer, entry, inner_stream)?;
+        write_binaries(writer, entry, use_binary_refs, binary_index, inner_stream)?;
+        super::data::write_custom_data(writer, &entry.custom_data, inner_stream)?;
         write_times(
             writer,
             entry.creation_time,
@@ -41,8 +41,10 @@ pub(super) fn write_entry(
             entry.expires,
             entry.usage_count,
             entry.location_changed,
+            &entry.xml_extensions.times,
+            inner_stream,
         )?;
-        if !entry.history.is_empty() {
+        if !entry.history.is_empty() || !entry.xml_extensions.history.is_empty() {
             write_element(writer, "History", |writer| {
                 for history_entry in &entry.history {
                     write_entry(
@@ -53,9 +55,10 @@ pub(super) fn write_entry(
                         binary_index,
                     )?;
                 }
-                Ok(())
+                write_preserved_elements(writer, &entry.xml_extensions.history, inner_stream)
             })?;
         }
+        write_preserved_elements(writer, &entry.xml_extensions.children, inner_stream)?;
         Ok(())
     })
 }
@@ -71,6 +74,12 @@ fn write_fields(
         &entry.title,
         entry.title_is_protected,
         inner_stream,
+        entry
+            .xml_extensions
+            .strings
+            .get("Title")
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
     )?;
     write_field(
         writer,
@@ -78,6 +87,12 @@ fn write_fields(
         entry.username.as_str(),
         entry.username.is_protected(),
         inner_stream,
+        entry
+            .xml_extensions
+            .strings
+            .get("UserName")
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
     )?;
     write_field(
         writer,
@@ -85,6 +100,12 @@ fn write_fields(
         entry.password.as_str(),
         entry.password.is_protected(),
         inner_stream,
+        entry
+            .xml_extensions
+            .strings
+            .get("Password")
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
     )?;
     write_field(
         writer,
@@ -92,6 +113,12 @@ fn write_fields(
         &entry.url,
         entry.url_is_protected,
         inner_stream,
+        entry
+            .xml_extensions
+            .strings
+            .get("URL")
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
     )?;
     write_field(
         writer,
@@ -99,6 +126,12 @@ fn write_fields(
         entry.notes.as_str(),
         entry.notes.is_protected(),
         inner_stream,
+        entry
+            .xml_extensions
+            .strings
+            .get("Notes")
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
     )?;
     for field in &entry.custom_fields {
         write_field(
@@ -107,6 +140,12 @@ fn write_fields(
             field.value.as_str(),
             field.is_protected,
             inner_stream,
+            entry
+                .xml_extensions
+                .strings
+                .get(&field.name)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
         )?;
     }
     Ok(())
@@ -118,6 +157,7 @@ fn write_field(
     value: &str,
     protect: bool,
     inner_stream: &mut dyn InnerStreamCipher,
+    extensions: &[PreservedXmlElement],
 ) -> DatabaseResult<()> {
     write_element(writer, "String", |writer| {
         write_tag(writer, "Key", key)?;
@@ -141,21 +181,30 @@ fn write_field(
         } else {
             write_tag(writer, "Value", value)?;
         }
+        write_preserved_elements(writer, extensions, inner_stream)?;
         Ok(())
     })
 }
 
-fn write_auto_type(writer: &mut XmlWriter, entry: &Entry) -> DatabaseResult<()> {
+fn write_auto_type(
+    writer: &mut XmlWriter,
+    entry: &Entry,
+    inner_stream: &mut dyn InnerStreamCipher,
+) -> DatabaseResult<()> {
     write_element(writer, "AutoType", |writer| {
         write_tag(writer, "Enabled", bool_xml(entry.auto_type.enabled))?;
         write_tag(writer, "DefaultSequence", &entry.auto_type.default_sequence)?;
-        for association in &entry.auto_type.associations {
+        for (index, association) in entry.auto_type.associations.iter().enumerate() {
             write_element(writer, "Association", |writer| {
                 write_tag(writer, "Window", &association.window_title)?;
-                write_tag(writer, "KeystrokeSequence", &association.keystroke_sequence)
+                write_tag(writer, "KeystrokeSequence", &association.keystroke_sequence)?;
+                if let Some(extensions) = entry.xml_extensions.associations.get(index) {
+                    write_preserved_elements(writer, extensions, inner_stream)?;
+                }
+                Ok(())
             })?;
         }
-        Ok(())
+        write_preserved_elements(writer, &entry.xml_extensions.auto_type, inner_stream)
     })
 }
 
@@ -164,6 +213,7 @@ fn write_binaries(
     entry: &Entry,
     use_binary_refs: bool,
     binary_index: &mut usize,
+    inner_stream: &mut dyn InnerStreamCipher,
 ) -> DatabaseResult<()> {
     for binary in &entry.binaries {
         write_element(writer, "Binary", |writer| {
@@ -182,6 +232,9 @@ fn write_binaries(
                     "Value",
                     &base64::engine::general_purpose::STANDARD.encode(&binary.data),
                 )?;
+            }
+            if let Some(extensions) = entry.xml_extensions.binaries.get(&binary.name) {
+                write_preserved_elements(writer, extensions, inner_stream)?;
             }
             Ok(())
         })?;

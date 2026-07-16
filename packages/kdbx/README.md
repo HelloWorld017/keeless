@@ -25,8 +25,9 @@ security, data-preservation, and WebAssembly issues.
 - KDBX 4.x write
 
 KDBX4 output is covered by an interoperability test using the independent
-`keepass` parser. When an XML element cannot be preserved safely, reading is
-allowed but saving returns an explicit error instead of silently losing data.
+`keepass` parser. Well-formed XML elements that are not understood by this
+crate are retained under their semantic parent and written back when saving;
+malformed known structures and values are rejected explicitly.
 
 ## Usage
 

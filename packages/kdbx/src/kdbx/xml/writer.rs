@@ -19,12 +19,6 @@ impl KdbxXmlWriter {
         db: &Database,
         inner_stream: &mut dyn InnerStreamCipher,
     ) -> DatabaseResult<String> {
-        if db.contains_unsupported_xml {
-            return Err(DatabaseError::Unsupported(
-                "database contains XML elements that cannot be preserved".into(),
-            ));
-        }
-
         let mut writer = XmlWriter::new(Vec::new());
         let mut binary_index = 0usize;
         let use_binary_refs = matches!(
@@ -37,7 +31,7 @@ impl KdbxXmlWriter {
             .map_err(|err| DatabaseError::InvalidFormat(err.to_string()))?;
 
         write_element(&mut writer, "KeePassFile", |writer| {
-            meta::write_meta(writer, db)?;
+            meta::write_meta(writer, db, inner_stream)?;
             write_element(writer, "Root", |writer| {
                 if let Some(root_group) = db.root_group() {
                     group::write_group(
@@ -49,8 +43,10 @@ impl KdbxXmlWriter {
                         &mut binary_index,
                     )?;
                 }
-                data::write_deleted_objects(writer, &db.deleted_objects)
-            })
+                data::write_deleted_objects(writer, db, inner_stream)?;
+                write_preserved_elements(writer, &db.xml_extensions.root, inner_stream)
+            })?;
+            write_preserved_elements(writer, &db.xml_extensions.keepass_file, inner_stream)
         })?;
 
         String::from_utf8(writer.into_inner())
@@ -104,6 +100,8 @@ pub(super) fn write_times(
     expires: bool,
     usage_count: i64,
     location_changed: DateInstant,
+    extensions: &[PreservedXmlElement],
+    inner_stream: &mut dyn InnerStreamCipher,
 ) -> DatabaseResult<()> {
     write_element(writer, "Times", |writer| {
         write_tag(writer, "CreationTime", &date_to_xml(&created))?;
@@ -112,7 +110,8 @@ pub(super) fn write_times(
         write_tag(writer, "ExpiryTime", &date_to_xml(&expiry))?;
         write_tag(writer, "Expires", bool_xml(expires))?;
         write_tag(writer, "UsageCount", &usage_count.to_string())?;
-        write_tag(writer, "LocationChanged", &date_to_xml(&location_changed))
+        write_tag(writer, "LocationChanged", &date_to_xml(&location_changed))?;
+        write_preserved_elements(writer, extensions, inner_stream)
     })
 }
 

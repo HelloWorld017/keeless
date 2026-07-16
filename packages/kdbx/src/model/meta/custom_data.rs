@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::model::xml::CustomDataXmlExtensions;
+
 /// A single custom data item with optional last modification info.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomDataItem {
@@ -16,6 +18,8 @@ pub struct CustomDataItem {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomData {
     items: HashMap<String, CustomDataItem>,
+    #[serde(skip)]
+    pub(crate) xml_extensions: CustomDataXmlExtensions,
 }
 
 impl CustomData {

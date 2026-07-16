@@ -11,6 +11,7 @@ use crate::model::core::node::{NodeId, NodeType};
 use crate::model::core::security::ProtectedString;
 use crate::model::meta::custom_data::CustomData;
 use crate::model::meta::icon::IconImage;
+use crate::model::xml::EntryXmlExtensions;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -74,6 +75,10 @@ pub struct Entry {
     pub custom_data: CustomData,
     /// Is this a template entry?
     pub is_template: bool,
+    /// Opaque XML elements retained for forward-compatible round-trips.
+    #[doc(hidden)]
+    #[serde(skip)]
+    pub xml_extensions: EntryXmlExtensions,
 }
 
 /// A custom field in an entry.
@@ -123,6 +128,7 @@ impl Entry {
             auto_type: AutoType::default(),
             custom_data: CustomData::default(),
             is_template: false,
+            xml_extensions: EntryXmlExtensions::default(),
         }
     }
 
