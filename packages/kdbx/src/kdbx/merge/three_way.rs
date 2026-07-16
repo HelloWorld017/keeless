@@ -187,9 +187,10 @@ impl DatabaseMerger {
             }
         }
 
+        let icons_changed = merge_custom_icons(target, source);
         merge_deleted_objects(target, source);
 
-        if merge_changed(&result) {
+        if merge_changed(&result) || icons_changed {
             target.mark_modified();
         }
 

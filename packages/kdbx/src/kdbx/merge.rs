@@ -112,12 +112,7 @@ impl DatabaseMerger {
             }
         }
 
-        // Merge custom icons
-        for (uuid, icon) in &source.custom_icons {
-            if !target.custom_icons.contains_key(uuid) {
-                target.custom_icons.insert(*uuid, icon.clone());
-            }
-        }
+        let icons_changed = merge_custom_icons(target, source);
 
         // Merge deleted objects
         for deleted in &source.deleted_objects {
@@ -134,7 +129,7 @@ impl DatabaseMerger {
             }
         }
 
-        if merge_changed(&result) {
+        if merge_changed(&result) || icons_changed {
             target.mark_modified();
         }
 
@@ -485,6 +480,17 @@ fn merge_deleted_objects(target: &mut Database, source: &Database) {
             target.deleted_objects.push(deleted.clone());
         }
     }
+}
+
+fn merge_custom_icons(target: &mut Database, source: &Database) -> bool {
+    let previous_count = target.custom_icons.len();
+    for (uuid, icon) in &source.custom_icons {
+        target
+            .custom_icons
+            .entry(*uuid)
+            .or_insert_with(|| icon.clone());
+    }
+    target.custom_icons.len() != previous_count
 }
 
 fn merge_changed(result: &MergeResult) -> bool {
