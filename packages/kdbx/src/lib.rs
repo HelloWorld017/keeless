@@ -59,7 +59,8 @@ pub use kdbx::search::{SearchHelper, SearchParameters, SearchResult};
 
 // ─── Merge ────────────────────────────────────────────────────────────
 pub use kdbx::merge::{
-    ConflictResolution, ConflictType, DatabaseMerger, MergeConflict, MergeResult, MergeStrategy,
+    ConflictField, ConflictResolution, ConflictType, DatabaseMerger, MergeConflict, MergeResult,
+    MergeStrategy,
 };
 
 // ─── OTP ──────────────────────────────────────────────────────────────

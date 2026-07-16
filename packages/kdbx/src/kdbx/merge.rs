@@ -9,8 +9,9 @@ mod tests;
 
 use crate::model::core::node::{Node, NodeId};
 use crate::model::db::database::Database;
-use crate::model::entry::Entry;
+use crate::model::entry::{Entry, EntryBinary, EntryField};
 use crate::model::group::Group;
+use crate::model::meta::custom_data::{CustomData, CustomDataItem};
 
 /// Merge strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +43,30 @@ pub struct MergeResult {
 pub struct MergeConflict {
     pub node_id: NodeId,
     pub conflict_type: ConflictType,
+    /// The entry field involved, or `None` for node-level conflicts.
+    pub field: Option<ConflictField>,
     pub resolution: ConflictResolution,
+}
+
+/// Entry content field involved in a merge conflict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConflictField {
+    Title,
+    Username,
+    Password,
+    Url,
+    Notes,
+    Icon,
+    BackgroundColor,
+    ForegroundColor,
+    OverrideUrl,
+    Tags,
+    CustomField(String),
+    Binary(String),
+    Expiry,
+    AutoType,
+    CustomData(String),
+    IsTemplate,
 }
 
 /// Type of merge conflict.
@@ -94,6 +118,7 @@ impl DatabaseMerger {
                     result.conflicts.push(MergeConflict {
                         node_id: deleted.id,
                         conflict_type: ConflictType::EntryDeleteVsModify,
+                        field: None,
                         resolution: ConflictResolution::KeptExisting,
                     });
                 }
