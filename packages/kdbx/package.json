@@ -15,12 +15,16 @@
     }
   },
   "scripts": {
-    "build": "tsdown"
+    "build": "tsdown",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "tsdown": "^0.22.7"
+    "tsdown": "^0.22.7",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@xmldom/xmldom": "^0.9.10",
+    "fflate": "^0.8.3",
     "hash-wasm": "^4.12.0"
   }
 }
