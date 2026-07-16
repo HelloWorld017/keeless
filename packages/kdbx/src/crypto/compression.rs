@@ -1,11 +1,12 @@
 //! Compression algorithm + utility functions
 //!
 
-use std::io::Read;
+use crate::kdbx::limits::MAX_DECOMPRESSED_PAYLOAD_SIZE;
+use crate::model::exception::{DatabaseError, DatabaseResult};
 use flate2::read::{GzDecoder, GzEncoder};
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
-use crate::model::exception::{DatabaseError, DatabaseResult};
+use std::io::Read;
 
 /// Compression algorithm used in KDBX files
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -44,11 +45,31 @@ pub fn compress(data: &[u8]) -> DatabaseResult<Vec<u8>> {
 
 /// Decompress gzip data.
 pub fn decompress(data: &[u8]) -> DatabaseResult<Vec<u8>> {
+    decompress_with_limit(data, MAX_DECOMPRESSED_PAYLOAD_SIZE)
+}
+
+fn decompress_with_limit(data: &[u8], limit: usize) -> DatabaseResult<Vec<u8>> {
     let mut decoder = GzDecoder::new(data);
     let mut decompressed = Vec::new();
-    decoder
-        .read_to_end(&mut decompressed)
-        .map_err(|e| DatabaseError::InvalidFormat(format!("Decompression error: {e}")))?;
+    let mut chunk = [0u8; 16 * 1024];
+    loop {
+        let read = decoder
+            .read(&mut chunk)
+            .map_err(|e| DatabaseError::InvalidFormat(format!("Decompression error: {e}")))?;
+        if read == 0 {
+            break;
+        }
+        if decompressed
+            .len()
+            .checked_add(read)
+            .map_or(true, |size| size > limit)
+        {
+            return Err(DatabaseError::InvalidFormat(format!(
+                "Decompressed payload exceeds {limit} bytes"
+            )));
+        }
+        decompressed.extend_from_slice(&chunk[..read]);
+    }
     Ok(decompressed)
 }
 
@@ -69,8 +90,24 @@ mod tests {
     fn test_compression_algorithm_id() {
         assert_eq!(CompressionAlgorithm::None.to_id(), 0);
         assert_eq!(CompressionAlgorithm::Gzip.to_id(), 1);
-        assert_eq!(CompressionAlgorithm::from_id(0), Some(CompressionAlgorithm::None));
-        assert_eq!(CompressionAlgorithm::from_id(1), Some(CompressionAlgorithm::Gzip));
+        assert_eq!(
+            CompressionAlgorithm::from_id(0),
+            Some(CompressionAlgorithm::None)
+        );
+        assert_eq!(
+            CompressionAlgorithm::from_id(1),
+            Some(CompressionAlgorithm::Gzip)
+        );
         assert_eq!(CompressionAlgorithm::from_id(2), None);
+    }
+
+    #[test]
+    fn test_decompression_limit_rejected() {
+        let data = vec![0u8; 1025];
+        let compressed = compress(&data).unwrap();
+        assert!(matches!(
+            decompress_with_limit(&compressed, 1024),
+            Err(DatabaseError::InvalidFormat(_))
+        ));
     }
 }

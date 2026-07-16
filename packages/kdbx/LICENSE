@@ -1,0 +1,69 @@
+MIT License
+
+Copyright (c) 2025 keepass-rs contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================================================
+
+
+木兰公共许可证, 第2版
+
+木兰公共许可证， 第2版
+2020年9月 http://license.coscl.org.cn/MulanPSL2
+
+
+您对“本软件”的复制、使用、修改及分发受木兰公共许可证，第2版（“本许可证”）的如下条款的约束：
+
+0. 定义
+“本软件”是指由“贡献者”在本许可证下授权的“受版权保护的软件作品”。
+“贡献者”是指将“受版权保护的软件作品”在本许可证下授权的自然人或法人实体。
+“分发”是指通过任何媒介向他人提供“本软件”的行为，以及复制或导入“本软件”的行为。
+“衍生物”是指在“本软件”的基础上，由您或为您而创作、基于“本软件”修改、改编或翻译而形成的受版权保护的作品。
+“对应源代码”是指对“本软件”进行修改、编译或解释所需的所有源代码，但不包括“本软件”所依赖的标准库、编译器、工具包和操作系统等系统软件的源代码。
+“您”是指行使本许可证授予的许可权利的自然人或法人实体。
+
+1. 授权
+在您遵守本许可证条款的前提下，每位“贡献者”授予您如下权利：
+(1) 非独占的、全球性的、免版税的、不可撤销的版权许可，以复制、使用、修改、分发“本软件”及其“衍生物”（不论是否修改）的源代码或目标代码形式；
+(2) 上述许可包括在“本软件”中原有或由您添加的专利权范围内，使用、制造、许诺销售、销售、进口“本软件”及其“衍生物”的权利，但该等专利许可仅限于可由“贡献者”许可的且为行使上述版权许可所必需的专利权利要求。
+
+2. 限制
+(1) 您不得将“本软件”的名称、商标、标识等用于未经授权的宣传、推广、营销或广告行为；
+(2) 除本许可证明确规定外，本许可证不授予您任何明示或暗示的权利，包括但不限于任何专利、商标、版权或其他知识产权的权利；
+(3) 如果您将“本软件”或其“衍生物”以源代码形式分发，您必须在本许可证下提供“本软件”的源代码；
+(4) 如果您将“本软件”或其“衍生物”以目标代码形式分发，您必须在该目标代码的分发中包含获得“本软件”源代码的方式，并在本许可证下提供该源代码；
+(5) 您必须在“本软件”或其“衍生物”的每一份副本中包含本许可证的全部条款以及版权声明。
+
+3. 免责声明
+“本软件”按"原样"提供，不作任何明示或暗示的保证，包括但不限于对适销性、特定用途的适用性和非侵权的保证。在任何情况下，"贡献者"或版权持有人均不对任何索赔、损害赔偿或其他责任负责，无论这些追责基于合同、侵权或其它行为中产生，于本软件或本软件的使用或其它买卖中产生。
+
+4. 终止
+(1) 如果您未能遵守本许可证的任何条款，您在本许可证下的所有权利将自动终止。然而，第三方根据本许可证从您处获取的副本的权利不会因此终止；
+(2) 在您的权利终止后，第3条（免责声明）将继续有效。
+
+5. 其他
+(1) 除非双方另有书面协议，您向"贡献者"提交的任何"贡献"均按本许可证授权；
+(2) 本许可证受中华人民共和国法律管辖并按其解释，不考虑法律冲突原则；
+(3) 与本许可证相关的任何争议应提交本许可证标的物所在地的有管辖权的人民法院。
+
+木兰公共许可证，第2版
+Copyright © 2020-2025 keepass-rs contributors
+本许可证授权完成于 2025 年。

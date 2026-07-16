@@ -5,14 +5,14 @@
 
 use std::io::Cursor;
 
-use keepass_rs::model::db::composite_key::CompositeKey;
-use keepass_rs::model::db::database::{Database, DatabaseVersion};
-use keepass_rs::model::entry::Entry;
-use keepass_rs::model::group::Group;
-use keepass_rs::model::core::node::NodeId;
-use keepass_rs::model::core::security::ProtectedString;
-use keepass_rs::kdbx::kdf::argon2_kdf::ARGON2ID_UUID;
-use keepass_rs::kdbx::kdf::create_kdf;
+use keeless_kdbx::kdbx::kdf::argon2_kdf::ARGON2ID_UUID;
+use keeless_kdbx::kdbx::kdf::create_kdf;
+use keeless_kdbx::model::core::node::NodeId;
+use keeless_kdbx::model::core::security::ProtectedString;
+use keeless_kdbx::model::db::composite_key::CompositeKey;
+use keeless_kdbx::model::db::database::{Database, DatabaseVersion};
+use keeless_kdbx::model::entry::Entry;
+use keeless_kdbx::model::group::Group;
 
 /// Build a realistic test database with multiple groups and entries.
 fn build_realistic_database() -> Database {
@@ -98,15 +98,22 @@ fn build_realistic_database() -> Database {
 }
 
 fn make_key() -> CompositeKey {
-    CompositeKey::new()
-        .with_password(b"integration_test_password_2024")
+    CompositeKey::new().with_password(b"integration_test_password_2024")
 }
 
 /// Verify that a round-tripped database preserved key data.
 fn verify_database(db: &Database) {
     assert!(db.root_group().is_some(), "Root group should exist");
-    assert!(db.groups.len() >= 3, "Should have at least 3 groups, got {}", db.groups.len());
-    assert!(db.entries.len() >= 3, "Should have at least 3 entries, got {}", db.entries.len());
+    assert!(
+        db.groups.len() >= 3,
+        "Should have at least 3 groups, got {}",
+        db.groups.len()
+    );
+    assert!(
+        db.entries.len() >= 3,
+        "Should have at least 3 entries, got {}",
+        db.entries.len()
+    );
 
     // Verify entries have content
     let mut found_gmail = false;
@@ -132,21 +139,22 @@ fn verify_database(db: &Database) {
 fn test_e2e_kdbx31_roundtrip() {
     let mut db = build_realistic_database();
     db.version = DatabaseVersion::KDBX31;
-    db.encryption_algorithm = keepass_rs::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael;
-    db.compression = keepass_rs::crypto::compression::CompressionAlgorithm::Gzip;
+    db.encryption_algorithm =
+        keeless_kdbx::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael;
+    db.compression = keeless_kdbx::crypto::compression::CompressionAlgorithm::Gzip;
 
     let key = make_key();
 
     // Write
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
         .expect("KDBX 3.1 write should succeed");
 
     assert!(buffer.len() > 100, "Written data should be substantial");
 
     // Read back
     let mut cursor = Cursor::new(buffer);
-    let loaded = keepass_rs::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
+    let loaded = keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
         .expect("KDBX 3.1 read should succeed");
 
     verify_database(&loaded);
@@ -163,13 +171,13 @@ fn test_e2e_kdbx31_wrong_password() {
     let key = make_key();
 
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
         .expect("Write should succeed");
 
     // Read with wrong password
     let wrong_key = CompositeKey::new().with_password(b"wrong_password");
     let mut cursor = Cursor::new(buffer);
-    let result = keepass_rs::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &wrong_key);
+    let result = keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &wrong_key);
     assert!(result.is_err(), "Wrong password should fail");
 }
 
@@ -180,16 +188,17 @@ fn test_e2e_kdbx31_chacha20() {
     let _db = build_realistic_database();
     let mut db = build_realistic_database();
     db.version = DatabaseVersion::KDBX31;
-    db.encryption_algorithm = keepass_rs::crypto::encryption_algorithm::EncryptionAlgorithm::ChaCha20;
+    db.encryption_algorithm =
+        keeless_kdbx::crypto::encryption_algorithm::EncryptionAlgorithm::ChaCha20;
 
     let key = make_key();
 
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
         .expect("ChaCha20 write should succeed");
 
     let mut cursor = Cursor::new(buffer);
-    let loaded = keepass_rs::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
+    let loaded = keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
         .expect("ChaCha20 read should succeed");
 
     verify_database(&loaded);
@@ -201,27 +210,28 @@ fn test_e2e_kdbx31_chacha20() {
 fn test_e2e_kdbx4_roundtrip() {
     let mut db = build_realistic_database();
     db.version = DatabaseVersion::KDBX4;
-    db.encryption_algorithm = keepass_rs::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael;
+    db.encryption_algorithm =
+        keeless_kdbx::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael;
 
     // Use minimal Argon2 parameters for test speed
     let kdf = create_kdf(&ARGON2ID_UUID).expect("Argon2 KDF");
     let mut params = kdf.default_parameters();
     params.set_uint64("M", 64 * 1024); // 64 KB instead of 16 MB
-    params.set_uint64("I", 1);         // 1 iteration
+    params.set_uint64("I", 1); // 1 iteration
     db.kdf_parameters = Some(params);
 
     let key = make_key();
 
     // Write
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdbx4_writer::write_kdbx4(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdbx4_writer::write_kdbx4(&mut buffer, &db, &key)
         .expect("KDBX 4.0 write should succeed");
 
     assert!(buffer.len() > 100);
 
     // Read back
     let mut cursor = Cursor::new(buffer);
-    let loaded = keepass_rs::kdbx::file::kdbx4_reader::read_kdbx4(&mut cursor, &key)
+    let loaded = keeless_kdbx::kdbx::file::kdbx4_reader::read_kdbx4(&mut cursor, &key)
         .expect("KDBX 4.0 read should succeed");
 
     verify_database(&loaded);
@@ -239,18 +249,18 @@ fn test_e2e_kdb_roundtrip() {
 
     // Write
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdb_writer::write_kdb(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdb_writer::write_kdb(&mut buffer, &db, &key)
         .expect("KDB write should succeed");
 
     assert!(buffer.len() > 100);
 
     // Read back — need to detect version first to consume signature
     let mut cursor = Cursor::new(buffer);
-    let version = keepass_rs::kdbx::file::reader::DatabaseReader::detect_version(&mut cursor)
+    let version = keeless_kdbx::kdbx::file::reader::DatabaseReader::detect_version(&mut cursor)
         .expect("Should detect KDB version");
     assert_eq!(version, DatabaseVersion::KDB);
 
-    let loaded = keepass_rs::kdbx::file::kdb_reader::read_kdb(&mut cursor, &key)
+    let loaded = keeless_kdbx::kdbx::file::kdb_reader::read_kdb(&mut cursor, &key)
         .expect("KDB read should succeed");
 
     // KDB has limited fields — just check groups and entries survived
@@ -272,11 +282,11 @@ fn test_e2e_kdbx31_empty_database() {
     let key = make_key();
 
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
         .expect("Empty DB write should succeed");
 
     let mut cursor = Cursor::new(buffer);
-    let loaded = keepass_rs::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
+    let loaded = keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
         .expect("Empty DB read should succeed");
 
     assert!(loaded.root_group().is_some());
@@ -308,11 +318,11 @@ fn test_e2e_kdbx31_unicode_content() {
     let key = make_key();
 
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
         .expect("Unicode write should succeed");
 
     let mut cursor = Cursor::new(buffer);
-    let loaded = keepass_rs::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
+    let loaded = keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key)
         .expect("Unicode read should succeed");
 
     let loaded_entry = loaded.entries.values().next().unwrap();
@@ -358,26 +368,42 @@ fn test_e2e_kdbx4_empty_subgroup_survives_roundtrip() {
     let key = make_key();
 
     let mut buffer = Vec::new();
-    keepass_rs::kdbx::file::kdbx4_writer::write_kdbx4(&mut buffer, &db, &key)
+    keeless_kdbx::kdbx::file::kdbx4_writer::write_kdbx4(&mut buffer, &db, &key)
         .expect("KDBX4 write should succeed");
 
     let mut cursor = Cursor::new(buffer);
-    let loaded = keepass_rs::kdbx::file::kdbx4_reader::read_kdbx4(&mut cursor, &key)
+    let loaded = keeless_kdbx::kdbx::file::kdbx4_reader::read_kdbx4(&mut cursor, &key)
         .expect("KDBX4 read should succeed");
 
     // root + EmptySub + DeepEmpty = 3 groups
-    assert_eq!(loaded.groups.len(), 3, "empty subgroups must survive roundtrip");
+    assert_eq!(
+        loaded.groups.len(),
+        3,
+        "empty subgroups must survive roundtrip"
+    );
 
     let loaded_root = loaded.root_group().expect("root group must exist");
-    assert_eq!(loaded_root.child_group_ids.len(), 1, "root should have 1 child group");
+    assert_eq!(
+        loaded_root.child_group_ids.len(),
+        1,
+        "root should have 1 child group"
+    );
 
-    let loaded_empty = loaded.groups.get(&loaded_root.child_group_ids[0])
+    let loaded_empty = loaded
+        .groups
+        .get(&loaded_root.child_group_ids[0])
         .expect("EmptySub must exist");
     assert_eq!(loaded_empty.title, "EmptySub");
     assert!(loaded_empty.child_entry_ids.is_empty());
-    assert_eq!(loaded_empty.child_group_ids.len(), 1, "EmptySub should still contain DeepEmpty");
+    assert_eq!(
+        loaded_empty.child_group_ids.len(),
+        1,
+        "EmptySub should still contain DeepEmpty"
+    );
 
-    let loaded_deep = loaded.groups.get(&loaded_empty.child_group_ids[0])
+    let loaded_deep = loaded
+        .groups
+        .get(&loaded_empty.child_group_ids[0])
         .expect("DeepEmpty must exist");
     assert_eq!(loaded_deep.title, "DeepEmpty");
     assert!(loaded_deep.child_entry_ids.is_empty());

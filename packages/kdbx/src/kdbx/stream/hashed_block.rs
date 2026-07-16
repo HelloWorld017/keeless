@@ -1,8 +1,8 @@
 //! Hashed block stream (KDBX 3.1 integrity verification)
 //!
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crate::crypto::HashEngine;
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 
 use crate::model::exception::{DatabaseError, DatabaseResult};
@@ -33,7 +33,6 @@ impl<R: Read> HashedBlockReader<R> {
         let mut result = Vec::new();
 
         while let Ok(block_index) = self.inner.read_u32::<LittleEndian>() {
-
             let stored_hash = {
                 let mut hash = [0u8; 32];
                 self.inner.read_exact(&mut hash)?;

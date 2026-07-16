@@ -30,7 +30,9 @@ pub struct IconImageStandard {
 
 impl IconImageStandard {
     pub fn new(icon_id: u32) -> Self {
-        Self { icon_id: icon_id.min(NUMBER_STANDARD_ICONS as u32 - 1) }
+        Self {
+            icon_id: icon_id.min(NUMBER_STANDARD_ICONS as u32 - 1),
+        }
     }
 }
 

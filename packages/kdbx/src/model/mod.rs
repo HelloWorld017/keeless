@@ -18,13 +18,22 @@ pub mod group;
 pub mod meta;
 
 // Re-export key types
-pub use db::{Database, DatabaseVersion, CompositeKey, MasterCredential, ChangeTracker, ChangeType, ChangeRecord, DiffResult};
-pub use entry::{Entry, EntryField};
+pub use binary::{BinaryCache, BinaryData, BinaryPool, BinaryStreamReader, BinaryStreamWriter};
+pub use core::{
+    DateInstant, MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, ProtectedString,
+    SortNodeEnum, TraversalOrder,
+};
+pub use db::{
+    ChangeRecord, ChangeTracker, ChangeType, CompositeKey, Database, DatabaseVersion, DiffResult,
+    MasterCredential,
+};
 pub use entry::auto_type::{AutoType, AutoTypeAssociation};
 pub use entry::field_references::{FieldReference, RefTarget};
 pub use entry::versioned::{EntryKDB, EntryKDBX};
-pub use group::Group;
+pub use entry::{Entry, EntryBinary, EntryField};
 pub use group::versioned::{GroupKDB, GroupKDBX};
-pub use core::{Node, NodeId, NodeType, TraversalOrder, NodeHandler, DateInstant, ProtectedString, MemoryProtectionConfig, SortNodeEnum};
-pub use binary::{BinaryData, BinaryPool, BinaryCache, BinaryStreamReader, BinaryStreamWriter};
-pub use meta::{IconImage, IconImageStandard, IconImageCustom, Tag, parse_tags, serialize_tags, CustomData, CustomDataItem, DeletedObject, Template, TemplateField, TemplateFieldType};
+pub use group::Group;
+pub use meta::{
+    parse_tags, serialize_tags, CustomData, CustomDataItem, DeletedObject, IconImage,
+    IconImageCustom, IconImageStandard, Tag, Template, TemplateField, TemplateFieldType,
+};

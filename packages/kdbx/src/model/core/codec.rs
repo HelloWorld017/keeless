@@ -113,18 +113,27 @@ mod tests {
 
     #[test]
     fn test_read_u32_le_zero() {
-        assert_eq!(CodecUtil::read_u32_le(&[0x00, 0x00, 0x00, 0x00]), 0x00000000u32);
+        assert_eq!(
+            CodecUtil::read_u32_le(&[0x00, 0x00, 0x00, 0x00]),
+            0x00000000u32
+        );
     }
 
     #[test]
     fn test_read_u32_le_max() {
-        assert_eq!(CodecUtil::read_u32_le(&[0xFF, 0xFF, 0xFF, 0xFF]), 0xFFFFFFFFu32);
+        assert_eq!(
+            CodecUtil::read_u32_le(&[0xFF, 0xFF, 0xFF, 0xFF]),
+            0xFFFFFFFFu32
+        );
     }
 
     #[test]
     fn test_read_u32_le_typical() {
         // LE: 0xCD 0xAB 0x00 0x00 → 0x0000ABCD
-        assert_eq!(CodecUtil::read_u32_le(&[0xCD, 0xAB, 0x00, 0x00]), 0x0000ABCDu32);
+        assert_eq!(
+            CodecUtil::read_u32_le(&[0xCD, 0xAB, 0x00, 0x00]),
+            0x0000ABCDu32
+        );
     }
 
     #[test]
@@ -141,12 +150,18 @@ mod tests {
 
     #[test]
     fn test_write_u32_le_max() {
-        assert_eq!(CodecUtil::write_u32_le(0xFFFFFFFFu32), [0xFF, 0xFF, 0xFF, 0xFF]);
+        assert_eq!(
+            CodecUtil::write_u32_le(0xFFFFFFFFu32),
+            [0xFF, 0xFF, 0xFF, 0xFF]
+        );
     }
 
     #[test]
     fn test_write_u32_le_typical() {
-        assert_eq!(CodecUtil::write_u32_le(0x0000ABCDu32), [0xCD, 0xAB, 0x00, 0x00]);
+        assert_eq!(
+            CodecUtil::write_u32_le(0x0000ABCDu32),
+            [0xCD, 0xAB, 0x00, 0x00]
+        );
     }
 
     #[test]
@@ -238,7 +253,14 @@ mod tests {
 
     #[test]
     fn test_roundtrip_u64_le() {
-        let values = [0u64, 1, 0xFF, 0xFFFF, 0x123456789ABCDEF0, 0xFFFFFFFFFFFFFFFF];
+        let values = [
+            0u64,
+            1,
+            0xFF,
+            0xFFFF,
+            0x123456789ABCDEF0,
+            0xFFFFFFFFFFFFFFFF,
+        ];
         for v in values {
             let bytes = CodecUtil::write_u64_le(v);
             assert_eq!(CodecUtil::read_u64_le(&bytes), v);

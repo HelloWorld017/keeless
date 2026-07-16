@@ -2,9 +2,9 @@
 //!
 
 use crate::model::core::node::NodeId;
-use crate::model::group::Group;
-use crate::model::entry::Entry;
 use crate::model::db::database::Database;
+use crate::model::entry::Entry;
+use crate::model::group::Group;
 
 /// Traversal order for node tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +35,12 @@ pub fn traverse(db: &Database, order: TraversalOrder, handler: &mut dyn NodeHand
 }
 
 /// Traverse a specific group subtree.
-pub fn traverse_group(db: &Database, group_id: &NodeId, order: TraversalOrder, handler: &mut dyn NodeHandler) {
+pub fn traverse_group(
+    db: &Database,
+    group_id: &NodeId,
+    order: TraversalOrder,
+    handler: &mut dyn NodeHandler,
+) {
     let Some(group) = db.groups.get(group_id) else {
         return;
     };
@@ -74,7 +79,9 @@ pub fn traverse_group(db: &Database, group_id: &NodeId, order: TraversalOrder, h
 
 /// Collect all entry IDs in a subtree.
 pub fn collect_entry_ids(db: &Database, root_group_id: &NodeId) -> Vec<NodeId> {
-    struct Collector { ids: Vec<NodeId> }
+    struct Collector {
+        ids: Vec<NodeId>,
+    }
     impl NodeHandler for Collector {
         fn handle_entry(&mut self, _entry: &Entry, entry_id: &NodeId) {
             self.ids.push(*entry_id);
@@ -87,9 +94,13 @@ pub fn collect_entry_ids(db: &Database, root_group_id: &NodeId) -> Vec<NodeId> {
 
 /// Count all entries in a subtree.
 pub fn count_entries(db: &Database, root_group_id: &NodeId) -> usize {
-    struct Counter { count: usize }
+    struct Counter {
+        count: usize,
+    }
     impl NodeHandler for Counter {
-        fn handle_entry(&mut self, _entry: &Entry, _entry_id: &NodeId) { self.count += 1; }
+        fn handle_entry(&mut self, _entry: &Entry, _entry_id: &NodeId) {
+            self.count += 1;
+        }
     }
     let mut c = Counter { count: 0 };
     traverse_group(db, root_group_id, TraversalOrder::TopDown, &mut c);
@@ -99,9 +110,9 @@ pub fn count_entries(db: &Database, root_group_id: &NodeId) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::group::Group;
-    use crate::model::entry::Entry;
     use crate::model::db::database::DatabaseVersion;
+    use crate::model::entry::Entry;
+    use crate::model::group::Group;
 
     fn make_test_db() -> Database {
         let mut db = Database::new(DatabaseVersion::KDBX4);
@@ -115,9 +126,14 @@ mod tests {
     #[test]
     fn test_traverse_empty_db() {
         let db = Database::new(DatabaseVersion::KDBX4);
-        struct Counter { count: usize }
+        struct Counter {
+            count: usize,
+        }
         impl NodeHandler for Counter {
-            fn handle_group(&mut self, _: &Group, _: &NodeId) -> bool { self.count += 1; true }
+            fn handle_group(&mut self, _: &Group, _: &NodeId) -> bool {
+                self.count += 1;
+                true
+            }
         }
         let mut counter = Counter { count: 0 };
         traverse(&db, TraversalOrder::TopDown, &mut counter);
@@ -159,16 +175,24 @@ mod tests {
         let entry = Entry::new(NodeId::new_uuid());
         db.add_entry(entry, &sub_id);
 
-        struct SkipGroup { groups: usize, entries: usize }
+        struct SkipGroup {
+            groups: usize,
+            entries: usize,
+        }
         impl NodeHandler for SkipGroup {
             fn handle_group(&mut self, g: &Group, _: &NodeId) -> bool {
                 self.groups += 1;
                 g.title != "Skip"
             }
-            fn handle_entry(&mut self, _: &Entry, _: &NodeId) { self.entries += 1; }
+            fn handle_entry(&mut self, _: &Entry, _: &NodeId) {
+                self.entries += 1;
+            }
         }
 
-        let mut h = SkipGroup { groups: 0, entries: 0 };
+        let mut h = SkipGroup {
+            groups: 0,
+            entries: 0,
+        };
         traverse(&db, TraversalOrder::TopDown, &mut h);
         assert_eq!(h.groups, 2);
         assert_eq!(h.entries, 0);

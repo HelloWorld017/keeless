@@ -6,12 +6,13 @@ pub mod versioned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::model::meta::icon::IconImage;
-use crate::model::core::node::{NodeId, NodeType};
 use crate::model::core::date::DateInstant;
+use crate::model::core::node::{NodeId, NodeType};
+use crate::model::meta::custom_data::CustomData;
+use crate::model::meta::icon::IconImage;
 
 /// A KeePass database group (folder).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Group {
     /// Unique identifier
     pub id: NodeId,
@@ -33,6 +34,10 @@ pub struct Group {
     pub creation_time: DateInstant,
     /// Last modification time
     pub last_modification_time: DateInstant,
+    /// Last access time.
+    pub last_access_time: DateInstant,
+    /// Last location change time.
+    pub location_changed: DateInstant,
     /// Expiry time
     pub expiry_time: DateInstant,
     /// Whether the group expires
@@ -45,6 +50,8 @@ pub struct Group {
     pub is_autotype_navigating: bool,
     /// Default auto-type sequence
     pub default_autotype_sequence: String,
+    /// Extensible KDBX custom data.
+    pub custom_data: CustomData,
 }
 
 impl Group {
@@ -61,12 +68,15 @@ impl Group {
             is_expanded: true,
             creation_time: now,
             last_modification_time: now,
+            last_access_time: now,
+            location_changed: now,
             expiry_time: DateInstant::never(),
             expires: false,
             usage_count: 0,
             enable_searching: true,
             is_autotype_navigating: false,
             default_autotype_sequence: String::new(),
+            custom_data: CustomData::default(),
         }
     }
 

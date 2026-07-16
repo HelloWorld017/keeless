@@ -39,7 +39,7 @@ impl DatabaseWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use crate::kdbx::file::reader::DatabaseReader;
     use std::io::Cursor;
 

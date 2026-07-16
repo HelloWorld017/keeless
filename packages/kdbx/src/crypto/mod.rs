@@ -24,15 +24,17 @@ pub mod compression;
 pub mod encryption_algorithm;
 
 // ─── Re-exports ─────────────────────────────────────────────────────
-pub use cipher_engine::{CipherEngine, AesCipherEngine, ChaCha20CipherEngine, TwofishCipherEngine};
-pub use compression::CompressionAlgorithm;
-pub use encryption_algorithm::EncryptionAlgorithm;
-pub use inner_stream::{InnerStreamCipher, Salsa20InnerStream, ChaCha20InnerStream, ArcFourInnerStream};
 pub use aes_cipher::AesCipher;
 pub use argon2_kdf::{Argon2Kdf, Argon2Params, Argon2Type};
 pub use chacha20_cipher::ChaCha20Cipher;
+pub use cipher_engine::{AesCipherEngine, ChaCha20CipherEngine, CipherEngine, TwofishCipherEngine};
+pub use compression::CompressionAlgorithm;
+pub use encryption_algorithm::EncryptionAlgorithm;
 pub use hash::HashEngine;
 pub use hmac_compute::HmacCompute;
+pub use inner_stream::{
+    ArcFourInnerStream, ChaCha20InnerStream, InnerStreamCipher, Salsa20InnerStream,
+};
 pub use key_transform::AesKeyTransformer;
 pub use salsa20_cipher::Salsa20Cipher;
 pub use stream_cipher::StreamCipher;

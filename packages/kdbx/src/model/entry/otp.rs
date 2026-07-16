@@ -2,16 +2,19 @@
 //!
 
 use hmac::{Hmac, Mac};
+use percent_encoding::percent_decode_str;
 use sha1::Sha1;
-use base64::Engine;
+use sha2::{Sha256, Sha512};
 
 type HmacSha1 = Hmac<Sha1>;
+type HmacSha256 = Hmac<Sha256>;
+type HmacSha512 = Hmac<Sha512>;
 
 /// OTP type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OtpType {
-    Hotp,   // HMAC-based (counter)
-    Totp,   // Time-based
+    Hotp, // HMAC-based (counter)
+    Totp, // Time-based
 }
 
 /// OTP parameters parsed from an otpauth:// URI or KeePass OTP field.
@@ -21,8 +24,8 @@ pub struct OtpParameters {
     pub secret: Vec<u8>,
     pub algorithm: OtpHashAlgorithm,
     pub digits: u32,
-    pub period: u32,    // TOTP period in seconds (default 30)
-    pub counter: u64,   // HOTP counter
+    pub period: u32,  // TOTP period in seconds (default 30)
+    pub counter: u64, // HOTP counter
     pub issuer: String,
     pub account: String,
 }
@@ -42,20 +45,53 @@ pub struct TokenCalculator;
 impl TokenCalculator {
     /// Calculate HOTP (HMAC-based OTP).
     pub fn hotp(secret: &[u8], counter: u64, digits: u32) -> u32 {
-        let counter_bytes = counter.to_be_bytes();
-        let mut mac = match HmacSha1::new_from_slice(secret) {
-            Ok(m) => m,
-            Err(_) => return 0,
-        };
-        mac.update(&counter_bytes);
-        let result = mac.finalize().into_bytes();
-        let hmac_bytes = result.as_slice();
+        Self::hotp_with_algorithm(secret, counter, digits, OtpHashAlgorithm::Sha1)
+    }
 
-        Self::truncate(hmac_bytes, digits)
+    fn hotp_with_algorithm(
+        secret: &[u8],
+        counter: u64,
+        digits: u32,
+        algorithm: OtpHashAlgorithm,
+    ) -> u32 {
+        if secret.is_empty() || !(1..=9).contains(&digits) {
+            return 0;
+        }
+        let counter_bytes = counter.to_be_bytes();
+        let result = match algorithm {
+            OtpHashAlgorithm::Sha1 => {
+                let mut mac = match HmacSha1::new_from_slice(secret) {
+                    Ok(mac) => mac,
+                    Err(_) => return 0,
+                };
+                mac.update(&counter_bytes);
+                mac.finalize().into_bytes().to_vec()
+            }
+            OtpHashAlgorithm::Sha256 => {
+                let mut mac = match HmacSha256::new_from_slice(secret) {
+                    Ok(mac) => mac,
+                    Err(_) => return 0,
+                };
+                mac.update(&counter_bytes);
+                mac.finalize().into_bytes().to_vec()
+            }
+            OtpHashAlgorithm::Sha512 => {
+                let mut mac = match HmacSha512::new_from_slice(secret) {
+                    Ok(mac) => mac,
+                    Err(_) => return 0,
+                };
+                mac.update(&counter_bytes);
+                mac.finalize().into_bytes().to_vec()
+            }
+        };
+        Self::truncate(&result, digits)
     }
 
     /// Calculate TOTP (Time-based OTP).
     pub fn totp(secret: &[u8], time: u64, period: u32, digits: u32) -> u32 {
+        if period == 0 {
+            return 0;
+        }
         let counter = time / period as u64;
         Self::hotp(secret, counter, digits)
     }
@@ -66,12 +102,26 @@ impl TokenCalculator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        Self::totp(&params.secret, now, params.period, params.digits)
+        if params.period == 0 {
+            return 0;
+        }
+        Self::hotp_with_algorithm(
+            &params.secret,
+            now / params.period as u64,
+            params.digits,
+            params.algorithm,
+        )
     }
 
     /// Truncate HMAC result to digits using dynamic truncation (RFC 4226).
     fn truncate(hmac: &[u8], digits: u32) -> u32 {
+        if hmac.len() < 4 || !(1..=9).contains(&digits) {
+            return 0;
+        }
         let offset = (hmac[hmac.len() - 1] & 0x0F) as usize;
+        if offset + 4 > hmac.len() {
+            return 0;
+        }
         let binary = ((hmac[offset] as u32 & 0x7F) << 24)
             | ((hmac[offset + 1] as u32) << 16)
             | ((hmac[offset + 2] as u32) << 8)
@@ -83,7 +133,7 @@ impl TokenCalculator {
 
     /// Format OTP code with leading zeros.
     pub fn format_code(code: u32, digits: u32) -> String {
-        format!("{:0width$}", code, width = digits as usize)
+        format!("{:0width$}", code, width = digits.min(9) as usize)
     }
 }
 
@@ -103,7 +153,7 @@ pub fn parse_otpauth_uri(uri: &str) -> Option<OtpParameters> {
     };
 
     let (label, params_str) = rest.split_once('?')?;
-    let account = label.to_string();
+    let account = decode_component(label)?;
 
     let mut secret = Vec::new();
     let mut digits = 6u32;
@@ -113,26 +163,36 @@ pub fn parse_otpauth_uri(uri: &str) -> Option<OtpParameters> {
     let mut issuer = String::new();
 
     for param in params_str.split('&') {
-        let (key, value) = param.split_once('=').unwrap_or(("", ""));
-        match key {
+        let (key, value) = param.split_once('=')?;
+        let key = decode_component(key)?;
+        let value = decode_component(value)?;
+        match key.as_str() {
             "secret" => {
-                secret = base64::engine::general_purpose::STANDARD
-                    .decode(value.replace(' ', ""))
-                    .unwrap_or_default();
+                let normalized = value.replace([' ', '-'], "").to_ascii_uppercase();
+                secret = base32::decode(
+                    base32::Alphabet::Rfc4648 { padding: false },
+                    normalized.trim_end_matches('='),
+                )?;
             }
-            "digits" => digits = value.parse().unwrap_or(6),
-            "period" => period = value.parse().unwrap_or(30),
-            "counter" => counter = value.parse().unwrap_or(0),
+            "digits" => digits = value.parse().ok()?,
+            "period" => period = value.parse().ok()?,
+            "counter" => counter = value.parse().ok()?,
             "algorithm" => {
                 algorithm = match value.to_uppercase().as_str() {
+                    "SHA1" => OtpHashAlgorithm::Sha1,
                     "SHA256" => OtpHashAlgorithm::Sha256,
                     "SHA512" => OtpHashAlgorithm::Sha512,
-                    _ => OtpHashAlgorithm::Sha1,
+                    _ => return None,
                 };
             }
-            "issuer" => issuer = value.to_string(),
+            "issuer" => issuer = value,
             _ => {}
         }
+    }
+
+    if secret.is_empty() || !(1..=9).contains(&digits) || (otp_type == OtpType::Totp && period == 0)
+    {
+        return None;
     }
 
     Some(OtpParameters {
@@ -145,6 +205,13 @@ pub fn parse_otpauth_uri(uri: &str) -> Option<OtpParameters> {
         issuer,
         account,
     })
+}
+
+fn decode_component(value: &str) -> Option<String> {
+    percent_decode_str(&value.replace('+', " "))
+        .decode_utf8()
+        .ok()
+        .map(|value| value.into_owned())
 }
 
 #[cfg(test)]
@@ -176,6 +243,8 @@ mod tests {
         assert_eq!(params.digits, 6);
         assert_eq!(params.period, 30);
         assert_eq!(params.issuer, "Test");
+        assert_eq!(params.account, "Test:user@example.com");
+        assert_eq!(params.secret, b"Hello!\xde\xad\xbe\xef");
     }
 
     #[test]
@@ -191,7 +260,8 @@ mod tests {
 
     #[test]
     fn test_parse_otpauth_hotp() {
-        let uri = "otpauth://hotp/Test:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Test&counter=42";
+        let uri =
+            "otpauth://hotp/Test:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Test&counter=42";
         let params = parse_otpauth_uri(uri).unwrap();
         assert_eq!(params.otp_type, OtpType::Hotp);
         assert_eq!(params.counter, 42);
@@ -206,5 +276,50 @@ mod tests {
         assert_eq!(params.algorithm, OtpHashAlgorithm::Sha256);
         assert_eq!(params.digits, 8);
         assert_eq!(params.period, 60);
+    }
+
+    #[test]
+    fn test_rfc_6238_sha256_and_sha512_vectors() {
+        let sha256 = OtpParameters {
+            otp_type: OtpType::Totp,
+            secret: b"12345678901234567890123456789012".to_vec(),
+            algorithm: OtpHashAlgorithm::Sha256,
+            digits: 8,
+            period: 30,
+            counter: 0,
+            issuer: String::new(),
+            account: String::new(),
+        };
+        let sha512 = OtpParameters {
+            secret: b"1234567890123456789012345678901234567890123456789012345678901234".to_vec(),
+            algorithm: OtpHashAlgorithm::Sha512,
+            ..sha256.clone()
+        };
+
+        assert_eq!(
+            TokenCalculator::hotp_with_algorithm(
+                &sha256.secret,
+                59 / 30,
+                sha256.digits,
+                sha256.algorithm,
+            ),
+            46_119_246
+        );
+        assert_eq!(
+            TokenCalculator::hotp_with_algorithm(
+                &sha512.secret,
+                59 / 30,
+                sha512.digits,
+                sha512.algorithm,
+            ),
+            90_693_936
+        );
+    }
+
+    #[test]
+    fn test_invalid_totp_parameters_are_rejected() {
+        assert!(parse_otpauth_uri("otpauth://totp/a?secret=INVALID!&period=0").is_none());
+        assert_eq!(TokenCalculator::totp(b"secret", 59, 0, 6), 0);
+        assert_eq!(TokenCalculator::hotp(b"secret", 0, 10), 0);
     }
 }

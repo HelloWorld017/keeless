@@ -11,7 +11,9 @@ pub struct Tag {
 
 impl Tag {
     pub fn new(name: &str) -> Self {
-        Self { name: name.to_string() }
+        Self {
+            name: name.to_string(),
+        }
     }
 }
 
@@ -34,5 +36,8 @@ pub fn parse_tags(tag_string: &str) -> Vec<Tag> {
 
 /// Serialize tags to a semicolon-separated string.
 pub fn serialize_tags(tags: &[Tag]) -> String {
-    tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(";")
+    tags.iter()
+        .map(|t| t.name.as_str())
+        .collect::<Vec<_>>()
+        .join(";")
 }

@@ -3,8 +3,8 @@
 
 use regex::Regex;
 
-use crate::model::entry::Entry;
 use crate::model::core::node::NodeId;
+use crate::model::entry::Entry;
 
 /// Search parameters.
 #[derive(Debug, Clone)]
@@ -61,10 +61,7 @@ pub struct SearchHelper;
 
 impl SearchHelper {
     /// Search entries matching the given parameters.
-    pub fn search_entries(
-        entries: &[&Entry],
-        params: &SearchParameters,
-    ) -> Vec<SearchResult> {
+    pub fn search_entries(entries: &[&Entry], params: &SearchParameters) -> Vec<SearchResult> {
         let query = if params.case_sensitive {
             params.search_string.clone()
         } else {
@@ -89,7 +86,11 @@ impl SearchHelper {
 
         for entry in entries {
             let score = if params.regex_mode {
-                Self::score_entry_regex(entry, regex.as_ref().expect("checked is_some above"), params)
+                Self::score_entry_regex(
+                    entry,
+                    regex.as_ref().expect("checked is_some above"),
+                    params,
+                )
             } else {
                 Self::score_entry_plain(entry, &query, params)
             };
@@ -103,16 +104,28 @@ impl SearchHelper {
         }
 
         // Sort by score descending
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results
     }
 
     /// Quick check if an entry matches a search string.
     pub fn entry_matches(entry: &Entry, query: &str, case_sensitive: bool) -> bool {
-        let q = if case_sensitive { query.to_string() } else { query.to_lowercase() };
+        let q = if case_sensitive {
+            query.to_string()
+        } else {
+            query.to_lowercase()
+        };
 
         let check = |s: &str| -> bool {
-            if case_sensitive { s.contains(&q) } else { s.to_lowercase().contains(&q) }
+            if case_sensitive {
+                s.contains(&q)
+            } else {
+                s.to_lowercase().contains(&q)
+            }
         };
 
         check(&entry.title)
@@ -141,7 +154,9 @@ impl SearchHelper {
             score += 2.0;
         }
 
-        if params.search_in_username && field_matches(entry.username.as_str(), query, params.case_sensitive) {
+        if params.search_in_username
+            && field_matches(entry.username.as_str(), query, params.case_sensitive)
+        {
             score += 1.5;
         }
 
@@ -149,11 +164,15 @@ impl SearchHelper {
             score += 1.0;
         }
 
-        if params.search_in_notes && field_matches(entry.notes.as_str(), query, params.case_sensitive) {
+        if params.search_in_notes
+            && field_matches(entry.notes.as_str(), query, params.case_sensitive)
+        {
             score += 0.5;
         }
 
-        if params.search_in_password && field_matches(entry.password.as_str(), query, params.case_sensitive) {
+        if params.search_in_password
+            && field_matches(entry.password.as_str(), query, params.case_sensitive)
+        {
             score += 1.0;
         }
 

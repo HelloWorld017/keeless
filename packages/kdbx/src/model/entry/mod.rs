@@ -6,29 +6,34 @@ pub mod field_references;
 pub mod otp;
 pub mod versioned;
 
+use crate::model::core::date::DateInstant;
+use crate::model::core::node::{NodeId, NodeType};
+use crate::model::core::security::ProtectedString;
+use crate::model::meta::custom_data::CustomData;
+use crate::model::meta::icon::IconImage;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::model::meta::icon::IconImage;
-use crate::model::core::node::{NodeId, NodeType};
-use crate::model::core::date::DateInstant;
-use crate::model::core::security::ProtectedString;
 
 pub use auto_type::{AutoType, AutoTypeAssociation};
 pub use field_references::{FieldReference, RefTarget};
 
 /// A KeePass database entry (password record).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Entry {
     /// Unique identifier
     pub id: NodeId,
     /// Entry title
     pub title: String,
+    /// XML protection state for the title field.
+    pub title_is_protected: bool,
     /// User name
     pub username: ProtectedString,
     /// Password
     pub password: ProtectedString,
     /// URL
     pub url: String,
+    /// XML protection state for the URL field.
+    pub url_is_protected: bool,
     /// Notes
     pub notes: ProtectedString,
     /// Icon
@@ -46,13 +51,15 @@ pub struct Entry {
     /// Custom fields
     pub custom_fields: Vec<EntryField>,
     /// Binary attachments
-    pub binaries: Vec<(String, Vec<u8>)>,
+    pub binaries: Vec<EntryBinary>,
     /// Creation time
     pub creation_time: DateInstant,
     /// Last modification time
     pub last_modification_time: DateInstant,
     /// Last access time
     pub last_access_time: DateInstant,
+    /// Last location change time.
+    pub location_changed: DateInstant,
     /// Expiry time
     pub expiry_time: DateInstant,
     /// Whether the entry expires
@@ -61,19 +68,27 @@ pub struct Entry {
     pub usage_count: i64,
     /// History entries
     pub history: Vec<Entry>,
-    /// Auto-type enabled
-    pub autotype_enabled: bool,
-    /// Auto-type sequence
-    pub autotype_sequence: String,
+    /// Auto-type configuration.
+    pub auto_type: AutoType,
+    /// Extensible KDBX custom data.
+    pub custom_data: CustomData,
     /// Is this a template entry?
     pub is_template: bool,
 }
 
 /// A custom field in an entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EntryField {
     pub name: String,
     pub value: ProtectedString,
+    pub is_protected: bool,
+}
+
+/// An entry attachment and its KDBX4 inner-header protection state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntryBinary {
+    pub name: String,
+    pub data: Vec<u8>,
     pub is_protected: bool,
 }
 
@@ -83,9 +98,11 @@ impl Entry {
         Self {
             id,
             title: String::new(),
+            title_is_protected: false,
             username: ProtectedString::new(),
             password: ProtectedString::new(),
             url: String::new(),
+            url_is_protected: false,
             notes: ProtectedString::new(),
             icon: IconImage::default(),
             custom_icon_uuid: None,
@@ -98,12 +115,13 @@ impl Entry {
             creation_time: now,
             last_modification_time: now,
             last_access_time: now,
+            location_changed: now,
             expiry_time: DateInstant::never(),
             expires: false,
             usage_count: 0,
             history: Vec::new(),
-            autotype_enabled: true,
-            autotype_sequence: String::new(),
+            auto_type: AutoType::default(),
+            custom_data: CustomData::default(),
             is_template: false,
         }
     }
@@ -116,7 +134,11 @@ impl Entry {
             "password" => Some(self.password.clone()),
             "url" => Some(ProtectedString::new_plain(&self.url)),
             "notes" => Some(self.notes.clone()),
-            _ => self.custom_fields.iter().find(|f| f.name == name).map(|f| f.value.clone()),
+            _ => self
+                .custom_fields
+                .iter()
+                .find(|f| f.name == name)
+                .map(|f| f.value.clone()),
         }
     }
 

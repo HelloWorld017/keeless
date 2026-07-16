@@ -8,20 +8,17 @@ use std::io::Read;
 use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
+use crate::kdbx::file::header::KdbHeader;
+use crate::model::core::node::NodeId;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::{Database, DatabaseVersion};
-use crate::model::entry::versioned::{EntryKDB, kdb_field};
-use crate::model::group::versioned::{GroupKDB, kdb_group_field};
-use crate::model::core::node::NodeId;
+use crate::model::entry::versioned::{kdb_field, EntryKDB};
 use crate::model::exception::{DatabaseError, DatabaseResult};
-use crate::kdbx::file::header::KdbHeader;
+use crate::model::group::versioned::{kdb_group_field, GroupKDB};
 
 /// Read a KDB (v1) database from a reader.
 /// The caller should have already consumed the 12-byte signature/version.
-pub fn read_kdb<R: Read>(
-    reader: &mut R,
-    composite_key: &CompositeKey,
-) -> DatabaseResult<Database> {
+pub fn read_kdb<R: Read>(reader: &mut R, composite_key: &CompositeKey) -> DatabaseResult<Database> {
     // 1. Read header
     let header = read_kdb_header(reader)?;
 
@@ -31,16 +28,18 @@ pub fn read_kdb<R: Read>(
     // 3. Read encrypted content
     let encrypted_size = reader.read_u32::<LittleEndian>()? as usize;
     if encrypted_size == 0 || encrypted_size > 100 * 1024 * 1024 {
-        return Err(DatabaseError::InvalidFormat("Invalid encrypted content size".into()));
+        return Err(DatabaseError::InvalidFormat(
+            "Invalid encrypted content size".into(),
+        ));
     }
     let mut encrypted = vec![0u8; encrypted_size];
     reader.read_exact(&mut encrypted)?;
 
     // 4. Decrypt content
-    let cipher = crate::crypto::cipher_engine::create_cipher_engine(
-        EncryptionAlgorithm::AesRijndael
-    );
-    let decrypted = cipher.decrypt(&master_key, &header.encryption_iv, &encrypted)
+    let cipher =
+        crate::crypto::cipher_engine::create_cipher_engine(EncryptionAlgorithm::AesRijndael);
+    let decrypted = cipher
+        .decrypt(&master_key, &header.encryption_iv, &encrypted)
         .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
 
     // 5. Verify content hash
@@ -70,7 +69,11 @@ pub fn read_kdb<R: Read>(
         // Find parent based on level
         let level = *_level;
         // Pop stack until we find a group with level < current
-        while group_stack.last().map(|(_, l)| *l >= level).unwrap_or(false) {
+        while group_stack
+            .last()
+            .map(|(_, l)| *l >= level)
+            .unwrap_or(false)
+        {
             group_stack.pop();
         }
 
@@ -92,8 +95,12 @@ pub fn read_kdb<R: Read>(
 
     // Add entries to their groups
     for entry_fields in &entries {
-        let group_id_u32 = entry_fields.get(&kdb_field::GROUP_ID)
-            .and_then(|v| v.get(..4).map(|s| u32::from_le_bytes(s.try_into().unwrap_or([0; 4]))))
+        let group_id_u32 = entry_fields
+            .get(&kdb_field::GROUP_ID)
+            .and_then(|v| {
+                v.get(..4)
+                    .map(|s| u32::from_le_bytes(s.try_into().unwrap_or([0; 4])))
+            })
             .unwrap_or(0);
         let group_id = NodeId::from_u32(group_id_u32);
 
@@ -156,7 +163,7 @@ fn derive_kdb_master_key(
 
     // KDB uses AES-KDF with the transform seed
     let mut params = crate::kdbx::kdf::kdf_parameters::KdfParameters::new(
-        crate::kdbx::kdf::aes_kdf::AES_KDF_UUID
+        crate::kdbx::kdf::aes_kdf::AES_KDF_UUID,
     );
     params.set_byte_array("S", &header.transform_seed);
     params.set_uint64("R", header.transform_rounds as u64);
@@ -174,10 +181,7 @@ fn derive_kdb_master_key(
 type KdbGroupList = Vec<(HashMap<u16, Vec<u8>>, usize)>;
 
 /// Read KDB groups from decrypted content.
-fn read_kdb_groups<R: Read>(
-    reader: &mut R,
-    count: u32,
-) -> DatabaseResult<KdbGroupList> {
+fn read_kdb_groups<R: Read>(reader: &mut R, count: u32) -> DatabaseResult<KdbGroupList> {
     let mut groups = Vec::with_capacity(count as usize);
 
     for _ in 0..count {

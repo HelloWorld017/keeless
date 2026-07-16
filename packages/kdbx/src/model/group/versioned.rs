@@ -2,10 +2,10 @@
 //!
 //! Handles mapping between KDB (v1) and KDBX (v3.1/v4) group formats.
 
-use crate::model::group::Group;
-use crate::model::core::node::NodeId;
-use crate::model::meta::icon::IconImage;
 use crate::model::core::date::DateInstant;
+use crate::model::core::node::NodeId;
+use crate::model::group::Group;
+use crate::model::meta::icon::IconImage;
 
 /// KDB (v1) specific group fields
 pub mod kdb_group_field {
@@ -34,24 +34,28 @@ pub struct GroupKDB;
 
 impl GroupKDB {
     /// Create a Group from KDB raw field data.
-    pub fn from_kdb_fields(
-        fields: &std::collections::HashMap<u16, Vec<u8>>,
-    ) -> Group {
-        let group_id = fields.get(&kdb_group_field::GROUP_ID)
-            .and_then(|v| v.get(..4).map(|s| u32::from_le_bytes(s.try_into().unwrap_or([0; 4]))))
+    pub fn from_kdb_fields(fields: &std::collections::HashMap<u16, Vec<u8>>) -> Group {
+        let group_id = fields
+            .get(&kdb_group_field::GROUP_ID)
+            .and_then(|v| {
+                v.get(..4)
+                    .map(|s| u32::from_le_bytes(s.try_into().unwrap_or([0; 4])))
+            })
             .unwrap_or(0);
 
         let id = NodeId::from_u32(group_id);
         let mut g = Group::new(id);
 
-        g.title = fields.get(&kdb_group_field::TITLE)
+        g.title = fields
+            .get(&kdb_group_field::TITLE)
             .map(|v| String::from_utf8_lossy(v).to_string())
             .unwrap_or_default();
 
         if let Some(data) = fields.get(&kdb_group_field::ICON_ID) {
             if data.len() >= 4 {
                 let icon_id = u32::from_le_bytes(data[..4].try_into().unwrap_or([0; 4]));
-                g.icon = IconImage::Standard(crate::model::meta::icon::IconImageStandard::new(icon_id));
+                g.icon =
+                    IconImage::Standard(crate::model::meta::icon::IconImageStandard::new(icon_id));
             }
         }
 
@@ -90,16 +94,30 @@ impl GroupKDB {
         };
         fields.push((kdb_group_field::ICON_ID, icon_id.to_le_bytes().to_vec()));
 
-        fields.push((kdb_group_field::CREATION_TIME,
-            (group.creation_time.as_millis().unwrap_or(0) / 1000).to_le_bytes().to_vec()));
-        fields.push((kdb_group_field::LAST_MODIFICATION_TIME,
-            (group.last_modification_time.as_millis().unwrap_or(0) / 1000).to_le_bytes().to_vec()));
+        fields.push((
+            kdb_group_field::CREATION_TIME,
+            (group.creation_time.as_millis().unwrap_or(0) / 1000)
+                .to_le_bytes()
+                .to_vec(),
+        ));
+        fields.push((
+            kdb_group_field::LAST_MODIFICATION_TIME,
+            (group.last_modification_time.as_millis().unwrap_or(0) / 1000)
+                .to_le_bytes()
+                .to_vec(),
+        ));
 
         // Flags
         let mut flags: u32 = 0;
-        if group.is_expanded { flags |= kdb_group_flag::EXPANDED; }
-        if group.enable_searching { flags |= kdb_group_flag::SEARCH_ENABLED; }
-        if group.is_autotype_navigating { flags |= kdb_group_flag::AUTO_TYPE_NAVIGATING; }
+        if group.is_expanded {
+            flags |= kdb_group_flag::EXPANDED;
+        }
+        if group.enable_searching {
+            flags |= kdb_group_flag::SEARCH_ENABLED;
+        }
+        if group.is_autotype_navigating {
+            flags |= kdb_group_flag::AUTO_TYPE_NAVIGATING;
+        }
         fields.push((kdb_group_field::FLAGS, flags.to_le_bytes().to_vec()));
 
         fields.push((kdb_group_field::END, Vec::new()));
@@ -143,7 +161,12 @@ mod tests {
         fields.insert(kdb_group_field::GROUP_ID, 42u32.to_le_bytes().to_vec());
         fields.insert(kdb_group_field::TITLE, b"My Group".to_vec());
         fields.insert(kdb_group_field::ICON_ID, 10u32.to_le_bytes().to_vec());
-        fields.insert(kdb_group_field::FLAGS, (kdb_group_flag::EXPANDED | kdb_group_flag::SEARCH_ENABLED).to_le_bytes().to_vec());
+        fields.insert(
+            kdb_group_field::FLAGS,
+            (kdb_group_flag::EXPANDED | kdb_group_flag::SEARCH_ENABLED)
+                .to_le_bytes()
+                .to_vec(),
+        );
 
         let group = GroupKDB::from_kdb_fields(&fields);
         assert_eq!(group.title, "My Group");

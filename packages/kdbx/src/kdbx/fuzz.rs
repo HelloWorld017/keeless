@@ -48,7 +48,9 @@ pub fn fuzz_parse(data: &[u8], target: FuzzTarget) -> FuzzResult {
             match DatabaseReader::detect_version(&mut cursor) {
                 Ok(_) => {
                     // Successfully detected version — further parsing would require a key
-                    FuzzOutcome::ExpectedError("Further parsing requires valid credentials".to_string())
+                    FuzzOutcome::ExpectedError(
+                        "Further parsing requires valid credentials".to_string(),
+                    )
                 }
                 Err(e) => FuzzOutcome::ExpectedError(format!("{:?}", e)),
             }
@@ -56,7 +58,9 @@ pub fn fuzz_parse(data: &[u8], target: FuzzTarget) -> FuzzResult {
         FuzzTarget::XmlPayload => {
             // For XML fuzzing, check if bytes are valid UTF-8
             match std::str::from_utf8(data) {
-                Ok(_) => FuzzOutcome::ExpectedError("XML fuzz requires inner stream cipher".to_string()),
+                Ok(_) => {
+                    FuzzOutcome::ExpectedError("XML fuzz requires inner stream cipher".to_string())
+                }
                 Err(e) => FuzzOutcome::ExpectedError(format!("Invalid UTF-8: {:?}", e)),
             }
         }
@@ -210,7 +214,9 @@ mod tests {
         for i in 0..100 {
             let input = mutate(&seed, i);
             let result = fuzz_parse(&input, FuzzTarget::RawKdbx4);
-            if let FuzzOutcome::Panic = result.outcome { panic!("Fuzz test panicked at iteration {}", i) }
+            if let FuzzOutcome::Panic = result.outcome {
+                panic!("Fuzz test panicked at iteration {}", i)
+            }
         }
     }
 }

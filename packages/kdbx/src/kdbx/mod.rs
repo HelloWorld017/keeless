@@ -3,6 +3,7 @@
 pub mod file;
 pub mod fuzz;
 pub mod kdf;
+pub(crate) mod limits;
 pub mod merge;
 pub mod repair;
 pub mod search;

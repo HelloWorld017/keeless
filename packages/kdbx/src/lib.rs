@@ -1,4 +1,4 @@
-//! # KeePass-rs Library
+//! # keeless_kdbx
 //!
 //! Platform-independent KeePass database library.
 //! Supports KDB (v1) and KDBX (v3.1, v4.0) file formats.
@@ -8,12 +8,11 @@
 //! - `model` - Data models (Entry, Group, Node, Icon, etc.)
 //! - `kdbx` - KDBX file I/O, KDF, merge, repair, search, XML, stream
 //!
-//! ## Compatibility
-//! Designed to be byte-for-byte compatible with KeePassDX 4.4.3
+//! KDBX4 compatibility is verified against independent fixtures and parser output.
 
 pub mod crypto;
-pub mod model;
 pub mod kdbx;
+pub mod model;
 
 pub use model::exception::{DatabaseError, DatabaseResult};
 
@@ -21,42 +20,34 @@ pub use model::exception::{DatabaseError, DatabaseResult};
 
 // ─── Element (Data Models) ────────────────────────────────────────────
 pub use model::{
-    Database, DatabaseVersion, Entry, EntryField, Group,
-    Node, NodeId, NodeType, IconImage, IconImageStandard, IconImageCustom,
-    ProtectedString, MemoryProtectionConfig,
-    BinaryData, BinaryPool, BinaryCache, BinaryStreamReader, BinaryStreamWriter,
-    DateInstant, CompositeKey, MasterCredential,
-    ChangeTracker, ChangeType, ChangeRecord, DiffResult,
-    CustomData, CustomDataItem, DeletedObject, SortNodeEnum,
-    Tag, parse_tags, serialize_tags,
-    AutoType, AutoTypeAssociation,
-    FieldReference, RefTarget,
-    EntryKDB, EntryKDBX, GroupKDB, GroupKDBX,
-    Template, TemplateField, TemplateFieldType,
-    TraversalOrder, NodeHandler,
+    parse_tags, serialize_tags, AutoType, AutoTypeAssociation, BinaryCache, BinaryData, BinaryPool,
+    BinaryStreamReader, BinaryStreamWriter, ChangeRecord, ChangeTracker, ChangeType, CompositeKey,
+    CustomData, CustomDataItem, Database, DatabaseVersion, DateInstant, DeletedObject, DiffResult,
+    Entry, EntryBinary, EntryField, EntryKDB, EntryKDBX, FieldReference, Group, GroupKDB,
+    GroupKDBX, IconImage, IconImageCustom, IconImageStandard, MasterCredential,
+    MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, ProtectedString, RefTarget,
+    SortNodeEnum, Tag, Template, TemplateField, TemplateFieldType, TraversalOrder,
 };
 
 // ─── Crypto ───────────────────────────────────────────────────────────
 pub use crypto::{
-    CipherEngine, AesCipherEngine, ChaCha20CipherEngine, TwofishCipherEngine,
-    CompressionAlgorithm, EncryptionAlgorithm,
-    InnerStreamCipher,
-    Salsa20InnerStream, ChaCha20InnerStream, ArcFourInnerStream,
-    AesCipher, TwofishCipher, ChaCha20Cipher, Salsa20Cipher,
-    AesKeyTransformer, StreamCipher,
-    Argon2Kdf, Argon2Params, Argon2Type,
-    HashEngine, HmacCompute,
-    CipherMode, BlockMode, CryptoError, CryptoResult,
+    AesCipher, AesCipherEngine, AesKeyTransformer, ArcFourInnerStream, Argon2Kdf, Argon2Params,
+    Argon2Type, BlockMode, ChaCha20Cipher, ChaCha20CipherEngine, ChaCha20InnerStream, CipherEngine,
+    CipherMode, CompressionAlgorithm, CryptoError, CryptoResult, EncryptionAlgorithm, HashEngine,
+    HmacCompute, InnerStreamCipher, Salsa20Cipher, Salsa20InnerStream, StreamCipher, TwofishCipher,
+    TwofishCipherEngine,
 };
 
 // ─── Signatures & Variant Dictionary ─────────────────────────────────
-pub use kdbx::signature::{SignatureAlgorithm, SignatureStatus, SignatureVerifier, DigitalSignature, PublicKey};
+pub use kdbx::signature::{
+    DigitalSignature, PublicKey, SignatureAlgorithm, SignatureStatus, SignatureVerifier,
+};
 pub use kdbx::variant_dictionary::{VariantDictionary, VdValue};
 
 // ─── KDF ──────────────────────────────────────────────────────────────
-pub use kdbx::kdf::{KdfEngine, KdfParameters};
 pub use kdbx::kdf::aes_kdf::AesKdf;
 pub use kdbx::kdf::argon2_kdf::Argon2Kdf as Argon2KdfEngine;
+pub use kdbx::kdf::{KdfEngine, KdfParameters};
 // Note: Argon2Variant is re-exported from crypto as Argon2Type alias
 
 // ─── I/O ──────────────────────────────────────────────────────────────
@@ -67,16 +58,20 @@ pub use kdbx::file::writer::DatabaseWriter;
 pub use kdbx::search::{SearchHelper, SearchParameters, SearchResult};
 
 // ─── Merge ────────────────────────────────────────────────────────────
-pub use kdbx::merge::{DatabaseMerger, MergeStrategy, MergeResult, MergeConflict, ConflictType, ConflictResolution};
+pub use kdbx::merge::{
+    ConflictResolution, ConflictType, DatabaseMerger, MergeConflict, MergeResult, MergeStrategy,
+};
 
 // ─── OTP ──────────────────────────────────────────────────────────────
-pub use model::entry::otp::{OtpParameters, TokenCalculator, OtpType, OtpHashAlgorithm};
+pub use model::entry::otp::{OtpHashAlgorithm, OtpParameters, OtpType, TokenCalculator};
 
 // ─── Repair ───────────────────────────────────────────────────────────
-pub use kdbx::repair::{IntegrityVerifier, IntegrityReport, IntegrityError, IntegrityWarning, RepairResult};
+pub use kdbx::repair::{
+    IntegrityError, IntegrityReport, IntegrityVerifier, IntegrityWarning, RepairResult,
+};
 
 // ─── Fuzz ─────────────────────────────────────────────────────────────
-pub use kdbx::fuzz::{FuzzTarget, FuzzResult, FuzzOutcome};
+pub use kdbx::fuzz::{FuzzOutcome, FuzzResult, FuzzTarget};
 
 // ─── XML ──────────────────────────────────────────────────────────────
 pub use kdbx::xml::{KdbxXmlReader, KdbxXmlWriter};
@@ -95,7 +90,7 @@ pub use kdbx::xml::{KdbxXmlReader, KdbxXmlWriter};
 ///
 /// # Example
 /// ```ignore
-/// use keepass_rs::{open_database, CompositeKey};
+/// use keeless_kdbx::{open_database, CompositeKey};
 ///
 /// let file = std::fs::File::open("database.kdbx")?;
 /// let key = CompositeKey::new().with_password(b"mypassword");
@@ -137,7 +132,7 @@ pub fn open_database<R: std::io::Read>(
 ///
 /// # Example
 /// ```ignore
-/// use keepass_rs::{save_database, CompositeKey};
+/// use keeless_kdbx::{save_database, CompositeKey};
 ///
 /// let mut out = std::fs::File::create("database.kdbx")?;
 /// save_database(&mut out, &db, &key)?;
@@ -147,6 +142,7 @@ pub fn save_database<W: std::io::Write>(
     database: &Database,
     key: &CompositeKey,
 ) -> DatabaseResult<()> {
+    database.validate()?;
     match database.version {
         DatabaseVersion::KDB => kdbx::file::kdb_writer::write_kdb(writer, database, key),
         DatabaseVersion::KDBX31 => kdbx::file::kdbx31_writer::write_kdbx31(writer, database, key),

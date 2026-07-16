@@ -74,11 +74,7 @@ fn parse_ref_field(c: char) -> Option<RefTarget> {
 }
 
 /// Resolve all field references in a text string.
-pub fn resolve_references(
-    text: &str,
-    current_entry: &Entry,
-    all_entries: &[&Entry],
-) -> String {
+pub fn resolve_references(text: &str, current_entry: &Entry, all_entries: &[&Entry]) -> String {
     let mut result = text.to_string();
 
     // Find and replace all {REF:...} patterns

@@ -4,13 +4,22 @@
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-/// A string that may be memory-protected (encrypted in memory).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A string whose KDBX serialization may use inner-stream protection.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProtectedString {
     /// Plain text (not protected)
     Plain(String),
-    /// Protected (will be encrypted in memory at rest)
+    /// Protected when serialized into KDBX.
     Protected(String),
+}
+
+impl std::fmt::Debug for ProtectedString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Plain(_) => f.write_str("Plain([REDACTED])"),
+            Self::Protected(_) => f.write_str("Protected([REDACTED])"),
+        }
+    }
 }
 
 impl ProtectedString {

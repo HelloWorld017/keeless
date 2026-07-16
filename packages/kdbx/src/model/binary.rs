@@ -110,13 +110,11 @@ impl BinaryCache {
     }
 }
 
-
 // Binary streaming for large attachments
 // loading everything into memory at once.
 
-use std::io::{self, Read, Write};
 use std::fs::File;
-
+use std::io::{self, Read, Write};
 
 /// A streaming reader for binary attachments.
 /// Reads binary data in chunks rather than loading everything at once.
@@ -247,7 +245,8 @@ impl Write for BinaryStreamWriter {
 
 /// Export a binary attachment to a file on disk.
 pub fn export_binary_to_file(pool: &BinaryPool, binary_id: u32, path: &str) -> io::Result<u64> {
-    let binary = pool.get(binary_id)
+    let binary = pool
+        .get(binary_id)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Binary not found"))?;
 
     let mut file = File::create(path)?;
@@ -272,7 +271,8 @@ pub fn import_file_to_pool(path: &str, pool: &mut BinaryPool, compress: bool) ->
     file.read_to_end(&mut data)?;
 
     if compress {
-        let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder =
+            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(&data)?;
         let compressed = encoder.finish()?;
         Ok(pool.add_compressed(compressed))
@@ -281,11 +281,9 @@ pub fn import_file_to_pool(path: &str, pool: &mut BinaryPool, compress: bool) ->
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_binary_data_creation() {
@@ -294,7 +292,7 @@ mod tests {
         assert!(!bd.is_compressed);
         assert!(!bd.is_protected);
     }
-    
+
     #[test]
     fn test_binary_pool_add_get() {
         let mut pool = BinaryPool::new();
@@ -306,7 +304,7 @@ mod tests {
         assert_eq!(pool.get(1).unwrap().data, vec![4, 5, 6]);
         assert_eq!(pool.len(), 2);
     }
-    
+
     #[test]
     fn test_binary_pool_remove() {
         let mut pool = BinaryPool::new();
@@ -317,99 +315,97 @@ mod tests {
         assert_eq!(pool.len(), 1);
         assert!(pool.get(0).is_none());
     }
-    }
-    
-    
-    
-    #[test]
-    fn test_stream_reader() {
-        let mut pool = BinaryPool::new();
-        let id = pool.add(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    
-        let mut reader = BinaryStreamReader::new(&pool, id).with_chunk_size(3);
-        let mut result = Vec::new();
-        reader.read_to_end(&mut result).unwrap();
-    
-        assert_eq!(result, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    }
-    
-    #[test]
-    fn test_stream_reader_chunked() {
-        let mut pool = BinaryPool::new();
-        let id = pool.add(vec![1, 2, 3, 4, 5]);
-    
-        let mut reader = BinaryStreamReader::new(&pool, id).with_chunk_size(2);
-        let mut buf = [0u8; 2];
-    
-        let n = reader.read(&mut buf).unwrap();
-        assert_eq!(n, 2);
-        assert_eq!(buf, [1, 2]);
-    
-        let n = reader.read(&mut buf).unwrap();
-        assert_eq!(n, 2);
-        assert_eq!(buf, [3, 4]);
-    
-        let n = reader.read(&mut buf).unwrap();
-        assert_eq!(n, 1);
-        assert_eq!(buf[0], 5);
-    
-        let n = reader.read(&mut buf).unwrap();
-        assert_eq!(n, 0);
-    }
-    
-    #[test]
-    fn test_stream_reader_not_found() {
-        let pool = BinaryPool::new();
-        let mut reader = BinaryStreamReader::new(&pool, 999);
-        let mut buf = [0u8; 10];
-        let result = reader.read(&mut buf);
-        assert!(result.is_err());
-    }
-    
-    #[test]
-    fn test_stream_writer() {
-        let mut writer = BinaryStreamWriter::new();
-        writer.write_all(b"hello").unwrap();
-        writer.write_all(b" world").unwrap();
-    
-        let mut pool = BinaryPool::new();
-        let id = writer.finish(&mut pool);
-    
-        assert_eq!(pool.get(id).unwrap().data, b"hello world");
-    }
-    
-    #[test]
-    fn test_stream_writer_with_capacity() {
-        let writer = BinaryStreamWriter::with_capacity(1024);
-        assert!(writer.is_empty());
-        assert_eq!(writer.len(), 0);
-    }
-    
-    #[test]
-    fn test_stream_writer_compressed() {
-        let mut writer = BinaryStreamWriter::new();
-        writer.write_all(b"compressed data").unwrap();
-    
-        let mut pool = BinaryPool::new();
-        let id = writer.finish_compressed(&mut pool);
-    
-        assert!(pool.get(id).unwrap().is_compressed);
-    }
-    
-    #[test]
-    fn test_stream_reader_empty() {
-        let mut pool = BinaryPool::new();
-        let id = pool.add(vec![]);
-    
-        let reader = BinaryStreamReader::new(&pool, id);
-        assert!(reader.is_empty());
-    }
-    
-    #[test]
-    fn test_stream_reader_len() {
-        let mut pool = BinaryPool::new();
-        let id = pool.add(vec![1, 2, 3]);
-    
-        let reader = BinaryStreamReader::new(&pool, id);
-        assert_eq!(reader.len(), Some(3));
-    }
+}
+
+#[test]
+fn test_stream_reader() {
+    let mut pool = BinaryPool::new();
+    let id = pool.add(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+    let mut reader = BinaryStreamReader::new(&pool, id).with_chunk_size(3);
+    let mut result = Vec::new();
+    reader.read_to_end(&mut result).unwrap();
+
+    assert_eq!(result, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+}
+
+#[test]
+fn test_stream_reader_chunked() {
+    let mut pool = BinaryPool::new();
+    let id = pool.add(vec![1, 2, 3, 4, 5]);
+
+    let mut reader = BinaryStreamReader::new(&pool, id).with_chunk_size(2);
+    let mut buf = [0u8; 2];
+
+    let n = reader.read(&mut buf).unwrap();
+    assert_eq!(n, 2);
+    assert_eq!(buf, [1, 2]);
+
+    let n = reader.read(&mut buf).unwrap();
+    assert_eq!(n, 2);
+    assert_eq!(buf, [3, 4]);
+
+    let n = reader.read(&mut buf).unwrap();
+    assert_eq!(n, 1);
+    assert_eq!(buf[0], 5);
+
+    let n = reader.read(&mut buf).unwrap();
+    assert_eq!(n, 0);
+}
+
+#[test]
+fn test_stream_reader_not_found() {
+    let pool = BinaryPool::new();
+    let mut reader = BinaryStreamReader::new(&pool, 999);
+    let mut buf = [0u8; 10];
+    let result = reader.read(&mut buf);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_stream_writer() {
+    let mut writer = BinaryStreamWriter::new();
+    writer.write_all(b"hello").unwrap();
+    writer.write_all(b" world").unwrap();
+
+    let mut pool = BinaryPool::new();
+    let id = writer.finish(&mut pool);
+
+    assert_eq!(pool.get(id).unwrap().data, b"hello world");
+}
+
+#[test]
+fn test_stream_writer_with_capacity() {
+    let writer = BinaryStreamWriter::with_capacity(1024);
+    assert!(writer.is_empty());
+    assert_eq!(writer.len(), 0);
+}
+
+#[test]
+fn test_stream_writer_compressed() {
+    let mut writer = BinaryStreamWriter::new();
+    writer.write_all(b"compressed data").unwrap();
+
+    let mut pool = BinaryPool::new();
+    let id = writer.finish_compressed(&mut pool);
+
+    assert!(pool.get(id).unwrap().is_compressed);
+}
+
+#[test]
+fn test_stream_reader_empty() {
+    let mut pool = BinaryPool::new();
+    let id = pool.add(vec![]);
+
+    let reader = BinaryStreamReader::new(&pool, id);
+    assert!(reader.is_empty());
+}
+
+#[test]
+fn test_stream_reader_len() {
+    let mut pool = BinaryPool::new();
+    let id = pool.add(vec![1, 2, 3]);
+
+    let reader = BinaryStreamReader::new(&pool, id);
+    assert_eq!(reader.len(), Some(3));
+}

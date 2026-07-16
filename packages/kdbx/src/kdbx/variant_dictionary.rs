@@ -121,11 +121,13 @@ impl VariantDictionary {
     }
 
     pub fn set_string(&mut self, name: &str, value: &str) {
-        self.dict.insert(name.to_string(), VdValue::String(value.to_string()));
+        self.dict
+            .insert(name.to_string(), VdValue::String(value.to_string()));
     }
 
     pub fn set_byte_array(&mut self, name: &str, value: &[u8]) {
-        self.dict.insert(name.to_string(), VdValue::ByteArray(value.to_vec()));
+        self.dict
+            .insert(name.to_string(), VdValue::ByteArray(value.to_vec()));
     }
 
     pub fn len(&self) -> usize {
@@ -139,7 +141,13 @@ impl VariantDictionary {
     /// Deserialize a VariantDictionary from bytes.
     pub fn deserialize(data: &[u8]) -> DatabaseResult<Self> {
         let mut cursor = std::io::Cursor::new(data);
-        Self::read_from(&mut cursor)
+        let result = Self::read_from(&mut cursor)?;
+        if cursor.position() != data.len() as u64 {
+            return Err(DatabaseError::InvalidFormat(
+                "Trailing VariantDictionary data".into(),
+            ));
+        }
+        Ok(result)
     }
 
     /// Read a VariantDictionary from a stream.
@@ -163,41 +171,56 @@ impl VariantDictionary {
             }
 
             let name_len = reader.read_u32::<LittleEndian>()? as usize;
+            if name_len == 0 || name_len > 1024 {
+                return Err(DatabaseError::InvalidFormat(
+                    "VariantDictionary name length is out of range".into(),
+                ));
+            }
             let mut name_buf = vec![0u8; name_len];
             reader.read_exact(&mut name_buf)?;
             let name = String::from_utf8(name_buf)
                 .map_err(|e| DatabaseError::InvalidFormat(format!("Invalid VD name: {e}")))?;
 
             let value_len = reader.read_u32::<LittleEndian>()? as usize;
+            if value_len > crate::kdbx::limits::MAX_OUTER_HEADER_FIELD_SIZE {
+                return Err(DatabaseError::InvalidFormat(
+                    "VariantDictionary value is too large".into(),
+                ));
+            }
             let mut value_buf = vec![0u8; value_len];
             reader.read_exact(&mut value_buf)?;
 
+            if dict.contains_key(&name) {
+                return Err(DatabaseError::InvalidFormat(format!(
+                    "Duplicate VariantDictionary key: {name}"
+                )));
+            }
             match type_byte {
                 vd_type::UINT32 if value_len == 4 => {
-                    let val = u32::from_le_bytes(
-                        value_buf.try_into().map_err(|_| DatabaseError::InvalidFormat("Invalid UINT32 length".into()))?
-                    );
+                    let val = u32::from_le_bytes(value_buf.try_into().map_err(|_| {
+                        DatabaseError::InvalidFormat("Invalid UINT32 length".into())
+                    })?);
                     dict.insert(name, VdValue::UInt32(val));
                 }
                 vd_type::UINT64 if value_len == 8 => {
-                    let val = u64::from_le_bytes(
-                        value_buf.try_into().map_err(|_| DatabaseError::InvalidFormat("Invalid UINT64 length".into()))?
-                    );
+                    let val = u64::from_le_bytes(value_buf.try_into().map_err(|_| {
+                        DatabaseError::InvalidFormat("Invalid UINT64 length".into())
+                    })?);
                     dict.insert(name, VdValue::UInt64(val));
                 }
                 vd_type::BOOL if value_len == 1 => {
                     dict.insert(name, VdValue::Bool(value_buf[0] != 0));
                 }
                 vd_type::INT32 if value_len == 4 => {
-                    let val = i32::from_le_bytes(
-                        value_buf.try_into().map_err(|_| DatabaseError::InvalidFormat("Invalid INT32 length".into()))?
-                    );
+                    let val = i32::from_le_bytes(value_buf.try_into().map_err(|_| {
+                        DatabaseError::InvalidFormat("Invalid INT32 length".into())
+                    })?);
                     dict.insert(name, VdValue::Int32(val));
                 }
                 vd_type::INT64 if value_len == 8 => {
-                    let val = i64::from_le_bytes(
-                        value_buf.try_into().map_err(|_| DatabaseError::InvalidFormat("Invalid INT64 length".into()))?
-                    );
+                    let val = i64::from_le_bytes(value_buf.try_into().map_err(|_| {
+                        DatabaseError::InvalidFormat("Invalid INT64 length".into())
+                    })?);
                     dict.insert(name, VdValue::Int64(val));
                 }
                 vd_type::STRING => {
@@ -208,7 +231,11 @@ impl VariantDictionary {
                 vd_type::BYTE_ARRAY => {
                     dict.insert(name, VdValue::ByteArray(value_buf));
                 }
-                _ => {} // Skip unknown types
+                _ => {
+                    return Err(DatabaseError::InvalidFormat(format!(
+                        "Unknown or malformed VariantDictionary type {type_byte:#04x}"
+                    )))
+                }
             }
         }
 
@@ -218,7 +245,8 @@ impl VariantDictionary {
     /// Serialize the VariantDictionary to bytes.
     pub fn serialize(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        self.write_to(&mut buf).expect("write to Vec should not fail");
+        self.write_to(&mut buf)
+            .expect("write to Vec should not fail");
         buf
     }
 
@@ -299,7 +327,10 @@ mod tests {
         assert_eq!(deserialized.get_uint64("M"), Some(16777216));
         assert_eq!(deserialized.get_bool("B"), Some(true));
         assert_eq!(deserialized.get_string("S"), Some("test"));
-        assert_eq!(deserialized.get_byte_array("DATA"), Some(&[0x01, 0x02, 0x03][..]));
+        assert_eq!(
+            deserialized.get_byte_array("DATA"),
+            Some(&[0x01, 0x02, 0x03][..])
+        );
     }
 
     #[test]

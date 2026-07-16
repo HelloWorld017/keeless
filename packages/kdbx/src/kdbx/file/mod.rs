@@ -18,11 +18,11 @@ pub mod writer;
 
 // ─── Re-exports ─────────────────────────────────────────────────────
 pub use header::*;
+pub use kdb_reader::read_kdb;
+pub use kdb_writer::write_kdb;
+pub use kdbx31_reader::read_kdbx31;
+pub use kdbx31_writer::write_kdbx31;
+pub use kdbx4_reader::read_kdbx4;
+pub use kdbx4_writer::write_kdbx4;
 pub use reader::DatabaseReader;
 pub use writer::DatabaseWriter;
-pub use kdb_reader::read_kdb;
-pub use kdbx31_reader::read_kdbx31;
-pub use kdbx4_reader::read_kdbx4;
-pub use kdb_writer::write_kdb;
-pub use kdbx31_writer::write_kdbx31;
-pub use kdbx4_writer::write_kdbx4;

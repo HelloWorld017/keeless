@@ -4,14 +4,14 @@
 use serde::{Deserialize, Serialize};
 
 /// Auto-type association (window title → keystroke sequence)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutoTypeAssociation {
     pub window_title: String,
     pub keystroke_sequence: String,
 }
 
 /// Auto-type configuration for an entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutoType {
     pub enabled: bool,
     pub default_sequence: String,

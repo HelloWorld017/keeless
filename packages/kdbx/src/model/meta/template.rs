@@ -47,7 +47,9 @@ impl Template {
 
     /// Check if a set of field names matches this template
     pub fn matches_fields(&self, field_names: &[&str]) -> bool {
-        let required: Vec<&str> = self.fields.iter()
+        let required: Vec<&str> = self
+            .fields
+            .iter()
             .map(|f| f.name.as_str())
             .filter(|n| !matches!(*n, "Title" | "UserName" | "Password" | "URL" | "Notes"))
             .collect();
@@ -56,7 +58,8 @@ impl Template {
             return false;
         }
 
-        let matches_count = required.iter()
+        let matches_count = required
+            .iter()
             .filter(|r| field_names.iter().any(|f| f.eq_ignore_ascii_case(r)))
             .count();
 
@@ -68,57 +71,227 @@ impl Template {
 /// Built-in template definitions
 pub fn get_builtin_templates() -> Vec<Template> {
     vec![
-        Template::new("General", 0, vec![
-            TemplateField { name: "UserName".into(), field_type: TemplateFieldType::UserName, is_protected: false },
-            TemplateField { name: "Password".into(), field_type: TemplateFieldType::Password, is_protected: true },
-            TemplateField { name: "URL".into(), field_type: TemplateFieldType::Url, is_protected: false },
-            TemplateField { name: "Notes".into(), field_type: TemplateFieldType::Text, is_protected: false },
-        ]),
-        Template::new("Credit Card", 37, vec![
-            TemplateField { name: "UserName".into(), field_type: TemplateFieldType::UserName, is_protected: false },
-            TemplateField { name: "Password".into(), field_type: TemplateFieldType::Password, is_protected: true },
-            TemplateField { name: "Card Number".into(), field_type: TemplateFieldType::Number, is_protected: true },
-            TemplateField { name: "Cardholder Name".into(), field_type: TemplateFieldType::Text, is_protected: false },
-            TemplateField { name: "CVV".into(), field_type: TemplateFieldType::Password, is_protected: true },
-            TemplateField { name: "Expiry Date".into(), field_type: TemplateFieldType::Date, is_protected: false },
-            TemplateField { name: "PIN".into(), field_type: TemplateFieldType::Password, is_protected: true },
-        ]),
-        Template::new("Email Account", 31, vec![
-            TemplateField { name: "Email".into(), field_type: TemplateFieldType::Email, is_protected: false },
-            TemplateField { name: "UserName".into(), field_type: TemplateFieldType::UserName, is_protected: false },
-            TemplateField { name: "Password".into(), field_type: TemplateFieldType::Password, is_protected: true },
-            TemplateField { name: "SMTP Server".into(), field_type: TemplateFieldType::Text, is_protected: false },
-            TemplateField { name: "IMAP Server".into(), field_type: TemplateFieldType::Text, is_protected: false },
-        ]),
-        Template::new("Wireless Router", 48, vec![
-            TemplateField { name: "UserName".into(), field_type: TemplateFieldType::UserName, is_protected: false },
-            TemplateField { name: "Password".into(), field_type: TemplateFieldType::Password, is_protected: true },
-            TemplateField { name: "SSID".into(), field_type: TemplateFieldType::Text, is_protected: false },
-            TemplateField { name: "Wireless Security".into(), field_type: TemplateFieldType::List, is_protected: false },
-        ]),
-        Template::new("Bank Account", 38, vec![
-            TemplateField { name: "Bank Name".into(), field_type: TemplateFieldType::Text, is_protected: false },
-            TemplateField { name: "Account Number".into(), field_type: TemplateFieldType::Number, is_protected: true },
-            TemplateField { name: "Routing Number".into(), field_type: TemplateFieldType::Number, is_protected: false },
-            TemplateField { name: "SWIFT Code".into(), field_type: TemplateFieldType::Text, is_protected: false },
-            TemplateField { name: "IBAN".into(), field_type: TemplateFieldType::Text, is_protected: true },
-        ]),
-        Template::new("Secure Note", 0, vec![
-            TemplateField { name: "Notes".into(), field_type: TemplateFieldType::Text, is_protected: false },
-        ]),
-        Template::new("SSH Key", 23, vec![
-            TemplateField { name: "UserName".into(), field_type: TemplateFieldType::UserName, is_protected: false },
-            TemplateField { name: "Private Key".into(), field_type: TemplateFieldType::Text, is_protected: true },
-            TemplateField { name: "Public Key".into(), field_type: TemplateFieldType::Text, is_protected: false },
-            TemplateField { name: "Passphrase".into(), field_type: TemplateFieldType::Password, is_protected: true },
-            TemplateField { name: "Host".into(), field_type: TemplateFieldType::Text, is_protected: false },
-        ]),
-        Template::new("Membership", 46, vec![
-            TemplateField { name: "UserName".into(), field_type: TemplateFieldType::UserName, is_protected: false },
-            TemplateField { name: "Password".into(), field_type: TemplateFieldType::Password, is_protected: true },
-            TemplateField { name: "Membership Number".into(), field_type: TemplateFieldType::Number, is_protected: true },
-            TemplateField { name: "Expiry Date".into(), field_type: TemplateFieldType::Date, is_protected: false },
-        ]),
+        Template::new(
+            "General",
+            0,
+            vec![
+                TemplateField {
+                    name: "UserName".into(),
+                    field_type: TemplateFieldType::UserName,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Password".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "URL".into(),
+                    field_type: TemplateFieldType::Url,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Notes".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+            ],
+        ),
+        Template::new(
+            "Credit Card",
+            37,
+            vec![
+                TemplateField {
+                    name: "UserName".into(),
+                    field_type: TemplateFieldType::UserName,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Password".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Card Number".into(),
+                    field_type: TemplateFieldType::Number,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Cardholder Name".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "CVV".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Expiry Date".into(),
+                    field_type: TemplateFieldType::Date,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "PIN".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+            ],
+        ),
+        Template::new(
+            "Email Account",
+            31,
+            vec![
+                TemplateField {
+                    name: "Email".into(),
+                    field_type: TemplateFieldType::Email,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "UserName".into(),
+                    field_type: TemplateFieldType::UserName,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Password".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "SMTP Server".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "IMAP Server".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+            ],
+        ),
+        Template::new(
+            "Wireless Router",
+            48,
+            vec![
+                TemplateField {
+                    name: "UserName".into(),
+                    field_type: TemplateFieldType::UserName,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Password".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "SSID".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Wireless Security".into(),
+                    field_type: TemplateFieldType::List,
+                    is_protected: false,
+                },
+            ],
+        ),
+        Template::new(
+            "Bank Account",
+            38,
+            vec![
+                TemplateField {
+                    name: "Bank Name".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Account Number".into(),
+                    field_type: TemplateFieldType::Number,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Routing Number".into(),
+                    field_type: TemplateFieldType::Number,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "SWIFT Code".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "IBAN".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: true,
+                },
+            ],
+        ),
+        Template::new(
+            "Secure Note",
+            0,
+            vec![TemplateField {
+                name: "Notes".into(),
+                field_type: TemplateFieldType::Text,
+                is_protected: false,
+            }],
+        ),
+        Template::new(
+            "SSH Key",
+            23,
+            vec![
+                TemplateField {
+                    name: "UserName".into(),
+                    field_type: TemplateFieldType::UserName,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Private Key".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Public Key".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Passphrase".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Host".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+            ],
+        ),
+        Template::new(
+            "Membership",
+            46,
+            vec![
+                TemplateField {
+                    name: "UserName".into(),
+                    field_type: TemplateFieldType::UserName,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "Password".into(),
+                    field_type: TemplateFieldType::Password,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Membership Number".into(),
+                    field_type: TemplateFieldType::Number,
+                    is_protected: true,
+                },
+                TemplateField {
+                    name: "Expiry Date".into(),
+                    field_type: TemplateFieldType::Date,
+                    is_protected: false,
+                },
+            ],
+        ),
     ]
 }
 
@@ -138,11 +311,15 @@ pub fn infer_template(field_names: &[&str]) -> String {
         }
     }
 
-    best_match.map(|t| t.name.clone()).unwrap_or_else(|| "General".to_string())
+    best_match
+        .map(|t| t.name.clone())
+        .unwrap_or_else(|| "General".to_string())
 }
 
 fn count_matches(template: &Template, field_names: &[&str]) -> usize {
-    template.fields.iter()
+    template
+        .fields
+        .iter()
         .filter(|f| field_names.iter().any(|n| n.eq_ignore_ascii_case(&f.name)))
         .count()
 }
@@ -151,7 +328,9 @@ fn count_matches(template: &Template, field_names: &[&str]) -> usize {
 pub fn is_template_entry(title: &str, _custom_field_names: &[&str]) -> bool {
     // An entry is likely a template if its title matches a known template name
     let templates = get_builtin_templates();
-    templates.iter().any(|t| t.title.eq_ignore_ascii_case(title))
+    templates
+        .iter()
+        .any(|t| t.title.eq_ignore_ascii_case(title))
 }
 
 #[cfg(test)]
@@ -189,10 +368,22 @@ mod tests {
 
     #[test]
     fn test_template_matches_fields() {
-        let t = Template::new("Test", 0, vec![
-            TemplateField { name: "A".into(), field_type: TemplateFieldType::Text, is_protected: false },
-            TemplateField { name: "B".into(), field_type: TemplateFieldType::Text, is_protected: false },
-        ]);
+        let t = Template::new(
+            "Test",
+            0,
+            vec![
+                TemplateField {
+                    name: "A".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+                TemplateField {
+                    name: "B".into(),
+                    field_type: TemplateFieldType::Text,
+                    is_protected: false,
+                },
+            ],
+        );
         assert!(t.matches_fields(&["A", "B"]));
         assert!(t.matches_fields(&["A"]));
         assert!(!t.matches_fields(&["X"]));

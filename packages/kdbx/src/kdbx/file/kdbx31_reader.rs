@@ -5,19 +5,18 @@
 
 use std::io::Read;
 
-
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
-use crate::model::db::composite_key::CompositeKey;
-use crate::model::db::database::{Database, DatabaseVersion};
-use crate::model::exception::{DatabaseError, DatabaseResult};
 use crate::kdbx::file::header::KdbxHeader31;
 use crate::kdbx::file::reader::DatabaseReader;
 use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
-use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::kdf::kdf_engine::KdfEngine;
+use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::stream::hashed_block::HashedBlockReader;
 use crate::kdbx::xml::KdbxXmlReader;
+use crate::model::db::composite_key::CompositeKey;
+use crate::model::db::database::{Database, DatabaseVersion};
+use crate::model::exception::{DatabaseError, DatabaseResult};
 
 /// Read a KDBX 3.1 database from a reader.
 pub fn read_kdbx31<R: Read>(
@@ -27,9 +26,9 @@ pub fn read_kdbx31<R: Read>(
     // 1. Read and verify signature
     let version = DatabaseReader::detect_version(reader)?;
     if version != DatabaseVersion::KDBX31 {
-        return Err(DatabaseError::InvalidVersion(
-            format!("Expected KDBX 3.1, got {version:?}"),
-        ));
+        return Err(DatabaseError::InvalidVersion(format!(
+            "Expected KDBX 3.1, got {version:?}"
+        )));
     }
 
     // 2. Read outer header
@@ -63,12 +62,15 @@ pub fn read_kdbx31<R: Read>(
 
     // 5. Decrypt
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
-    let decrypted = cipher.decrypt(&final_key, &header.encryption_iv, &encrypted)
+    let decrypted = cipher
+        .decrypt(&final_key, &header.encryption_iv, &encrypted)
         .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
 
     // 6. Verify stream start bytes
     if decrypted.len() < 32 {
-        return Err(DatabaseError::DecryptionError("Decrypted data too short".into()));
+        return Err(DatabaseError::DecryptionError(
+            "Decrypted data too short".into(),
+        ));
     }
     let expected = crate::crypto::HashEngine::sha256(&final_key);
     if decrypted[..32] != expected {
@@ -90,7 +92,8 @@ pub fn read_kdbx31<R: Read>(
     let xml_str = String::from_utf8(xml_data)
         .map_err(|e| DatabaseError::InvalidFormat(format!("XML not UTF-8: {e}")))?;
 
-    let mut inner_stream = create_inner_stream(header.inner_random_stream, &header.inner_random_stream_key)?;
+    let mut inner_stream =
+        create_inner_stream(header.inner_random_stream, &header.inner_random_stream_key)?;
     let mut database = KdbxXmlReader::read(&xml_str, inner_stream.as_mut())?;
 
     // 10. Populate database metadata from header
@@ -103,7 +106,10 @@ pub fn read_kdbx31<R: Read>(
 }
 
 /// Derive the final encryption key for KDBX 3.1 using AES-KDF.
-fn derive_kdbx31_key(composite_key: &CompositeKey, header: &KdbxHeader31) -> DatabaseResult<Vec<u8>> {
+fn derive_kdbx31_key(
+    composite_key: &CompositeKey,
+    header: &KdbxHeader31,
+) -> DatabaseResult<Vec<u8>> {
     let raw_key = composite_key.build_raw_key();
     if raw_key.is_empty() {
         return Err(DatabaseError::InvalidKey);

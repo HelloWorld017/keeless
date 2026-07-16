@@ -1,8 +1,8 @@
 //! AES cipher implementation (CBC/ECB mode with PKCS5/PKCS7 padding)
 //!
 
-use aes::Aes256;
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::Aes256;
 use zeroize::Zeroize;
 
 use super::{BlockMode, CipherMode, CryptoError, CryptoResult};
@@ -23,25 +23,49 @@ impl AesCipher {
     /// Create a new AES-256 CBC cipher.
     pub fn new(mode: CipherMode, key: &[u8], iv: &[u8]) -> CryptoResult<Self> {
         if key.len() != AES_256_KEY_SIZE {
-            return Err(CryptoError::InvalidKeyLength { expected: AES_256_KEY_SIZE, got: key.len() });
+            return Err(CryptoError::InvalidKeyLength {
+                expected: AES_256_KEY_SIZE,
+                got: key.len(),
+            });
         }
         if iv.len() != AES_BLOCK_SIZE {
-            return Err(CryptoError::InvalidIvLength { expected: AES_BLOCK_SIZE, got: iv.len() });
+            return Err(CryptoError::InvalidIvLength {
+                expected: AES_BLOCK_SIZE,
+                got: iv.len(),
+            });
         }
         let mut iv_arr = [0u8; AES_BLOCK_SIZE];
         iv_arr.copy_from_slice(iv);
-        Ok(Self { key: key.to_vec(), iv: iv_arr, mode, block_mode: BlockMode::CBC, padding: true })
+        Ok(Self {
+            key: key.to_vec(),
+            iv: iv_arr,
+            mode,
+            block_mode: BlockMode::CBC,
+            padding: true,
+        })
     }
 
     /// Create AES cipher without padding.
-    pub fn without_padding(mut self) -> Self { self.padding = false; self }
+    pub fn without_padding(mut self) -> Self {
+        self.padding = false;
+        self
+    }
 
     /// Create an AES-256 ECB cipher (used in AES-KDF key transformation).
     pub fn new_ecb(mode: CipherMode, key: &[u8]) -> CryptoResult<Self> {
         if key.len() != AES_256_KEY_SIZE {
-            return Err(CryptoError::InvalidKeyLength { expected: AES_256_KEY_SIZE, got: key.len() });
+            return Err(CryptoError::InvalidKeyLength {
+                expected: AES_256_KEY_SIZE,
+                got: key.len(),
+            });
         }
-        Ok(Self { key: key.to_vec(), iv: [0u8; AES_BLOCK_SIZE], mode, block_mode: BlockMode::ECB, padding: false })
+        Ok(Self {
+            key: key.to_vec(),
+            iv: [0u8; AES_BLOCK_SIZE],
+            mode,
+            block_mode: BlockMode::ECB,
+            padding: false,
+        })
     }
 
     /// Process data through the cipher.
@@ -49,7 +73,9 @@ impl AesCipher {
         match self.block_mode {
             BlockMode::CBC => self.process_cbc(data),
             BlockMode::ECB => self.process_ecb(data),
-            BlockMode::CTR => Err(CryptoError::EncryptionFailed("CTR not supported for AES here".into())),
+            BlockMode::CTR => Err(CryptoError::EncryptionFailed(
+                "CTR not supported for AES here".into(),
+            )),
         }
     }
 
@@ -59,16 +85,23 @@ impl AesCipher {
 
         match self.mode {
             CipherMode::Encrypt => {
-                let padded = if self.padding { pkcs7_pad(data, AES_BLOCK_SIZE) } else { data.to_vec() };
+                let padded = if self.padding {
+                    pkcs7_pad(data, AES_BLOCK_SIZE)
+                } else {
+                    data.to_vec()
+                };
                 if padded.len() % AES_BLOCK_SIZE != 0 {
-                    return Err(CryptoError::InvalidDataLength(
-                        format!("CBC data must be multiple of {AES_BLOCK_SIZE}, got {}", padded.len())));
+                    return Err(CryptoError::InvalidDataLength(format!(
+                        "CBC data must be multiple of {AES_BLOCK_SIZE}, got {}",
+                        padded.len()
+                    )));
                 }
                 let mut prev = self.iv;
                 let mut result = Vec::with_capacity(padded.len());
                 for chunk in padded.chunks(AES_BLOCK_SIZE) {
-                    let mut block: [u8; AES_BLOCK_SIZE] = chunk.try_into()
-                        .map_err(|_| CryptoError::InvalidDataLength("Block alignment error".into()))?;
+                    let mut block: [u8; AES_BLOCK_SIZE] = chunk.try_into().map_err(|_| {
+                        CryptoError::InvalidDataLength("Block alignment error".into())
+                    })?;
                     xor_in_place(&mut block, &prev);
                     cipher.encrypt_block((&mut block).into());
                     result.extend_from_slice(&block);
@@ -78,21 +111,26 @@ impl AesCipher {
             }
             CipherMode::Decrypt => {
                 if data.len() % AES_BLOCK_SIZE != 0 {
-                    return Err(CryptoError::InvalidDataLength(
-                        format!("CBC ciphertext must be multiple of {AES_BLOCK_SIZE}, got {}", data.len())));
+                    return Err(CryptoError::InvalidDataLength(format!(
+                        "CBC ciphertext must be multiple of {AES_BLOCK_SIZE}, got {}",
+                        data.len()
+                    )));
                 }
                 let mut prev = self.iv;
                 let mut decrypted = Vec::with_capacity(data.len());
                 for chunk in data.chunks(AES_BLOCK_SIZE) {
-                    let ct: [u8; AES_BLOCK_SIZE] = chunk.try_into()
-                        .map_err(|_| CryptoError::InvalidDataLength("Block alignment error".into()))?;
+                    let ct: [u8; AES_BLOCK_SIZE] = chunk.try_into().map_err(|_| {
+                        CryptoError::InvalidDataLength("Block alignment error".into())
+                    })?;
                     let mut block = ct;
                     cipher.decrypt_block((&mut block).into());
                     xor_in_place(&mut block, &prev);
                     decrypted.extend_from_slice(&block);
                     prev = ct;
                 }
-                if self.padding { pkcs7_unpad(&mut decrypted)?; }
+                if self.padding {
+                    pkcs7_unpad(&mut decrypted)?;
+                }
                 Ok(decrypted)
             }
         }
@@ -103,13 +141,16 @@ impl AesCipher {
             .map_err(|e| CryptoError::EncryptionFailed(e.to_string()))?;
 
         if data.len() % AES_BLOCK_SIZE != 0 {
-            return Err(CryptoError::InvalidDataLength(
-                format!("ECB data must be multiple of {AES_BLOCK_SIZE}, got {}", data.len())));
+            return Err(CryptoError::InvalidDataLength(format!(
+                "ECB data must be multiple of {AES_BLOCK_SIZE}, got {}",
+                data.len()
+            )));
         }
 
         let mut result = Vec::with_capacity(data.len());
         for chunk in data.chunks(AES_BLOCK_SIZE) {
-            let mut block: [u8; AES_BLOCK_SIZE] = chunk.try_into()
+            let mut block: [u8; AES_BLOCK_SIZE] = chunk
+                .try_into()
                 .map_err(|_| CryptoError::InvalidDataLength("Block alignment error".into()))?;
             match self.mode {
                 CipherMode::Encrypt => cipher.encrypt_block((&mut block).into()),
@@ -122,11 +163,15 @@ impl AesCipher {
 }
 
 impl Drop for AesCipher {
-    fn drop(&mut self) { self.key.zeroize(); }
+    fn drop(&mut self) {
+        self.key.zeroize();
+    }
 }
 
 fn xor_in_place(a: &mut [u8; 16], b: &[u8; 16]) {
-    for (ai, bi) in a.iter_mut().zip(b.iter()) { *ai ^= bi; }
+    for (ai, bi) in a.iter_mut().zip(b.iter()) {
+        *ai ^= bi;
+    }
 }
 
 fn pkcs7_pad(data: &[u8], block_size: usize) -> Vec<u8> {
@@ -137,13 +182,21 @@ fn pkcs7_pad(data: &[u8], block_size: usize) -> Vec<u8> {
 }
 
 fn pkcs7_unpad(data: &mut Vec<u8>) -> CryptoResult<()> {
-    if data.is_empty() { return Err(CryptoError::DecryptionFailed("Empty data".into())); }
+    if data.is_empty() {
+        return Err(CryptoError::DecryptionFailed("Empty data".into()));
+    }
     let pad_byte = *data.last().expect("checked non-empty above") as usize;
     if pad_byte == 0 || pad_byte > AES_BLOCK_SIZE || pad_byte > data.len() {
-        return Err(CryptoError::DecryptionFailed(format!("Invalid PKCS7 padding: {pad_byte}")));
+        return Err(CryptoError::DecryptionFailed(format!(
+            "Invalid PKCS7 padding: {pad_byte}"
+        )));
     }
     for &b in data.iter().rev().take(pad_byte) {
-        if b as usize != pad_byte { return Err(CryptoError::DecryptionFailed("Invalid PKCS7 padding".into())); }
+        if b as usize != pad_byte {
+            return Err(CryptoError::DecryptionFailed(
+                "Invalid PKCS7 padding".into(),
+            ));
+        }
     }
     data.truncate(data.len() - pad_byte);
     Ok(())
@@ -155,7 +208,8 @@ mod tests {
 
     #[test]
     fn test_aes256_cbc_encrypt_decrypt() {
-        let key = [0x42u8; 32]; let iv = [0x13u8; 16];
+        let key = [0x42u8; 32];
+        let iv = [0x13u8; 16];
         let plaintext = b"Hello, KeePassDX Rust rewrite!";
 
         let enc = AesCipher::new(CipherMode::Encrypt, &key, &iv).unwrap();
@@ -184,13 +238,18 @@ mod tests {
 
     #[test]
     fn test_aes_cbc_no_padding() {
-        let key = [0x42u8; 32]; let iv = [0x13u8; 16];
+        let key = [0x42u8; 32];
+        let iv = [0x13u8; 16];
         let plaintext = [0xABu8; 48];
 
-        let enc = AesCipher::new(CipherMode::Encrypt, &key, &iv).unwrap().without_padding();
+        let enc = AesCipher::new(CipherMode::Encrypt, &key, &iv)
+            .unwrap()
+            .without_padding();
         let ct = enc.process(&plaintext).unwrap();
 
-        let dec = AesCipher::new(CipherMode::Decrypt, &key, &iv).unwrap().without_padding();
+        let dec = AesCipher::new(CipherMode::Decrypt, &key, &iv)
+            .unwrap()
+            .without_padding();
         let pt = dec.process(&ct).unwrap();
         assert_eq!(pt, plaintext);
     }

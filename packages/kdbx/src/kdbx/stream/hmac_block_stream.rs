@@ -5,56 +5,47 @@
 
 use std::io::{Read, Write};
 
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use hmac::{Hmac, Mac};
-use sha2::Sha512;
-
+use crate::kdbx::limits::{MAX_HMAC_BLOCK_SIZE, MAX_HMAC_PAYLOAD_SIZE};
 use crate::model::exception::{DatabaseError, DatabaseResult};
-
-type HmacSha512 = Hmac<Sha512>;
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 /// Default HMAC block size (1 MB)
 pub const HMAC_BLOCK_SIZE: usize = 1024 * 1024;
 
 // ─── Key derivation ──────────────────────────────────────────────
 
-/// Derive the per-block HMAC key from the master key and block index.
-/// Uses HMAC-SHA-512(master_key, block_index_le_bytes) and takes first 32 bytes.
-pub fn derive_block_hmac_key(master_key: &[u8], block_index: u64) -> DatabaseResult<[u8; 64]> {
-    let mut mac = HmacSha512::new_from_slice(master_key)
-        .map_err(|e| DatabaseError::EncryptionError(e.to_string()))?;
-    mac.update(&block_index.to_le_bytes());
-    Ok(mac.finalize().into_bytes().into())
+/// Derive the per-block HMAC key as SHA-512(index || base HMAC key).
+pub fn derive_block_hmac_key(hmac_key: &[u8], block_index: u64) -> DatabaseResult<[u8; 64]> {
+    Ok(crate::crypto::HashEngine::sha512_multi(&[
+        &block_index.to_le_bytes(),
+        hmac_key,
+    ]))
 }
 
 /// Compute HMAC-SHA-256 for a data block.
-/// Input: key || block_index_le || data
+/// Input: block_index_le || block_size_le || data.
 pub fn compute_block_hmac(key: &[u8], block_index: u64, data: &[u8]) -> DatabaseResult<[u8; 32]> {
-    let mut msg = Vec::with_capacity(8 + data.len());
+    let size = u32::try_from(data.len())
+        .map_err(|_| DatabaseError::InvalidFormat("HMAC block is too large".into()))?;
+    let mut msg = Vec::with_capacity(12 + data.len());
     msg.extend_from_slice(&block_index.to_le_bytes());
+    msg.extend_from_slice(&size.to_le_bytes());
     msg.extend_from_slice(data);
     crate::crypto::HmacCompute::hmac_sha256(key, &msg)
         .map_err(|e| DatabaseError::EncryptionError(e.to_string()))
 }
 
 /// Compute the header HMAC for KDBX 4.0 integrity check.
-pub fn compute_header_hmac(master_key: &[u8], header_bytes: &[u8]) -> DatabaseResult<[u8; 32]> {
-    let mut input = Vec::with_capacity(32 + 1 + 8);
-    input.extend_from_slice(master_key);
-    input.push(0x01);
-    input.extend_from_slice(&(header_bytes.len() as u64).to_le_bytes());
-    let hmac_key = crate::crypto::HashEngine::sha256(&input);
-    crate::crypto::HmacCompute::hmac_sha256(&hmac_key, header_bytes)
+pub fn compute_header_hmac(hmac_key: &[u8], header_bytes: &[u8]) -> DatabaseResult<[u8; 32]> {
+    let header_key = derive_block_hmac_key(hmac_key, u64::MAX)?;
+    crate::crypto::HmacCompute::hmac_sha256(&header_key, header_bytes)
         .map_err(|e| DatabaseError::EncryptionError(e.to_string()))
 }
 
 // ─── Stream Reader ───────────────────────────────────────────────
 
 /// Read an HMAC block stream, verifying each block's integrity.
-pub fn read_hmac_block_stream<R: Read>(
-    reader: &mut R,
-    master_key: &[u8],
-) -> DatabaseResult<Vec<u8>> {
+pub fn read_hmac_block_stream<R: Read>(reader: &mut R, hmac_key: &[u8]) -> DatabaseResult<Vec<u8>> {
     let mut result = Vec::new();
     let mut block_index: u64 = 0;
 
@@ -62,20 +53,51 @@ pub fn read_hmac_block_stream<R: Read>(
         let mut stored_hmac = [0u8; 32];
         reader.read_exact(&mut stored_hmac)?;
 
-        let block_size = reader.read_u64::<LittleEndian>()?;
-        if block_size == 0 {
-            break;
+        let block_size_u32 = reader.read_u32::<LittleEndian>()?;
+        let block_size = usize::try_from(block_size_u32).map_err(|_| {
+            DatabaseError::InvalidFormat("HMAC block size is not representable".into())
+        })?;
+        if block_size > MAX_HMAC_BLOCK_SIZE {
+            return Err(DatabaseError::InvalidFormat(format!(
+                "HMAC block exceeds {MAX_HMAC_BLOCK_SIZE} bytes"
+            )));
+        }
+        let new_len = result
+            .len()
+            .checked_add(block_size)
+            .ok_or_else(|| DatabaseError::InvalidFormat("HMAC payload size overflow".into()))?;
+        if new_len > MAX_HMAC_PAYLOAD_SIZE {
+            return Err(DatabaseError::InvalidFormat(format!(
+                "HMAC payload exceeds {MAX_HMAC_PAYLOAD_SIZE} bytes"
+            )));
         }
 
-        let mut data = vec![0u8; block_size as usize];
+        let mut data = vec![0u8; block_size];
         reader.read_exact(&mut data)?;
 
-        let block_key = derive_block_hmac_key(master_key, block_index)?;
-        let expected = compute_block_hmac(&block_key[..32], block_index, &data)?;
+        let block_key = derive_block_hmac_key(hmac_key, block_index)?;
+        let expected = compute_block_hmac(&block_key, block_index, &data)?;
         if stored_hmac != expected {
-            return Err(DatabaseError::DecryptionError(
-                format!("HMAC mismatch in block {block_index}"),
-            ));
+            return Err(DatabaseError::DecryptionError(format!(
+                "HMAC mismatch in block {block_index}"
+            )));
+        }
+
+        if block_size == 0 {
+            let mut trailing = [0u8; 1];
+            loop {
+                match reader.read(&mut trailing) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        return Err(DatabaseError::InvalidFormat(
+                            "Trailing data after HMAC terminator".into(),
+                        ))
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            break;
         }
 
         result.extend_from_slice(&data);
@@ -90,25 +112,32 @@ pub fn read_hmac_block_stream<R: Read>(
 /// Write data as an HMAC block stream.
 pub fn write_hmac_block_stream<W: Write>(
     writer: &mut W,
-    master_key: &[u8],
+    hmac_key: &[u8],
     data: &[u8],
 ) -> DatabaseResult<()> {
+    if data.len() > MAX_HMAC_PAYLOAD_SIZE {
+        return Err(DatabaseError::InvalidFormat(format!(
+            "HMAC payload exceeds {MAX_HMAC_PAYLOAD_SIZE} bytes"
+        )));
+    }
     for (i, chunk) in data.chunks(HMAC_BLOCK_SIZE).enumerate() {
         let block_index = i as u64;
-        let block_key = derive_block_hmac_key(master_key, block_index)?;
-        let hmac_val = compute_block_hmac(&block_key[..32], block_index, chunk)?;
+        let block_key = derive_block_hmac_key(hmac_key, block_index)?;
+        let hmac_val = compute_block_hmac(&block_key, block_index, chunk)?;
 
         writer.write_all(&hmac_val)?;
-        writer.write_u64::<LittleEndian>(chunk.len() as u64)?;
+        let chunk_len = u32::try_from(chunk.len())
+            .map_err(|_| DatabaseError::InvalidFormat("HMAC block is too large".into()))?;
+        writer.write_u32::<LittleEndian>(chunk_len)?;
         writer.write_all(chunk)?;
     }
 
     // Terminator block
     let term_index = (data.len().div_ceil(HMAC_BLOCK_SIZE)) as u64;
-    let term_key = derive_block_hmac_key(master_key, term_index)?;
-    let term_hmac = compute_block_hmac(&term_key[..32], term_index, &[])?;
+    let term_key = derive_block_hmac_key(hmac_key, term_index)?;
+    let term_hmac = compute_block_hmac(&term_key, term_index, &[])?;
     writer.write_all(&term_hmac)?;
-    writer.write_u64::<LittleEndian>(0)?;
+    writer.write_u32::<LittleEndian>(0)?;
 
     Ok(())
 }
@@ -154,7 +183,7 @@ mod tests {
         write_hmac_block_stream(&mut buf, key, &data).unwrap();
 
         // Tamper with the data (after HMAC, before block data)
-        // Layout: [32-byte hmac][8-byte size][data...]
+        // Layout: [32-byte hmac][4-byte size][data...]
         if buf.len() > 50 {
             buf[44] ^= 0xFF;
         }
@@ -198,5 +227,26 @@ mod tests {
         // Different header → different HMAC
         let h3 = compute_header_hmac(master_key, b"different").unwrap();
         assert_ne!(h1, h3);
+    }
+
+    #[test]
+    fn test_hmac_block_stream_rejects_oversized_block_before_allocation() {
+        let mut framed = vec![0u8; 32];
+        framed.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            read_hmac_block_stream(&mut Cursor::new(framed), b"key"),
+            Err(DatabaseError::InvalidFormat(_))
+        ));
+    }
+
+    #[test]
+    fn test_hmac_block_stream_rejects_trailing_data() {
+        let mut framed = Vec::new();
+        write_hmac_block_stream(&mut framed, b"key", b"payload").unwrap();
+        framed.push(1);
+        assert!(matches!(
+            read_hmac_block_stream(&mut Cursor::new(framed), b"key"),
+            Err(DatabaseError::InvalidFormat(_))
+        ));
     }
 }

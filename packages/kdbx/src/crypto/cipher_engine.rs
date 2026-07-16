@@ -1,9 +1,7 @@
 //! Cipher engine abstraction
 //!
 
-use crate::crypto::{
-    AesCipher, ChaCha20Cipher, CipherMode, CryptoResult, TwofishCipher,
-};
+use crate::crypto::{AesCipher, ChaCha20Cipher, CipherMode, CryptoResult, TwofishCipher};
 
 use super::encryption_algorithm::EncryptionAlgorithm;
 
@@ -55,7 +53,9 @@ pub struct TwofishCipherEngine {
 
 impl TwofishCipherEngine {
     pub fn new(force_compatibility: bool) -> Self {
-        Self { force_compatibility }
+        Self {
+            force_compatibility,
+        }
     }
 }
 

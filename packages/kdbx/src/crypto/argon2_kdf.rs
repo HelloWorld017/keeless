@@ -45,7 +45,13 @@ pub struct Argon2Params {
 }
 
 impl Argon2Params {
-    pub fn new(salt: Vec<u8>, parallelism: u32, memory_cost: u32, iterations: u32, version: u32) -> Self {
+    pub fn new(
+        salt: Vec<u8>,
+        parallelism: u32,
+        memory_cost: u32,
+        iterations: u32,
+        version: u32,
+    ) -> Self {
         Self {
             salt,
             parallelism,
@@ -78,9 +84,12 @@ impl Argon2Kdf {
         let version = match params.version {
             0x10 => Version::V0x10,
             0x13 => Version::V0x13,
-            _ => return Err(CryptoError::Argon2Error(format!(
-                "Unsupported Argon2 version: {:#x}", params.version
-            ))),
+            _ => {
+                return Err(CryptoError::Argon2Error(format!(
+                    "Unsupported Argon2 version: {:#x}",
+                    params.version
+                )))
+            }
         };
 
         let algorithm = argon2_type.to_algorithm();
@@ -114,11 +123,10 @@ mod tests {
     fn test_argon2id_basic() {
         let salt = vec![0xABu8; 32];
         let params = Argon2Params::new(
-            salt,
-            4,     // parallelism
-            1024,  // memory (1 MB)
-            3,     // iterations
-            0x13,  // version 1.3
+            salt, 4,    // parallelism
+            1024, // memory (1 MB)
+            3,    // iterations
+            0x13, // version 1.3
         );
 
         let result = Argon2Kdf::derive_key(Argon2Type::ID, b"testpassword", &params);

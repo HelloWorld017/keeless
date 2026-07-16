@@ -2,8 +2,8 @@
 //!
 //! Provides tools for detecting and repairing corrupted databases.
 
-use crate::model::db::database::Database;
 use crate::model::core::node::NodeId;
+use crate::model::db::database::Database;
 
 /// Result of a database integrity check.
 #[derive(Debug, Clone, Default)]
@@ -43,7 +43,10 @@ pub enum IntegrityWarning {
     /// Group has empty title
     EmptyGroupTitle(NodeId),
     /// Entry references a group that doesn't contain it
-    MisplacedEntry { entry_id: NodeId, expected_group: NodeId },
+    MisplacedEntry {
+        entry_id: NodeId,
+        expected_group: NodeId,
+    },
 }
 
 /// Database integrity verifier.
@@ -65,7 +68,13 @@ impl IntegrityVerifier {
         // Collect all reachable groups and entries
         let mut reachable_groups = std::collections::HashSet::new();
         let mut reachable_entries = std::collections::HashSet::new();
-        Self::collect_reachable(database, &root_id, &mut reachable_groups, &mut reachable_entries, &mut report);
+        Self::collect_reachable(
+            database,
+            &root_id,
+            &mut reachable_groups,
+            &mut reachable_entries,
+            &mut report,
+        );
 
         // Check for orphan entries (in database.entries but not reachable)
         for entry_id in database.entries.keys() {
@@ -124,16 +133,22 @@ impl IntegrityVerifier {
         }
 
         // 3. Fix missing entry refs in groups — remove refs to non-existent entries
-        let all_entry_ids: std::collections::HashSet<NodeId> = database.entries.keys().copied().collect();
-        let all_group_ids: std::collections::HashSet<NodeId> = database.groups.keys().copied().collect();
+        let all_entry_ids: std::collections::HashSet<NodeId> =
+            database.entries.keys().copied().collect();
+        let all_group_ids: std::collections::HashSet<NodeId> =
+            database.groups.keys().copied().collect();
 
         for group in database.groups.values_mut() {
             let before = group.child_entry_ids.len();
-            group.child_entry_ids.retain(|id| all_entry_ids.contains(id));
+            group
+                .child_entry_ids
+                .retain(|id| all_entry_ids.contains(id));
             result.invalid_refs_removed += before - group.child_entry_ids.len();
 
             let before = group.child_group_ids.len();
-            group.child_group_ids.retain(|id| all_group_ids.contains(id));
+            group
+                .child_group_ids
+                .retain(|id| all_group_ids.contains(id));
             result.invalid_refs_removed += before - group.child_group_ids.len();
         }
 
@@ -146,8 +161,14 @@ impl IntegrityVerifier {
 
         // 5. Deduplicate child references
         for group in database.groups.values_mut() {
-            Self::deduplicate_vec(&mut group.child_group_ids, &mut result.duplicate_refs_removed);
-            Self::deduplicate_vec(&mut group.child_entry_ids, &mut result.duplicate_refs_removed);
+            Self::deduplicate_vec(
+                &mut group.child_group_ids,
+                &mut result.duplicate_refs_removed,
+            );
+            Self::deduplicate_vec(
+                &mut group.child_entry_ids,
+                &mut result.duplicate_refs_removed,
+            );
         }
 
         if result.total_fixes() > 0 {
@@ -218,8 +239,11 @@ pub struct RepairResult {
 
 impl RepairResult {
     pub fn total_fixes(&self) -> usize {
-        self.entries_removed + self.groups_reattached + self.invalid_refs_removed
-            + self.self_refs_removed + self.duplicate_refs_removed
+        self.entries_removed
+            + self.groups_reattached
+            + self.invalid_refs_removed
+            + self.self_refs_removed
+            + self.duplicate_refs_removed
     }
 }
 
@@ -281,7 +305,10 @@ mod tests {
         }
 
         let report = IntegrityVerifier::verify(&db);
-        assert!(report.errors.iter().any(|e| matches!(e, IntegrityError::MissingEntry(id) if *id == ghost_id)));
+        assert!(report
+            .errors
+            .iter()
+            .any(|e| matches!(e, IntegrityError::MissingEntry(id) if *id == ghost_id)));
     }
 
     #[test]
@@ -294,7 +321,10 @@ mod tests {
         }
 
         let report = IntegrityVerifier::verify(&db);
-        assert!(report.errors.iter().any(|e| matches!(e, IntegrityError::SelfReference(_))));
+        assert!(report
+            .errors
+            .iter()
+            .any(|e| matches!(e, IntegrityError::SelfReference(_))));
     }
 
     #[test]
@@ -350,6 +380,9 @@ mod tests {
         db.root_group_id = None;
 
         let report = IntegrityVerifier::verify(&db);
-        assert!(report.errors.iter().any(|e| matches!(e, IntegrityError::NoRootGroup)));
+        assert!(report
+            .errors
+            .iter()
+            .any(|e| matches!(e, IntegrityError::NoRootGroup)));
     }
 }

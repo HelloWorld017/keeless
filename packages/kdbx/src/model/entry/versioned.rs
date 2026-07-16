@@ -2,11 +2,11 @@
 //!
 //! Handles mapping between KDB (v1) and KDBX (v3.1/v4) entry formats.
 
-use crate::model::entry::Entry;
-use crate::model::core::node::NodeId;
-use crate::model::meta::icon::IconImage;
-use crate::model::core::security::ProtectedString;
 use crate::model::core::date::DateInstant;
+use crate::model::core::node::NodeId;
+use crate::model::core::security::ProtectedString;
+use crate::model::entry::Entry;
+use crate::model::meta::icon::IconImage;
 
 /// KDB (v1) specific entry fields
 /// KDB format uses numeric field IDs instead of string keys.
@@ -32,10 +32,7 @@ pub struct EntryKDB;
 
 impl EntryKDB {
     /// Create an Entry from KDB raw field data.
-    pub fn from_kdb_fields(
-        id: NodeId,
-        fields: &std::collections::HashMap<u16, Vec<u8>>,
-    ) -> Entry {
+    pub fn from_kdb_fields(id: NodeId, fields: &std::collections::HashMap<u16, Vec<u8>>) -> Entry {
         let mut e = Entry::new(id);
 
         e.title = get_string(fields, kdb_field::TITLE);
@@ -46,7 +43,8 @@ impl EntryKDB {
         if let Some(data) = fields.get(&kdb_field::ICON_ID) {
             if data.len() >= 4 {
                 let icon_id = u32::from_le_bytes(data[..4].try_into().unwrap_or([0; 4]));
-                e.icon = IconImage::Standard(crate::model::meta::icon::IconImageStandard::new(icon_id));
+                e.icon =
+                    IconImage::Standard(crate::model::meta::icon::IconImageStandard::new(icon_id));
             }
         }
 
@@ -66,7 +64,11 @@ impl EntryKDB {
         // Binary attachment
         if let Some(data) = fields.get(&kdb_field::ATTACHMENT) {
             let desc = get_string(fields, kdb_field::BINARY_DESC);
-            e.binaries.push((desc, data.clone()));
+            e.binaries.push(super::EntryBinary {
+                name: desc,
+                data: data.clone(),
+                is_protected: false,
+            });
         }
 
         e
@@ -80,20 +82,46 @@ impl EntryKDB {
         };
         let mut fields = vec![
             (kdb_field::TITLE, entry.title.as_bytes().to_vec()),
-            (kdb_field::USER_NAME, entry.username.as_str().as_bytes().to_vec()),
-            (kdb_field::PASSWORD, entry.password.as_str().as_bytes().to_vec()),
+            (
+                kdb_field::USER_NAME,
+                entry.username.as_str().as_bytes().to_vec(),
+            ),
+            (
+                kdb_field::PASSWORD,
+                entry.password.as_str().as_bytes().to_vec(),
+            ),
             (kdb_field::NOTES, entry.notes.as_str().as_bytes().to_vec()),
             (kdb_field::ICON_ID, icon_id.to_le_bytes().to_vec()),
-            (kdb_field::CREATION_TIME, (entry.creation_time.as_millis().unwrap_or(0) / 1000).to_le_bytes().to_vec()),
-            (kdb_field::LAST_MODIFICATION_TIME, (entry.last_modification_time.as_millis().unwrap_or(0) / 1000).to_le_bytes().to_vec()),
-            (kdb_field::LAST_ACCESS_TIME, (entry.last_access_time.as_millis().unwrap_or(0) / 1000).to_le_bytes().to_vec()),
-            (kdb_field::EXPIRY_TIME, (entry.expiry_time.as_millis().unwrap_or(0) / 1000).to_le_bytes().to_vec()),
+            (
+                kdb_field::CREATION_TIME,
+                (entry.creation_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+            (
+                kdb_field::LAST_MODIFICATION_TIME,
+                (entry.last_modification_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+            (
+                kdb_field::LAST_ACCESS_TIME,
+                (entry.last_access_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+            (
+                kdb_field::EXPIRY_TIME,
+                (entry.expiry_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
         ];
 
         // First binary attachment only (KDB v1 supports only one)
-        if let Some((name, data)) = entry.binaries.first() {
-            fields.push((kdb_field::BINARY_DESC, name.as_bytes().to_vec()));
-            fields.push((kdb_field::ATTACHMENT, data.clone()));
+        if let Some(binary) = entry.binaries.first() {
+            fields.push((kdb_field::BINARY_DESC, binary.name.as_bytes().to_vec()));
+            fields.push((kdb_field::ATTACHMENT, binary.data.clone()));
         }
 
         fields.push((kdb_field::END, Vec::new()));
@@ -131,7 +159,8 @@ impl EntryKDBX {
 }
 
 fn get_string(fields: &std::collections::HashMap<u16, Vec<u8>>, key: u16) -> String {
-    fields.get(&key)
+    fields
+        .get(&key)
         .map(|v| String::from_utf8_lossy(v).to_string())
         .unwrap_or_default()
 }
@@ -201,7 +230,11 @@ mod tests {
         entry.username = ProtectedString::new_plain("u");
         entry.password = ProtectedString::new_protected("p");
         entry.notes = ProtectedString::new_plain("n");
-        entry.binaries.push(("file.txt".to_string(), vec![0x42, 0x43]));
+        entry.binaries.push(crate::model::entry::EntryBinary {
+            name: "file.txt".to_string(),
+            data: vec![0x42, 0x43],
+            is_protected: false,
+        });
 
         let fields = EntryKDB::to_kdb_fields(&entry);
         let map: HashMap<u16, Vec<u8>> = fields.into_iter().collect();
@@ -210,6 +243,6 @@ mod tests {
         assert_eq!(restored.title, "RoundTrip");
         assert_eq!(restored.username.as_str(), "u");
         assert_eq!(restored.binaries.len(), 1);
-        assert_eq!(restored.binaries[0].0, "file.txt");
+        assert_eq!(restored.binaries[0].name, "file.txt");
     }
 }

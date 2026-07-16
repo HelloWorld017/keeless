@@ -6,10 +6,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::model::core::node::NodeId;
 use crate::model::db::database::Database;
 use crate::model::entry::Entry;
 use crate::model::group::Group;
-use crate::model::core::node::NodeId;
 
 /// Change type recorded by the tracker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -295,7 +295,6 @@ impl DiffResult {
 mod tests {
     use super::*;
     use crate::model::db::database::DatabaseVersion;
-    
 
     #[test]
     fn test_tracker_mark_created() {

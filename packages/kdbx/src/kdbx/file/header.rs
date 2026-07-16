@@ -95,6 +95,7 @@ pub struct KdbxHeader31 {
 #[derive(Debug, Clone)]
 pub struct KdbxHeader4 {
     pub version: u32,
+    pub comment: Option<Vec<u8>>,
     pub encryption_algorithm: EncryptionAlgorithm,
     pub compression: CompressionAlgorithm,
     pub master_seed: Vec<u8>,

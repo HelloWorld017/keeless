@@ -67,6 +67,9 @@ impl KdfParameters {
     pub fn deserialize(data: &[u8]) -> Option<Self> {
         let dict = VariantDictionary::deserialize(data).ok()?;
         let uuid_bytes = dict.get_byte_array("$UUID")?;
+        if uuid_bytes.len() != 16 {
+            return None;
+        }
         let kdf_uuid = Uuid::from_slice(uuid_bytes).ok()?;
         Some(Self { kdf_uuid, dict })
     }

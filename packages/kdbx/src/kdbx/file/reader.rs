@@ -78,32 +78,42 @@ impl DatabaseReader {
                     header_field_31::CIPHER_ID => {
                         let uuid = uuid::Uuid::from_slice(&data)
                             .map_err(|e| DatabaseError::InvalidFormat(e.to_string()))?;
-                        header.encryption_algorithm =
-                            EncryptionAlgorithm::from_uuid(&uuid)
-                                .unwrap_or(EncryptionAlgorithm::AesRijndael);
+                        header.encryption_algorithm = EncryptionAlgorithm::from_uuid(&uuid)
+                            .unwrap_or(EncryptionAlgorithm::AesRijndael);
                     }
                     header_field_31::COMPRESSION_FLAGS => {
                         if data.len() >= 4 {
-                            let flags = u32::from_le_bytes(data[..4].try_into().map_err(|_| DatabaseError::InvalidFormat("Invalid COMPRESSION_FLAGS".into()))?);
+                            let flags = u32::from_le_bytes(data[..4].try_into().map_err(|_| {
+                                DatabaseError::InvalidFormat("Invalid COMPRESSION_FLAGS".into())
+                            })?);
                             header.compression =
                                 crate::crypto::compression::CompressionAlgorithm::from_id(flags)
-                                    .unwrap_or(crate::crypto::compression::CompressionAlgorithm::Gzip);
+                                    .unwrap_or(
+                                        crate::crypto::compression::CompressionAlgorithm::Gzip,
+                                    );
                         }
                     }
                     header_field_31::MASTER_SEED => header.master_seed = data,
                     header_field_31::TRANSFORM_SEED => header.transform_seed = data,
                     header_field_31::TRANSFORM_ROUNDS => {
                         if data.len() >= 8 {
-                            header.transform_rounds = u64::from_le_bytes(data[..8].try_into().map_err(|_| DatabaseError::InvalidFormat("Invalid TRANSFORM_ROUNDS".into()))?);
+                            header.transform_rounds =
+                                u64::from_le_bytes(data[..8].try_into().map_err(|_| {
+                                    DatabaseError::InvalidFormat("Invalid TRANSFORM_ROUNDS".into())
+                                })?);
                         }
                     }
                     header_field_31::ENCRYPTION_IV => header.encryption_iv = data,
-                    header_field_31::INNER_RANDOM_STREAM_KEY => header.inner_random_stream_key = data,
+                    header_field_31::INNER_RANDOM_STREAM_KEY => {
+                        header.inner_random_stream_key = data
+                    }
                     header_field_31::STREAM_START_BYTES => header.stream_start_bytes = data,
                     header_field_31::INNER_RANDOM_STREAM_ID if data.len() >= 4 => {
-                        let id = u32::from_le_bytes(data[..4].try_into().map_err(|_| DatabaseError::InvalidFormat("Invalid INNER_RANDOM_STREAM_ID".into()))?);
-                        header.inner_random_stream = CrsAlgorithm::from_id(id)
-                            .unwrap_or(CrsAlgorithm::Salsa20);
+                        let id = u32::from_le_bytes(data[..4].try_into().map_err(|_| {
+                            DatabaseError::InvalidFormat("Invalid INNER_RANDOM_STREAM_ID".into())
+                        })?);
+                        header.inner_random_stream =
+                            CrsAlgorithm::from_id(id).unwrap_or(CrsAlgorithm::Salsa20);
                     }
                     _ => {} // Skip unknown fields
                 }

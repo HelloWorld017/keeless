@@ -15,7 +15,7 @@ pub trait KdfEngine: Send + Sync {
     fn transform(&self, master_key: &[u8], params: &KdfParameters) -> DatabaseResult<Vec<u8>>;
 
     /// Randomize the salt in the parameters.
-    fn randomize(&self, params: &mut KdfParameters);
+    fn randomize(&self, params: &mut KdfParameters) -> DatabaseResult<()>;
 
     /// Get default KDF parameters
     fn default_parameters(&self) -> KdfParameters;

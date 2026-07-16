@@ -7,13 +7,13 @@ use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
 
+use crate::kdbx::file::header::{KDB_SIGNATURE_1, KDB_SIGNATURE_2};
+use crate::model::core::node::NodeId;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::Database;
-use crate::model::entry::versioned::{EntryKDB, kdb_field};
-use crate::model::group::versioned::{GroupKDB, kdb_group_field};
-use crate::model::core::node::NodeId;
+use crate::model::entry::versioned::{kdb_field, EntryKDB};
 use crate::model::exception::{DatabaseError, DatabaseResult};
-use crate::kdbx::file::header::{KDB_SIGNATURE_1, KDB_SIGNATURE_2};
+use crate::model::group::versioned::{kdb_group_field, GroupKDB};
 
 /// Write a KDB (v1) database to a writer.
 pub fn write_kdb<W: Write>(
@@ -22,9 +22,9 @@ pub fn write_kdb<W: Write>(
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
     // 1. Generate header parameters
-    let master_seed = generate_random_bytes(16);
-    let encryption_iv = generate_random_bytes(16);
-    let transform_seed = generate_random_bytes(32);
+    let master_seed = generate_random_bytes(16)?;
+    let encryption_iv = generate_random_bytes(16)?;
+    let transform_seed = generate_random_bytes(32)?;
     let transform_rounds: u32 = 100;
 
     // 2. Count groups and entries
@@ -46,7 +46,7 @@ pub fn write_kdb<W: Write>(
     }
 
     let mut params = crate::kdbx::kdf::kdf_parameters::KdfParameters::new(
-        crate::kdbx::kdf::aes_kdf::AES_KDF_UUID
+        crate::kdbx::kdf::aes_kdf::AES_KDF_UUID,
     );
     params.set_byte_array("S", &transform_seed);
     params.set_uint64("R", transform_rounds as u64);
@@ -61,9 +61,10 @@ pub fn write_kdb<W: Write>(
 
     // 6. Encrypt content
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(
-        crate::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael
+        crate::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael,
     );
-    let encrypted = cipher.encrypt(&master_key, &encryption_iv, &content)
+    let encrypted = cipher
+        .encrypt(&master_key, &encryption_iv, &content)
         .map_err(|e| DatabaseError::EncryptionError(e.to_string()))?;
 
     // 7. Write signature
@@ -131,12 +132,7 @@ fn assign_kdb_group_ids(database: &Database) -> HashMap<NodeId, u32> {
 fn compute_group_levels(database: &Database) -> HashMap<NodeId, usize> {
     let mut levels = HashMap::new();
 
-    fn visit(
-        db: &Database,
-        group_id: &NodeId,
-        level: usize,
-        levels: &mut HashMap<NodeId, usize>,
-    ) {
+    fn visit(db: &Database, group_id: &NodeId, level: usize, levels: &mut HashMap<NodeId, usize>) {
         levels.insert(*group_id, level);
         if let Some(group) = db.groups.get(group_id) {
             for child_id in &group.child_group_ids {
@@ -153,10 +149,7 @@ fn compute_group_levels(database: &Database) -> HashMap<NodeId, usize> {
 }
 
 /// Write all groups in KDB binary format.
-fn write_kdb_groups<W: Write>(
-    writer: &mut W,
-    database: &Database,
-) -> DatabaseResult<()> {
+fn write_kdb_groups<W: Write>(writer: &mut W, database: &Database) -> DatabaseResult<()> {
     let group_ids = assign_kdb_group_ids(database);
     let levels = compute_group_levels(database);
 
@@ -168,7 +161,9 @@ fn write_kdb_groups<W: Write>(
         group_ids: &HashMap<NodeId, u32>,
         levels: &HashMap<NodeId, usize>,
     ) -> DatabaseResult<()> {
-        let group = db.groups.get(group_id)
+        let group = db
+            .groups
+            .get(group_id)
             .ok_or_else(|| DatabaseError::InvalidFormat("Group not found".into()))?;
 
         let fields = GroupKDB::to_kdb_fields(group);
@@ -215,7 +210,12 @@ fn write_kdb_groups<W: Write>(
 
     // Write groups not reachable from root
     for group_id in group_ids.keys() {
-        if database.root_group_id.as_ref().map(|r| *r == *group_id).unwrap_or(false) {
+        if database
+            .root_group_id
+            .as_ref()
+            .map(|r| *r == *group_id)
+            .unwrap_or(false)
+        {
             continue;
         }
         // Already written in traversal if reachable from root
@@ -230,10 +230,7 @@ fn write_kdb_groups<W: Write>(
 }
 
 /// Write all entries in KDB binary format.
-fn write_kdb_entries<W: Write>(
-    writer: &mut W,
-    database: &Database,
-) -> DatabaseResult<()> {
+fn write_kdb_entries<W: Write>(writer: &mut W, database: &Database) -> DatabaseResult<()> {
     let group_ids = assign_kdb_group_ids(database);
 
     for (entry_id, entry) in &database.entries {
@@ -264,24 +261,21 @@ fn write_kdb_entries<W: Write>(
     Ok(())
 }
 
-fn generate_random_bytes(len: usize) -> Vec<u8> {
+fn generate_random_bytes(len: usize) -> DatabaseResult<Vec<u8>> {
     let mut buf = vec![0u8; len];
-    getrandom::getrandom(&mut buf).unwrap_or_else(|_| {
-        for b in buf.iter_mut() {
-            *b = (chrono::Utc::now().timestamp_millis() & 0xFF) as u8;
-        }
-    });
-    buf
+    getrandom::getrandom(&mut buf).map_err(|e| {
+        DatabaseError::EncryptionError(format!("secure random generation failed: {e}"))
+    })?;
+    Ok(buf)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::db::database::DatabaseVersion;
-    use crate::model::group::Group;
-    use crate::model::entry::Entry;
     use crate::model::core::security::ProtectedString;
-    
+    use crate::model::db::database::DatabaseVersion;
+    use crate::model::entry::Entry;
+    use crate::model::group::Group;
 
     #[test]
     fn test_write_kdb_basic() {

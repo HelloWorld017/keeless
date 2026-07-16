@@ -35,14 +35,15 @@ impl InnerStreamCipher for Salsa20InnerStream {
 }
 
 /// ChaCha20 inner stream (KDBX 4.0).
-/// Key used directly, zero nonce.
+/// Key and nonce are split from SHA-512(protected stream key).
 pub struct ChaCha20InnerStream {
     cipher: ChaCha20Cipher,
 }
 
 impl ChaCha20InnerStream {
     pub fn new(key: &[u8]) -> DatabaseResult<Self> {
-        let cipher = ChaCha20Cipher::new(key, &[0u8; 12])
+        let material = crate::crypto::HashEngine::sha512(key);
+        let cipher = ChaCha20Cipher::new(&material[..32], &material[32..44])
             .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
         Ok(Self { cipher })
     }
@@ -81,8 +82,7 @@ impl ArcFourInnerStream {
         self.i = self.i.wrapping_add(1);
         self.j = self.j.wrapping_add(self.state[self.i as usize]);
         self.state.swap(self.i as usize, self.j as usize);
-        let k = self.state[self.i as usize]
-            .wrapping_add(self.state[self.j as usize]);
+        let k = self.state[self.i as usize].wrapping_add(self.state[self.j as usize]);
         self.state[k as usize]
     }
 }
@@ -104,9 +104,9 @@ pub fn create_inner_stream(
         CrsAlgorithm::Salsa20 => Ok(Box::new(Salsa20InnerStream::new(key))),
         CrsAlgorithm::ChaCha20 => Ok(Box::new(ChaCha20InnerStream::new(key)?)),
         CrsAlgorithm::ArcFourVariant => Ok(Box::new(ArcFourInnerStream::new(key))),
-        CrsAlgorithm::None => {
-            Err(DatabaseError::Unsupported("No inner stream cipher configured".to_string()))
-        }
+        CrsAlgorithm::None => Err(DatabaseError::Unsupported(
+            "No inner stream cipher configured".to_string(),
+        )),
     }
 }
 

@@ -8,9 +8,9 @@ pub mod kdf_parameters;
 pub use kdf_engine::KdfEngine;
 pub use kdf_parameters::KdfParameters;
 
-use uuid::Uuid;
 use aes_kdf::{AesKdf, AES_KDF_UUID};
 use argon2_kdf::{Argon2Kdf, ARGON2D_UUID, ARGON2ID_UUID};
+use uuid::Uuid;
 
 /// Create a KDF engine from its UUID.
 pub fn create_kdf(uuid: &Uuid) -> Option<Box<dyn KdfEngine>> {

@@ -9,18 +9,18 @@ use byteorder::{LittleEndian, WriteBytesExt};
 
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
-use crate::model::db::composite_key::CompositeKey;
-use crate::model::db::database::Database;
-use crate::model::exception::{DatabaseError, DatabaseResult};
 use crate::kdbx::file::header::{
-    CrsAlgorithm, KdbxHeader31, FILE_VERSION_31,
-    header_field_31, KDBX_SIGNATURE_1, KDBX_SIGNATURE_2,
+    header_field_31, CrsAlgorithm, KdbxHeader31, FILE_VERSION_31, KDBX_SIGNATURE_1,
+    KDBX_SIGNATURE_2,
 };
 use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
 use crate::kdbx::kdf::kdf_engine::KdfEngine;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::stream::hashed_block::HashedBlockWriter;
 use crate::kdbx::xml::KdbxXmlWriter;
+use crate::model::db::composite_key::CompositeKey;
+use crate::model::db::database::Database;
+use crate::model::exception::{DatabaseError, DatabaseResult};
 
 /// Write a KDBX 3.1 database to a writer.
 pub fn write_kdbx31<W: Write>(
@@ -29,10 +29,10 @@ pub fn write_kdbx31<W: Write>(
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
     // 1. Generate header parameters
-    let master_seed = generate_random_bytes(32);
-    let transform_seed = generate_random_bytes(32);
-    let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length());
-    let inner_stream_key = generate_random_bytes(32);
+    let master_seed = generate_random_bytes(32)?;
+    let transform_seed = generate_random_bytes(32)?;
+    let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
+    let inner_stream_key = generate_random_bytes(32)?;
     let transform_rounds: u64 = 1_000;
 
     let header = KdbxHeader31 {
@@ -49,7 +49,12 @@ pub fn write_kdbx31<W: Write>(
     };
 
     // 2. Derive final key
-    let final_key = derive_key(composite_key, &master_seed, &transform_seed, transform_rounds)?;
+    let final_key = derive_key(
+        composite_key,
+        &master_seed,
+        &transform_seed,
+        transform_rounds,
+    )?;
 
     // 3. Serialize database to XML with inner stream protection
     let mut inner_stream = create_inner_stream(CrsAlgorithm::Salsa20, &inner_stream_key)?;
@@ -77,7 +82,8 @@ pub fn write_kdbx31<W: Write>(
 
     // 7. Encrypt
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(database.encryption_algorithm);
-    let encrypted = cipher.encrypt(&final_key, &encryption_iv, &plaintext)
+    let encrypted = cipher
+        .encrypt(&final_key, &encryption_iv, &plaintext)
         .map_err(|e| DatabaseError::EncryptionError(e.to_string()))?;
 
     // 8. Write file: signature + header + encrypted data
@@ -122,14 +128,42 @@ fn write_signature<W: Write>(writer: &mut W) -> DatabaseResult<()> {
 fn write_kdbx31_header<W: Write>(writer: &mut W, header: &KdbxHeader31) -> DatabaseResult<()> {
     let uuid_bytes = *header.encryption_algorithm.uuid().as_bytes();
     write_header_field(writer, header_field_31::CIPHER_ID, &uuid_bytes)?;
-    write_header_field(writer, header_field_31::COMPRESSION_FLAGS, &header.compression.to_id().to_le_bytes())?;
+    write_header_field(
+        writer,
+        header_field_31::COMPRESSION_FLAGS,
+        &header.compression.to_id().to_le_bytes(),
+    )?;
     write_header_field(writer, header_field_31::MASTER_SEED, &header.master_seed)?;
-    write_header_field(writer, header_field_31::TRANSFORM_SEED, &header.transform_seed)?;
-    write_header_field(writer, header_field_31::TRANSFORM_ROUNDS, &header.transform_rounds.to_le_bytes())?;
-    write_header_field(writer, header_field_31::ENCRYPTION_IV, &header.encryption_iv)?;
-    write_header_field(writer, header_field_31::INNER_RANDOM_STREAM_KEY, &header.inner_random_stream_key)?;
-    write_header_field(writer, header_field_31::STREAM_START_BYTES, &header.inner_random_stream_key)?;
-    write_header_field(writer, header_field_31::INNER_RANDOM_STREAM_ID, &header.inner_random_stream.to_id().to_le_bytes())?;
+    write_header_field(
+        writer,
+        header_field_31::TRANSFORM_SEED,
+        &header.transform_seed,
+    )?;
+    write_header_field(
+        writer,
+        header_field_31::TRANSFORM_ROUNDS,
+        &header.transform_rounds.to_le_bytes(),
+    )?;
+    write_header_field(
+        writer,
+        header_field_31::ENCRYPTION_IV,
+        &header.encryption_iv,
+    )?;
+    write_header_field(
+        writer,
+        header_field_31::INNER_RANDOM_STREAM_KEY,
+        &header.inner_random_stream_key,
+    )?;
+    write_header_field(
+        writer,
+        header_field_31::STREAM_START_BYTES,
+        &header.inner_random_stream_key,
+    )?;
+    write_header_field(
+        writer,
+        header_field_31::INNER_RANDOM_STREAM_ID,
+        &header.inner_random_stream.to_id().to_le_bytes(),
+    )?;
     write_header_field(writer, header_field_31::END_OF_HEADER, &[])?;
     Ok(())
 }
@@ -141,25 +175,23 @@ fn write_header_field<W: Write>(writer: &mut W, field_id: u8, data: &[u8]) -> Da
     Ok(())
 }
 
-fn generate_random_bytes(len: usize) -> Vec<u8> {
+fn generate_random_bytes(len: usize) -> DatabaseResult<Vec<u8>> {
     let mut buf = vec![0u8; len];
-    getrandom::getrandom(&mut buf).unwrap_or_else(|_| {
-        for b in buf.iter_mut() {
-            *b = (chrono::Utc::now().timestamp_millis() & 0xFF) as u8;
-        }
-    });
-    buf
+    getrandom::getrandom(&mut buf).map_err(|e| {
+        DatabaseError::EncryptionError(format!("secure random generation failed: {e}"))
+    })?;
+    Ok(buf)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::db::database::DatabaseVersion;
-    use crate::model::db::composite_key::CompositeKey;
-    use uuid::Uuid;
-    use crate::model::group::Group;
     use crate::model::core::node::NodeId;
+    use crate::model::db::composite_key::CompositeKey;
+    use crate::model::db::database::DatabaseVersion;
     use crate::model::entry::Entry;
+    use crate::model::group::Group;
+    use uuid::Uuid;
 
     #[test]
     fn test_write_read_roundtrip() {

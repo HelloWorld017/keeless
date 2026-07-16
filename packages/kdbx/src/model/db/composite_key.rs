@@ -7,11 +7,10 @@ use crate::crypto::HashEngine;
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
 /// A composite key combining multiple credential sources.
-#[derive(Debug)]
 pub struct CompositeKey {
-    pub password_data: Option<Vec<u8>>,
-    pub key_file_data: Option<Vec<u8>>,
-    pub hardware_key: Option<Vec<u8>>,
+    password_data: Option<Vec<u8>>,
+    key_file_data: Option<Vec<u8>>,
+    hardware_key: Option<Vec<u8>>,
 }
 
 impl CompositeKey {
@@ -77,16 +76,23 @@ impl CompositeKey {
             return Vec::new();
         }
 
-        if components.len() == 1 {
-            return components.into_iter().next().expect("checked len==1 above");
-        }
-
-        // Concatenate and hash
+        // KeePass always hashes the concatenated user-key components,
+        // including the common password-only case.
         let mut combined = Vec::new();
         for c in &components {
             combined.extend_from_slice(c);
         }
         HashEngine::sha256(&combined).to_vec()
+    }
+}
+
+impl std::fmt::Debug for CompositeKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompositeKey")
+            .field("has_password", &self.password_data.is_some())
+            .field("has_key_file", &self.key_file_data.is_some())
+            .field("has_hardware_key", &self.hardware_key.is_some())
+            .finish()
     }
 }
 
@@ -98,9 +104,15 @@ impl Default for CompositeKey {
 
 impl Drop for CompositeKey {
     fn drop(&mut self) {
-        if let Some(ref mut d) = self.password_data { d.zeroize(); }
-        if let Some(ref mut d) = self.key_file_data { d.zeroize(); }
-        if let Some(ref mut d) = self.hardware_key { d.zeroize(); }
+        if let Some(ref mut d) = self.password_data {
+            d.zeroize();
+        }
+        if let Some(ref mut d) = self.key_file_data {
+            d.zeroize();
+        }
+        if let Some(ref mut d) = self.hardware_key {
+            d.zeroize();
+        }
     }
 }
 
