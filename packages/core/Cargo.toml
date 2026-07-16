@@ -1,0 +1,8 @@
+[package]
+license = "AGPL-3.0"
+name = "keeless_core"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+keeless_kdbx = { path = "../kdbx" }

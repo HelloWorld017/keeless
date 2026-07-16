@@ -1,0 +1,23 @@
+{
+  "name": "@keeless/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "backend for keeless",
+  "license": "AGPL-3.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown"
+  },
+  "devDependencies": {
+    "tsdown": "^0.22.7"
+  }
+}

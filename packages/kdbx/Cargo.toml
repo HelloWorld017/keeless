@@ -1,0 +1,5 @@
+[package]
+license = "MIT OR MulanPSL-2.0"
+name = "keeless_kdbx"
+version = "0.0.0"
+edition = "2024"

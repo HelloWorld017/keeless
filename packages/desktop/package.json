@@ -7,8 +7,5 @@
   "type": "module",
   "dependencies": {
     "@keeless/app": "workspace:*"
-  },
-  "devDependencies": {
-    "electron": "^43.1.0"
   }
 }

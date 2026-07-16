@@ -1,8 +1,10 @@
 ## Packages
-### `@keeless/kdbx`
+rust package는 wasm 및 네이티브로 동시에 컴파일 됨
+
+### `keeless_kdbx` (rust)
 * kdbx4 파일 포맷 핸들링 라이브러리
 * XML 구조 파싱해서 쉽게 읽고 편집 가능한 형태로
-* 암후화해서 읽기 / 쓰기 가능하게
+* 암호화해서 읽기 / 쓰기 가능하게
 * 기본 constant들
   * https://raw.githubusercontent.com/keeweb/kdbxweb/refs/heads/master/lib/defs/consts.ts
   * https://raw.githubusercontent.com/keeweb/kdbxweb/refs/heads/master/lib/defs/xml-names.ts
@@ -10,47 +12,54 @@
   * URL: (`KP2A_URL_*` 로부터 URL 읽기)
   * TOTP (https://github.com/PhilippC/keepass2android/wiki/Generating-TOTPs)
   * PassKey (`KPEX_PASSKEY_*`)
+* `keepass-rs` 기반
 
-### `@keeless/sync`
+### `keeless_sync` (rust)
 * 파일 핸들 인터페이스를 정의, 읽기 / 쓰기 / 동기화
   * Atomic Update (CAS)를 지원하는 파일시스템일 경우 retry해가며 동기화
 
-### `@keeless/core`
-* 실질적인 백엔드 역할
-  ```ts
-  export type KeelessHost = {
-    defaultApprovedKeys: ArrayBuffer[],
-    storageProviders: Record<string, KeelessStorageProvider>,
-    configProvider: KeelessConfigProvider // interface of simple key-value storage
-  };
-
-  export const createKeelessCore: (opts: { host: KeelessHost }) => KeelessCore;
-  ```
-
 * 기본적인 Storage Provider (WebDAV) 구현도 제공
   * https://raw.githubusercontent.com/HelloWorld017/clxdb/refs/heads/master/src/storages/webdav.ts 참고
+  * ehttp 사용해서 wasm와 native 모두 지원하도록
 
-### `@keeless/app`
+### `keeless_core` `@keeless/core` (rust)
+* 실질적인 백엔드 역할
+  ```rust
+  pub struct KeelessHost {
+    pub default_approved_keys: Vec<Vec<u8>>,
+    pub storage_providers: HashMap<String, Box<dyn KeelessStorageProvider>>,
+    pub config_provider: Box<dyn KeelessConfigProvider>,
+  }
+
+  impl KeelessCore {
+    pub fn new(host: KeelessHost) -> Self {
+    }
+  }
+  ```
+
+### `@keeless/app` (typescript)
 * React 기반 웹 어플리케이션
 * IndexedDB에 deviceKey 저장, 이 키로부터 core 인증용 키를 derive
 
-### `@keeless/desktop`
+### `keeless_desktop` `@keeless/desktop` (tauri / native rust)
 * 지원 OS: Windows / Linux
-* Daemon (deno 기반 런타임)
+* Daemon
   * Keeless Core + Host Wrapper
   * userData (%AppData% 혹은 XDG_DATA_HOME) 에 설정 저장 (with debounce)
   * 추가 Storage Provider (localfs)
   * 15분 동안 요청 없을 시 스스로 종료
-* Desktop App (tauri 기반)
+  * 잠금 해제 시에 egui로 Database Master Password 입력받기
+    * 메모리 보호를 위해 Tauri renderer 등에서 입력받지 않음
+* Desktop App
   * Daemon이 켜져있지 않다면 실행시키고 IPC로 연결
   * App - Daemon간 요청을 중계하는 역할만
 
-### `@keeless/nativemessaginghost`
+### `keeless_nativemessaginghost` (native rust)
 * Daemon이 켜져있지 않다면 실행시키고 IPC로 연결
 * stdin/stdout 으로 Daemon과의 요청을 중계
 * rust로 구현
 
-### `@keeless/build-helpers`
+### `@keeless/build-helpers` (typescript)
 * 공용 vite 설정 등을 저장
 * 각 패키지에서 `mergeConfig` 해서 사용
 
@@ -60,7 +69,7 @@ graph LR
     subgraph CaseA ["Host on Web"]
         direction LR
         subgraph CaseA_App ["App"]
-            CaseA_Core["Core"]
+            CaseA_Core["Core (wasm)"]
         end
 
         CaseA_File[".kdbx File"]
@@ -71,7 +80,7 @@ graph LR
     subgraph CaseB ["Host on Extension"]
         direction LR
         subgraph CaseB_Extension ["Extension"]
-            CaseB_Core["Core"]
+            CaseB_Core["Core (wasm)"]
         end
 
         CaseB_App["App"]
@@ -84,7 +93,7 @@ graph LR
     subgraph CaseC ["Host on Desktop App"]
         direction LR
         subgraph CaseC_Daemon ["Daemon"]
-            CaseC_Core["Core"]
+            CaseC_Core["Core (native)"]
         end
 
         CaseC_File[".kdbx File"]
@@ -100,8 +109,6 @@ graph LR
 ```
 
 ## Protocol
-* zod를 통해 엄격한 스키마 검증 수행
-
 ### Message Frame
 ```ts
 {
@@ -129,10 +136,11 @@ graph LR
 
 ### Operations
 * `null -> { publicKey: string }`
+* `open { storage: StorageDescriptor } -> {}`
+* `unlock { password: string } -> {}`
 * `lock {} -> {}`
   * 원래 데이터베이스는 config에 지정한 시간이 경과할 경우 자동으로 잠김
   * `lock()` 은 그 전에 직접 데이터베이스를 잠금
-* `unlock { password: string } -> {}`
 * `getDatabaseStatus {} -> { status: 'not_exist' | 'locked' | 'unlocked' }`
 * `getConfig {} -> { config: KeelessConfig }`
 * `setConfig { config: DeepPartial<KeelessConfig> } -> {}`
