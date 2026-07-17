@@ -20,7 +20,7 @@ rust package는 wasm 및 네이티브로 동시에 컴파일 됨
 
 * 기본적인 Storage Provider (WebDAV) 구현도 제공
   * https://raw.githubusercontent.com/HelloWorld017/clxdb/refs/heads/master/src/storages/webdav.ts 참고
-  * ehttp 사용해서 wasm와 native 모두 지원하도록
+  * wasm와 native 모두 지원하도록
 
 ### `keeless_core` `@keeless/core` (rust)
 * 실질적인 백엔드 역할
@@ -58,6 +58,11 @@ rust package는 wasm 및 네이티브로 동시에 컴파일 됨
 * Daemon이 켜져있지 않다면 실행시키고 IPC로 연결
 * stdin/stdout 으로 Daemon과의 요청을 중계
 * rust로 구현
+
+### `keeless_vhid` (native rust)
+* linux에서 백그라운드에서 떠있는 daemon
+  * passkey 를 통한 인증을 가상 hid device를 가지고 처리
+* `soft-fido2-transport` 이용하여 구현
 
 ### `@keeless/build-helpers` (typescript)
 * 공용 vite 설정 등을 저장
