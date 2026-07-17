@@ -35,6 +35,51 @@ fn entry_version(seed: &Entry, title: &str, modified: i64) -> Entry {
 }
 
 #[test]
+fn three_way_merge_applies_database_metadata_and_keeps_local_conflicts() {
+    let root_id = NodeId::new_uuid();
+    let mut base = database_with_root(root_id);
+    base.name = "base name".to_string();
+    base.description = "base description".to_string();
+    base.custom_data.set("shared", "base");
+
+    let updated_icon_id = *NodeId::new_uuid().as_uuid().unwrap();
+    let deleted_icon_id = *NodeId::new_uuid().as_uuid().unwrap();
+    base.custom_icons.insert(
+        updated_icon_id,
+        crate::model::meta::IconImageCustom::new(updated_icon_id, b"base".to_vec()),
+    );
+    base.custom_icons.insert(
+        deleted_icon_id,
+        crate::model::meta::IconImageCustom::new(deleted_icon_id, b"delete".to_vec()),
+    );
+
+    let mut target = base.clone();
+    target.description = "local description".to_string();
+    target.custom_data.set("local", "value");
+    target.custom_data.set("shared", "local");
+    target.custom_icons.remove(&updated_icon_id);
+
+    let mut source = base.clone();
+    source.name = "remote name".to_string();
+    source.description = "remote description".to_string();
+    source.custom_data.set("remote", "value");
+    source.custom_data.set("shared", "remote");
+    source.custom_icons.get_mut(&updated_icon_id).unwrap().data = b"remote".to_vec();
+    source.custom_icons.remove(&deleted_icon_id);
+
+    DatabaseMerger::new(MergeStrategy::NewestWins).merge_three_way(&mut target, &source, &base);
+
+    assert_eq!(target.name, "remote name");
+    assert_eq!(target.description, "local description");
+    assert_eq!(target.custom_data.get("local"), Some("value"));
+    assert_eq!(target.custom_data.get("remote"), Some("value"));
+    assert_eq!(target.custom_data.get("shared"), Some("local"));
+    assert!(!target.custom_icons.contains_key(&updated_icon_id));
+    assert!(!target.custom_icons.contains_key(&deleted_icon_id));
+    assert!(target.data_modified);
+}
+
+#[test]
 fn test_merge_new_entry() {
     let mut target = Database::new(DatabaseVersion::KDBX4);
     let mut source = Database::new(DatabaseVersion::KDBX4);
@@ -547,4 +592,145 @@ fn three_way_history_change_conflicts_with_deletion() {
         .deleted_objects
         .iter()
         .any(|deleted| deleted.id == entry_id));
+}
+
+#[test]
+fn two_way_tombstone_only_change_marks_target_modified() {
+    let root_id = NodeId::new_uuid();
+    let deleted_id = NodeId::new_uuid();
+    let mut target = database_with_root(root_id);
+    let mut source = target.clone();
+    source.deleted_objects.push(DeletedObject {
+        id: deleted_id,
+        deletion_time: 100,
+    });
+
+    DatabaseMerger::new(MergeStrategy::NewestWins).merge(&mut target, &source);
+
+    assert!(target.data_modified);
+}
+
+#[test]
+fn three_way_tombstone_only_change_marks_target_modified() {
+    let root_id = NodeId::new_uuid();
+    let deleted_id = NodeId::new_uuid();
+    let base = database_with_root(root_id);
+    let mut target = base.clone();
+    let mut source = base.clone();
+    source.deleted_objects.push(DeletedObject {
+        id: deleted_id,
+        deletion_time: 100,
+    });
+
+    DatabaseMerger::new(MergeStrategy::NewestWins).merge_three_way(&mut target, &source, &base);
+
+    assert!(target.data_modified);
+}
+
+#[test]
+fn three_way_source_only_group_move_marks_target_modified() {
+    let root_id = NodeId::new_uuid();
+    let left_id = NodeId::new_uuid();
+    let right_id = NodeId::new_uuid();
+    let child_id = NodeId::new_uuid();
+    let mut base = database_with_root(root_id);
+    base.add_group(Group::new(left_id), &root_id);
+    base.add_group(Group::new(right_id), &root_id);
+    base.add_group(Group::new(child_id), &left_id);
+    base.data_modified = false;
+    let mut target = base.clone();
+    let mut source = base.clone();
+    source
+        .groups
+        .get_mut(&left_id)
+        .unwrap()
+        .child_group_ids
+        .clear();
+    source
+        .groups
+        .get_mut(&right_id)
+        .unwrap()
+        .add_child_group(child_id);
+
+    DatabaseMerger::new(MergeStrategy::NewestWins).merge_three_way(&mut target, &source, &base);
+
+    assert_eq!(group_parent(&target, &child_id), Some(right_id));
+    assert!(target.data_modified);
+}
+
+#[test]
+fn three_way_source_only_entry_move_updates_parent() {
+    let root_id = NodeId::new_uuid();
+    let left_id = NodeId::new_uuid();
+    let right_id = NodeId::new_uuid();
+    let entry_id = NodeId::new_uuid();
+    let mut base = database_with_root(root_id);
+    base.add_group(Group::new(left_id), &root_id);
+    base.add_group(Group::new(right_id), &root_id);
+    base.add_entry(Entry::new(entry_id), &left_id);
+    base.data_modified = false;
+    let mut target = base.clone();
+    let mut source = base.clone();
+    source
+        .groups
+        .get_mut(&left_id)
+        .unwrap()
+        .child_entry_ids
+        .clear();
+    source
+        .groups
+        .get_mut(&right_id)
+        .unwrap()
+        .add_child_entry(entry_id);
+
+    DatabaseMerger::new(MergeStrategy::NewestWins).merge_three_way(&mut target, &source, &base);
+
+    assert_eq!(target.find_parent_group_of_entry(&entry_id), Some(right_id));
+    assert!(target.data_modified);
+}
+
+#[test]
+fn two_way_live_entry_clears_matching_tombstone() {
+    let root_id = NodeId::new_uuid();
+    let entry_id = NodeId::new_uuid();
+    let mut target = database_with_root(root_id);
+    target.deleted_objects.push(DeletedObject {
+        id: entry_id,
+        deletion_time: 100,
+    });
+    let mut source = database_with_root(root_id);
+    source.add_entry(entry_version(&Entry::new(entry_id), "live", 200), &root_id);
+
+    DatabaseMerger::new(MergeStrategy::NewestWins).merge(&mut target, &source);
+
+    assert!(target.entries.contains_key(&entry_id));
+    assert!(!target
+        .deleted_objects
+        .iter()
+        .any(|deleted| deleted.id == entry_id));
+}
+
+#[test]
+fn three_way_group_deletion_preserves_target_modified_descendant() {
+    let root_id = NodeId::new_uuid();
+    let group_id = NodeId::new_uuid();
+    let entry_id = NodeId::new_uuid();
+    let mut base = database_with_root(root_id);
+    base.add_group(Group::new(group_id), &root_id);
+    base.add_entry(Entry::new(entry_id), &group_id);
+    base.data_modified = false;
+    let mut target = base.clone();
+    target.entries.get_mut(&entry_id).unwrap().title = "target change".into();
+    let mut source = base.clone();
+    source.remove_group(&group_id, false).unwrap();
+
+    let result = DatabaseMerger::new(MergeStrategy::KeepExisting).merge_three_way(
+        &mut target,
+        &source,
+        &base,
+    );
+
+    assert!(target.groups.contains_key(&group_id));
+    assert!(target.entries.contains_key(&entry_id));
+    assert_eq!(result.conflicts.len(), 1);
 }

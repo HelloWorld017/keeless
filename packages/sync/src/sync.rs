@@ -268,17 +268,11 @@ impl FileHandle {
             if downloaded {
                 let source = open_database(remote.bytes.as_slice(), key)?;
                 let base = open_database(self.checkpoint.bytes.as_slice(), key)?;
-                let local_icons = target.custom_icons.clone();
                 merge_result = DatabaseMerger::new(self.options.merge_strategy).merge_three_way(
                     &mut target,
                     &source,
                     &base,
                 );
-                // The generic merger unions icons without consulting the base. Restore
-                // the local side before applying deletion-aware three-way semantics.
-                target.custom_icons = local_icons;
-                merge_database_metadata(&mut target, &source, &base);
-                merge_custom_icons_three_way(&mut target, &source, &base);
             }
 
             let merged_bytes = serialize_database(&target, key)?;
@@ -332,163 +326,6 @@ fn require_revision(remote: &RemoteFile, path: &str) -> Result<Revision, SyncErr
         .revision
         .clone()
         .ok_or_else(|| SyncError::AtomicUpdateUnsupported(path.to_string()))
-}
-
-/// Applies a remote metadata value only when the local value still equals the base.
-/// If both sides changed, local wins because these fields have no reliable timestamps.
-fn merge_database_metadata(target: &mut Database, source: &Database, base: &Database) {
-    merge_copy(&mut target.version, source.version, base.version);
-    merge_copy(
-        &mut target.file_version,
-        source.file_version,
-        base.file_version,
-    );
-    merge_copy(
-        &mut target.encryption_algorithm,
-        source.encryption_algorithm,
-        base.encryption_algorithm,
-    );
-    merge_copy(
-        &mut target.compression,
-        source.compression,
-        base.compression,
-    );
-    merge_clone(
-        &mut target.kdf_parameters,
-        &source.kdf_parameters,
-        &base.kdf_parameters,
-    );
-    merge_clone(
-        &mut target.public_custom_data,
-        &source.public_custom_data,
-        &base.public_custom_data,
-    );
-    merge_clone(
-        &mut target.header_comment,
-        &source.header_comment,
-        &base.header_comment,
-    );
-    merge_clone(&mut target.name, &source.name, &base.name);
-    merge_clone(
-        &mut target.description,
-        &source.description,
-        &base.description,
-    );
-    merge_clone(
-        &mut target.default_username,
-        &source.default_username,
-        &base.default_username,
-    );
-    merge_copy(
-        &mut target.recycle_bin_uuid,
-        source.recycle_bin_uuid,
-        base.recycle_bin_uuid,
-    );
-    merge_copy(
-        &mut target.entry_templates_uuid,
-        source.entry_templates_uuid,
-        base.entry_templates_uuid,
-    );
-    merge_clone(
-        &mut target.memory_protection,
-        &source.memory_protection,
-        &base.memory_protection,
-    );
-    merge_custom_data_three_way(target, source, base);
-    merge_clone(
-        &mut target.xml_extensions,
-        &source.xml_extensions,
-        &base.xml_extensions,
-    );
-    if target.contains_unsupported_xml == base.contains_unsupported_xml
-        && source.contains_unsupported_xml != base.contains_unsupported_xml
-    {
-        target.contains_unsupported_xml = source.contains_unsupported_xml;
-    }
-}
-
-fn merge_custom_data_three_way(target: &mut Database, source: &Database, base: &Database) {
-    if target.custom_data == base.custom_data {
-        if source.custom_data != base.custom_data {
-            target.custom_data = source.custom_data.clone();
-        }
-        return;
-    }
-    if source.custom_data == base.custom_data {
-        return;
-    }
-
-    let keys: std::collections::HashSet<_> = base
-        .custom_data
-        .iter()
-        .chain(source.custom_data.iter())
-        .chain(target.custom_data.iter())
-        .map(|(key, _)| key.clone())
-        .collect();
-    for key in keys {
-        let base_value = base
-            .custom_data
-            .iter()
-            .find(|(name, _)| *name == &key)
-            .map(|(_, item)| item);
-        let source_value = source
-            .custom_data
-            .iter()
-            .find(|(name, _)| *name == &key)
-            .map(|(_, item)| item);
-        let target_value = target
-            .custom_data
-            .iter()
-            .find(|(name, _)| *name == &key)
-            .map(|(_, item)| item);
-        if source_value == base_value || target_value != base_value {
-            continue;
-        }
-        match source_value {
-            Some(item) => target.custom_data.insert(key, item.clone()),
-            None => target.custom_data.remove(&key),
-        }
-    }
-}
-
-fn merge_custom_icons_three_way(target: &mut Database, source: &Database, base: &Database) {
-    let ids: std::collections::HashSet<_> = base
-        .custom_icons
-        .keys()
-        .chain(source.custom_icons.keys())
-        .copied()
-        .collect();
-
-    for id in ids {
-        let base_icon = base.custom_icons.get(&id);
-        let source_icon = source.custom_icons.get(&id);
-        let target_icon = target.custom_icons.get(&id);
-        let source_changed = source_icon != base_icon;
-        let target_changed = target_icon != base_icon;
-        if !source_changed || target_changed {
-            continue;
-        }
-        match source_icon {
-            Some(icon) => {
-                target.custom_icons.insert(id, icon.clone());
-            }
-            None => {
-                target.custom_icons.remove(&id);
-            }
-        }
-    }
-}
-
-fn merge_copy<T: Copy + PartialEq>(target: &mut T, source: T, base: T) {
-    if *target == base && source != base {
-        *target = source;
-    }
-}
-
-fn merge_clone<T: Clone + PartialEq>(target: &mut T, source: &T, base: &T) {
-    if target == base && source != base {
-        *target = source.clone();
-    }
 }
 
 async fn delay(policy: &RetryPolicy, attempt: usize) {
