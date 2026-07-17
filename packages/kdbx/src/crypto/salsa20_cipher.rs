@@ -7,6 +7,7 @@ use salsa20::Salsa20;
 
 use super::hash::HashEngine;
 use super::{CryptoError, CryptoResult};
+use zeroize::Zeroizing;
 
 const SALSA20_KEY_SIZE: usize = 32;
 const SALSA20_IV_SIZE: usize = 8; // Salsa20 uses 64-bit nonce
@@ -25,9 +26,9 @@ impl Salsa20Cipher {
     ///
     pub fn new(key: &[u8]) -> Self {
         // SHA-256 hash the key first (KeePass convention)
-        let key32 = HashEngine::sha256(key);
+        let key32 = Zeroizing::new(HashEngine::sha256(key));
 
-        let cipher = Salsa20::new_from_slices(&key32, &KEEPASS_SALSA_IV)
+        let cipher = Salsa20::new_from_slices(key32.as_slice(), &KEEPASS_SALSA_IV)
             .expect("Salsa20 key/iv sizes are correct");
 
         Self { cipher }

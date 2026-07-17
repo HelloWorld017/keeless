@@ -4,6 +4,7 @@
 //!           → hashed block stream → decompress → inner stream decrypt → XML → Database
 
 use std::io::Read;
+use zeroize::Zeroizing;
 
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
@@ -62,9 +63,11 @@ pub fn read_kdbx31<R: Read>(
 
     // 5. Decrypt
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
-    let decrypted = cipher
-        .decrypt(&final_key, &header.encryption_iv, &encrypted)
-        .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
+    let decrypted = Zeroizing::new(
+        cipher
+            .decrypt(final_key.as_slice(), &header.encryption_iv, &encrypted)
+            .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?,
+    );
 
     // 6. Verify stream start bytes
     if decrypted.len() < 32 {
@@ -72,7 +75,7 @@ pub fn read_kdbx31<R: Read>(
             "Decrypted data too short".into(),
         ));
     }
-    let expected = crate::crypto::HashEngine::sha256(&final_key);
+    let expected = crate::crypto::HashEngine::sha256(final_key.as_slice());
     if decrypted[..32] != expected {
         return Err(DatabaseError::InvalidKey);
     }
@@ -80,21 +83,23 @@ pub fn read_kdbx31<R: Read>(
     // 7. Read hashed blocks → compressed XML
     let block_data = &decrypted[32..];
     let mut block_reader = HashedBlockReader::new(std::io::Cursor::new(block_data));
-    let compressed = block_reader.read_all()?;
+    let compressed = block_reader.read_all_sensitive()?;
 
     // 8. Decompress
     let xml_data = match header.compression {
-        CompressionAlgorithm::Gzip => crate::crypto::compression::decompress(&compressed)?,
+        CompressionAlgorithm::Gzip => {
+            crate::crypto::compression::decompress_sensitive(compressed.as_slice())?
+        }
         CompressionAlgorithm::None => compressed,
     };
 
     // 9. Parse XML with inner stream protection
-    let xml_str = String::from_utf8(xml_data)
+    let xml_str = std::str::from_utf8(xml_data.as_slice())
         .map_err(|e| DatabaseError::InvalidFormat(format!("XML not UTF-8: {e}")))?;
 
     let mut inner_stream =
         create_inner_stream(header.inner_random_stream, &header.inner_random_stream_key)?;
-    let mut database = KdbxXmlReader::read(&xml_str, inner_stream.as_mut())?;
+    let mut database = KdbxXmlReader::read(xml_str, inner_stream.as_mut())?;
 
     // 10. Populate database metadata from header
     database.version = DatabaseVersion::KDBX31;
@@ -109,8 +114,8 @@ pub fn read_kdbx31<R: Read>(
 fn derive_kdbx31_key(
     composite_key: &CompositeKey,
     header: &KdbxHeader31,
-) -> DatabaseResult<Vec<u8>> {
-    let raw_key = composite_key.build_raw_key();
+) -> DatabaseResult<Zeroizing<Vec<u8>>> {
+    let raw_key = Zeroizing::new(composite_key.build_raw_key());
     if raw_key.is_empty() {
         return Err(DatabaseError::InvalidKey);
     }
@@ -122,13 +127,17 @@ fn derive_kdbx31_key(
 
     // Transform key with AES-KDF
     let kdf = AesKdf;
-    let transformed = kdf.transform(&raw_key, &params)?;
+    let transformed = Zeroizing::new(kdf.transform(raw_key.as_slice(), &params)?);
 
     // Final key = SHA-256(masterSeed || transformedKey)
-    let mut combined = Vec::with_capacity(header.master_seed.len() + transformed.len());
+    let mut combined = Zeroizing::new(Vec::with_capacity(
+        header.master_seed.len() + transformed.len(),
+    ));
     combined.extend_from_slice(&header.master_seed);
-    combined.extend_from_slice(&transformed);
-    Ok(crate::crypto::HashEngine::sha256(&combined).to_vec())
+    combined.extend_from_slice(transformed.as_slice());
+    Ok(Zeroizing::new(
+        crate::crypto::HashEngine::sha256(combined.as_slice()).to_vec(),
+    ))
 }
 
 #[cfg(test)]

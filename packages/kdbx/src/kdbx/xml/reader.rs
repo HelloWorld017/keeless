@@ -25,7 +25,7 @@ impl KdbxXmlReader {
     ) -> DatabaseResult<Database> {
         validate_nesting(xml)?;
         let mut reader = Reader::from_str(xml);
-        let mut buf = Vec::new();
+        let mut buf = Zeroizing::new(Vec::new());
         let mut db = Database::default();
         let mut saw_keepass_file = false;
         let mut saw_meta = false;

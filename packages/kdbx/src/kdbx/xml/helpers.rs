@@ -6,6 +6,7 @@ pub(crate) use quick_xml::events::{
 };
 pub(crate) use quick_xml::Reader;
 pub(crate) use uuid::Uuid;
+pub(crate) use zeroize::{Zeroize, Zeroizing};
 
 pub(crate) use crate::crypto::inner_stream::InnerStreamCipher;
 pub(crate) use crate::model::core::date::DateInstant;
@@ -84,7 +85,7 @@ pub(crate) fn preserve_element<R: std::io::BufRead>(
     let name = start.name().as_ref().to_vec();
     let name_len = name.len();
     let mut content = Vec::new();
-    let mut local_buf = Vec::new();
+    let mut local_buf = Zeroizing::new(Vec::new());
 
     loop {
         local_buf.clear();

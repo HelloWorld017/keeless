@@ -5,6 +5,7 @@
 use crate::crypto::{ChaCha20Cipher, Salsa20Cipher};
 use crate::kdbx::file::header::CrsAlgorithm;
 use crate::model::exception::{DatabaseError, DatabaseResult};
+use zeroize::{Zeroize, Zeroizing};
 
 /// Inner stream cipher trait.
 /// Processes protected field values sequentially across all fields in document order.
@@ -29,7 +30,7 @@ impl Salsa20InnerStream {
 
 impl InnerStreamCipher for Salsa20InnerStream {
     fn process(&mut self, data: &mut [u8]) {
-        let processed = self.cipher.process(data);
+        let processed = Zeroizing::new(self.cipher.process(data));
         data.copy_from_slice(&processed);
     }
 }
@@ -42,7 +43,7 @@ pub struct ChaCha20InnerStream {
 
 impl ChaCha20InnerStream {
     pub fn new(key: &[u8]) -> DatabaseResult<Self> {
-        let material = crate::crypto::HashEngine::sha512(key);
+        let material = Zeroizing::new(crate::crypto::HashEngine::sha512(key));
         let cipher = ChaCha20Cipher::new(&material[..32], &material[32..44])
             .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
         Ok(Self { cipher })
@@ -51,7 +52,7 @@ impl ChaCha20InnerStream {
 
 impl InnerStreamCipher for ChaCha20InnerStream {
     fn process(&mut self, data: &mut [u8]) {
-        let processed = self.cipher.process(data);
+        let processed = Zeroizing::new(self.cipher.process(data));
         data.copy_from_slice(&processed);
     }
 }
@@ -92,6 +93,14 @@ impl InnerStreamCipher for ArcFourInnerStream {
         for byte in data.iter_mut() {
             *byte ^= self.next_byte();
         }
+    }
+}
+
+impl Drop for ArcFourInnerStream {
+    fn drop(&mut self) {
+        self.state.zeroize();
+        self.i.zeroize();
+        self.j.zeroize();
     }
 }
 

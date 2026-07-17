@@ -9,7 +9,7 @@ pub(super) fn read_entry_binary<R: std::io::BufRead>(
     buf: &mut Vec<u8>,
 ) -> DatabaseResult<()> {
     let mut key = None;
-    let mut value = None;
+    let mut value: Option<Zeroizing<Vec<u8>>> = None;
     let mut is_protected = false;
     let mut extensions = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -37,10 +37,10 @@ pub(super) fn read_entry_binary<R: std::io::BufRead>(
                         let text = read_text_content(reader, buf)?;
                         if let Some(index) = reference {
                             let binary = binary_at(binaries, index)?;
-                            value = Some(binary.0.clone());
+                            value = Some(Zeroizing::new(binary.0.clone()));
                             is_protected = binary.1;
                         } else {
-                            value = Some(
+                            value = Some(Zeroizing::new(
                                 base64::engine::general_purpose::STANDARD
                                     .decode(text.trim())
                                     .map_err(|err| {
@@ -48,7 +48,7 @@ pub(super) fn read_entry_binary<R: std::io::BufRead>(
                                             "invalid binary base64: {err}"
                                         ))
                                     })?,
-                            );
+                            ));
                         }
                     }
                     _ => {
@@ -73,10 +73,10 @@ pub(super) fn read_entry_binary<R: std::io::BufRead>(
                     .transpose()?;
                 if let Some(reference) = reference {
                     let binary = binary_at(binaries, parse_binary_reference(&reference.value)?)?;
-                    value = Some(binary.0.clone());
+                    value = Some(Zeroizing::new(binary.0.clone()));
                     is_protected = binary.1;
                 } else {
-                    value = Some(Vec::new());
+                    value = Some(Zeroizing::new(Vec::new()));
                 }
             }
             Event::Empty(e) if tag(&e) == "Key" => {
@@ -116,7 +116,7 @@ pub(super) fn read_entry_binary<R: std::io::BufRead>(
         .insert(key.clone(), extensions);
     entry.binaries.push(EntryBinary {
         name: key,
-        data: value,
+        data: value.to_vec(),
         is_protected,
     });
     Ok(())

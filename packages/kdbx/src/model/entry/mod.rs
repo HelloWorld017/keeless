@@ -15,6 +15,7 @@ use crate::model::meta::icon::IconImage;
 use crate::model::xml::EntryXmlExtensions;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 pub use auto_type::{AutoType, AutoTypeAssociation};
 pub use field_references::{FieldReference, RefTarget};
@@ -96,6 +97,25 @@ pub struct EntryBinary {
     pub name: String,
     pub data: Vec<u8>,
     pub is_protected: bool,
+}
+
+impl Drop for Entry {
+    fn drop(&mut self) {
+        if self.title_is_protected {
+            self.title.zeroize();
+        }
+        if self.url_is_protected {
+            self.url.zeroize();
+        }
+    }
+}
+
+impl Drop for EntryBinary {
+    fn drop(&mut self) {
+        if self.is_protected {
+            self.data.zeroize();
+        }
+    }
 }
 
 impl Entry {

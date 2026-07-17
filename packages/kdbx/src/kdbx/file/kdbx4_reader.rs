@@ -6,7 +6,7 @@
 use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
@@ -73,43 +73,49 @@ pub fn read_kdbx4<R: Read>(
     // 5. Verify header HMAC (next 32 bytes)
     let mut stored_hmac = [0u8; 32];
     reader.read_exact(&mut stored_hmac)?;
-    let expected_hmac = compute_header_hmac(&hmac_key, &header_buf)?;
+    let expected_hmac = compute_header_hmac(hmac_key.as_slice(), &header_buf)?;
     if stored_hmac != expected_hmac {
         return Err(DatabaseError::InvalidCredentials);
     }
 
     // 6. Read HMAC block stream → encrypted data
-    let encrypted = read_hmac_block_stream(reader, &hmac_key)?;
+    let encrypted = read_hmac_block_stream(reader, hmac_key.as_slice())?;
 
     // 7. Decrypt and decompress the complete payload.
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
-    let decrypted = cipher
-        .decrypt(&master_key, &header.encryption_iv, &encrypted)
-        .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
+    let decrypted = Zeroizing::new(
+        cipher
+            .decrypt(master_key.as_slice(), &header.encryption_iv, &encrypted)
+            .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?,
+    );
     let payload = match header.compression {
-        CompressionAlgorithm::Gzip => crate::crypto::compression::decompress(&decrypted)?,
+        CompressionAlgorithm::Gzip => {
+            crate::crypto::compression::decompress_sensitive(decrypted.as_slice())?
+        }
         CompressionAlgorithm::None => decrypted,
     };
 
     // 8. Parse inner header.
-    let mut cursor = std::io::Cursor::new(&payload);
-    let inner = read_kdbx4_inner_header(&mut cursor)?;
+    let mut cursor = std::io::Cursor::new(payload.as_slice());
+    let mut inner = read_kdbx4_inner_header(&mut cursor)?;
 
     // 9. Parse XML with inner stream cipher
+    let inner_stream_key = Zeroizing::new(std::mem::take(&mut inner.inner_random_stream_key));
     let mut inner_stream =
-        create_inner_stream(inner.inner_random_stream, &inner.inner_random_stream_key)?;
-    let mut binaries = Vec::with_capacity(inner.binaries.len());
-    for mut binary in inner.binaries {
+        create_inner_stream(inner.inner_random_stream, inner_stream_key.as_slice())?;
+    let inner_binaries = std::mem::take(&mut inner.binaries);
+    let mut binaries = SensitiveBinaries(Vec::with_capacity(inner_binaries.len()));
+    for mut binary in inner_binaries {
         let protected = binary.is_protected();
         if protected {
             inner_stream.process(&mut binary.data);
         }
-        binaries.push((binary.data, protected));
+        binaries.0.push((binary.data, protected));
     }
     let xml_bytes = &payload[cursor.position() as usize..];
     let xml_str =
         std::str::from_utf8(xml_bytes).map_err(|e| DatabaseError::InvalidFormat(e.to_string()))?;
-    let mut db = KdbxXmlReader::read_with_binaries(xml_str, inner_stream.as_mut(), &binaries)?;
+    let mut db = KdbxXmlReader::read_with_binaries(xml_str, inner_stream.as_mut(), &binaries.0)?;
     db.version = DatabaseVersion::KDBX4;
     db.file_version = header.version;
     db.encryption_algorithm = header.encryption_algorithm;
@@ -122,11 +128,10 @@ pub fn read_kdbx4<R: Read>(
 }
 
 /// Derive the encryption key and HMAC base key defined by KDBX4.
-fn derive_keys(
-    composite_key: &CompositeKey,
-    header: &KdbxHeader4,
-) -> DatabaseResult<([u8; 32], [u8; 64])> {
-    let mut raw_key = composite_key.build_raw_key();
+type DerivedKeys = (Zeroizing<[u8; 32]>, Zeroizing<[u8; 64]>);
+
+fn derive_keys(composite_key: &CompositeKey, header: &KdbxHeader4) -> DatabaseResult<DerivedKeys> {
+    let raw_key = Zeroizing::new(composite_key.build_raw_key());
     if raw_key.is_empty() {
         return Err(DatabaseError::InvalidKey);
     }
@@ -144,12 +149,16 @@ fn derive_keys(
         .as_ref()
         .ok_or_else(|| DatabaseError::InvalidFormat("No KDF parameters".into()))?;
 
-    let mut transformed = kdf.transform(&raw_key, params)?;
-    let master_key = crate::crypto::HashEngine::sha256_multi(&[&header.master_seed, &transformed]);
-    let hmac_key =
-        crate::crypto::HashEngine::sha512_multi(&[&header.master_seed, &transformed, &[0x01]]);
-    raw_key.zeroize();
-    transformed.zeroize();
+    let transformed = Zeroizing::new(kdf.transform(raw_key.as_slice(), params)?);
+    let master_key = Zeroizing::new(crate::crypto::HashEngine::sha256_multi(&[
+        &header.master_seed,
+        transformed.as_slice(),
+    ]));
+    let hmac_key = Zeroizing::new(crate::crypto::HashEngine::sha512_multi(&[
+        &header.master_seed,
+        transformed.as_slice(),
+        &[0x01],
+    ]));
     Ok((master_key, hmac_key))
 }
 
@@ -346,7 +355,7 @@ fn read_kdbx4_inner_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbxInnerH
             }
             break;
         }
-        let mut data = vec![0u8; field_size];
+        let mut data = Zeroizing::new(vec![0u8; field_size]);
         reader.read_exact(&mut data)?;
         match field_id {
             inner_header_field_4::INNER_RANDOM_STREAM_ID => {
@@ -355,7 +364,7 @@ fn read_kdbx4_inner_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbxInnerH
                         "Invalid or duplicate INNER_RANDOM_STREAM_ID".into(),
                     ));
                 }
-                let id = u32::from_le_bytes(data.try_into().map_err(|_| {
+                let id = u32::from_le_bytes(data.as_slice().try_into().map_err(|_| {
                     DatabaseError::InvalidFormat("Invalid INNER_RANDOM_STREAM_ID".into())
                 })?);
                 stream_id = Some(CrsAlgorithm::from_id(id).ok_or_else(|| {
@@ -368,7 +377,7 @@ fn read_kdbx4_inner_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbxInnerH
                         "Invalid or duplicate INNER_RANDOM_STREAM_KEY".into(),
                     ));
                 }
-                stream_key = Some(data);
+                stream_key = Some(data.to_vec());
             }
             inner_header_field_4::BINARY => {
                 if data.is_empty() {
@@ -395,6 +404,16 @@ fn read_kdbx4_inner_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbxInnerH
         .ok_or_else(|| DatabaseError::InvalidFormat("Missing INNER_RANDOM_STREAM_KEY".into()))?;
 
     Ok(inner)
+}
+
+struct SensitiveBinaries(Vec<(Vec<u8>, bool)>);
+
+impl Drop for SensitiveBinaries {
+    fn drop(&mut self) {
+        for (data, _) in &mut self.0 {
+            data.zeroize();
+        }
+    }
 }
 
 /// TeeReader copies all read bytes to a sink buffer.

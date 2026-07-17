@@ -4,6 +4,7 @@
 use crate::crypto::HashEngine;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
+use zeroize::Zeroizing;
 
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
@@ -31,7 +32,18 @@ impl<R: Read> HashedBlockReader<R> {
     /// Read all verified blocks into a buffer.
     pub fn read_all(&mut self) -> DatabaseResult<Vec<u8>> {
         let mut result = Vec::new();
+        self.read_all_into(&mut result)?;
+        Ok(result)
+    }
 
+    /// Read sensitive verified blocks into a buffer that is wiped on drop.
+    pub fn read_all_sensitive(&mut self) -> DatabaseResult<Zeroizing<Vec<u8>>> {
+        let mut result = Zeroizing::new(Vec::new());
+        self.read_all_into(&mut result)?;
+        Ok(result)
+    }
+
+    fn read_all_into(&mut self, result: &mut Vec<u8>) -> DatabaseResult<()> {
         while let Ok(block_index) = self.inner.read_u32::<LittleEndian>() {
             let stored_hash = {
                 let mut hash = [0u8; 32];
@@ -44,7 +56,7 @@ impl<R: Read> HashedBlockReader<R> {
                 break;
             }
 
-            let mut data = vec![0u8; data_size];
+            let mut data = Zeroizing::new(vec![0u8; data_size]);
             self.inner.read_exact(&mut data)?;
 
             // Verify hash
@@ -58,7 +70,7 @@ impl<R: Read> HashedBlockReader<R> {
             result.extend_from_slice(&data);
         }
 
-        Ok(result)
+        Ok(())
     }
 }
 

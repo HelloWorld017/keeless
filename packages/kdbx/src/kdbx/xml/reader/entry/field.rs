@@ -8,7 +8,7 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
     buf: &mut Vec<u8>,
 ) -> DatabaseResult<()> {
     let mut key = None;
-    let mut value = None;
+    let mut value: Option<Zeroizing<String>> = None;
     let mut protected = false;
     let mut extensions = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -37,21 +37,26 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
                                 protected = bool_from_xml(value, "Protected attribute")?;
                             }
                         }
-                        let mut parsed_value = read_text_content(reader, buf)?;
+                        let mut parsed_value = Zeroizing::new(read_text_content(reader, buf)?);
                         if protected && !parsed_value.is_empty() {
-                            let mut bytes = base64::engine::general_purpose::STANDARD
-                                .decode(parsed_value.trim())
-                                .map_err(|err| {
+                            let mut bytes = Zeroizing::new(
+                                base64::engine::general_purpose::STANDARD
+                                    .decode(parsed_value.trim())
+                                    .map_err(|err| {
+                                        DatabaseError::InvalidFormat(format!(
+                                            "invalid protected value base64: {err}"
+                                        ))
+                                    })?,
+                            );
+                            inner_stream.process(&mut bytes);
+                            let decrypted =
+                                std::str::from_utf8(bytes.as_slice()).map_err(|err| {
                                     DatabaseError::InvalidFormat(format!(
-                                        "invalid protected value base64: {err}"
+                                        "protected value is not UTF-8: {err}"
                                     ))
                                 })?;
-                            inner_stream.process(&mut bytes);
-                            parsed_value = String::from_utf8(bytes).map_err(|err| {
-                                DatabaseError::InvalidFormat(format!(
-                                    "protected value is not UTF-8: {err}"
-                                ))
-                            })?;
+                            parsed_value.zeroize();
+                            parsed_value.push_str(decrypted);
                         }
                         value = Some(parsed_value);
                     }
@@ -79,7 +84,7 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
                         protected = bool_from_xml(value, "Protected attribute")?;
                     }
                 }
-                value = Some(String::new());
+                value = Some(Zeroizing::new(String::new()));
             }
             Event::Empty(e) if tag(&e) == "Key" => {
                 if !seen.insert("Key".to_string()) {
@@ -115,7 +120,7 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
 
     match key.as_str() {
         "Title" => {
-            entry.title = value;
+            entry.title = value.to_string();
             entry.title_is_protected = protected;
         }
         "UserName" => {
@@ -125,7 +130,7 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
             entry.password = protected_string(&value, protected);
         }
         "URL" => {
-            entry.url = value;
+            entry.url = value.to_string();
             entry.url_is_protected = protected;
         }
         "Notes" => {

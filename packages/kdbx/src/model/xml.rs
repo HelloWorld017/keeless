@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 use crate::model::core::node::NodeId;
 
@@ -26,6 +27,14 @@ pub enum PreservedXmlContent {
     Comment(String),
     ProcessingInstruction(String),
     Protected(Vec<u8>),
+}
+
+impl Drop for PreservedXmlContent {
+    fn drop(&mut self) {
+        if let Self::Protected(value) = self {
+            value.zeroize();
+        }
+    }
 }
 
 /// Database-level XML extension points.

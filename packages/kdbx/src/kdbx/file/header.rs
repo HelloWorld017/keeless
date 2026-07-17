@@ -112,6 +112,17 @@ pub struct KdbxInnerHeader4 {
     pub binaries: Vec<KdbxBinary>,
 }
 
+impl Drop for KdbxInnerHeader4 {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+
+        self.inner_random_stream_key.zeroize();
+        for binary in &mut self.binaries {
+            binary.data.zeroize();
+        }
+    }
+}
+
 /// Binary entry in KDBX 4.0 inner header.
 #[derive(Debug, Clone)]
 pub struct KdbxBinary {

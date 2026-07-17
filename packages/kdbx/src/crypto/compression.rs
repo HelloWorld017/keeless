@@ -7,6 +7,7 @@ use flate2::read::{GzDecoder, GzEncoder};
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
+use zeroize::Zeroizing;
 
 /// Compression algorithm used in KDBX files
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -48,13 +49,37 @@ pub fn decompress(data: &[u8]) -> DatabaseResult<Vec<u8>> {
     decompress_with_limit(data, MAX_DECOMPRESSED_PAYLOAD_SIZE)
 }
 
+/// Decompress sensitive data into a buffer that is wiped on every exit path.
+pub(crate) fn decompress_sensitive(data: &[u8]) -> DatabaseResult<Zeroizing<Vec<u8>>> {
+    decompress_sensitive_with_limit(data, MAX_DECOMPRESSED_PAYLOAD_SIZE)
+}
+
 fn decompress_with_limit(data: &[u8], limit: usize) -> DatabaseResult<Vec<u8>> {
     let mut decoder = GzDecoder::new(data);
     let mut decompressed = Vec::new();
-    let mut chunk = [0u8; 16 * 1024];
+    read_decompressed(&mut decoder, &mut decompressed, limit)?;
+    Ok(decompressed)
+}
+
+fn decompress_sensitive_with_limit(
+    data: &[u8],
+    limit: usize,
+) -> DatabaseResult<Zeroizing<Vec<u8>>> {
+    let mut decoder = GzDecoder::new(data);
+    let mut decompressed = Zeroizing::new(Vec::new());
+    read_decompressed(&mut decoder, &mut decompressed, limit)?;
+    Ok(decompressed)
+}
+
+fn read_decompressed(
+    decoder: &mut impl Read,
+    decompressed: &mut Vec<u8>,
+    limit: usize,
+) -> DatabaseResult<()> {
+    let mut chunk = Zeroizing::new([0u8; 16 * 1024]);
     loop {
         let read = decoder
-            .read(&mut chunk)
+            .read(chunk.as_mut_slice())
             .map_err(|e| DatabaseError::InvalidFormat(format!("Decompression error: {e}")))?;
         if read == 0 {
             break;
@@ -70,7 +95,7 @@ fn decompress_with_limit(data: &[u8], limit: usize) -> DatabaseResult<Vec<u8>> {
         }
         decompressed.extend_from_slice(&chunk[..read]);
     }
-    Ok(decompressed)
+    Ok(())
 }
 
 #[cfg(test)]

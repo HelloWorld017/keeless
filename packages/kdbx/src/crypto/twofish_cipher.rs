@@ -3,6 +3,7 @@
 
 use twofish::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use twofish::Twofish;
+use zeroize::Zeroize;
 
 use super::{CipherMode, CryptoError, CryptoResult};
 
@@ -101,6 +102,12 @@ impl TwofishCipher {
                 Ok(decrypted)
             }
         }
+    }
+}
+
+impl Drop for TwofishCipher {
+    fn drop(&mut self) {
+        self.key.zeroize();
     }
 }
 
