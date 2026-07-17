@@ -6,6 +6,7 @@ use std::sync::Arc;
 use chacha20poly1305::aead::{Aead, Payload};
 use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce};
 use hkdf::Hkdf;
+use secure_types::{SecureArray, SecureBytes};
 use sha2::Sha256;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -69,18 +70,16 @@ impl MemoryProtectionContext {
     pub(crate) fn create(
         composite_key: &CompositeKey,
         mut kdf_parameters: KdfParameters,
-    ) -> DatabaseResult<(Arc<Self>, Zeroizing<[u8; 32]>)> {
+    ) -> DatabaseResult<(Arc<Self>, SecureArray<32>)> {
         let kdf = create_kdf(&kdf_parameters.kdf_uuid)
             .ok_or_else(|| DatabaseError::InvalidFormat("Unknown memory-protection KDF".into()))?;
         if kdf_parameters.get_byte_array("S").is_none() {
             kdf.randomize(&mut kdf_parameters)?;
         }
 
-        let raw_key = Zeroizing::new(composite_key.build_raw_key());
-        if raw_key.is_empty() {
-            return Err(DatabaseError::InvalidKey);
-        }
-        let transformed = Zeroizing::new(kdf.transform(raw_key.as_slice(), &kdf_parameters)?);
+        let raw_key = composite_key.build_raw_key()?;
+        let transformed =
+            SecureBytes::from_vec(raw_key.unlock(|value| kdf.transform(value, &kdf_parameters))?)?;
 
         let mut id = [0u8; 16];
         let mut salt = [0u8; 32];
@@ -88,19 +87,20 @@ impl MemoryProtectionContext {
         fill_random(&mut id)?;
         fill_random(&mut salt)?;
         fill_random(&mut verifier_nonce)?;
-        let root = derive_root(transformed.as_slice(), &salt)?;
-        let cipher = XChaCha20Poly1305::new((&*root).into());
-        let verifier = cipher
-            .encrypt(
-                XNonce::from_slice(&verifier_nonce),
-                Payload {
-                    msg: VERIFIER_PLAINTEXT,
-                    aad: VERIFIER_AAD,
-                },
-            )
-            .map_err(|_| {
-                DatabaseError::EncryptionError("memory key verification setup failed".into())
-            })?;
+        let root = transformed.unlock_slice(|value| derive_root(value, &salt))?;
+        let verifier = root.unlock(|value| {
+            XChaCha20Poly1305::new(value.into())
+                .encrypt(
+                    XNonce::from_slice(&verifier_nonce),
+                    Payload {
+                        msg: VERIFIER_PLAINTEXT,
+                        aad: VERIFIER_AAD,
+                    },
+                )
+                .map_err(|_| {
+                    DatabaseError::EncryptionError("memory key verification setup failed".into())
+                })
+        })?;
 
         Ok((
             Arc::new(Self {
@@ -114,25 +114,25 @@ impl MemoryProtectionContext {
         ))
     }
 
-    fn unlock(&self, composite_key: &CompositeKey) -> DatabaseResult<Zeroizing<[u8; 32]>> {
-        let raw_key = Zeroizing::new(composite_key.build_raw_key());
-        if raw_key.is_empty() {
-            return Err(DatabaseError::InvalidKey);
-        }
+    fn unlock(&self, composite_key: &CompositeKey) -> DatabaseResult<SecureArray<32>> {
+        let raw_key = composite_key.build_raw_key()?;
         let kdf = create_kdf(&self.kdf_parameters.kdf_uuid)
             .ok_or_else(|| DatabaseError::InvalidFormat("Unknown memory-protection KDF".into()))?;
-        let transformed = Zeroizing::new(kdf.transform(raw_key.as_slice(), &self.kdf_parameters)?);
-        let root = derive_root(transformed.as_slice(), &self.salt)?;
-        let cipher = XChaCha20Poly1305::new((&*root).into());
-        cipher
-            .decrypt(
-                XNonce::from_slice(&self.verifier_nonce),
-                Payload {
-                    msg: &self.verifier,
-                    aad: VERIFIER_AAD,
-                },
-            )
-            .map_err(|_| DatabaseError::InvalidCredentials)?;
+        let transformed = SecureBytes::from_vec(
+            raw_key.unlock(|value| kdf.transform(value, &self.kdf_parameters))?,
+        )?;
+        let root = transformed.unlock_slice(|value| derive_root(value, &self.salt))?;
+        root.unlock(|value| {
+            XChaCha20Poly1305::new(value.into())
+                .decrypt(
+                    XNonce::from_slice(&self.verifier_nonce),
+                    Payload {
+                        msg: &self.verifier,
+                        aad: VERIFIER_AAD,
+                    },
+                )
+                .map_err(|_| DatabaseError::InvalidCredentials)
+        })?;
         Ok(root)
     }
 }
@@ -169,16 +169,17 @@ impl EncryptedValue {
         let mut nonce = [0u8; 24];
         fill_random(&mut nonce)?;
         let aad = value_aad(entry_id, field);
-        let cipher = XChaCha20Poly1305::new((&*entry_key).into());
-        let ciphertext = cipher
-            .encrypt(
-                XNonce::from_slice(&nonce),
-                Payload {
-                    msg: plaintext,
-                    aad: &aad,
-                },
-            )
-            .map_err(|_| DatabaseError::EncryptionError("memory protection failed".into()))?;
+        let ciphertext = entry_key.unlock(|value| {
+            XChaCha20Poly1305::new(value.into())
+                .encrypt(
+                    XNonce::from_slice(&nonce),
+                    Payload {
+                        msg: plaintext,
+                        aad: &aad,
+                    },
+                )
+                .map_err(|_| DatabaseError::EncryptionError("memory protection failed".into()))
+        })?;
         Ok(Self {
             context,
             nonce,
@@ -194,20 +195,21 @@ impl EncryptedValue {
     ) -> DatabaseResult<Zeroizing<Vec<u8>>> {
         let entry_key = derive_entry_key(root, entry_id)?;
         let aad = value_aad(entry_id, field);
-        let cipher = XChaCha20Poly1305::new((&*entry_key).into());
-        let plaintext = cipher
-            .decrypt(
-                XNonce::from_slice(&self.nonce),
-                Payload {
-                    msg: &self.ciphertext,
-                    aad: &aad,
-                },
-            )
-            .map_err(|_| {
-                DatabaseError::DecryptionError(
-                    "protected memory value authentication failed".into(),
+        let plaintext = entry_key.unlock(|value| {
+            XChaCha20Poly1305::new(value.into())
+                .decrypt(
+                    XNonce::from_slice(&self.nonce),
+                    Payload {
+                        msg: &self.ciphertext,
+                        aad: &aad,
+                    },
                 )
-            })?;
+                .map_err(|_| {
+                    DatabaseError::DecryptionError(
+                        "protected memory value authentication failed".into(),
+                    )
+                })
+        })?;
         Ok(Zeroizing::new(plaintext))
     }
 
@@ -218,7 +220,7 @@ impl EncryptedValue {
 
 pub(crate) struct MemoryUnlockSession<'a> {
     composite_key: &'a CompositeKey,
-    roots: HashMap<[u8; 16], Zeroizing<[u8; 32]>>,
+    roots: HashMap<[u8; 16], SecureArray<32>>,
 }
 
 impl<'a> MemoryUnlockSession<'a> {
@@ -229,34 +231,39 @@ impl<'a> MemoryUnlockSession<'a> {
         }
     }
 
-    pub(crate) fn root(
+    pub(crate) fn with_root<T>(
         &mut self,
         context: &Arc<MemoryProtectionContext>,
-    ) -> DatabaseResult<&[u8; 32]> {
+        use_root: impl FnOnce(&[u8; 32]) -> DatabaseResult<T>,
+    ) -> DatabaseResult<T> {
         if !self.roots.contains_key(&context.id) {
             self.roots
                 .insert(context.id, context.unlock(self.composite_key)?);
         }
-        Ok(&*self.roots[&context.id])
+        self.roots[&context.id].unlock(use_root)
     }
 }
 
-fn derive_root(transformed: &[u8], salt: &[u8; 32]) -> DatabaseResult<Zeroizing<[u8; 32]>> {
+fn derive_root(transformed: &[u8], salt: &[u8; 32]) -> DatabaseResult<SecureArray<32>> {
     let hkdf = Hkdf::<Sha256>::new(Some(salt), transformed);
-    let mut root = Zeroizing::new([0u8; 32]);
-    hkdf.expand(ROOT_INFO, &mut *root)
-        .map_err(|_| DatabaseError::EncryptionError("memory root derivation failed".into()))?;
+    let mut root = SecureArray::zeroed()?;
+    root.unlock_mut(|value| {
+        hkdf.expand(ROOT_INFO, value)
+            .map_err(|_| DatabaseError::EncryptionError("memory root derivation failed".into()))
+    })?;
     Ok(root)
 }
 
-fn derive_entry_key(root: &[u8; 32], entry_id: NodeId) -> DatabaseResult<Zeroizing<[u8; 32]>> {
+fn derive_entry_key(root: &[u8; 32], entry_id: NodeId) -> DatabaseResult<SecureArray<32>> {
     let hkdf = Hkdf::<Sha256>::new(None, root);
     let mut info = Vec::with_capacity(ENTRY_INFO.len() + 17);
     info.extend_from_slice(ENTRY_INFO);
     encode_node_id(entry_id, &mut info);
-    let mut key = Zeroizing::new([0u8; 32]);
-    hkdf.expand(&info, &mut *key)
-        .map_err(|_| DatabaseError::EncryptionError("entry key derivation failed".into()))?;
+    let mut key = SecureArray::zeroed()?;
+    key.unlock_mut(|value| {
+        hkdf.expand(&info, value)
+            .map_err(|_| DatabaseError::EncryptionError("entry key derivation failed".into()))
+    })?;
     Ok(key)
 }
 
@@ -301,18 +308,21 @@ mod tests {
 
     #[test]
     fn protected_value_requires_matching_credentials_and_context() {
-        let key = CompositeKey::new().with_password(b"correct horse");
+        let key = CompositeKey::new().with_password(b"correct horse").unwrap();
         let (context, root) = MemoryProtectionContext::create(&key, parameters()).unwrap();
         let entry_id = NodeId::new_uuid();
         let plaintext = b"a secret that must not remain in the model";
-        let encrypted = EncryptedValue::encrypt(
-            context.clone(),
-            &root,
-            entry_id,
-            &MemoryField::Password,
-            plaintext,
-        )
-        .unwrap();
+        let encrypted = root
+            .unlock(|root| {
+                EncryptedValue::encrypt(
+                    context.clone(),
+                    root,
+                    entry_id,
+                    &MemoryField::Password,
+                    plaintext,
+                )
+            })
+            .unwrap();
 
         assert!(!encrypted
             .ciphertext()
@@ -320,41 +330,56 @@ mod tests {
             .any(|window| window == plaintext));
 
         let mut unlock = MemoryUnlockSession::new(&key);
-        let unlocked_root = unlock.root(&context).unwrap();
-        assert_eq!(
-            encrypted
-                .decrypt(unlocked_root, entry_id, &MemoryField::Password)
-                .unwrap()
-                .as_slice(),
-            plaintext
-        );
-        assert!(encrypted
-            .decrypt(unlocked_root, NodeId::new_uuid(), &MemoryField::Password)
-            .is_err());
-        assert!(encrypted
-            .decrypt(unlocked_root, entry_id, &MemoryField::Notes)
-            .is_err());
+        unlock
+            .with_root(&context, |root| {
+                assert_eq!(
+                    encrypted
+                        .decrypt(root, entry_id, &MemoryField::Password)
+                        .unwrap()
+                        .as_slice(),
+                    plaintext
+                );
+                assert!(encrypted
+                    .decrypt(root, NodeId::new_uuid(), &MemoryField::Password)
+                    .is_err());
+                assert!(encrypted
+                    .decrypt(root, entry_id, &MemoryField::Notes)
+                    .is_err());
+                Ok(())
+            })
+            .unwrap();
 
-        let wrong_key = CompositeKey::new().with_password(b"wrong horse");
-        assert!(MemoryUnlockSession::new(&wrong_key).root(&context).is_err());
+        let wrong_key = CompositeKey::new().with_password(b"wrong horse").unwrap();
+        assert!(MemoryUnlockSession::new(&wrong_key)
+            .with_root(&context, |_| Ok(()))
+            .is_err());
     }
 
     #[test]
     fn repeated_encryption_uses_fresh_nonces() {
-        let key = CompositeKey::new().with_password(b"password");
+        let key = CompositeKey::new().with_password(b"password").unwrap();
         let (context, root) = MemoryProtectionContext::create(&key, parameters()).unwrap();
         let entry_id = NodeId::new_uuid();
-        let first = EncryptedValue::encrypt(
-            context.clone(),
-            &root,
-            entry_id,
-            &MemoryField::Password,
-            b"same",
-        )
-        .unwrap();
-        let second =
-            EncryptedValue::encrypt(context, &root, entry_id, &MemoryField::Password, b"same")
-                .unwrap();
+        let (first, second) = root
+            .unlock(|root| {
+                Ok::<_, DatabaseError>((
+                    EncryptedValue::encrypt(
+                        context.clone(),
+                        root,
+                        entry_id,
+                        &MemoryField::Password,
+                        b"same",
+                    )?,
+                    EncryptedValue::encrypt(
+                        context,
+                        root,
+                        entry_id,
+                        &MemoryField::Password,
+                        b"same",
+                    )?,
+                ))
+            })
+            .unwrap();
         assert_ne!(first.ciphertext, second.ciphertext);
         assert_ne!(first.nonce, second.nonce);
     }

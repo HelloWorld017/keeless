@@ -15,6 +15,7 @@ pub mod kdbx;
 pub mod model;
 
 pub use model::exception::{DatabaseError, DatabaseResult};
+pub use secure_types::{SecureArray, SecureBytes, SecureString};
 
 // Top-level convenience re-exports
 
@@ -103,7 +104,7 @@ pub use kdbx::xml::{KdbxXmlReader, KdbxXmlWriter};
 /// use keeless_kdbx::{open_database, CompositeKey};
 ///
 /// let file = std::fs::File::open("database.kdbx")?;
-/// let key = CompositeKey::new().with_password(b"mypassword");
+/// let key = CompositeKey::new().with_password(b"mypassword").unwrap();
 /// let db = open_database(file, &key)?;
 /// println!("Opened {} entries", db.entry_count());
 /// ```
@@ -210,7 +211,9 @@ mod tests {
         db.entries.insert(entry_id, entry);
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new().with_password(b"streaming-test-pw");
+        let key = CompositeKey::new()
+            .with_password(b"streaming-test-pw")
+            .unwrap();
         let mut bytes = Vec::new();
         save_database(&mut bytes, &db, &key).expect("save must succeed");
 
@@ -237,7 +240,7 @@ mod tests {
     #[test]
     fn test_open_database_rejects_truncated_signature() {
         let short = [0u8; 5]; // less than 12 bytes
-        let key = CompositeKey::new().with_password(b"x");
+        let key = CompositeKey::new().with_password(b"x").unwrap();
         let err = open_database(&short[..], &key);
         assert!(err.is_err(), "truncated signature must error, not panic");
         match err.unwrap_err() {
@@ -254,7 +257,7 @@ mod tests {
         // Pad with a bit more so the format reader has something to fail on
         // *after* signature validation (shouldn't be reached).
         garbage.extend_from_slice(&[0u8; 64]);
-        let key = CompositeKey::new().with_password(b"x");
+        let key = CompositeKey::new().with_password(b"x").unwrap();
         let err = open_database(&garbage[..], &key);
         assert!(err.is_err());
     }
@@ -275,7 +278,7 @@ mod tests {
         database.entries.insert(entry_id, entry);
         database.root_group_id = Some(root_id);
 
-        let old_key = CompositeKey::new().with_password(b"old password");
+        let old_key = CompositeKey::new().with_password(b"old password").unwrap();
         let mut bytes = Vec::new();
         save_database(&mut bytes, &database, &old_key).unwrap();
         let mut loaded = open_database(bytes.as_slice(), &old_key).unwrap();
@@ -306,7 +309,9 @@ mod tests {
             "hidden title"
         );
 
-        let wrong_key = CompositeKey::new().with_password(b"wrong password");
+        let wrong_key = CompositeKey::new()
+            .with_password(b"wrong password")
+            .unwrap();
         assert!(matches!(
             loaded.with_entry_field(&wrong_key, &entry_id, &EntryFieldSelector::Password, |_| (),),
             Err(DatabaseError::InvalidCredentials)
@@ -321,7 +326,7 @@ mod tests {
             )
             .unwrap();
 
-        let new_key = CompositeKey::new().with_password(b"new password");
+        let new_key = CompositeKey::new().with_password(b"new password").unwrap();
         let mut rotated = Vec::new();
         save_database_with_credentials(&mut rotated, &loaded, &old_key, &new_key).unwrap();
         assert!(open_database(rotated.as_slice(), &old_key).is_err());

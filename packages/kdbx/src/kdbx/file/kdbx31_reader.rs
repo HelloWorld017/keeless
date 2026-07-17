@@ -3,6 +3,7 @@
 //! Pipeline: signature → outer header → key derivation → decrypt → verify streamStartBytes
 //!           → hashed block stream → decompress → inner stream decrypt → XML → Database
 
+use secure_types::{SecureArray, SecureBytes};
 use std::io::Read;
 use zeroize::Zeroizing;
 
@@ -63,11 +64,11 @@ pub fn read_kdbx31<R: Read>(
 
     // 5. Decrypt
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
-    let decrypted = Zeroizing::new(
+    let decrypted = Zeroizing::new(final_key.unlock(|key| {
         cipher
-            .decrypt(final_key.as_slice(), &header.encryption_iv, &encrypted)
-            .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?,
-    );
+            .decrypt(key, &header.encryption_iv, &encrypted)
+            .map_err(DatabaseError::from_decryption_error)
+    })?);
 
     // 6. Verify stream start bytes
     if decrypted.len() < 32 {
@@ -75,7 +76,7 @@ pub fn read_kdbx31<R: Read>(
             "Decrypted data too short".into(),
         ));
     }
-    let expected = crate::crypto::HashEngine::sha256(final_key.as_slice());
+    let expected = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key));
     if decrypted[..32] != expected {
         return Err(DatabaseError::InvalidKey);
     }
@@ -114,11 +115,8 @@ pub fn read_kdbx31<R: Read>(
 fn derive_kdbx31_key(
     composite_key: &CompositeKey,
     header: &KdbxHeader31,
-) -> DatabaseResult<Zeroizing<Vec<u8>>> {
-    let raw_key = Zeroizing::new(composite_key.build_raw_key());
-    if raw_key.is_empty() {
-        return Err(DatabaseError::InvalidKey);
-    }
+) -> DatabaseResult<SecureArray<32>> {
+    let raw_key = composite_key.build_raw_key()?;
 
     // Build KDF parameters from header
     let mut params = KdfParameters::new(AES_KDF_UUID);
@@ -127,17 +125,16 @@ fn derive_kdbx31_key(
 
     // Transform key with AES-KDF
     let kdf = AesKdf;
-    let transformed = Zeroizing::new(kdf.transform(raw_key.as_slice(), &params)?);
+    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))?)?;
 
     // Final key = SHA-256(masterSeed || transformedKey)
     let mut combined = Zeroizing::new(Vec::with_capacity(
         header.master_seed.len() + transformed.len(),
     ));
     combined.extend_from_slice(&header.master_seed);
-    combined.extend_from_slice(transformed.as_slice());
-    Ok(Zeroizing::new(
-        crate::crypto::HashEngine::sha256(combined.as_slice()).to_vec(),
-    ))
+    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    let mut final_key = crate::crypto::HashEngine::sha256(combined.as_slice());
+    Ok(SecureArray::from_array_mut(&mut final_key)?)
 }
 
 #[cfg(test)]
@@ -152,7 +149,7 @@ mod tests {
         data.extend_from_slice(&0xDEADBEEFu32.to_le_bytes());
         data.extend_from_slice(&0x00030001u32.to_le_bytes());
 
-        let key = CompositeKey::new().with_password(b"test");
+        let key = CompositeKey::new().with_password(b"test").unwrap();
         let mut cursor = std::io::Cursor::new(data);
         let result = read_kdbx31(&mut cursor, &key);
         assert!(result.is_err());

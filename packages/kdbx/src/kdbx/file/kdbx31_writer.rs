@@ -6,6 +6,8 @@
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
+use secure_types::{SecureArray, SecureBytes};
+use zeroize::Zeroizing;
 
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
@@ -41,7 +43,7 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     let master_seed = generate_random_bytes(32)?;
     let transform_seed = generate_random_bytes(32)?;
     let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
-    let inner_stream_key = generate_random_bytes(32)?;
+    let inner_stream_key = Zeroizing::new(generate_random_bytes(32)?);
     let transform_rounds: u64 = 1_000;
 
     let header = KdbxHeader31 {
@@ -52,7 +54,7 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
         transform_seed: transform_seed.clone(),
         transform_rounds,
         encryption_iv: encryption_iv.clone(),
-        inner_random_stream_key: inner_stream_key.clone(),
+        inner_random_stream_key: inner_stream_key.to_vec(),
         stream_start_bytes: Vec::new(),
         inner_random_stream: CrsAlgorithm::Salsa20,
     };
@@ -65,11 +67,11 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
 
     // 4. Compress
-    let xml_bytes = xml.into_bytes();
-    let compressed = match database.compression {
+    let xml_bytes = Zeroizing::new(xml.into_bytes());
+    let compressed = Zeroizing::new(match database.compression {
         CompressionAlgorithm::Gzip => crate::crypto::compression::compress(&xml_bytes)?,
-        CompressionAlgorithm::None => xml_bytes,
-    };
+        CompressionAlgorithm::None => xml_bytes.to_vec(),
+    });
 
     // 5. Wrap in hashed blocks
     let mut hashed_blocks = Vec::new();
@@ -79,16 +81,18 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     }
 
     // 6. Prepend stream start bytes (SHA-256 of final key)
-    let stream_start = crate::crypto::HashEngine::sha256(&final_key);
-    let mut plaintext = Vec::with_capacity(32 + hashed_blocks.len());
+    let stream_start = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key));
+    let mut plaintext = Zeroizing::new(Vec::with_capacity(32 + hashed_blocks.len()));
     plaintext.extend_from_slice(&stream_start);
     plaintext.extend_from_slice(&hashed_blocks);
 
     // 7. Encrypt
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(database.encryption_algorithm);
-    let encrypted = cipher
-        .encrypt(&final_key, &encryption_iv, &plaintext)
-        .map_err(|e| DatabaseError::EncryptionError(e.to_string()))?;
+    let encrypted = final_key.unlock(|key| {
+        cipher
+            .encrypt(key, &encryption_iv, &plaintext)
+            .map_err(DatabaseError::from_encryption_error)
+    })?;
 
     // 8. Write file: signature + header + encrypted data
     write_signature(writer)?;
@@ -103,23 +107,21 @@ fn derive_key(
     master_seed: &[u8],
     transform_seed: &[u8],
     transform_rounds: u64,
-) -> DatabaseResult<Vec<u8>> {
-    let raw_key = composite_key.build_raw_key();
-    if raw_key.is_empty() {
-        return Err(DatabaseError::InvalidKey);
-    }
+) -> DatabaseResult<SecureArray<32>> {
+    let raw_key = composite_key.build_raw_key()?;
 
     let mut params = KdfParameters::new(AES_KDF_UUID);
     params.set_byte_array("S", transform_seed);
     params.set_uint64("R", transform_rounds);
 
     let kdf = AesKdf;
-    let transformed = kdf.transform(&raw_key, &params)?;
+    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))?)?;
 
-    let mut combined = Vec::with_capacity(master_seed.len() + transformed.len());
+    let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
     combined.extend_from_slice(master_seed);
-    combined.extend_from_slice(&transformed);
-    Ok(crate::crypto::HashEngine::sha256(&combined).to_vec())
+    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    let mut final_key = crate::crypto::HashEngine::sha256(&combined);
+    Ok(SecureArray::from_array_mut(&mut final_key)?)
 }
 
 fn write_signature<W: Write>(writer: &mut W) -> DatabaseResult<()> {
@@ -214,7 +216,7 @@ mod tests {
         db.groups.insert(root_id, root);
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new().with_password(b"test_password");
+        let key = CompositeKey::new().with_password(b"test_password").unwrap();
 
         // Write
         let mut buf = Vec::new();

@@ -3,5 +3,6 @@ resolver = "3"
 members = [
   "packages/core",
   "packages/kdbx",
+  "packages/secure-types",
   "packages/sync"
 ]

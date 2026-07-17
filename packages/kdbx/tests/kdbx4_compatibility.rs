@@ -14,7 +14,7 @@ fn opens_keepass_rs_kdbx41_aes_fixture() {
     );
     let database = open_database(
         File::open(path).expect("fixture should exist"),
-        &CompositeKey::new().with_password(b"demopass"),
+        &CompositeKey::new().with_password(b"demopass").unwrap(),
     )
     .expect("external KDBX4.1 fixture should open");
 
@@ -48,7 +48,7 @@ fn assert_external_fixture_opens(name: &str, expected_entries: usize) {
         .join(name);
     let database = open_database(
         File::open(path).expect("fixture should exist"),
-        &CompositeKey::new().with_password(b"demopass"),
+        &CompositeKey::new().with_password(b"demopass").unwrap(),
     )
     .expect("external KDBX4 fixture should open");
 
@@ -82,7 +82,9 @@ fn output_opens_with_independent_keepass_parser() {
     save_database(
         &mut encoded,
         &database,
-        &CompositeKey::new().with_password(password.as_bytes()),
+        &CompositeKey::new()
+            .with_password(password.as_bytes())
+            .unwrap(),
     )
     .expect("database should save");
 

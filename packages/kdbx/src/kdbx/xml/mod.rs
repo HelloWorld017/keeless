@@ -53,13 +53,13 @@ mod tests {
 
         // Write
         let key = b"test_xml_key_12345";
-        let mut is_write = Salsa20InnerStream::new(key);
+        let mut is_write = Salsa20InnerStream::new(key).unwrap();
         let xml = KdbxXmlWriter::write(&db, &mut is_write).unwrap();
         assert!(xml.contains("<KeePassFile>"));
         assert!(xml.contains("<DatabaseName>TestDB</DatabaseName>"));
 
         // Read
-        let mut is_read = Salsa20InnerStream::new(key);
+        let mut is_read = Salsa20InnerStream::new(key).unwrap();
         let db2 = KdbxXmlReader::read(&xml, &mut is_read).unwrap();
         assert_eq!(db2.name, "TestDB");
         assert_eq!(db2.entries.len(), 1);
@@ -71,7 +71,7 @@ mod tests {
         let db = make_test_db();
         let key = b"key_for_protected";
 
-        let mut is_w = Salsa20InnerStream::new(key);
+        let mut is_w = Salsa20InnerStream::new(key).unwrap();
         let xml = KdbxXmlWriter::write(&db, &mut is_w).unwrap();
 
         // Verify Password is base64-encoded (not plaintext)
@@ -80,7 +80,7 @@ mod tests {
         assert!(!xml.contains("ProtectInMemory"));
 
         // Read back
-        let mut is_r = Salsa20InnerStream::new(key);
+        let mut is_r = Salsa20InnerStream::new(key).unwrap();
         let db2 = KdbxXmlReader::read(&xml, &mut is_r).unwrap();
 
         let entry = db2.entries.values().next().unwrap();
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn test_invalid_protected_value_is_format_error() {
         let xml = r#"<KeePassFile><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Name>Root</Name><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><String><Key>Password</Key><Value Protected="True">not-base64!</Value></String></Entry></Group></Root></KeePassFile>"#;
-        let mut stream = Salsa20InnerStream::new(b"invalid-value");
+        let mut stream = Salsa20InnerStream::new(b"invalid-value").unwrap();
         assert!(matches!(
             KdbxXmlReader::read(xml, &mut stream),
             Err(crate::DatabaseError::InvalidFormat(_))
@@ -108,9 +108,9 @@ mod tests {
             deletion_time: 1_725_000_123_000,
         });
         let key = b"deleted-time";
-        let mut write_stream = Salsa20InnerStream::new(key);
+        let mut write_stream = Salsa20InnerStream::new(key).unwrap();
         let xml = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();
-        let mut read_stream = Salsa20InnerStream::new(key);
+        let mut read_stream = Salsa20InnerStream::new(key).unwrap();
         let loaded = KdbxXmlReader::read(&xml, &mut read_stream).unwrap();
         assert_eq!(loaded.deleted_objects[0].id, deleted_id);
         assert_eq!(loaded.deleted_objects[0].deletion_time, 1_725_000_123_000);
@@ -120,12 +120,12 @@ mod tests {
     fn test_unknown_xml_is_preserved_when_saving() {
         let xml = r#"<KeePassFile><Meta><FutureMeta mode="new"><Nested>meta</Nested></FutureMeta></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Name>Root</Name><FutureElement kind="test"><Value>x</Value><Empty flag="1"/></FutureElement></Group></Root><FutureFile/></KeePassFile>"#;
         let key = b"unsupported-xml";
-        let mut read_stream = Salsa20InnerStream::new(key);
+        let mut read_stream = Salsa20InnerStream::new(key).unwrap();
         let mut db = KdbxXmlReader::read(xml, &mut read_stream).unwrap();
         assert!(db.contains_unsupported_xml);
         db.name = "Changed".to_string();
 
-        let mut write_stream = Salsa20InnerStream::new(key);
+        let mut write_stream = Salsa20InnerStream::new(key).unwrap();
         let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();
         assert!(output.contains(r#"<FutureMeta mode="new"><Nested>meta</Nested></FutureMeta>"#));
         assert!(output.contains(
@@ -134,7 +134,7 @@ mod tests {
         assert!(output.contains("<FutureFile/>"));
         assert!(output.contains("<DatabaseName>Changed</DatabaseName>"));
 
-        let mut reread_stream = Salsa20InnerStream::new(key);
+        let mut reread_stream = Salsa20InnerStream::new(key).unwrap();
         let reread = KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
         assert!(reread.contains_unsupported_xml);
         assert_eq!(reread.name, "Changed");
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_protected_value_inside_unknown_xml_keeps_stream_aligned() {
         let key = b"protected-extension";
-        let mut encrypt_stream = Salsa20InnerStream::new(key);
+        let mut encrypt_stream = Salsa20InnerStream::new(key).unwrap();
         let mut extension_value = b"future-secret".to_vec();
         encrypt_stream.process(&mut extension_value);
         let mut password = b"password".to_vec();
@@ -154,17 +154,17 @@ mod tests {
             r#"<KeePassFile><Meta><Future Protected="True">{extension_value}</Future></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><String><Key>Password</Key><Value Protected="True">{password}</Value></String></Entry></Group></Root></KeePassFile>"#
         );
 
-        let mut read_stream = Salsa20InnerStream::new(key);
+        let mut read_stream = Salsa20InnerStream::new(key).unwrap();
         let db = KdbxXmlReader::read(&xml, &mut read_stream).unwrap();
         assert_eq!(
             db.entries.values().next().unwrap().password.as_str(),
             "password"
         );
 
-        let mut write_stream = Salsa20InnerStream::new(key);
+        let mut write_stream = Salsa20InnerStream::new(key).unwrap();
         let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();
         assert!(!output.contains("future-secret"));
-        let mut reread_stream = Salsa20InnerStream::new(key);
+        let mut reread_stream = Salsa20InnerStream::new(key).unwrap();
         let reread = KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
         assert_eq!(
             reread.entries.values().next().unwrap().password.as_str(),
@@ -182,7 +182,7 @@ mod tests {
         ];
 
         for xml in cases {
-            let mut stream = Salsa20InnerStream::new(b"required-values");
+            let mut stream = Salsa20InnerStream::new(b"required-values").unwrap();
             assert!(matches!(
                 KdbxXmlReader::read(xml, &mut stream),
                 Err(crate::DatabaseError::InvalidFormat(_))
@@ -194,10 +194,10 @@ mod tests {
     fn test_unknown_xml_is_preserved_in_nested_kdbx_containers() {
         let xml = r#"<KeePassFile><Meta><MemoryProtection><FutureMemory>m</FutureMemory></MemoryProtection><CustomIcons><Icon><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><Data></Data><FutureIcon>i</FutureIcon></Icon><FutureIcons/></CustomIcons><CustomData><Item><Key>meta</Key><Value>value</Value><FutureItem>mi</FutureItem></Item><FutureMetaData/></CustomData></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Times><FutureGroupTime>gt</FutureGroupTime></Times><CustomData><Item><Key>group</Key><Value>value</Value><FutureGroupItem/></Item></CustomData><Entry><UUID>mZmZiYiId3dmZlVVVVVVVQ</UUID><Times><FutureEntryTime>et</FutureEntryTime></Times><String><Key>Title</Key><Value>title</Value><FutureString>s</FutureString></String><Binary><Key>file</Key><Value></Value><FutureBinary>b</FutureBinary></Binary><AutoType><Association><Window></Window><KeystrokeSequence></KeystrokeSequence><FutureAssociation>a</FutureAssociation></Association><FutureAutoType/></AutoType><CustomData><Item><Key>entry</Key><Value>value</Value><FutureEntryItem/></Item></CustomData><History><FutureHistory/></History><FutureEntry/></Entry><FutureGroup/></Group><DeletedObjects><DeletedObject><UUID>qqqqqru7zMzd3e7u7u7u7g</UUID><DeletionTime>2024-01-01T00:00:00Z</DeletionTime><FutureDeleted>d</FutureDeleted></DeletedObject><FutureDeletedObjects/></DeletedObjects><FutureRoot/></Root></KeePassFile>"#;
         let key = b"nested-extensions";
-        let mut read_stream = Salsa20InnerStream::new(key);
+        let mut read_stream = Salsa20InnerStream::new(key).unwrap();
         let mut db = KdbxXmlReader::read(xml, &mut read_stream).unwrap();
         db.version = crate::model::db::database::DatabaseVersion::KDBX31;
-        let mut write_stream = Salsa20InnerStream::new(key);
+        let mut write_stream = Salsa20InnerStream::new(key).unwrap();
         let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();
 
         for name in [
@@ -224,7 +224,7 @@ mod tests {
             assert!(output.contains(&format!("<{name}")), "missing {name}");
         }
 
-        let mut reread_stream = Salsa20InnerStream::new(key);
+        let mut reread_stream = Salsa20InnerStream::new(key).unwrap();
         KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
     }
 
@@ -232,7 +232,7 @@ mod tests {
     fn test_xml_nesting_limit_rejected() {
         let depth = crate::kdbx::limits::MAX_XML_NESTING_DEPTH + 1;
         let xml = format!("{}{}", "<x>".repeat(depth), "</x>".repeat(depth));
-        let mut stream = Salsa20InnerStream::new(b"nesting-limit");
+        let mut stream = Salsa20InnerStream::new(b"nesting-limit").unwrap();
         assert!(matches!(
             KdbxXmlReader::read(&xml, &mut stream),
             Err(crate::DatabaseError::InvalidFormat(_))
@@ -262,10 +262,10 @@ mod tests {
         db.root_group_id = Some(root_id);
 
         let key = b"empty_grp_key_123";
-        let mut is_w = Salsa20InnerStream::new(key);
+        let mut is_w = Salsa20InnerStream::new(key).unwrap();
         let xml = KdbxXmlWriter::write(&db, &mut is_w).unwrap();
 
-        let mut is_r = Salsa20InnerStream::new(key);
+        let mut is_r = Salsa20InnerStream::new(key).unwrap();
         let db2 = KdbxXmlReader::read(&xml, &mut is_r).unwrap();
 
         assert_eq!(db2.name, "EmptyGroupDB");
@@ -308,12 +308,12 @@ mod tests {
         db.root_group_id = Some(root_id);
 
         let key = b"special_chars_key";
-        let mut is_w = Salsa20InnerStream::new(key);
+        let mut is_w = Salsa20InnerStream::new(key).unwrap();
         let xml = KdbxXmlWriter::write(&db, &mut is_w).unwrap();
 
         assert!(!xml.contains(r#"Title with <>&"special"#));
 
-        let mut is_r = Salsa20InnerStream::new(key);
+        let mut is_r = Salsa20InnerStream::new(key).unwrap();
         let db2 = KdbxXmlReader::read(&xml, &mut is_r).unwrap();
 
         let entry2 = db2.entries.values().next().unwrap();
@@ -358,10 +358,10 @@ mod tests {
         db.root_group_id = Some(root_id);
 
         let key = b"nested_groups_key";
-        let mut is_w = Salsa20InnerStream::new(key);
+        let mut is_w = Salsa20InnerStream::new(key).unwrap();
         let xml = KdbxXmlWriter::write(&db, &mut is_w).unwrap();
 
-        let mut is_r = Salsa20InnerStream::new(key);
+        let mut is_r = Salsa20InnerStream::new(key).unwrap();
         let db2 = KdbxXmlReader::read(&xml, &mut is_r).unwrap();
 
         assert_eq!(db2.name, "NestedDB");

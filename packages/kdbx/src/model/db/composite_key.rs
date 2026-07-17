@@ -1,16 +1,17 @@
 //! Composite key - combination of password, keyfile, and hardware key
 //!
 
-use zeroize::Zeroize;
+use secure_types::{SecureArray, SecureBytes};
+use zeroize::Zeroizing;
 
 use crate::crypto::HashEngine;
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
 /// A composite key combining multiple credential sources.
 pub struct CompositeKey {
-    password_data: Option<Vec<u8>>,
-    key_file_data: Option<Vec<u8>>,
-    hardware_key: Option<Vec<u8>>,
+    password_data: Option<SecureBytes>,
+    key_file_data: Option<SecureBytes>,
+    hardware_key: Option<SecureBytes>,
 }
 
 impl CompositeKey {
@@ -22,19 +23,19 @@ impl CompositeKey {
         }
     }
 
-    pub fn with_password(mut self, password: &[u8]) -> Self {
-        self.password_data = Some(password.to_vec());
-        self
+    pub fn with_password(mut self, password: &[u8]) -> DatabaseResult<Self> {
+        self.password_data = Some(SecureBytes::from_slice(password)?);
+        Ok(self)
     }
 
-    pub fn with_key_file(mut self, key_file_data: &[u8]) -> Self {
-        self.key_file_data = Some(key_file_data.to_vec());
-        self
+    pub fn with_key_file(mut self, key_file_data: &[u8]) -> DatabaseResult<Self> {
+        self.key_file_data = Some(SecureBytes::from_slice(key_file_data)?);
+        Ok(self)
     }
 
-    pub fn with_hardware_key(mut self, key: &[u8]) -> Self {
-        self.hardware_key = Some(key.to_vec());
-        self
+    pub fn with_hardware_key(mut self, key: &[u8]) -> DatabaseResult<Self> {
+        self.hardware_key = Some(SecureBytes::from_slice(key)?);
+        Ok(self)
     }
 
     pub fn has_password(&self) -> bool {
@@ -47,42 +48,38 @@ impl CompositeKey {
 
     /// Build the raw composite key by hashing each component and combining.
     /// Returns the combined key bytes before KDF transformation.
-    pub fn build_raw_key(&self) -> Vec<u8> {
-        let mut components: Vec<Vec<u8>> = Vec::new();
+    pub fn build_raw_key(&self) -> DatabaseResult<SecureArray<32>> {
+        let mut combined = Zeroizing::new(Vec::with_capacity(96));
 
         // Password component: SHA-256 hash
         if let Some(ref pwd) = self.password_data {
-            let hash = HashEngine::sha256(pwd);
-            components.push(hash.to_vec());
+            let hash = Zeroizing::new(pwd.unlock_slice(HashEngine::sha256));
+            combined.extend_from_slice(hash.as_slice());
         }
 
         // Key file component: SHA-256 hash (or raw if already 32 bytes)
         if let Some(ref kf) = self.key_file_data {
             if kf.len() == 32 {
-                components.push(kf.clone());
+                kf.unlock_slice(|value| combined.extend_from_slice(value));
             } else {
-                let hash = HashEngine::sha256(kf);
-                components.push(hash.to_vec());
+                let hash = Zeroizing::new(kf.unlock_slice(HashEngine::sha256));
+                combined.extend_from_slice(hash.as_slice());
             }
         }
 
         // Hardware key component
         if let Some(ref hk) = self.hardware_key {
-            components.push(hk.clone());
+            hk.unlock_slice(|value| combined.extend_from_slice(value));
         }
 
-        // Combine all components
-        if components.is_empty() {
-            return Vec::new();
+        if combined.is_empty() {
+            return Err(DatabaseError::InvalidKey);
         }
 
         // KeePass always hashes the concatenated user-key components,
         // including the common password-only case.
-        let mut combined = Vec::new();
-        for c in &components {
-            combined.extend_from_slice(c);
-        }
-        HashEngine::sha256(&combined).to_vec()
+        let mut raw_key = HashEngine::sha256(&combined);
+        Ok(SecureArray::from_array_mut(&mut raw_key)?)
     }
 }
 
@@ -102,20 +99,6 @@ impl Default for CompositeKey {
     }
 }
 
-impl Drop for CompositeKey {
-    fn drop(&mut self) {
-        if let Some(ref mut d) = self.password_data {
-            d.zeroize();
-        }
-        if let Some(ref mut d) = self.key_file_data {
-            d.zeroize();
-        }
-        if let Some(ref mut d) = self.hardware_key {
-            d.zeroize();
-        }
-    }
-}
-
 /// Master credential wrapper.
 #[derive(Debug)]
 pub struct MasterCredential {
@@ -127,13 +110,13 @@ impl MasterCredential {
         Self { composite_key }
     }
 
-    pub fn from_password(password: &[u8]) -> Self {
-        Self {
-            composite_key: CompositeKey::new().with_password(password),
-        }
+    pub fn from_password(password: &[u8]) -> DatabaseResult<Self> {
+        Ok(Self {
+            composite_key: CompositeKey::new().with_password(password)?,
+        })
     }
 
-    pub fn build_raw_key(&self) -> Vec<u8> {
+    pub fn build_raw_key(&self) -> DatabaseResult<SecureArray<32>> {
         self.composite_key.build_raw_key()
     }
 }
@@ -145,22 +128,22 @@ pub fn make_final_key(
     master_seed: &[u8],
     kdf_engine: &dyn crate::kdbx::kdf::KdfEngine,
     kdf_params: &crate::kdbx::kdf::KdfParameters,
-) -> DatabaseResult<Vec<u8>> {
-    let raw_key = composite_key.build_raw_key();
-    if raw_key.is_empty() {
-        return Err(DatabaseError::InvalidKey);
-    }
+) -> DatabaseResult<SecureArray<32>> {
+    let raw_key = composite_key.build_raw_key()?;
 
     // KDF transform
-    let transformed_key = kdf_engine.transform(&raw_key, kdf_params)?;
+    let transformed_key =
+        SecureBytes::from_vec(raw_key.unlock(|value| kdf_engine.transform(value, kdf_params))?)?;
 
     // Final key = SHA-256(masterSeed || transformedKey)
-    let mut combined = Vec::with_capacity(master_seed.len() + transformed_key.len());
+    let mut combined = Zeroizing::new(Vec::with_capacity(
+        master_seed.len() + transformed_key.len(),
+    ));
     combined.extend_from_slice(master_seed);
-    combined.extend_from_slice(&transformed_key);
+    transformed_key.unlock_slice(|value| combined.extend_from_slice(value));
 
-    let final_key = HashEngine::sha256(&combined);
-    Ok(final_key.to_vec())
+    let mut final_key = HashEngine::sha256(&combined);
+    Ok(SecureArray::from_array_mut(&mut final_key)?)
 }
 
 #[cfg(test)]
@@ -169,24 +152,27 @@ mod tests {
 
     #[test]
     fn test_composite_key_password_only() {
-        let key = CompositeKey::new().with_password(b"test123");
-        let raw = key.build_raw_key();
-        assert_eq!(raw.len(), 32);
+        let key = CompositeKey::new().with_password(b"test123").unwrap();
+        let raw = key.build_raw_key().unwrap();
+        assert!(raw.unlock(|value| value.len() == 32));
     }
 
     #[test]
     fn test_composite_key_multiple_components() {
         let key = CompositeKey::new()
             .with_password(b"test123")
+            .unwrap()
             .with_key_file(b"keyfile_data");
-        let raw = key.build_raw_key();
-        assert_eq!(raw.len(), 32);
+        let raw = key.unwrap().build_raw_key().unwrap();
+        assert!(raw.unlock(|value| value.len() == 32));
     }
 
     #[test]
     fn test_composite_key_deterministic() {
-        let key1 = CompositeKey::new().with_password(b"test");
-        let key2 = CompositeKey::new().with_password(b"test");
-        assert_eq!(key1.build_raw_key(), key2.build_raw_key());
+        let key1 = CompositeKey::new().with_password(b"test").unwrap();
+        let key2 = CompositeKey::new().with_password(b"test").unwrap();
+        let raw1 = key1.build_raw_key().unwrap();
+        let raw2 = key2.build_raw_key().unwrap();
+        assert!(raw1.unlock(|left| raw2.unlock(|right| left == right)));
     }
 }

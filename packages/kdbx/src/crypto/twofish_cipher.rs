@@ -1,9 +1,9 @@
 //! Twofish block cipher implementation
 //!
 
+use secure_types::SecureArray;
 use twofish::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use twofish::Twofish;
-use zeroize::Zeroize;
 
 use super::{CipherMode, CryptoError, CryptoResult};
 
@@ -12,7 +12,7 @@ const KEY_SIZE: usize = 32;
 
 /// Twofish-256 cipher in CBC mode.
 pub struct TwofishCipher {
-    key: Vec<u8>,
+    key: SecureArray<32>,
     iv: [u8; BLOCK_SIZE],
     mode: CipherMode,
     padding: bool,
@@ -35,7 +35,7 @@ impl TwofishCipher {
         let mut iv_arr = [0u8; BLOCK_SIZE];
         iv_arr.copy_from_slice(iv);
         Ok(Self {
-            key: key.to_vec(),
+            key: SecureArray::from_slice(key)?,
             iv: iv_arr,
             mode,
             padding: true,
@@ -48,66 +48,62 @@ impl TwofishCipher {
     }
 
     pub fn process(&self, data: &[u8]) -> CryptoResult<Vec<u8>> {
-        let cipher = Twofish::new_from_slice(&self.key)
-            .map_err(|e| CryptoError::EncryptionFailed(e.to_string()))?;
+        self.key.unlock(|key| {
+            let cipher = Twofish::new_from_slice(key)
+                .map_err(|e| CryptoError::EncryptionFailed(e.to_string()))?;
 
-        match self.mode {
-            CipherMode::Encrypt => {
-                let padded = if self.padding {
-                    pkcs7_pad(data, BLOCK_SIZE)
-                } else {
-                    data.to_vec()
-                };
-                if padded.len() % BLOCK_SIZE != 0 {
-                    return Err(CryptoError::InvalidDataLength(format!(
-                        "Data must be multiple of {BLOCK_SIZE}, got {}",
-                        padded.len()
-                    )));
+            match self.mode {
+                CipherMode::Encrypt => {
+                    let padded = if self.padding {
+                        pkcs7_pad(data, BLOCK_SIZE)
+                    } else {
+                        data.to_vec()
+                    };
+                    if padded.len() % BLOCK_SIZE != 0 {
+                        return Err(CryptoError::InvalidDataLength(format!(
+                            "Data must be multiple of {BLOCK_SIZE}, got {}",
+                            padded.len()
+                        )));
+                    }
+                    let mut prev = self.iv;
+                    let mut result = Vec::with_capacity(padded.len());
+                    for chunk in padded.chunks(BLOCK_SIZE) {
+                        let mut block: [u8; BLOCK_SIZE] = chunk.try_into().map_err(|_| {
+                            CryptoError::InvalidDataLength("Block alignment error".into())
+                        })?;
+                        xor_in_place(&mut block, &prev);
+                        cipher.encrypt_block((&mut block).into());
+                        result.extend_from_slice(&block);
+                        prev = block;
+                    }
+                    Ok(result)
                 }
-                let mut prev = self.iv;
-                let mut result = Vec::with_capacity(padded.len());
-                for chunk in padded.chunks(BLOCK_SIZE) {
-                    let mut block: [u8; BLOCK_SIZE] = chunk.try_into().map_err(|_| {
-                        CryptoError::InvalidDataLength("Block alignment error".into())
-                    })?;
-                    xor_in_place(&mut block, &prev);
-                    cipher.encrypt_block((&mut block).into());
-                    result.extend_from_slice(&block);
-                    prev = block;
+                CipherMode::Decrypt => {
+                    if data.len() % BLOCK_SIZE != 0 {
+                        return Err(CryptoError::InvalidDataLength(format!(
+                            "Ciphertext must be multiple of {BLOCK_SIZE}, got {}",
+                            data.len()
+                        )));
+                    }
+                    let mut prev = self.iv;
+                    let mut decrypted = Vec::with_capacity(data.len());
+                    for chunk in data.chunks(BLOCK_SIZE) {
+                        let ct: [u8; BLOCK_SIZE] = chunk.try_into().map_err(|_| {
+                            CryptoError::InvalidDataLength("Block alignment error".into())
+                        })?;
+                        let mut block = ct;
+                        cipher.decrypt_block((&mut block).into());
+                        xor_in_place(&mut block, &prev);
+                        decrypted.extend_from_slice(&block);
+                        prev = ct;
+                    }
+                    if self.padding {
+                        pkcs7_unpad(&mut decrypted)?;
+                    }
+                    Ok(decrypted)
                 }
-                Ok(result)
             }
-            CipherMode::Decrypt => {
-                if data.len() % BLOCK_SIZE != 0 {
-                    return Err(CryptoError::InvalidDataLength(format!(
-                        "Ciphertext must be multiple of {BLOCK_SIZE}, got {}",
-                        data.len()
-                    )));
-                }
-                let mut prev = self.iv;
-                let mut decrypted = Vec::with_capacity(data.len());
-                for chunk in data.chunks(BLOCK_SIZE) {
-                    let ct: [u8; BLOCK_SIZE] = chunk.try_into().map_err(|_| {
-                        CryptoError::InvalidDataLength("Block alignment error".into())
-                    })?;
-                    let mut block = ct;
-                    cipher.decrypt_block((&mut block).into());
-                    xor_in_place(&mut block, &prev);
-                    decrypted.extend_from_slice(&block);
-                    prev = ct;
-                }
-                if self.padding {
-                    pkcs7_unpad(&mut decrypted)?;
-                }
-                Ok(decrypted)
-            }
-        }
-    }
-}
-
-impl Drop for TwofishCipher {
-    fn drop(&mut self) {
-        self.key.zeroize();
+        })
     }
 }
 

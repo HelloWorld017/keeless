@@ -9,6 +9,8 @@ mod tests;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use secure_types::SecureArray;
+
 use uuid::Uuid;
 
 use crate::crypto::compression::CompressionAlgorithm;
@@ -170,18 +172,29 @@ impl Database {
         &mut self,
         composite_key: &CompositeKey,
     ) -> DatabaseResult<()> {
-        let (context, root) = match &self.memory_protection_context {
+        let context = match &self.memory_protection_context {
             Some(context) => {
                 let context = context.clone();
                 let mut unlock = MemoryUnlockSession::new(composite_key);
-                let root = zeroize::Zeroizing::new(*unlock.root(&context)?);
-                (context, root)
+                unlock.with_root(&context, |root| {
+                    for entry in self.entries.values_mut() {
+                        entry.seal_protected_strings(context.clone(), root)?;
+                    }
+                    Ok(())
+                })?;
+                context
             }
-            None => self.create_memory_context(composite_key)?,
+            None => {
+                let (context, root) = self.create_memory_context(composite_key)?;
+                root.unlock(|root| {
+                    for entry in self.entries.values_mut() {
+                        entry.seal_protected_strings(context.clone(), root)?;
+                    }
+                    Ok::<_, DatabaseError>(())
+                })?;
+                context
+            }
         };
-        for entry in self.entries.values_mut() {
-            entry.seal_protected_strings(context.clone(), &root)?;
-        }
         self.memory_protection_context = Some(context);
         Ok(())
     }
@@ -227,11 +240,18 @@ impl Database {
             }
         };
         let mut unlock = MemoryUnlockSession::new(composite_key);
-        let root = unlock.root(&context)?;
-        self.entries
-            .get_mut(entry_id)
-            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?
-            .replace_memory_field(context, root, &selector.memory_field(), value, protected)
+        unlock.with_root(&context, |root| {
+            self.entries
+                .get_mut(entry_id)
+                .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?
+                .replace_memory_field(
+                    context.clone(),
+                    root,
+                    &selector.memory_field(),
+                    value,
+                    protected,
+                )
+        })
     }
 
     pub(crate) fn memory_unlock<'a>(
@@ -244,7 +264,7 @@ impl Database {
     fn create_memory_context(
         &self,
         composite_key: &CompositeKey,
-    ) -> DatabaseResult<(Arc<MemoryProtectionContext>, zeroize::Zeroizing<[u8; 32]>)> {
+    ) -> DatabaseResult<(Arc<MemoryProtectionContext>, SecureArray<32>)> {
         let parameters = self.kdf_parameters.clone().unwrap_or_else(|| {
             let kdf = Argon2Kdf::argon2id();
             kdf.default_parameters()

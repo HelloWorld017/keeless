@@ -34,7 +34,7 @@ malformed known structures and values are rejected explicitly.
 ```rust
 use keeless_kdbx::{open_database, save_database, CompositeKey};
 
-let key = CompositeKey::new().with_password(b"password");
+let key = CompositeKey::new().with_password(b"password")?;
 let database = open_database(std::fs::File::open("database.kdbx")?, &key)?;
 save_database(&mut std::fs::File::create("output.kdbx")?, &database, &key)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -60,6 +60,7 @@ authentication.
 
 ```text
 cargo test -p keeless_kdbx
+cargo test -p secure-types --features use_os
 cargo clippy -p keeless_kdbx --all-targets -- -D warnings
 cargo check -p keeless_kdbx --lib --target wasm32-unknown-unknown
 ```

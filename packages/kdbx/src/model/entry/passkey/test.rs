@@ -280,11 +280,11 @@ fn stores_protected_kpex_fields_and_roundtrips_xml() {
     database.entries.insert(entry_id, entry);
 
     let stream_key = b"passkey-xml-roundtrip";
-    let mut write_stream = Salsa20InnerStream::new(stream_key);
+    let mut write_stream = Salsa20InnerStream::new(stream_key).unwrap();
     let xml = KdbxXmlWriter::write(&database, &mut write_stream).unwrap();
     assert!(!xml.contains("BEGIN PRIVATE KEY"));
 
-    let mut read_stream = Salsa20InnerStream::new(stream_key);
+    let mut read_stream = Salsa20InnerStream::new(stream_key).unwrap();
     let loaded = KdbxXmlReader::read(&xml, &mut read_stream).unwrap();
     let loaded_entry = loaded.entries.get(&entry_id).unwrap();
     let loaded_credential = PasskeyCredential::from_entry(loaded_entry)

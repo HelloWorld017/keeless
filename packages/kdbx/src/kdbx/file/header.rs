@@ -91,6 +91,14 @@ pub struct KdbxHeader31 {
     pub inner_random_stream: CrsAlgorithm,
 }
 
+impl Drop for KdbxHeader31 {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+
+        self.inner_random_stream_key.zeroize();
+    }
+}
+
 /// KDBX 4.0 outer header.
 #[derive(Debug, Clone)]
 pub struct KdbxHeader4 {

@@ -6,6 +6,7 @@
 use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use secure_types::{SecureArray, SecureBytes};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::compression::CompressionAlgorithm;
@@ -73,21 +74,21 @@ pub fn read_kdbx4<R: Read>(
     // 5. Verify header HMAC (next 32 bytes)
     let mut stored_hmac = [0u8; 32];
     reader.read_exact(&mut stored_hmac)?;
-    let expected_hmac = compute_header_hmac(hmac_key.as_slice(), &header_buf)?;
+    let expected_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))?;
     if stored_hmac != expected_hmac {
         return Err(DatabaseError::InvalidCredentials);
     }
 
     // 6. Read HMAC block stream → encrypted data
-    let encrypted = read_hmac_block_stream(reader, hmac_key.as_slice())?;
+    let encrypted = hmac_key.unlock(|key| read_hmac_block_stream(reader, key))?;
 
     // 7. Decrypt and decompress the complete payload.
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
-    let decrypted = Zeroizing::new(
+    let decrypted = Zeroizing::new(master_key.unlock(|key| {
         cipher
-            .decrypt(master_key.as_slice(), &header.encryption_iv, &encrypted)
-            .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?,
-    );
+            .decrypt(key, &header.encryption_iv, &encrypted)
+            .map_err(DatabaseError::from_decryption_error)
+    })?);
     let payload = match header.compression {
         CompressionAlgorithm::Gzip => {
             crate::crypto::compression::decompress_sensitive(decrypted.as_slice())?
@@ -128,13 +129,10 @@ pub fn read_kdbx4<R: Read>(
 }
 
 /// Derive the encryption key and HMAC base key defined by KDBX4.
-type DerivedKeys = (Zeroizing<[u8; 32]>, Zeroizing<[u8; 64]>);
+type DerivedKeys = (SecureArray<32>, SecureArray<64>);
 
 fn derive_keys(composite_key: &CompositeKey, header: &KdbxHeader4) -> DatabaseResult<DerivedKeys> {
-    let raw_key = Zeroizing::new(composite_key.build_raw_key());
-    if raw_key.is_empty() {
-        return Err(DatabaseError::InvalidKey);
-    }
+    let raw_key = composite_key.build_raw_key()?;
 
     let kdf_uuid = header
         .kdf_parameters
@@ -149,16 +147,15 @@ fn derive_keys(composite_key: &CompositeKey, header: &KdbxHeader4) -> DatabaseRe
         .as_ref()
         .ok_or_else(|| DatabaseError::InvalidFormat("No KDF parameters".into()))?;
 
-    let transformed = Zeroizing::new(kdf.transform(raw_key.as_slice(), params)?);
-    let master_key = Zeroizing::new(crate::crypto::HashEngine::sha256_multi(&[
-        &header.master_seed,
-        transformed.as_slice(),
-    ]));
-    let hmac_key = Zeroizing::new(crate::crypto::HashEngine::sha512_multi(&[
-        &header.master_seed,
-        transformed.as_slice(),
-        &[0x01],
-    ]));
+    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, params))?)?;
+    let mut master_key_bytes = transformed.unlock_slice(|value| {
+        crate::crypto::HashEngine::sha256_multi(&[&header.master_seed, value])
+    });
+    let mut hmac_key_bytes = transformed.unlock_slice(|value| {
+        crate::crypto::HashEngine::sha512_multi(&[&header.master_seed, value, &[0x01]])
+    });
+    let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
+    let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
     Ok((master_key, hmac_key))
 }
 
@@ -451,7 +448,7 @@ mod tests {
         data.extend_from_slice(&0x00030001u32.to_le_bytes()); // v3.1
 
         let mut cursor = std::io::Cursor::new(data);
-        let key = CompositeKey::new().with_password(b"test");
+        let key = CompositeKey::new().with_password(b"test").unwrap();
         assert!(read_kdbx4(&mut cursor, &key).is_err());
     }
 

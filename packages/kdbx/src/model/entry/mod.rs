@@ -274,14 +274,15 @@ impl Entry {
         match field {
             MemoryField::Title => {
                 if let Some(value) = &self.protected_title {
-                    let root = unlock.root(&value.context)?;
-                    let plaintext = value.decrypt(root, self.id, field)?;
-                    let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
-                        DatabaseError::DecryptionError(format!(
-                            "memory-protected title is not UTF-8: {err}"
-                        ))
-                    })?;
-                    use_value(text)
+                    unlock.with_root(&value.context, |root| {
+                        let plaintext = value.decrypt(root, self.id, field)?;
+                        let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
+                            DatabaseError::DecryptionError(format!(
+                                "memory-protected title is not UTF-8: {err}"
+                            ))
+                        })?;
+                        use_value(text)
+                    })
                 } else {
                     use_value(&self.title)
                 }
@@ -294,14 +295,15 @@ impl Entry {
                 .with_plaintext(unlock, self.id, field, use_value),
             MemoryField::Url => {
                 if let Some(value) = &self.protected_url {
-                    let root = unlock.root(&value.context)?;
-                    let plaintext = value.decrypt(root, self.id, field)?;
-                    let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
-                        DatabaseError::DecryptionError(format!(
-                            "memory-protected URL is not UTF-8: {err}"
-                        ))
-                    })?;
-                    use_value(text)
+                    unlock.with_root(&value.context, |root| {
+                        let plaintext = value.decrypt(root, self.id, field)?;
+                        let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
+                            DatabaseError::DecryptionError(format!(
+                                "memory-protected URL is not UTF-8: {err}"
+                            ))
+                        })?;
+                        use_value(text)
+                    })
                 } else {
                     use_value(&self.url)
                 }
@@ -469,15 +471,16 @@ impl Entry {
         let old_entry_id = self.id;
         if let Some(value) = self.protected_title.take() {
             let context = value.context.clone();
-            let root = unlock.root(&context)?;
-            let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Title)?;
-            self.protected_title = Some(EncryptedValue::encrypt(
-                context,
-                root,
-                new_entry_id,
-                &MemoryField::Title,
-                plaintext.as_slice(),
-            )?);
+            self.protected_title = Some(unlock.with_root(&context, |root| {
+                let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Title)?;
+                EncryptedValue::encrypt(
+                    context.clone(),
+                    root,
+                    new_entry_id,
+                    &MemoryField::Title,
+                    plaintext.as_slice(),
+                )
+            })?);
         }
         self.username
             .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::UserName)?;
@@ -485,15 +488,16 @@ impl Entry {
             .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Password)?;
         if let Some(value) = self.protected_url.take() {
             let context = value.context.clone();
-            let root = unlock.root(&context)?;
-            let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Url)?;
-            self.protected_url = Some(EncryptedValue::encrypt(
-                context,
-                root,
-                new_entry_id,
-                &MemoryField::Url,
-                plaintext.as_slice(),
-            )?);
+            self.protected_url = Some(unlock.with_root(&context, |root| {
+                let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Url)?;
+                EncryptedValue::encrypt(
+                    context.clone(),
+                    root,
+                    new_entry_id,
+                    &MemoryField::Url,
+                    plaintext.as_slice(),
+                )
+            })?);
         }
         self.notes
             .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Notes)?;

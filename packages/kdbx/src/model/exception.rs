@@ -55,6 +55,9 @@ pub enum DatabaseError {
     #[error("Unsupported feature: {0}")]
     Unsupported(String),
 
+    #[error("Secure memory error: {0}")]
+    SecureMemory(String),
+
     #[error("Crypto error: {0}")]
     CryptoError(#[from] crate::crypto::CryptoError),
 
@@ -74,4 +77,44 @@ impl From<quick_xml::events::attributes::AttrError> for DatabaseError {
     }
 }
 
+impl From<secure_types::Error> for DatabaseError {
+    fn from(error: secure_types::Error) -> Self {
+        Self::SecureMemory(error.to_string())
+    }
+}
+
+impl DatabaseError {
+    pub(crate) fn from_encryption_error(error: crate::crypto::CryptoError) -> Self {
+        match error {
+            crate::crypto::CryptoError::SecureMemory(message) => Self::SecureMemory(message),
+            error => Self::EncryptionError(error.to_string()),
+        }
+    }
+
+    pub(crate) fn from_decryption_error(error: crate::crypto::CryptoError) -> Self {
+        match error {
+            crate::crypto::CryptoError::SecureMemory(message) => Self::SecureMemory(message),
+            error => Self::DecryptionError(error.to_string()),
+        }
+    }
+}
+
 pub type DatabaseResult<T> = Result<T, DatabaseError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secure_memory_errors_keep_their_classification() {
+        let encryption = DatabaseError::from_encryption_error(
+            crate::crypto::CryptoError::SecureMemory("lock failed".into()),
+        );
+        let decryption = DatabaseError::from_decryption_error(
+            crate::crypto::CryptoError::SecureMemory("lock failed".into()),
+        );
+
+        assert!(matches!(encryption, DatabaseError::SecureMemory(_)));
+        assert!(matches!(decryption, DatabaseError::SecureMemory(_)));
+    }
+}

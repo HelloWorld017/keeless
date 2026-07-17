@@ -98,7 +98,9 @@ fn build_realistic_database() -> Database {
 }
 
 fn make_key() -> CompositeKey {
-    CompositeKey::new().with_password(b"integration_test_password_2024")
+    CompositeKey::new()
+        .with_password(b"integration_test_password_2024")
+        .unwrap()
 }
 
 /// Verify that a round-tripped database preserved key data.
@@ -175,7 +177,9 @@ fn test_e2e_kdbx31_wrong_password() {
         .expect("Write should succeed");
 
     // Read with wrong password
-    let wrong_key = CompositeKey::new().with_password(b"wrong_password");
+    let wrong_key = CompositeKey::new()
+        .with_password(b"wrong_password")
+        .unwrap();
     let mut cursor = Cursor::new(buffer);
     let result = keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &wrong_key);
     assert!(result.is_err(), "Wrong password should fail");

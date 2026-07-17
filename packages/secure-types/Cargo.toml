@@ -1,0 +1,18 @@
+[package]
+name = "secure-types"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+description = "Keeless-vendored secure byte containers"
+readme = "README.md"
+license = "MIT"
+
+[features]
+default = []
+no_os = []
+use_os = ["dep:libc"]
+
+[dependencies]
+libc = { version = "0.2", optional = true }
+zeroize = "1.8.2"

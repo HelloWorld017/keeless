@@ -556,7 +556,7 @@ mod tests {
         });
         database.entries.insert(sealed_id, sealed);
 
-        let key = CompositeKey::new().with_password(b"url password");
+        let key = CompositeKey::new().with_password(b"url password").unwrap();
         database.protect_entry_strings(&key).unwrap();
 
         let unsealed_id = NodeId::new_uuid();
@@ -583,7 +583,7 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry_id, unsealed_id);
 
-        let wrong = CompositeKey::new().with_password(b"wrong");
+        let wrong = CompositeKey::new().with_password(b"wrong").unwrap();
         assert!(UrlMatcher::match_database(&database, Some(&wrong), &params).is_err());
     }
 }

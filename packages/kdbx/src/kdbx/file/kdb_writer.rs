@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
+use secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
 use crate::kdbx::file::header::{KDB_SIGNATURE_1, KDB_SIGNATURE_2};
@@ -51,10 +52,7 @@ pub(crate) fn write_kdb_with_credentials<W: Write>(
     let content_hash = crate::crypto::HashEngine::sha256(&content);
 
     // 5. Derive master key
-    let raw_key = file_key.build_raw_key();
-    if raw_key.is_empty() {
-        return Err(DatabaseError::InvalidKey);
-    }
+    let raw_key = file_key.build_raw_key()?;
 
     let mut params = crate::kdbx::kdf::kdf_parameters::KdfParameters::new(
         crate::kdbx::kdf::aes_kdf::AES_KDF_UUID,
@@ -63,20 +61,26 @@ pub(crate) fn write_kdb_with_credentials<W: Write>(
     params.set_uint64("R", transform_rounds as u64);
 
     let kdf = crate::kdbx::kdf::aes_kdf::AesKdf;
-    let transformed = crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, &raw_key, &params)?;
+    let transformed =
+        SecureBytes::from_vec(raw_key.unlock(|key| {
+            crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, key, &params)
+        })?)?;
 
-    let mut combined = Vec::with_capacity(master_seed.len() + transformed.len());
+    let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
     combined.extend_from_slice(&master_seed);
-    combined.extend_from_slice(&transformed);
-    let master_key = crate::crypto::HashEngine::sha256(&combined).to_vec();
+    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    let mut master_key_bytes = crate::crypto::HashEngine::sha256(&combined);
+    let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
 
     // 6. Encrypt content
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(
         crate::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael,
     );
-    let encrypted = cipher
-        .encrypt(&master_key, &encryption_iv, &content)
-        .map_err(|e| DatabaseError::EncryptionError(e.to_string()))?;
+    let encrypted = master_key.unlock(|key| {
+        cipher
+            .encrypt(key, &encryption_iv, &content)
+            .map_err(DatabaseError::from_encryption_error)
+    })?;
 
     // 7. Write signature
     writer.write_u32::<LittleEndian>(KDB_SIGNATURE_1)?;
@@ -314,7 +318,7 @@ mod tests {
         });
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new().with_password(b"test_password");
+        let key = CompositeKey::new().with_password(b"test_password").unwrap();
 
         let mut buf = Vec::new();
         let result = write_kdb(&mut buf, &db, &key);

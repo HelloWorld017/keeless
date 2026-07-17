@@ -5,6 +5,7 @@
 use crate::crypto::{ChaCha20Cipher, Salsa20Cipher};
 use crate::kdbx::file::header::CrsAlgorithm;
 use crate::model::exception::{DatabaseError, DatabaseResult};
+use secure_types::SecureArray;
 use zeroize::{Zeroize, Zeroizing};
 
 /// Inner stream cipher trait.
@@ -21,10 +22,10 @@ pub struct Salsa20InnerStream {
 }
 
 impl Salsa20InnerStream {
-    pub fn new(key: &[u8]) -> Self {
-        Self {
-            cipher: Salsa20Cipher::new(key),
-        }
+    pub fn new(key: &[u8]) -> DatabaseResult<Self> {
+        Ok(Self {
+            cipher: Salsa20Cipher::new(key)?,
+        })
     }
 }
 
@@ -43,9 +44,12 @@ pub struct ChaCha20InnerStream {
 
 impl ChaCha20InnerStream {
     pub fn new(key: &[u8]) -> DatabaseResult<Self> {
-        let material = Zeroizing::new(crate::crypto::HashEngine::sha512(key));
-        let cipher = ChaCha20Cipher::new(&material[..32], &material[32..44])
-            .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
+        let mut material_bytes = crate::crypto::HashEngine::sha512(key);
+        let material = SecureArray::from_array_mut(&mut material_bytes)?;
+        let cipher = material.unlock(|value| {
+            ChaCha20Cipher::new(&value[..32], &value[32..44])
+                .map_err(|e| DatabaseError::DecryptionError(e.to_string()))
+        })?;
         Ok(Self { cipher })
     }
 }
@@ -60,13 +64,16 @@ impl InnerStreamCipher for ChaCha20InnerStream {
 /// ARC4 (RC4 variant) inner stream.
 /// Used for legacy KDBX compatibility (CrsAlgorithm::ArcFourVariant).
 pub struct ArcFourInnerStream {
-    state: [u8; 256],
+    state: SecureArray<256>,
     i: u8,
     j: u8,
 }
 
 impl ArcFourInnerStream {
-    pub fn new(key: &[u8]) -> Self {
+    pub fn new(key: &[u8]) -> DatabaseResult<Self> {
+        if key.is_empty() {
+            return Err(DatabaseError::InvalidKey);
+        }
         let mut state = [0u8; 256];
         for (i, byte) in state.iter_mut().enumerate() {
             *byte = i as u8;
@@ -76,29 +83,32 @@ impl ArcFourInnerStream {
             j = j.wrapping_add(state[i]).wrapping_add(key[i % key.len()]);
             state.swap(i, j as usize);
         }
-        Self { state, i: 0, j: 0 }
-    }
-
-    fn next_byte(&mut self) -> u8 {
-        self.i = self.i.wrapping_add(1);
-        self.j = self.j.wrapping_add(self.state[self.i as usize]);
-        self.state.swap(self.i as usize, self.j as usize);
-        let k = self.state[self.i as usize].wrapping_add(self.state[self.j as usize]);
-        self.state[k as usize]
+        Ok(Self {
+            state: SecureArray::from_array_mut(&mut state)?,
+            i: 0,
+            j: 0,
+        })
     }
 }
 
 impl InnerStreamCipher for ArcFourInnerStream {
     fn process(&mut self, data: &mut [u8]) {
-        for byte in data.iter_mut() {
-            *byte ^= self.next_byte();
-        }
+        let i = &mut self.i;
+        let j = &mut self.j;
+        self.state.unlock_mut(|state| {
+            for byte in data.iter_mut() {
+                *i = i.wrapping_add(1);
+                *j = j.wrapping_add(state[*i as usize]);
+                state.swap(*i as usize, *j as usize);
+                let k = state[*i as usize].wrapping_add(state[*j as usize]);
+                *byte ^= state[k as usize];
+            }
+        });
     }
 }
 
 impl Drop for ArcFourInnerStream {
     fn drop(&mut self) {
-        self.state.zeroize();
         self.i.zeroize();
         self.j.zeroize();
     }
@@ -110,9 +120,9 @@ pub fn create_inner_stream(
     key: &[u8],
 ) -> DatabaseResult<Box<dyn InnerStreamCipher>> {
     match algorithm {
-        CrsAlgorithm::Salsa20 => Ok(Box::new(Salsa20InnerStream::new(key))),
+        CrsAlgorithm::Salsa20 => Ok(Box::new(Salsa20InnerStream::new(key)?)),
         CrsAlgorithm::ChaCha20 => Ok(Box::new(ChaCha20InnerStream::new(key)?)),
-        CrsAlgorithm::ArcFourVariant => Ok(Box::new(ArcFourInnerStream::new(key))),
+        CrsAlgorithm::ArcFourVariant => Ok(Box::new(ArcFourInnerStream::new(key)?)),
         CrsAlgorithm::None => Err(DatabaseError::Unsupported(
             "No inner stream cipher configured".to_string(),
         )),
@@ -126,7 +136,7 @@ mod tests {
     #[test]
     fn test_salsa20_sequential_fields() {
         let key = b"test_inner_stream_key";
-        let mut stream = Salsa20InnerStream::new(key);
+        let mut stream = Salsa20InnerStream::new(key).unwrap();
 
         let mut field1 = b"password1".to_vec();
         let mut field2 = b"secret2".to_vec();
@@ -142,7 +152,7 @@ mod tests {
         assert_ne!(field2, original2);
 
         // Decrypt (re-create cipher to reset keystream position)
-        let mut stream2 = Salsa20InnerStream::new(key);
+        let mut stream2 = Salsa20InnerStream::new(key).unwrap();
         stream2.process(&mut field1);
         stream2.process(&mut field2);
 
@@ -168,14 +178,14 @@ mod tests {
     #[test]
     fn test_arc4_roundtrip() {
         let key = b"arc4_test_key";
-        let mut stream = ArcFourInnerStream::new(key);
+        let mut stream = ArcFourInnerStream::new(key).unwrap();
 
         let mut data = b"protected value".to_vec();
         let original = data.clone();
         stream.process(&mut data);
         assert_ne!(data, original);
 
-        let mut stream2 = ArcFourInnerStream::new(key);
+        let mut stream2 = ArcFourInnerStream::new(key).unwrap();
         stream2.process(&mut data);
         assert_eq!(data, original);
     }
@@ -183,7 +193,7 @@ mod tests {
     #[test]
     fn test_arc4_sequential_fields() {
         let key = b"multi_field_key";
-        let mut stream = ArcFourInnerStream::new(key);
+        let mut stream = ArcFourInnerStream::new(key).unwrap();
 
         let mut f1 = b"field1".to_vec();
         let mut f2 = b"field2".to_vec();
@@ -193,7 +203,7 @@ mod tests {
         stream.process(&mut f1);
         stream.process(&mut f2);
 
-        let mut stream2 = ArcFourInnerStream::new(key);
+        let mut stream2 = ArcFourInnerStream::new(key).unwrap();
         stream2.process(&mut f1);
         stream2.process(&mut f2);
 

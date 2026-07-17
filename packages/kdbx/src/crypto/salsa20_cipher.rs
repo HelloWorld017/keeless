@@ -4,10 +4,10 @@
 
 use salsa20::cipher::{KeyIvInit, StreamCipher as StreamCipherTrait};
 use salsa20::Salsa20;
+use secure_types::SecureArray;
 
 use super::hash::HashEngine;
 use super::{CryptoError, CryptoResult};
-use zeroize::Zeroizing;
 
 const SALSA20_KEY_SIZE: usize = 32;
 const SALSA20_IV_SIZE: usize = 8; // Salsa20 uses 64-bit nonce
@@ -24,14 +24,17 @@ impl Salsa20Cipher {
     /// Create a new Salsa20 cipher with the KeePass convention.
     /// The key is first SHA-256 hashed, then used with the hardcoded IV.
     ///
-    pub fn new(key: &[u8]) -> Self {
+    pub fn new(key: &[u8]) -> CryptoResult<Self> {
         // SHA-256 hash the key first (KeePass convention)
-        let key32 = Zeroizing::new(HashEngine::sha256(key));
+        let mut key32_bytes = HashEngine::sha256(key);
+        let key32 = SecureArray::from_array_mut(&mut key32_bytes)?;
 
-        let cipher = Salsa20::new_from_slices(key32.as_slice(), &KEEPASS_SALSA_IV)
-            .expect("Salsa20 key/iv sizes are correct");
+        let cipher = key32.unlock(|value| {
+            Salsa20::new_from_slices(value, &KEEPASS_SALSA_IV)
+                .map_err(|error| CryptoError::EncryptionFailed(error.to_string()))
+        })?;
 
-        Self { cipher }
+        Ok(Self { cipher })
     }
 
     /// Create a Salsa20 cipher with explicit key and IV (raw mode).
@@ -72,10 +75,10 @@ mod tests {
         let key = b"test key for salsa20 cipher";
         let plaintext = b"Hello Salsa20!";
 
-        let mut enc = Salsa20Cipher::new(key);
+        let mut enc = Salsa20Cipher::new(key).unwrap();
         let ciphertext = enc.process(plaintext);
 
-        let mut dec = Salsa20Cipher::new(key);
+        let mut dec = Salsa20Cipher::new(key).unwrap();
         let decrypted = dec.process(&ciphertext);
 
         assert_eq!(decrypted, plaintext);
@@ -85,10 +88,10 @@ mod tests {
     fn test_salsa20_deterministic() {
         let key = b"my secret key";
 
-        let mut c1 = Salsa20Cipher::new(key);
+        let mut c1 = Salsa20Cipher::new(key).unwrap();
         let r1 = c1.process(b"test data");
 
-        let mut c2 = Salsa20Cipher::new(key);
+        let mut c2 = Salsa20Cipher::new(key).unwrap();
         let r2 = c2.process(b"test data");
 
         assert_eq!(r1, r2);

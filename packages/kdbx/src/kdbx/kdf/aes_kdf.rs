@@ -56,7 +56,7 @@ impl KdfEngine for AesKdf {
         }
 
         AesKeyTransformer::transform_key(seed, key, rounds)
-            .map_err(|e| DatabaseError::DecryptionError(e.to_string()))
+            .map_err(DatabaseError::from_decryption_error)
     }
 
     fn randomize(&self, params: &mut KdfParameters) -> DatabaseResult<()> {

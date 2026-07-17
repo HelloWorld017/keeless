@@ -592,7 +592,9 @@ mod tests {
         let mut entry = Entry::new(entry_id);
         entry.password = ProtectedString::new_protected("needle-secret");
         database.entries.insert(entry_id, entry);
-        let key = CompositeKey::new().with_password(b"search password");
+        let key = CompositeKey::new()
+            .with_password(b"search password")
+            .unwrap();
         database.protect_entry_strings(&key).unwrap();
 
         let mut params = SearchParameters::new("needle");
@@ -606,7 +608,7 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry_id, entry_id);
 
-        let wrong = CompositeKey::new().with_password(b"wrong");
+        let wrong = CompositeKey::new().with_password(b"wrong").unwrap();
         assert!(SearchHelper::search_database(&database, Some(&wrong), &params).is_err());
     }
 
@@ -634,7 +636,9 @@ mod tests {
         });
         database.entries.insert(sealed_id, sealed);
 
-        let key = CompositeKey::new().with_password(b"search password");
+        let key = CompositeKey::new()
+            .with_password(b"search password")
+            .unwrap();
         database.protect_entry_strings(&key).unwrap();
 
         let unsealed_id = NodeId::new_uuid();

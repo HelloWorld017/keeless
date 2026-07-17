@@ -203,7 +203,7 @@ fn encode(database: &Database, key: &CompositeKey) -> Vec<u8> {
 
 #[tokio::test]
 async fn open_syncs_local_changes_with_cas() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (database, entry_id) = database_with_entry("base");
     storage.put("vault.kdbx", encode(&database, &key));
@@ -230,7 +230,7 @@ async fn open_syncs_local_changes_with_cas() {
 
 #[tokio::test]
 async fn sync_three_way_merges_independent_local_and_remote_changes() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (mut database, first_id) = database_with_entry("first");
     let root_id = database.root_group_id.unwrap();
@@ -265,7 +265,7 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
 
 #[tokio::test]
 async fn sync_retries_from_the_original_local_snapshot() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (database, entry_id) = database_with_entry("base");
     storage.put("vault.kdbx", encode(&database, &key));
@@ -289,7 +289,7 @@ async fn sync_retries_from_the_original_local_snapshot() {
 
 #[tokio::test]
 async fn sync_pulls_remote_changes_without_rewriting_an_unmodified_local_file() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (database, entry_id) = database_with_entry("base");
     storage.put("vault.kdbx", encode(&database, &key));
@@ -311,7 +311,7 @@ async fn sync_pulls_remote_changes_without_rewriting_an_unmodified_local_file() 
 
 #[tokio::test]
 async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (mut database, entry_id) = database_with_entry("base");
     database.name = "base name".to_string();
@@ -372,7 +372,7 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
 
 #[tokio::test]
 async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (database, entry_id) = database_with_entry("base");
     storage.put("vault.kdbx", encode(&database, &key));
@@ -397,7 +397,7 @@ async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
 
 #[tokio::test]
 async fn create_merges_when_the_remote_file_already_exists() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (remote, remote_id) = database_with_entry("remote");
     storage.put("vault.kdbx", encode(&remote, &key));
@@ -414,7 +414,7 @@ async fn create_merges_when_the_remote_file_already_exists() {
 
 #[tokio::test]
 async fn create_retries_when_a_conflicting_remote_is_deleted() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (remote, _) = database_with_entry("remote");
     storage.put("vault.kdbx", encode(&remote, &key));
@@ -432,7 +432,7 @@ async fn create_retries_when_a_conflicting_remote_is_deleted() {
 
 #[tokio::test]
 async fn file_handle_debug_does_not_expose_database_contents() {
-    let key = CompositeKey::new().with_password(b"test");
+    let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (mut database, _) = database_with_entry("sensitive title");
     database.name = "sensitive database name".to_string();

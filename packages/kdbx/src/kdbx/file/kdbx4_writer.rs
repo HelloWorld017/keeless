@@ -6,7 +6,8 @@
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use zeroize::Zeroize;
+use secure_types::{SecureArray, SecureBytes};
+use zeroize::Zeroizing;
 
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
@@ -38,7 +39,7 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(32)?;
     let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
-    let inner_stream_key = generate_random_bytes(32)?;
+    let inner_stream_key = SecureBytes::from_vec(generate_random_bytes(32)?)?;
 
     // Get KDF parameters (use existing or default)
     let kdf_uuid = database
@@ -55,18 +56,20 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
     kdf.randomize(&mut kdf_params)?;
 
     // 2. Derive master key
-    let mut raw_key = file_key.build_raw_key();
-    if raw_key.is_empty() {
-        return Err(DatabaseError::InvalidKey);
-    }
-    let mut transformed = kdf.transform(&raw_key, &kdf_params)?;
-    let master_key = crate::crypto::HashEngine::sha256_multi(&[&master_seed, &transformed]);
-    let hmac_key = crate::crypto::HashEngine::sha512_multi(&[&master_seed, &transformed, &[0x01]]);
-    raw_key.zeroize();
-    transformed.zeroize();
+    let raw_key = file_key.build_raw_key()?;
+    let transformed =
+        SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &kdf_params))?)?;
+    let mut master_key_bytes = transformed
+        .unlock_slice(|value| crate::crypto::HashEngine::sha256_multi(&[&master_seed, value]));
+    let mut hmac_key_bytes = transformed.unlock_slice(|value| {
+        crate::crypto::HashEngine::sha512_multi(&[&master_seed, value, &[0x01]])
+    });
+    let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
+    let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
 
     // 3. Serialize XML with inner stream
-    let mut inner_stream = create_inner_stream(CrsAlgorithm::ChaCha20, &inner_stream_key)?;
+    let mut inner_stream =
+        inner_stream_key.unlock_slice(|key| create_inner_stream(CrsAlgorithm::ChaCha20, key))?;
     let mut binaries = collect_binaries(database);
     for (data, protected) in &mut binaries {
         if *protected {
@@ -74,22 +77,24 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
         }
     }
     let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
-    let xml_bytes = xml.into_bytes();
+    let xml_bytes = Zeroizing::new(xml.into_bytes());
 
     // 4. Build and then compress the complete inner payload.
-    let mut payload = Vec::new();
-    write_inner_header(&mut payload, &inner_stream_key, &binaries)?;
+    let mut payload = Zeroizing::new(Vec::new());
+    inner_stream_key.unlock_slice(|key| write_inner_header(&mut *payload, key, &binaries))?;
     payload.extend_from_slice(&xml_bytes);
-    let plaintext = match database.compression {
+    let plaintext = Zeroizing::new(match database.compression {
         CompressionAlgorithm::Gzip => crate::crypto::compression::compress(&payload)?,
-        CompressionAlgorithm::None => payload,
-    };
+        CompressionAlgorithm::None => payload.to_vec(),
+    });
 
     // 6. Encrypt
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(database.encryption_algorithm);
-    let encrypted = cipher
-        .encrypt(&master_key, &encryption_iv, &plaintext)
-        .map_err(|e| DatabaseError::EncryptionError(e.to_string()))?;
+    let encrypted = master_key.unlock(|key| {
+        cipher
+            .encrypt(key, &encryption_iv, &plaintext)
+            .map_err(DatabaseError::from_encryption_error)
+    })?;
 
     // 7. Write outer header (capturing bytes for HMAC)
     let mut header_buf = Vec::new();
@@ -104,11 +109,11 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
 
     // 8. Compute the unkeyed header hash and keyed header HMAC.
     let header_hash = crate::crypto::HashEngine::sha256(&header_buf);
-    let header_hmac = compute_header_hmac(&hmac_key, &header_buf)?;
+    let header_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))?;
 
     // 9. Write HMAC block stream
     let mut hmac_stream = Vec::new();
-    write_hmac_block_stream(&mut hmac_stream, &hmac_key, &encrypted)?;
+    hmac_key.unlock(|key| write_hmac_block_stream(&mut hmac_stream, key, &encrypted))?;
 
     // 10. Write everything
     writer.write_all(&header_buf)?;
@@ -280,7 +285,7 @@ mod tests {
         db.groups.insert(root_id, root);
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new().with_password(b"test_pass");
+        let key = CompositeKey::new().with_password(b"test_pass").unwrap();
 
         // Write
         let mut buf = Vec::new();

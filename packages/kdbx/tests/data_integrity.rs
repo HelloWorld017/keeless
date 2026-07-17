@@ -28,7 +28,7 @@ fn round_trip(mut database: Database) -> Database {
     parameters.set_uint64("I", 1);
     database.kdf_parameters = Some(parameters);
 
-    let key = CompositeKey::new().with_password(PASSWORD);
+    let key = CompositeKey::new().with_password(PASSWORD).unwrap();
     let mut bytes = Vec::new();
     save_database(&mut bytes, &database, &key).expect("database should be saved");
     open_database(Cursor::new(bytes), &key).expect("database should be reopened")

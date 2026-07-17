@@ -82,6 +82,15 @@ pub enum CryptoError {
 
     #[error("HMAC error: {0}")]
     HmacError(String),
+
+    #[error("Secure memory error: {0}")]
+    SecureMemory(String),
+}
+
+impl From<secure_types::Error> for CryptoError {
+    fn from(error: secure_types::Error) -> Self {
+        Self::SecureMemory(error.to_string())
+    }
 }
 
 /// Result type for crypto operations

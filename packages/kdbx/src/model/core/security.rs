@@ -164,8 +164,7 @@ impl ProtectedString {
             ProtectedStringState::Plain(value) | ProtectedStringState::Unsealed(value) => {
                 use_value(value)
             }
-            ProtectedStringState::Sealed(value) => {
-                let root = unlock.root(&value.context)?;
+            ProtectedStringState::Sealed(value) => unlock.with_root(&value.context, |root| {
                 let plaintext = value.decrypt(root, entry_id, field)?;
                 let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
                     DatabaseError::DecryptionError(format!(
@@ -173,7 +172,7 @@ impl ProtectedString {
                     ))
                 })?;
                 use_value(text)
-            }
+            }),
         }
     }
 
@@ -188,15 +187,17 @@ impl ProtectedString {
             return Ok(());
         };
         let context = value.context.clone();
-        let root = unlock.root(&context)?;
-        let plaintext = value.decrypt(root, old_entry_id, field)?;
-        self.state = ProtectedStringState::Sealed(EncryptedValue::encrypt(
-            context,
-            root,
-            new_entry_id,
-            field,
-            plaintext.as_slice(),
-        )?);
+        let encrypted = unlock.with_root(&context, |root| {
+            let plaintext = value.decrypt(root, old_entry_id, field)?;
+            EncryptedValue::encrypt(
+                context.clone(),
+                root,
+                new_entry_id,
+                field,
+                plaintext.as_slice(),
+            )
+        })?;
+        self.state = ProtectedStringState::Sealed(encrypted);
         Ok(())
     }
 }

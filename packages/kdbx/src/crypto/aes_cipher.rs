@@ -3,7 +3,7 @@
 
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes256;
-use zeroize::Zeroize;
+use secure_types::SecureArray;
 
 use super::{BlockMode, CipherMode, CryptoError, CryptoResult};
 
@@ -12,7 +12,7 @@ const AES_256_KEY_SIZE: usize = 32;
 
 /// AES-256 cipher wrapper supporting CBC and ECB modes.
 pub struct AesCipher {
-    key: Vec<u8>,
+    key: SecureArray<32>,
     iv: [u8; AES_BLOCK_SIZE],
     mode: CipherMode,
     block_mode: BlockMode,
@@ -37,7 +37,7 @@ impl AesCipher {
         let mut iv_arr = [0u8; AES_BLOCK_SIZE];
         iv_arr.copy_from_slice(iv);
         Ok(Self {
-            key: key.to_vec(),
+            key: SecureArray::from_slice(key)?,
             iv: iv_arr,
             mode,
             block_mode: BlockMode::CBC,
@@ -60,7 +60,7 @@ impl AesCipher {
             });
         }
         Ok(Self {
-            key: key.to_vec(),
+            key: SecureArray::from_slice(key)?,
             iv: [0u8; AES_BLOCK_SIZE],
             mode,
             block_mode: BlockMode::ECB,
@@ -80,91 +80,89 @@ impl AesCipher {
     }
 
     fn process_cbc(&self, data: &[u8]) -> CryptoResult<Vec<u8>> {
-        let cipher = Aes256::new_from_slice(&self.key)
-            .map_err(|e| CryptoError::EncryptionFailed(e.to_string()))?;
+        self.key.unlock(|key| {
+            let cipher = Aes256::new_from_slice(key)
+                .map_err(|e| CryptoError::EncryptionFailed(e.to_string()))?;
 
-        match self.mode {
-            CipherMode::Encrypt => {
-                let padded = if self.padding {
-                    pkcs7_pad(data, AES_BLOCK_SIZE)
-                } else {
-                    data.to_vec()
-                };
-                if padded.len() % AES_BLOCK_SIZE != 0 {
-                    return Err(CryptoError::InvalidDataLength(format!(
-                        "CBC data must be multiple of {AES_BLOCK_SIZE}, got {}",
-                        padded.len()
-                    )));
+            match self.mode {
+                CipherMode::Encrypt => {
+                    let padded = if self.padding {
+                        pkcs7_pad(data, AES_BLOCK_SIZE)
+                    } else {
+                        data.to_vec()
+                    };
+                    if padded.len() % AES_BLOCK_SIZE != 0 {
+                        return Err(CryptoError::InvalidDataLength(format!(
+                            "CBC data must be multiple of {AES_BLOCK_SIZE}, got {}",
+                            padded.len()
+                        )));
+                    }
+                    let mut prev = self.iv;
+                    let mut result = Vec::with_capacity(padded.len());
+                    for chunk in padded.chunks(AES_BLOCK_SIZE) {
+                        let mut block: [u8; AES_BLOCK_SIZE] = chunk.try_into().map_err(|_| {
+                            CryptoError::InvalidDataLength("Block alignment error".into())
+                        })?;
+                        xor_in_place(&mut block, &prev);
+                        cipher.encrypt_block((&mut block).into());
+                        result.extend_from_slice(&block);
+                        prev = block;
+                    }
+                    Ok(result)
                 }
-                let mut prev = self.iv;
-                let mut result = Vec::with_capacity(padded.len());
-                for chunk in padded.chunks(AES_BLOCK_SIZE) {
-                    let mut block: [u8; AES_BLOCK_SIZE] = chunk.try_into().map_err(|_| {
-                        CryptoError::InvalidDataLength("Block alignment error".into())
-                    })?;
-                    xor_in_place(&mut block, &prev);
-                    cipher.encrypt_block((&mut block).into());
-                    result.extend_from_slice(&block);
-                    prev = block;
+                CipherMode::Decrypt => {
+                    if data.len() % AES_BLOCK_SIZE != 0 {
+                        return Err(CryptoError::InvalidDataLength(format!(
+                            "CBC ciphertext must be multiple of {AES_BLOCK_SIZE}, got {}",
+                            data.len()
+                        )));
+                    }
+                    let mut prev = self.iv;
+                    let mut decrypted = Vec::with_capacity(data.len());
+                    for chunk in data.chunks(AES_BLOCK_SIZE) {
+                        let ct: [u8; AES_BLOCK_SIZE] = chunk.try_into().map_err(|_| {
+                            CryptoError::InvalidDataLength("Block alignment error".into())
+                        })?;
+                        let mut block = ct;
+                        cipher.decrypt_block((&mut block).into());
+                        xor_in_place(&mut block, &prev);
+                        decrypted.extend_from_slice(&block);
+                        prev = ct;
+                    }
+                    if self.padding {
+                        pkcs7_unpad(&mut decrypted)?;
+                    }
+                    Ok(decrypted)
                 }
-                Ok(result)
             }
-            CipherMode::Decrypt => {
-                if data.len() % AES_BLOCK_SIZE != 0 {
-                    return Err(CryptoError::InvalidDataLength(format!(
-                        "CBC ciphertext must be multiple of {AES_BLOCK_SIZE}, got {}",
-                        data.len()
-                    )));
-                }
-                let mut prev = self.iv;
-                let mut decrypted = Vec::with_capacity(data.len());
-                for chunk in data.chunks(AES_BLOCK_SIZE) {
-                    let ct: [u8; AES_BLOCK_SIZE] = chunk.try_into().map_err(|_| {
-                        CryptoError::InvalidDataLength("Block alignment error".into())
-                    })?;
-                    let mut block = ct;
-                    cipher.decrypt_block((&mut block).into());
-                    xor_in_place(&mut block, &prev);
-                    decrypted.extend_from_slice(&block);
-                    prev = ct;
-                }
-                if self.padding {
-                    pkcs7_unpad(&mut decrypted)?;
-                }
-                Ok(decrypted)
-            }
-        }
+        })
     }
 
     fn process_ecb(&self, data: &[u8]) -> CryptoResult<Vec<u8>> {
-        let cipher = Aes256::new_from_slice(&self.key)
-            .map_err(|e| CryptoError::EncryptionFailed(e.to_string()))?;
+        self.key.unlock(|key| {
+            let cipher = Aes256::new_from_slice(key)
+                .map_err(|e| CryptoError::EncryptionFailed(e.to_string()))?;
 
-        if data.len() % AES_BLOCK_SIZE != 0 {
-            return Err(CryptoError::InvalidDataLength(format!(
-                "ECB data must be multiple of {AES_BLOCK_SIZE}, got {}",
-                data.len()
-            )));
-        }
-
-        let mut result = Vec::with_capacity(data.len());
-        for chunk in data.chunks(AES_BLOCK_SIZE) {
-            let mut block: [u8; AES_BLOCK_SIZE] = chunk
-                .try_into()
-                .map_err(|_| CryptoError::InvalidDataLength("Block alignment error".into()))?;
-            match self.mode {
-                CipherMode::Encrypt => cipher.encrypt_block((&mut block).into()),
-                CipherMode::Decrypt => cipher.decrypt_block((&mut block).into()),
+            if data.len() % AES_BLOCK_SIZE != 0 {
+                return Err(CryptoError::InvalidDataLength(format!(
+                    "ECB data must be multiple of {AES_BLOCK_SIZE}, got {}",
+                    data.len()
+                )));
             }
-            result.extend_from_slice(&block);
-        }
-        Ok(result)
-    }
-}
 
-impl Drop for AesCipher {
-    fn drop(&mut self) {
-        self.key.zeroize();
+            let mut result = Vec::with_capacity(data.len());
+            for chunk in data.chunks(AES_BLOCK_SIZE) {
+                let mut block: [u8; AES_BLOCK_SIZE] = chunk
+                    .try_into()
+                    .map_err(|_| CryptoError::InvalidDataLength("Block alignment error".into()))?;
+                match self.mode {
+                    CipherMode::Encrypt => cipher.encrypt_block((&mut block).into()),
+                    CipherMode::Decrypt => cipher.decrypt_block((&mut block).into()),
+                }
+                result.extend_from_slice(&block);
+            }
+            Ok(result)
+        })
     }
 }
 

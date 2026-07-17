@@ -2,7 +2,7 @@
 name = "keeless_kdbx"
 version = "0.0.0"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.85"
 description = "Platform-independent KeePass database library"
 license = "MIT OR MulanPSL-2.0"
 
@@ -40,7 +40,13 @@ thiserror = "2"
 twofish = "0.7"
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
-zeroize = { version = "1", features = ["derive"] }
+zeroize = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+secure-types = { path = "../secure-types", default-features = false, features = ["use_os"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+secure-types = { path = "../secure-types", default-features = false, features = ["no_os"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

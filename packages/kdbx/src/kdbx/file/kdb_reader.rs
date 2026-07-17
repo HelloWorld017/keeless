@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
+use secure_types::{SecureArray, SecureBytes};
+use zeroize::Zeroizing;
 
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::kdbx::file::header::KdbHeader;
@@ -38,9 +40,11 @@ pub fn read_kdb<R: Read>(reader: &mut R, composite_key: &CompositeKey) -> Databa
     // 4. Decrypt content
     let cipher =
         crate::crypto::cipher_engine::create_cipher_engine(EncryptionAlgorithm::AesRijndael);
-    let decrypted = cipher
-        .decrypt(&master_key, &header.encryption_iv, &encrypted)
-        .map_err(|e| DatabaseError::DecryptionError(e.to_string()))?;
+    let decrypted = Zeroizing::new(master_key.unlock(|key| {
+        cipher
+            .decrypt(key, &header.encryption_iv, &encrypted)
+            .map_err(DatabaseError::from_decryption_error)
+    })?);
 
     // 5. Verify content hash
     let content_hash = crate::crypto::HashEngine::sha256(&decrypted);
@@ -155,11 +159,8 @@ fn read_kdb_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbHeader> {
 fn derive_kdb_master_key(
     composite_key: &CompositeKey,
     header: &KdbHeader,
-) -> DatabaseResult<Vec<u8>> {
-    let raw_key = composite_key.build_raw_key();
-    if raw_key.is_empty() {
-        return Err(DatabaseError::InvalidKey);
-    }
+) -> DatabaseResult<SecureArray<32>> {
+    let raw_key = composite_key.build_raw_key()?;
 
     // KDB uses AES-KDF with the transform seed
     let mut params = crate::kdbx::kdf::kdf_parameters::KdfParameters::new(
@@ -169,13 +170,19 @@ fn derive_kdb_master_key(
     params.set_uint64("R", header.transform_rounds as u64);
 
     let kdf = crate::kdbx::kdf::aes_kdf::AesKdf;
-    let transformed = crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, &raw_key, &params)?;
+    let transformed =
+        SecureBytes::from_vec(raw_key.unlock(|key| {
+            crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, key, &params)
+        })?)?;
 
     // Combine with master seed
-    let mut combined = Vec::with_capacity(header.master_seed.len() + transformed.len());
+    let mut combined = Zeroizing::new(Vec::with_capacity(
+        header.master_seed.len() + transformed.len(),
+    ));
     combined.extend_from_slice(&header.master_seed);
-    combined.extend_from_slice(&transformed);
-    Ok(crate::crypto::HashEngine::sha256(&combined).to_vec())
+    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    let mut master_key = crate::crypto::HashEngine::sha256(&combined);
+    Ok(SecureArray::from_array_mut(&mut master_key)?)
 }
 
 type KdbGroupList = Vec<(HashMap<u16, Vec<u8>>, usize)>;
