@@ -1978,6 +1978,7 @@ name = "secure-types"
 version = "0.3.0"
 dependencies = [
  "libc",
+ "windows-sys 0.61.2",
  "zeroize",
 ]
 

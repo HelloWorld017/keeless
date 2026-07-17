@@ -103,7 +103,7 @@ impl TwofishCipher {
                     Ok(decrypted)
                 }
             }
-        })
+        })?
     }
 }
 

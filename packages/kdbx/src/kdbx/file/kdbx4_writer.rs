@@ -58,22 +58,22 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
     // 2. Derive master key
     let raw_key = file_key.build_raw_key()?;
     let transformed =
-        SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &kdf_params))?)?;
+        SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &kdf_params))??)?;
     let mut master_key_bytes = transformed
-        .unlock_slice(|value| crate::crypto::HashEngine::sha256_multi(&[&master_seed, value]));
+        .unlock_slice(|value| crate::crypto::HashEngine::sha256_multi(&[&master_seed, value]))?;
     let mut hmac_key_bytes = transformed.unlock_slice(|value| {
         crate::crypto::HashEngine::sha512_multi(&[&master_seed, value, &[0x01]])
-    });
+    })?;
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
     let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
 
     // 3. Serialize XML with inner stream
     let mut inner_stream =
-        inner_stream_key.unlock_slice(|key| create_inner_stream(CrsAlgorithm::ChaCha20, key))?;
+        inner_stream_key.unlock_slice(|key| create_inner_stream(CrsAlgorithm::ChaCha20, key))??;
     let mut binaries = collect_binaries(database);
     for (data, protected) in &mut binaries {
         if *protected {
-            inner_stream.process(data);
+            inner_stream.process(data)?;
         }
     }
     let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
@@ -81,7 +81,7 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
 
     // 4. Build and then compress the complete inner payload.
     let mut payload = Zeroizing::new(Vec::new());
-    inner_stream_key.unlock_slice(|key| write_inner_header(&mut *payload, key, &binaries))?;
+    inner_stream_key.unlock_slice(|key| write_inner_header(&mut *payload, key, &binaries))??;
     payload.extend_from_slice(&xml_bytes);
     let plaintext = Zeroizing::new(match database.compression {
         CompressionAlgorithm::Gzip => crate::crypto::compression::compress(&payload)?,
@@ -94,7 +94,7 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
         cipher
             .encrypt(key, &encryption_iv, &plaintext)
             .map_err(DatabaseError::from_encryption_error)
-    })?;
+    })??;
 
     // 7. Write outer header (capturing bytes for HMAC)
     let mut header_buf = Vec::new();
@@ -109,11 +109,11 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
 
     // 8. Compute the unkeyed header hash and keyed header HMAC.
     let header_hash = crate::crypto::HashEngine::sha256(&header_buf);
-    let header_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))?;
+    let header_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))??;
 
     // 9. Write HMAC block stream
     let mut hmac_stream = Vec::new();
-    hmac_key.unlock(|key| write_hmac_block_stream(&mut hmac_stream, key, &encrypted))?;
+    hmac_key.unlock(|key| write_hmac_block_stream(&mut hmac_stream, key, &encrypted))??;
 
     // 10. Write everything
     writer.write_all(&header_buf)?;

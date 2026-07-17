@@ -135,7 +135,7 @@ impl AesCipher {
                     Ok(decrypted)
                 }
             }
-        })
+        })?
     }
 
     fn process_ecb(&self, data: &[u8]) -> CryptoResult<Vec<u8>> {
@@ -162,7 +162,7 @@ impl AesCipher {
                 result.extend_from_slice(&block);
             }
             Ok(result)
-        })
+        })?
     }
 }
 

@@ -64,11 +64,11 @@ pub(crate) fn write_kdb_with_credentials<W: Write>(
     let transformed =
         SecureBytes::from_vec(raw_key.unlock(|key| {
             crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, key, &params)
-        })?)?;
+        })??)?;
 
     let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
     combined.extend_from_slice(&master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
     let mut master_key_bytes = crate::crypto::HashEngine::sha256(&combined);
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
 
@@ -80,7 +80,7 @@ pub(crate) fn write_kdb_with_credentials<W: Write>(
         cipher
             .encrypt(key, &encryption_iv, &content)
             .map_err(DatabaseError::from_encryption_error)
-    })?;
+    })??;
 
     // 7. Write signature
     writer.write_u32::<LittleEndian>(KDB_SIGNATURE_1)?;

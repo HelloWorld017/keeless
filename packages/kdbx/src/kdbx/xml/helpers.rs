@@ -109,7 +109,7 @@ pub(crate) fn preserve_element<R: std::io::BufRead>(
                             "invalid protected extension value base64: {err}"
                         ))
                     })?;
-                inner_stream.process(&mut value);
+                inner_stream.process(&mut value)?;
                 content.push(PreservedXmlContent::Protected(value));
             }
             Event::Text(text) => content.push(PreservedXmlContent::Text(
@@ -237,7 +237,7 @@ fn write_preserved_element(
                 .map_err(|err| DatabaseError::InvalidFormat(err.to_string()))?,
             PreservedXmlContent::Protected(value) => {
                 let mut encrypted = value.clone();
-                inner_stream.process(&mut encrypted);
+                inner_stream.process(&mut encrypted)?;
                 let encoded = base64::engine::general_purpose::STANDARD.encode(encrypted);
                 writer
                     .write_event(Event::Text(BytesText::new(&encoded)))

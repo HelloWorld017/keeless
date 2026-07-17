@@ -79,7 +79,7 @@ impl MemoryProtectionContext {
 
         let raw_key = composite_key.build_raw_key()?;
         let transformed =
-            SecureBytes::from_vec(raw_key.unlock(|value| kdf.transform(value, &kdf_parameters))?)?;
+            SecureBytes::from_vec(raw_key.unlock(|value| kdf.transform(value, &kdf_parameters))??)?;
 
         let mut id = [0u8; 16];
         let mut salt = [0u8; 32];
@@ -87,7 +87,7 @@ impl MemoryProtectionContext {
         fill_random(&mut id)?;
         fill_random(&mut salt)?;
         fill_random(&mut verifier_nonce)?;
-        let root = transformed.unlock_slice(|value| derive_root(value, &salt))?;
+        let root = transformed.unlock_slice(|value| derive_root(value, &salt))??;
         let verifier = root.unlock(|value| {
             XChaCha20Poly1305::new(value.into())
                 .encrypt(
@@ -100,7 +100,7 @@ impl MemoryProtectionContext {
                 .map_err(|_| {
                     DatabaseError::EncryptionError("memory key verification setup failed".into())
                 })
-        })?;
+        })??;
 
         Ok((
             Arc::new(Self {
@@ -119,9 +119,9 @@ impl MemoryProtectionContext {
         let kdf = create_kdf(&self.kdf_parameters.kdf_uuid)
             .ok_or_else(|| DatabaseError::InvalidFormat("Unknown memory-protection KDF".into()))?;
         let transformed = SecureBytes::from_vec(
-            raw_key.unlock(|value| kdf.transform(value, &self.kdf_parameters))?,
+            raw_key.unlock(|value| kdf.transform(value, &self.kdf_parameters))??,
         )?;
-        let root = transformed.unlock_slice(|value| derive_root(value, &self.salt))?;
+        let root = transformed.unlock_slice(|value| derive_root(value, &self.salt))??;
         root.unlock(|value| {
             XChaCha20Poly1305::new(value.into())
                 .decrypt(
@@ -132,7 +132,7 @@ impl MemoryProtectionContext {
                     },
                 )
                 .map_err(|_| DatabaseError::InvalidCredentials)
-        })?;
+        })??;
         Ok(root)
     }
 }
@@ -179,7 +179,7 @@ impl EncryptedValue {
                     },
                 )
                 .map_err(|_| DatabaseError::EncryptionError("memory protection failed".into()))
-        })?;
+        })??;
         Ok(Self {
             context,
             nonce,
@@ -209,7 +209,7 @@ impl EncryptedValue {
                         "protected memory value authentication failed".into(),
                     )
                 })
-        })?;
+        })??;
         Ok(Zeroizing::new(plaintext))
     }
 
@@ -240,7 +240,7 @@ impl<'a> MemoryUnlockSession<'a> {
             self.roots
                 .insert(context.id, context.unlock(self.composite_key)?);
         }
-        self.roots[&context.id].unlock(use_root)
+        self.roots[&context.id].unlock(use_root)?
     }
 }
 
@@ -250,7 +250,7 @@ fn derive_root(transformed: &[u8], salt: &[u8; 32]) -> DatabaseResult<SecureArra
     root.unlock_mut(|value| {
         hkdf.expand(ROOT_INFO, value)
             .map_err(|_| DatabaseError::EncryptionError("memory root derivation failed".into()))
-    })?;
+    })??;
     Ok(root)
 }
 
@@ -263,7 +263,7 @@ fn derive_entry_key(root: &[u8; 32], entry_id: NodeId) -> DatabaseResult<SecureA
     key.unlock_mut(|value| {
         hkdf.expand(&info, value)
             .map_err(|_| DatabaseError::EncryptionError("entry key derivation failed".into()))
-    })?;
+    })??;
     Ok(key)
 }
 
@@ -322,6 +322,7 @@ mod tests {
                     plaintext,
                 )
             })
+            .unwrap()
             .unwrap();
 
         assert!(!encrypted
@@ -379,6 +380,7 @@ mod tests {
                     )?,
                 ))
             })
+            .unwrap()
             .unwrap();
         assert_ne!(first.ciphertext, second.ciphertext);
         assert_ne!(first.nonce, second.nonce);

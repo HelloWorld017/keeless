@@ -48,7 +48,7 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
                                         ))
                                     })?,
                             );
-                            inner_stream.process(&mut bytes);
+                            inner_stream.process(&mut bytes)?;
                             let decrypted =
                                 std::str::from_utf8(bytes.as_slice()).map_err(|err| {
                                     DatabaseError::InvalidFormat(format!(

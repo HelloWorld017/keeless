@@ -44,7 +44,7 @@ pub fn read_kdb<R: Read>(reader: &mut R, composite_key: &CompositeKey) -> Databa
         cipher
             .decrypt(key, &header.encryption_iv, &encrypted)
             .map_err(DatabaseError::from_decryption_error)
-    })?);
+    })??);
 
     // 5. Verify content hash
     let content_hash = crate::crypto::HashEngine::sha256(&decrypted);
@@ -173,14 +173,14 @@ fn derive_kdb_master_key(
     let transformed =
         SecureBytes::from_vec(raw_key.unlock(|key| {
             crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, key, &params)
-        })?)?;
+        })??)?;
 
     // Combine with master seed
     let mut combined = Zeroizing::new(Vec::with_capacity(
         header.master_seed.len() + transformed.len(),
     ));
     combined.extend_from_slice(&header.master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
     let mut master_key = crate::crypto::HashEngine::sha256(&combined);
     Ok(SecureArray::from_array_mut(&mut master_key)?)
 }

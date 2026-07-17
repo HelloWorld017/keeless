@@ -53,23 +53,23 @@ impl CompositeKey {
 
         // Password component: SHA-256 hash
         if let Some(ref pwd) = self.password_data {
-            let hash = Zeroizing::new(pwd.unlock_slice(HashEngine::sha256));
+            let hash = Zeroizing::new(pwd.unlock_slice(HashEngine::sha256)?);
             combined.extend_from_slice(hash.as_slice());
         }
 
         // Key file component: SHA-256 hash (or raw if already 32 bytes)
         if let Some(ref kf) = self.key_file_data {
             if kf.len() == 32 {
-                kf.unlock_slice(|value| combined.extend_from_slice(value));
+                kf.unlock_slice(|value| combined.extend_from_slice(value))?;
             } else {
-                let hash = Zeroizing::new(kf.unlock_slice(HashEngine::sha256));
+                let hash = Zeroizing::new(kf.unlock_slice(HashEngine::sha256)?);
                 combined.extend_from_slice(hash.as_slice());
             }
         }
 
         // Hardware key component
         if let Some(ref hk) = self.hardware_key {
-            hk.unlock_slice(|value| combined.extend_from_slice(value));
+            hk.unlock_slice(|value| combined.extend_from_slice(value))?;
         }
 
         if combined.is_empty() {
@@ -133,14 +133,14 @@ pub fn make_final_key(
 
     // KDF transform
     let transformed_key =
-        SecureBytes::from_vec(raw_key.unlock(|value| kdf_engine.transform(value, kdf_params))?)?;
+        SecureBytes::from_vec(raw_key.unlock(|value| kdf_engine.transform(value, kdf_params))??)?;
 
     // Final key = SHA-256(masterSeed || transformedKey)
     let mut combined = Zeroizing::new(Vec::with_capacity(
         master_seed.len() + transformed_key.len(),
     ));
     combined.extend_from_slice(master_seed);
-    transformed_key.unlock_slice(|value| combined.extend_from_slice(value));
+    transformed_key.unlock_slice(|value| combined.extend_from_slice(value))?;
 
     let mut final_key = HashEngine::sha256(&combined);
     Ok(SecureArray::from_array_mut(&mut final_key)?)
@@ -154,7 +154,7 @@ mod tests {
     fn test_composite_key_password_only() {
         let key = CompositeKey::new().with_password(b"test123").unwrap();
         let raw = key.build_raw_key().unwrap();
-        assert!(raw.unlock(|value| value.len() == 32));
+        assert!(raw.unlock(|value| value.len() == 32).unwrap());
     }
 
     #[test]
@@ -164,7 +164,7 @@ mod tests {
             .unwrap()
             .with_key_file(b"keyfile_data");
         let raw = key.unwrap().build_raw_key().unwrap();
-        assert!(raw.unlock(|value| value.len() == 32));
+        assert!(raw.unlock(|value| value.len() == 32).unwrap());
     }
 
     #[test]
@@ -173,6 +173,9 @@ mod tests {
         let key2 = CompositeKey::new().with_password(b"test").unwrap();
         let raw1 = key1.build_raw_key().unwrap();
         let raw2 = key2.build_raw_key().unwrap();
-        assert!(raw1.unlock(|left| raw2.unlock(|right| left == right)));
+        assert!(raw1
+            .unlock(|left| raw2.unlock(|right| left == right))
+            .unwrap()
+            .unwrap());
     }
 }

@@ -191,7 +191,7 @@ impl Database {
                         entry.seal_protected_strings(context.clone(), root)?;
                     }
                     Ok::<_, DatabaseError>(())
-                })?;
+                })??;
                 context
             }
         };

@@ -81,7 +81,7 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     }
 
     // 6. Prepend stream start bytes (SHA-256 of final key)
-    let stream_start = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key));
+    let stream_start = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key))?;
     let mut plaintext = Zeroizing::new(Vec::with_capacity(32 + hashed_blocks.len()));
     plaintext.extend_from_slice(&stream_start);
     plaintext.extend_from_slice(&hashed_blocks);
@@ -92,7 +92,7 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
         cipher
             .encrypt(key, &encryption_iv, &plaintext)
             .map_err(DatabaseError::from_encryption_error)
-    })?;
+    })??;
 
     // 8. Write file: signature + header + encrypted data
     write_signature(writer)?;
@@ -115,11 +115,11 @@ fn derive_key(
     params.set_uint64("R", transform_rounds);
 
     let kdf = AesKdf;
-    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))?)?;
+    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))??)?;
 
     let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
     combined.extend_from_slice(master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
     let mut final_key = crate::crypto::HashEngine::sha256(&combined);
     Ok(SecureArray::from_array_mut(&mut final_key)?)
 }

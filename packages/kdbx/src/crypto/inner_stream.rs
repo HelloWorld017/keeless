@@ -12,7 +12,7 @@ use zeroize::{Zeroize, Zeroizing};
 /// Processes protected field values sequentially across all fields in document order.
 pub trait InnerStreamCipher {
     /// Encrypt/decrypt data in-place. Stream position advances by data.len().
-    fn process(&mut self, data: &mut [u8]);
+    fn process(&mut self, data: &mut [u8]) -> DatabaseResult<()>;
 }
 
 /// Salsa20 inner stream (KDBX 3.1).
@@ -30,9 +30,10 @@ impl Salsa20InnerStream {
 }
 
 impl InnerStreamCipher for Salsa20InnerStream {
-    fn process(&mut self, data: &mut [u8]) {
+    fn process(&mut self, data: &mut [u8]) -> DatabaseResult<()> {
         let processed = Zeroizing::new(self.cipher.process(data));
         data.copy_from_slice(&processed);
+        Ok(())
     }
 }
 
@@ -49,15 +50,16 @@ impl ChaCha20InnerStream {
         let cipher = material.unlock(|value| {
             ChaCha20Cipher::new(&value[..32], &value[32..44])
                 .map_err(|e| DatabaseError::DecryptionError(e.to_string()))
-        })?;
+        })??;
         Ok(Self { cipher })
     }
 }
 
 impl InnerStreamCipher for ChaCha20InnerStream {
-    fn process(&mut self, data: &mut [u8]) {
+    fn process(&mut self, data: &mut [u8]) -> DatabaseResult<()> {
         let processed = Zeroizing::new(self.cipher.process(data));
         data.copy_from_slice(&processed);
+        Ok(())
     }
 }
 
@@ -92,7 +94,7 @@ impl ArcFourInnerStream {
 }
 
 impl InnerStreamCipher for ArcFourInnerStream {
-    fn process(&mut self, data: &mut [u8]) {
+    fn process(&mut self, data: &mut [u8]) -> DatabaseResult<()> {
         let i = &mut self.i;
         let j = &mut self.j;
         self.state.unlock_mut(|state| {
@@ -103,7 +105,8 @@ impl InnerStreamCipher for ArcFourInnerStream {
                 let k = state[*i as usize].wrapping_add(state[*j as usize]);
                 *byte ^= state[k as usize];
             }
-        });
+        })?;
+        Ok(())
     }
 }
 
@@ -145,16 +148,16 @@ mod tests {
         let original2 = field2.clone();
 
         // Encrypt
-        stream.process(&mut field1);
-        stream.process(&mut field2);
+        stream.process(&mut field1).unwrap();
+        stream.process(&mut field2).unwrap();
 
         assert_ne!(field1, original1);
         assert_ne!(field2, original2);
 
         // Decrypt (re-create cipher to reset keystream position)
         let mut stream2 = Salsa20InnerStream::new(key).unwrap();
-        stream2.process(&mut field1);
-        stream2.process(&mut field2);
+        stream2.process(&mut field1).unwrap();
+        stream2.process(&mut field2).unwrap();
 
         assert_eq!(field1, original1);
         assert_eq!(field2, original2);
@@ -167,11 +170,11 @@ mod tests {
 
         let mut data = b"sensitive data".to_vec();
         let original = data.clone();
-        stream.process(&mut data);
+        stream.process(&mut data).unwrap();
         assert_ne!(data, original);
 
         let mut stream2 = ChaCha20InnerStream::new(&key).unwrap();
-        stream2.process(&mut data);
+        stream2.process(&mut data).unwrap();
         assert_eq!(data, original);
     }
 
@@ -182,11 +185,11 @@ mod tests {
 
         let mut data = b"protected value".to_vec();
         let original = data.clone();
-        stream.process(&mut data);
+        stream.process(&mut data).unwrap();
         assert_ne!(data, original);
 
         let mut stream2 = ArcFourInnerStream::new(key).unwrap();
-        stream2.process(&mut data);
+        stream2.process(&mut data).unwrap();
         assert_eq!(data, original);
     }
 
@@ -200,12 +203,12 @@ mod tests {
         let orig1 = f1.clone();
         let orig2 = f2.clone();
 
-        stream.process(&mut f1);
-        stream.process(&mut f2);
+        stream.process(&mut f1).unwrap();
+        stream.process(&mut f2).unwrap();
 
         let mut stream2 = ArcFourInnerStream::new(key).unwrap();
-        stream2.process(&mut f1);
-        stream2.process(&mut f2);
+        stream2.process(&mut f1).unwrap();
+        stream2.process(&mut f2).unwrap();
 
         assert_eq!(f1, orig1);
         assert_eq!(f2, orig2);

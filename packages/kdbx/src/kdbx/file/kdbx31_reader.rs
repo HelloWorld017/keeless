@@ -68,7 +68,7 @@ pub fn read_kdbx31<R: Read>(
         cipher
             .decrypt(key, &header.encryption_iv, &encrypted)
             .map_err(DatabaseError::from_decryption_error)
-    })?);
+    })??);
 
     // 6. Verify stream start bytes
     if decrypted.len() < 32 {
@@ -76,7 +76,7 @@ pub fn read_kdbx31<R: Read>(
             "Decrypted data too short".into(),
         ));
     }
-    let expected = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key));
+    let expected = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key))?;
     if decrypted[..32] != expected {
         return Err(DatabaseError::InvalidKey);
     }
@@ -125,14 +125,14 @@ fn derive_kdbx31_key(
 
     // Transform key with AES-KDF
     let kdf = AesKdf;
-    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))?)?;
+    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))??)?;
 
     // Final key = SHA-256(masterSeed || transformedKey)
     let mut combined = Zeroizing::new(Vec::with_capacity(
         header.master_seed.len() + transformed.len(),
     ));
     combined.extend_from_slice(&header.master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value));
+    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
     let mut final_key = crate::crypto::HashEngine::sha256(combined.as_slice());
     Ok(SecureArray::from_array_mut(&mut final_key)?)
 }

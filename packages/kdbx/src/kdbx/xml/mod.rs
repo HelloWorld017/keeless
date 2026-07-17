@@ -17,6 +17,7 @@ mod tests {
     use crate::model::core::security::ProtectedString;
     use crate::model::db::database::Database;
     use crate::model::entry::Entry;
+    use crate::model::exception::DatabaseResult;
     use crate::model::group::Group;
     use base64::Engine;
     use uuid::Uuid;
@@ -141,13 +142,13 @@ mod tests {
     }
 
     #[test]
-    fn test_protected_value_inside_unknown_xml_keeps_stream_aligned() {
+    fn test_protected_value_inside_unknown_xml_keeps_stream_aligned() -> DatabaseResult<()> {
         let key = b"protected-extension";
         let mut encrypt_stream = Salsa20InnerStream::new(key).unwrap();
         let mut extension_value = b"future-secret".to_vec();
-        encrypt_stream.process(&mut extension_value);
+        encrypt_stream.process(&mut extension_value)?;
         let mut password = b"password".to_vec();
-        encrypt_stream.process(&mut password);
+        encrypt_stream.process(&mut password)?;
         let extension_value = base64::engine::general_purpose::STANDARD.encode(extension_value);
         let password = base64::engine::general_purpose::STANDARD.encode(password);
         let xml = format!(
@@ -170,6 +171,7 @@ mod tests {
             reread.entries.values().next().unwrap().password.as_str(),
             "password"
         );
+        Ok(())
     }
 
     #[test]

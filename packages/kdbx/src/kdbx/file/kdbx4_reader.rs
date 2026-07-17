@@ -74,13 +74,13 @@ pub fn read_kdbx4<R: Read>(
     // 5. Verify header HMAC (next 32 bytes)
     let mut stored_hmac = [0u8; 32];
     reader.read_exact(&mut stored_hmac)?;
-    let expected_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))?;
+    let expected_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))??;
     if stored_hmac != expected_hmac {
         return Err(DatabaseError::InvalidCredentials);
     }
 
     // 6. Read HMAC block stream → encrypted data
-    let encrypted = hmac_key.unlock(|key| read_hmac_block_stream(reader, key))?;
+    let encrypted = hmac_key.unlock(|key| read_hmac_block_stream(reader, key))??;
 
     // 7. Decrypt and decompress the complete payload.
     let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
@@ -88,7 +88,7 @@ pub fn read_kdbx4<R: Read>(
         cipher
             .decrypt(key, &header.encryption_iv, &encrypted)
             .map_err(DatabaseError::from_decryption_error)
-    })?);
+    })??);
     let payload = match header.compression {
         CompressionAlgorithm::Gzip => {
             crate::crypto::compression::decompress_sensitive(decrypted.as_slice())?
@@ -109,7 +109,7 @@ pub fn read_kdbx4<R: Read>(
     for mut binary in inner_binaries {
         let protected = binary.is_protected();
         if protected {
-            inner_stream.process(&mut binary.data);
+            inner_stream.process(&mut binary.data)?;
         }
         binaries.0.push((binary.data, protected));
     }
@@ -147,13 +147,13 @@ fn derive_keys(composite_key: &CompositeKey, header: &KdbxHeader4) -> DatabaseRe
         .as_ref()
         .ok_or_else(|| DatabaseError::InvalidFormat("No KDF parameters".into()))?;
 
-    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, params))?)?;
+    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, params))??)?;
     let mut master_key_bytes = transformed.unlock_slice(|value| {
         crate::crypto::HashEngine::sha256_multi(&[&header.master_seed, value])
-    });
+    })?;
     let mut hmac_key_bytes = transformed.unlock_slice(|value| {
         crate::crypto::HashEngine::sha512_multi(&[&header.master_seed, value, &[0x01]])
-    });
+    })?;
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
     let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
     Ok((master_key, hmac_key))

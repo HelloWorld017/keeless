@@ -168,7 +168,7 @@ fn write_field(
         write_tag(writer, "Key", key)?;
         if protect {
             let mut bytes = value.as_bytes().to_vec();
-            inner_stream.process(&mut bytes);
+            inner_stream.process(&mut bytes)?;
             let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
             let mut value_element = BytesStart::new("Value");
             value_element.push_attribute(("Protected", "True"));

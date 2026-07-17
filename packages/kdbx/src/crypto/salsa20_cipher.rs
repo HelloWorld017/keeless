@@ -32,7 +32,7 @@ impl Salsa20Cipher {
         let cipher = key32.unlock(|value| {
             Salsa20::new_from_slices(value, &KEEPASS_SALSA_IV)
                 .map_err(|error| CryptoError::EncryptionFailed(error.to_string()))
-        })?;
+        })??;
 
         Ok(Self { cipher })
     }
