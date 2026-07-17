@@ -39,9 +39,9 @@ impl DatabaseMerger {
         }
 
         let icons_changed = merge_custom_icons(target, source);
-        merge_deleted_objects(target, source);
+        let deleted_objects_changed = merge_deleted_objects(target, source);
 
-        if merge_changed(&result) || icons_changed {
+        if merge_changed(&result) || icons_changed || deleted_objects_changed {
             target.mark_modified();
         }
 
@@ -115,6 +115,7 @@ impl DatabaseMerger {
                 }
             } else {
                 add_entry_from(target, source, source_entry.clone(), *id);
+                clear_deleted(target, id);
                 result.entries_added += 1;
             }
         }

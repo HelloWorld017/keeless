@@ -7,7 +7,8 @@ impl DatabaseMerger {
         source: &Database,
         base: &Database,
         result: &mut MergeResult,
-    ) {
+    ) -> Vec<NodeId> {
+        let mut retained_groups = Vec::new();
         if target.root_group_id.is_none() {
             target.root_group_id = source.root_group_id;
         }
@@ -120,14 +121,16 @@ impl DatabaseMerger {
             let source_changed = source_parent != base_parent;
             let target_changed = target_parent != base_parent;
             if source_changed && (!target_changed || source_parent == target_parent) {
-                move_group_from(target, source, id);
+                if move_group_from(target, source, id) {
+                    result.groups_modified += 1;
+                }
             } else if source_changed && target_changed && source_parent != target_parent {
                 let take_source = matches!(self.strategy, MergeStrategy::Overwrite)
                     || (self.strategy == MergeStrategy::NewestWins
                         && source.groups[&id].location_changed.as_millis().unwrap_or(0)
                             > target.groups[&id].location_changed.as_millis().unwrap_or(0));
-                if take_source {
-                    move_group_from(target, source, id);
+                if take_source && move_group_from(target, source, id) {
+                    result.groups_modified += 1;
                 }
                 result.conflicts.push(MergeConflict {
                     node_id: id,
@@ -144,15 +147,19 @@ impl DatabaseMerger {
         let deleted_groups: Vec<NodeId> = target
             .groups
             .keys()
-            .filter(|id| base.groups.contains_key(id) && !source.groups.contains_key(id))
+            .filter(|id| {
+                base.groups.contains_key(id)
+                    && !source.groups.contains_key(id)
+                    && group_parent(base, id)
+                        .map_or(true, |parent| source.groups.contains_key(&parent))
+            })
             .copied()
             .collect();
         for id in deleted_groups {
             if !target.groups.contains_key(&id) || target.root_group_id == Some(id) {
                 continue;
             }
-            let target_modified = group_content_differs(&target.groups[&id], &base.groups[&id])
-                || group_parent(target, &id) != group_parent(base, &id);
+            let target_modified = group_tree_modified(target, base, id);
             let deletion_time = deleted_time(source, &id).unwrap_or(0);
             let delete = !target_modified
                 || self.strategy == MergeStrategy::Overwrite
@@ -163,6 +170,7 @@ impl DatabaseMerger {
                 result.groups_deleted += groups;
                 result.entries_deleted += entries;
             } else {
+                retained_groups.push(id);
                 result.conflicts.push(MergeConflict {
                     node_id: id,
                     conflict_type: ConflictType::GroupModified,
@@ -170,5 +178,40 @@ impl DatabaseMerger {
                 });
             }
         }
+        retained_groups
     }
+}
+
+fn group_tree_modified(target: &Database, base: &Database, root_id: NodeId) -> bool {
+    let mut stack = vec![root_id];
+    while let Some(id) = stack.pop() {
+        let Some(target_group) = target.groups.get(&id) else {
+            continue;
+        };
+        let Some(base_group) = base.groups.get(&id) else {
+            return true;
+        };
+        if group_content_differs(target_group, base_group)
+            || group_parent(target, &id) != group_parent(base, &id)
+        {
+            return true;
+        }
+        for entry_id in &target_group.child_entry_ids {
+            let Some(target_entry) = target.entries.get(entry_id) else {
+                continue;
+            };
+            let Some(base_entry) = base.entries.get(entry_id) else {
+                return true;
+            };
+            if entry_differs(target_entry, base_entry)
+                || entry_history_differs(target_entry, base_entry)
+                || target.find_parent_group_of_entry(entry_id)
+                    != base.find_parent_group_of_entry(entry_id)
+            {
+                return true;
+            }
+        }
+        stack.extend(target_group.child_group_ids.iter().copied());
+    }
+    false
 }

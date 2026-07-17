@@ -6,6 +6,7 @@ impl DatabaseMerger {
         target: &mut Database,
         source: &Database,
         base: &Database,
+        retained_groups: &[NodeId],
         result: &mut MergeResult,
     ) {
         for (id, source_entry) in &source.entries {
@@ -147,12 +148,64 @@ impl DatabaseMerger {
             }
         }
 
+        let common: Vec<NodeId> = source
+            .entries
+            .keys()
+            .filter(|id| base.entries.contains_key(id) && target.entries.contains_key(id))
+            .copied()
+            .collect();
+        for id in common {
+            let base_parent = base.find_parent_group_of_entry(&id);
+            let source_parent = source.find_parent_group_of_entry(&id);
+            let target_parent = target.find_parent_group_of_entry(&id);
+            let source_changed = source_parent != base_parent;
+            let target_changed = target_parent != base_parent;
+            if source_changed && (!target_changed || source_parent == target_parent) {
+                if move_entry_from(target, source, id) {
+                    result.entries_modified += 1;
+                }
+            } else if source_changed && target_changed && source_parent != target_parent {
+                let take_source = matches!(self.strategy, MergeStrategy::Overwrite)
+                    || (self.strategy == MergeStrategy::NewestWins
+                        && source.entries[&id]
+                            .location_changed
+                            .as_millis()
+                            .unwrap_or(0)
+                            > target.entries[&id]
+                                .location_changed
+                                .as_millis()
+                                .unwrap_or(0));
+                if take_source && move_entry_from(target, source, id) {
+                    result.entries_modified += 1;
+                }
+                result.conflicts.push(MergeConflict {
+                    node_id: id,
+                    conflict_type: ConflictType::EntryModified,
+                    resolution: if take_source {
+                        ConflictResolution::TookIncoming
+                    } else {
+                        ConflictResolution::KeptExisting
+                    },
+                });
+            }
+        }
+
         let ids_to_check: Vec<NodeId> = target.entries.keys().copied().collect();
         for id in &ids_to_check {
             if let (Some(base_entry), None) = (base.entries.get(id), source.entries.get(id)) {
+                let retained_with_group =
+                    target.find_parent_group_of_entry(id).is_some_and(|parent| {
+                        retained_groups
+                            .iter()
+                            .any(|root| group_contains(target, root, &parent))
+                    });
+                if retained_with_group {
+                    continue;
+                }
                 let target_entry = &target.entries[id];
                 let target_modified = entry_differs(target_entry, base_entry)
-                    || entry_history_differs(target_entry, base_entry);
+                    || entry_history_differs(target_entry, base_entry)
+                    || target.find_parent_group_of_entry(id) != base.find_parent_group_of_entry(id);
                 if target_modified {
                     let deletion_time = deleted_time(source, id).unwrap_or(0);
                     let delete = match self.strategy {

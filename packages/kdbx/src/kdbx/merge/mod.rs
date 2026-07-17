@@ -174,6 +174,9 @@ fn attach_group_from(target: &mut Database, source: &Database, id: NodeId) -> bo
     let Some(mut parent) = source_parent_in_target(target, source_parent) else {
         return false;
     };
+    if group_parent(target, &id) == Some(parent) {
+        return false;
+    }
     if group_parent(target, &id).is_some() && group_contains(target, &id, &parent) {
         return false;
     }
@@ -194,8 +197,8 @@ fn attach_group_from(target: &mut Database, source: &Database, id: NodeId) -> bo
     }
 }
 
-fn move_group_from(target: &mut Database, source: &Database, id: NodeId) {
-    attach_group_from(target, source, id);
+fn move_group_from(target: &mut Database, source: &Database, id: NodeId) -> bool {
+    attach_group_from(target, source, id)
 }
 
 fn group_contains(db: &Database, ancestor: &NodeId, descendant: &NodeId) -> bool {
@@ -221,6 +224,30 @@ fn add_entry_from(target: &mut Database, source: &Database, entry: Entry, source
     if let Some(parent) = parent.and_then(|id| target.groups.get_mut(&id)) {
         parent.add_child_entry(id);
     }
+}
+
+fn move_entry_from(target: &mut Database, source: &Database, id: NodeId) -> bool {
+    let Some(source_parent) = source.find_parent_group_of_entry(&id) else {
+        return false;
+    };
+    let Some(parent) = source_parent_in_target(target, source_parent) else {
+        return false;
+    };
+    if !target.groups.contains_key(&parent) {
+        return false;
+    }
+    if target.find_parent_group_of_entry(&id) == Some(parent) {
+        return false;
+    }
+    for group in target.groups.values_mut() {
+        group.child_entry_ids.retain(|child| child != &id);
+    }
+    target
+        .groups
+        .get_mut(&parent)
+        .expect("parent group exists")
+        .add_child_entry(id);
+    true
 }
 
 fn remove_entry(target: &mut Database, id: &NodeId) {
@@ -264,7 +291,8 @@ fn clear_deleted(db: &mut Database, id: &NodeId) {
     db.deleted_objects.retain(|deleted| &deleted.id != id);
 }
 
-fn merge_deleted_objects(target: &mut Database, source: &Database) {
+fn merge_deleted_objects(target: &mut Database, source: &Database) -> bool {
+    let mut changed = false;
     for deleted in &source.deleted_objects {
         if let Some(existing) = target
             .deleted_objects
@@ -273,11 +301,14 @@ fn merge_deleted_objects(target: &mut Database, source: &Database) {
         {
             if deleted.deletion_time > existing.deletion_time {
                 *existing = deleted.clone();
+                changed = true;
             }
         } else {
             target.deleted_objects.push(deleted.clone());
+            changed = true;
         }
     }
+    changed
 }
 
 fn merge_changed(result: &MergeResult) -> bool {
