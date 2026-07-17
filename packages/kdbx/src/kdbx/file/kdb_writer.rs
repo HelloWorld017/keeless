@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
+use zeroize::Zeroizing;
 
 use crate::kdbx::file::header::{KDB_SIGNATURE_1, KDB_SIGNATURE_2};
 use crate::model::core::node::NodeId;
@@ -21,6 +22,15 @@ pub fn write_kdb<W: Write>(
     database: &Database,
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
+    write_kdb_with_credentials(writer, database, composite_key, composite_key)
+}
+
+pub(crate) fn write_kdb_with_credentials<W: Write>(
+    writer: &mut W,
+    database: &Database,
+    memory_key: &CompositeKey,
+    file_key: &CompositeKey,
+) -> DatabaseResult<()> {
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(16)?;
     let encryption_iv = generate_random_bytes(16)?;
@@ -32,15 +42,16 @@ pub fn write_kdb<W: Write>(
     let number_of_entries = database.entries.len() as u32;
 
     // 3. Serialize groups and entries to binary
-    let mut content = Vec::new();
-    write_kdb_groups(&mut content, database)?;
-    write_kdb_entries(&mut content, database)?;
+    let mut content = Zeroizing::new(Vec::new());
+    write_kdb_groups(&mut *content, database)?;
+    let mut memory = database.memory_unlock(memory_key);
+    write_kdb_entries(&mut *content, database, &mut memory)?;
 
     // 4. Compute content hash
     let content_hash = crate::crypto::HashEngine::sha256(&content);
 
     // 5. Derive master key
-    let raw_key = composite_key.build_raw_key();
+    let raw_key = file_key.build_raw_key();
     if raw_key.is_empty() {
         return Err(DatabaseError::InvalidKey);
     }
@@ -230,7 +241,11 @@ fn write_kdb_groups<W: Write>(writer: &mut W, database: &Database) -> DatabaseRe
 }
 
 /// Write all entries in KDB binary format.
-fn write_kdb_entries<W: Write>(writer: &mut W, database: &Database) -> DatabaseResult<()> {
+fn write_kdb_entries<W: Write>(
+    writer: &mut W,
+    database: &Database,
+    memory: &mut crate::crypto::memory_protection::MemoryUnlockSession<'_>,
+) -> DatabaseResult<()> {
     let group_ids = assign_kdb_group_ids(database);
 
     for (entry_id, entry) in &database.entries {
@@ -242,7 +257,7 @@ fn write_kdb_entries<W: Write>(writer: &mut W, database: &Database) -> DatabaseR
             .and_then(|pid| group_ids.get(&pid).copied())
             .unwrap_or(0);
 
-        let mut fields = EntryKDB::to_kdb_fields(entry);
+        let mut fields = EntryKDB::to_kdb_fields_with_memory(entry, memory)?;
 
         // Override group ID field
         let group_id_bytes = kdb_group_id.to_le_bytes().to_vec();

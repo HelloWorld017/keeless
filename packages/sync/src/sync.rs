@@ -268,11 +268,8 @@ impl FileHandle {
             if downloaded {
                 let source = open_database(remote.bytes.as_slice(), key)?;
                 let base = open_database(self.checkpoint.bytes.as_slice(), key)?;
-                merge_result = DatabaseMerger::new(self.options.merge_strategy).merge_three_way(
-                    &mut target,
-                    &source,
-                    &base,
-                );
+                merge_result = DatabaseMerger::with_credentials(self.options.merge_strategy, key)
+                    .merge_three_way(&mut target, &source, &base);
             }
 
             let merged_bytes = serialize_database(&target, key)?;

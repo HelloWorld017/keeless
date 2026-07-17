@@ -6,6 +6,8 @@ mod group;
 mod meta;
 
 use super::helpers::*;
+use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
+use crate::model::db::composite_key::CompositeKey;
 
 type XmlWriter = quick_xml::Writer<Vec<u8>>;
 
@@ -18,6 +20,24 @@ impl KdbxXmlWriter {
     pub fn write(
         db: &Database,
         inner_stream: &mut dyn InnerStreamCipher,
+    ) -> DatabaseResult<String> {
+        let mut memory = MemoryWriteAccess::Unsealed;
+        Self::write_internal(db, inner_stream, &mut memory)
+    }
+
+    pub(crate) fn write_with_credentials(
+        db: &Database,
+        inner_stream: &mut dyn InnerStreamCipher,
+        composite_key: &CompositeKey,
+    ) -> DatabaseResult<String> {
+        let mut memory = MemoryWriteAccess::Unlocked(db.memory_unlock(composite_key));
+        Self::write_internal(db, inner_stream, &mut memory)
+    }
+
+    fn write_internal(
+        db: &Database,
+        inner_stream: &mut dyn InnerStreamCipher,
+        memory: &mut MemoryWriteAccess<'_>,
     ) -> DatabaseResult<String> {
         let mut writer = XmlWriter::new(Vec::new());
         let mut binary_index = 0usize;
@@ -41,6 +61,7 @@ impl KdbxXmlWriter {
                         inner_stream,
                         use_binary_refs,
                         &mut binary_index,
+                        memory,
                     )?;
                 }
                 data::write_deleted_objects(writer, db, inner_stream)?;
@@ -51,6 +72,56 @@ impl KdbxXmlWriter {
 
         String::from_utf8(writer.into_inner())
             .map_err(|err| DatabaseError::InvalidFormat(err.to_string()))
+    }
+}
+
+pub(super) enum MemoryWriteAccess<'a> {
+    Unsealed,
+    Unlocked(MemoryUnlockSession<'a>),
+}
+
+impl MemoryWriteAccess<'_> {
+    pub(super) fn with_field<T>(
+        &mut self,
+        entry: &Entry,
+        field: &MemoryField,
+        use_value: impl FnOnce(&str) -> DatabaseResult<T>,
+    ) -> DatabaseResult<T> {
+        match self {
+            Self::Unlocked(unlock) => entry.with_memory_field(unlock, field, use_value),
+            Self::Unsealed => match field {
+                MemoryField::Title if entry.protected_title.is_none() => use_value(&entry.title),
+                MemoryField::Title => Err(DatabaseError::InvalidCredentials),
+                MemoryField::UserName if !entry.username.is_memory_protected() => {
+                    use_value(entry.username.as_str())
+                }
+                MemoryField::UserName => Err(DatabaseError::InvalidCredentials),
+                MemoryField::Password if !entry.password.is_memory_protected() => {
+                    use_value(entry.password.as_str())
+                }
+                MemoryField::Password => Err(DatabaseError::InvalidCredentials),
+                MemoryField::Url if entry.protected_url.is_none() => use_value(&entry.url),
+                MemoryField::Url => Err(DatabaseError::InvalidCredentials),
+                MemoryField::Notes if !entry.notes.is_memory_protected() => {
+                    use_value(entry.notes.as_str())
+                }
+                MemoryField::Notes => Err(DatabaseError::InvalidCredentials),
+                MemoryField::Custom(name) => {
+                    let field = entry
+                        .custom_fields
+                        .iter()
+                        .find(|candidate| candidate.name == *name)
+                        .ok_or_else(|| {
+                            DatabaseError::InvalidFormat(format!("unknown field: {name}"))
+                        })?;
+                    if field.value.is_memory_protected() {
+                        Err(DatabaseError::InvalidCredentials)
+                    } else {
+                        use_value(field.value.as_str())
+                    }
+                }
+            },
+        }
     }
 }
 

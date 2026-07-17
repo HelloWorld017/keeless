@@ -28,6 +28,7 @@ impl Database {
                     "Entry ID does not match its map key".into(),
                 ));
             }
+            validate_custom_field_names(entry)?;
         }
 
         let mut group_parents = HashMap::new();
@@ -89,4 +90,20 @@ impl Database {
         }
         Ok(())
     }
+}
+
+fn validate_custom_field_names(entry: &crate::model::entry::Entry) -> DatabaseResult<()> {
+    let mut names = HashSet::new();
+    for field in &entry.custom_fields {
+        if !names.insert(field.name.as_str()) {
+            return Err(DatabaseError::InvalidFormat(format!(
+                "Entry contains duplicate custom field: {}",
+                field.name
+            )));
+        }
+    }
+    for history in &entry.history {
+        validate_custom_field_names(history)?;
+    }
+    Ok(())
 }

@@ -1,6 +1,6 @@
 use super::super::*;
 
-impl DatabaseMerger {
+impl DatabaseMerger<'_> {
     pub(super) fn merge_groups_three_way(
         &self,
         target: &mut Database,
@@ -159,7 +159,7 @@ impl DatabaseMerger {
             if !target.groups.contains_key(&id) || target.root_group_id == Some(id) {
                 continue;
             }
-            let target_modified = group_tree_modified(target, base, id);
+            let target_modified = group_tree_modified(self, target, base, id);
             let deletion_time = deleted_time(source, &id).unwrap_or(0);
             let delete = !target_modified
                 || self.strategy == MergeStrategy::Overwrite
@@ -182,7 +182,12 @@ impl DatabaseMerger {
     }
 }
 
-fn group_tree_modified(target: &Database, base: &Database, root_id: NodeId) -> bool {
+fn group_tree_modified(
+    merger: &DatabaseMerger<'_>,
+    target: &Database,
+    base: &Database,
+    root_id: NodeId,
+) -> bool {
     let mut stack = vec![root_id];
     while let Some(id) = stack.pop() {
         let Some(target_group) = target.groups.get(&id) else {
@@ -203,8 +208,8 @@ fn group_tree_modified(target: &Database, base: &Database, root_id: NodeId) -> b
             let Some(base_entry) = base.entries.get(entry_id) else {
                 return true;
             };
-            if entry_differs(target_entry, base_entry)
-                || entry_history_differs(target_entry, base_entry)
+            if merger.entry_differs(target, target_entry, base, base_entry)
+                || merger.entry_history_differs(target, target_entry, base, base_entry)
                 || target.find_parent_group_of_entry(entry_id)
                     != base.find_parent_group_of_entry(entry_id)
             {

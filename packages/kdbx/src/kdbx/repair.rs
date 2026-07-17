@@ -94,7 +94,9 @@ impl IntegrityVerifier {
 
         // Check for empty titles
         for (id, entry) in &database.entries {
-            if entry.title.is_empty() {
+            if entry.title.is_empty()
+                && !(entry.title_is_protected && entry.protected_title.is_some())
+            {
                 report.warnings.push(IntegrityWarning::EmptyTitle(*id));
             }
         }

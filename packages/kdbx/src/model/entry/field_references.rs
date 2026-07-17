@@ -3,6 +3,10 @@
 //! Parses and resolves KeePass field references like {REF:@I:...}
 
 use super::Entry;
+use crate::crypto::memory_protection::MemoryField;
+use crate::model::db::{CompositeKey, Database};
+use crate::model::exception::DatabaseResult;
+use zeroize::Zeroizing;
 
 /// Field reference target
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,6 +98,52 @@ pub fn resolve_references(text: &str, current_entry: &Entry, all_entries: &[&Ent
     }
 
     result
+}
+
+/// Resolve references in a loaded database using a scoped credential unlock.
+pub fn resolve_database_references(
+    text: &str,
+    database: &Database,
+    composite_key: &CompositeKey,
+) -> DatabaseResult<Zeroizing<String>> {
+    let mut result = Zeroizing::new(text.to_string());
+    let mut unlock = database.memory_unlock(composite_key);
+    while let Some(start) = result.find("{REF:") {
+        let Some(end) = result[start..].find('}').map(|index| start + index + 1) else {
+            break;
+        };
+        let Some(reference) = FieldReference::parse(&result[start..end]) else {
+            break;
+        };
+        let mut resolved = Zeroizing::new(String::new());
+        for entry in database.entries.values() {
+            let matches = match reference.search_in {
+                RefTarget::Title => {
+                    entry.with_memory_field(&mut unlock, &MemoryField::Title, |value| {
+                        Ok(value == reference.search_value)
+                    })?
+                }
+                _ => false,
+            };
+            if !matches {
+                continue;
+            }
+            let field = match reference.target_field {
+                RefTarget::Title => MemoryField::Title,
+                RefTarget::UserName => MemoryField::UserName,
+                RefTarget::Password => MemoryField::Password,
+                RefTarget::Url => MemoryField::Url,
+                RefTarget::Notes => MemoryField::Notes,
+                RefTarget::CustomField => break,
+            };
+            resolved = Zeroizing::new(
+                entry.with_memory_field(&mut unlock, &field, |value| Ok(value.to_string()))?,
+            );
+            break;
+        }
+        result.replace_range(start..end, &resolved);
+    }
+    Ok(result)
 }
 
 fn resolve_single_reference(

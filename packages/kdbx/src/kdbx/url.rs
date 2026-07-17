@@ -3,8 +3,11 @@
 use regex::{Regex, RegexBuilder};
 use url::{Host, Url};
 
+use crate::crypto::memory_protection::MemoryField;
 use crate::model::core::node::NodeId;
+use crate::model::db::{CompositeKey, Database};
 use crate::model::entry::Entry;
+use crate::model::exception::DatabaseResult;
 
 const ADDITIONAL_URL_PREFIX: &str = "KP2A_URL_";
 const WILDCARD_TOKEN: &str = "keelesswildcardtoken";
@@ -43,6 +46,52 @@ pub struct UrlMatchResult {
 pub struct UrlMatcher;
 
 impl UrlMatcher {
+    /// Match URLs in a loaded database using credential-scoped field access.
+    pub fn match_database(
+        database: &Database,
+        composite_key: &CompositeKey,
+        params: &UrlMatchParameters,
+    ) -> DatabaseResult<Vec<UrlMatchResult>> {
+        let Some(target) = ParsedUrl::parse(&params.url) else {
+            return Ok(Vec::new());
+        };
+        let mut unlock = database.memory_unlock(composite_key);
+        let mut results = Vec::new();
+        for entry in database.entries.values() {
+            let mut best_score =
+                entry.with_memory_field(&mut unlock, &MemoryField::Url, |value| {
+                    Ok(score_regular_url(value, &target, params.match_scheme))
+                })?;
+            for field in &entry.custom_fields {
+                if !field.name.starts_with(ADDITIONAL_URL_PREFIX) {
+                    continue;
+                }
+                let memory_field = MemoryField::Custom(field.name.clone());
+                let score = entry.with_memory_field(&mut unlock, &memory_field, |value| {
+                    Ok(score_additional_url(
+                        value,
+                        &params.url,
+                        &target,
+                        params.match_scheme,
+                    ))
+                })?;
+                best_score = max_score(best_score, score);
+            }
+            if let Some(score) = best_score {
+                results.push(UrlMatchResult {
+                    entry_id: entry.id,
+                    score,
+                });
+            }
+        }
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(results)
+    }
+
     /// Match entries against the target URL and sort them by descending score.
     pub fn match_entries(entries: &[&Entry], params: &UrlMatchParameters) -> Vec<UrlMatchResult> {
         let Some(target) = ParsedUrl::parse(&params.url) else {

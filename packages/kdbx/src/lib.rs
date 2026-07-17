@@ -23,8 +23,8 @@ pub use model::{
     parse_tags, serialize_tags, AutoType, AutoTypeAssociation, BinaryCache, BinaryData, BinaryPool,
     BinaryStreamReader, BinaryStreamWriter, ChangeRecord, ChangeTracker, ChangeType, CompositeKey,
     CustomData, CustomDataItem, Database, DatabaseVersion, DateInstant, DeletedObject, DiffResult,
-    Entry, EntryBinary, EntryField, EntryKDB, EntryKDBX, FieldReference, Group, GroupKDB,
-    GroupKDBX, IconImage, IconImageCustom, IconImageStandard, MasterCredential,
+    Entry, EntryBinary, EntryField, EntryFieldSelector, EntryKDB, EntryKDBX, FieldReference, Group,
+    GroupKDB, GroupKDBX, IconImage, IconImageCustom, IconImageStandard, MasterCredential,
     MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, ProtectedString, RefTarget,
     SortNodeEnum, Tag, Template, TemplateField, TemplateFieldType, TraversalOrder,
 };
@@ -129,11 +129,13 @@ pub fn open_database<R: std::io::Read>(
     // verbatim, with no full-file buffering.
     let mut chained = std::io::Cursor::new(sig).chain(reader);
 
-    match version {
+    let mut database = match version {
         DatabaseVersion::KDB => kdbx::file::kdb_reader::read_kdb(&mut chained, key),
         DatabaseVersion::KDBX31 => kdbx::file::kdbx31_reader::read_kdbx31(&mut chained, key),
         DatabaseVersion::KDBX4 => kdbx::file::kdbx4_reader::read_kdbx4(&mut chained, key),
-    }
+    }?;
+    database.seal_protected_strings(key)?;
+    Ok(database)
 }
 
 /// Save a KeePass database to a writer.
@@ -152,11 +154,27 @@ pub fn save_database<W: std::io::Write>(
     database: &Database,
     key: &CompositeKey,
 ) -> DatabaseResult<()> {
+    save_database_with_credentials(writer, database, key, key)
+}
+
+/// Save using one credential to unlock memory and another for the output file.
+pub fn save_database_with_credentials<W: std::io::Write>(
+    writer: &mut W,
+    database: &Database,
+    memory_key: &CompositeKey,
+    file_key: &CompositeKey,
+) -> DatabaseResult<()> {
     database.validate()?;
     match database.version {
-        DatabaseVersion::KDB => kdbx::file::kdb_writer::write_kdb(writer, database, key),
-        DatabaseVersion::KDBX31 => kdbx::file::kdbx31_writer::write_kdbx31(writer, database, key),
-        DatabaseVersion::KDBX4 => kdbx::file::kdbx4_writer::write_kdbx4(writer, database, key),
+        DatabaseVersion::KDB => kdbx::file::kdb_writer::write_kdb_with_credentials(
+            writer, database, memory_key, file_key,
+        ),
+        DatabaseVersion::KDBX31 => kdbx::file::kdbx31_writer::write_kdbx31_with_credentials(
+            writer, database, memory_key, file_key,
+        ),
+        DatabaseVersion::KDBX4 => kdbx::file::kdbx4_writer::write_kdbx4_with_credentials(
+            writer, database, memory_key, file_key,
+        ),
     }
 }
 
@@ -239,5 +257,85 @@ mod tests {
         let key = CompositeKey::new().with_password(b"x");
         let err = open_database(&garbage[..], &key);
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn protected_entry_fields_are_credential_scoped_in_memory() {
+        let mut database = Database::new(DatabaseVersion::KDBX4);
+        let root_id = NodeId::new_uuid();
+        let mut root = Group::new(root_id);
+        root.title = "Root".into();
+        let entry_id = NodeId::new_uuid();
+        let mut entry = Entry::new(entry_id);
+        entry.title = "hidden title".into();
+        entry.title_is_protected = true;
+        entry.password = ProtectedString::new_protected("initial secret");
+        root.add_child_entry(entry_id);
+        database.groups.insert(root_id, root);
+        database.entries.insert(entry_id, entry);
+        database.root_group_id = Some(root_id);
+
+        let old_key = CompositeKey::new().with_password(b"old password");
+        let mut bytes = Vec::new();
+        save_database(&mut bytes, &database, &old_key).unwrap();
+        let mut loaded = open_database(bytes.as_slice(), &old_key).unwrap();
+
+        let loaded_entry = &loaded.entries[&entry_id];
+        assert!(loaded_entry.password.is_memory_protected());
+        assert!(loaded_entry.title.is_empty());
+        assert_eq!(
+            loaded
+                .with_entry_field(
+                    &old_key,
+                    &entry_id,
+                    &EntryFieldSelector::Password,
+                    str::to_string,
+                )
+                .unwrap(),
+            "initial secret"
+        );
+        assert_eq!(
+            loaded
+                .with_entry_field(
+                    &old_key,
+                    &entry_id,
+                    &EntryFieldSelector::Title,
+                    str::to_string,
+                )
+                .unwrap(),
+            "hidden title"
+        );
+
+        let wrong_key = CompositeKey::new().with_password(b"wrong password");
+        assert!(matches!(
+            loaded.with_entry_field(&wrong_key, &entry_id, &EntryFieldSelector::Password, |_| (),),
+            Err(DatabaseError::InvalidCredentials)
+        ));
+        loaded
+            .set_entry_field(
+                &old_key,
+                &entry_id,
+                &EntryFieldSelector::Password,
+                "updated secret",
+                true,
+            )
+            .unwrap();
+
+        let new_key = CompositeKey::new().with_password(b"new password");
+        let mut rotated = Vec::new();
+        save_database_with_credentials(&mut rotated, &loaded, &old_key, &new_key).unwrap();
+        assert!(open_database(rotated.as_slice(), &old_key).is_err());
+        let reopened = open_database(rotated.as_slice(), &new_key).unwrap();
+        assert_eq!(
+            reopened
+                .with_entry_field(
+                    &new_key,
+                    &entry_id,
+                    &EntryFieldSelector::Password,
+                    str::to_string,
+                )
+                .unwrap(),
+            "updated secret"
+        );
     }
 }

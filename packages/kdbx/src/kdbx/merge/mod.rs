@@ -2,13 +2,17 @@
 //!
 //! Supports two-way merge and three-way merge with common ancestor.
 
+use std::cell::RefCell;
+
 mod three_way;
 mod two_way;
 
 #[cfg(test)]
 mod tests;
 
+use crate::crypto::memory_protection::MemoryUnlockSession;
 use crate::model::core::node::{Node, NodeId};
+use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::Database;
 use crate::model::entry::Entry;
 use crate::model::group::Group;
@@ -67,13 +71,86 @@ pub enum ConflictResolution {
 }
 
 /// Database merger.
-pub struct DatabaseMerger {
+pub struct DatabaseMerger<'a> {
     strategy: MergeStrategy,
+    composite_key: Option<&'a CompositeKey>,
+    memory_unlock: Option<RefCell<MemoryUnlockSession<'a>>>,
 }
 
-impl DatabaseMerger {
+impl DatabaseMerger<'static> {
     pub fn new(strategy: MergeStrategy) -> Self {
-        Self { strategy }
+        Self {
+            strategy,
+            composite_key: None,
+            memory_unlock: None,
+        }
+    }
+}
+
+impl<'a> DatabaseMerger<'a> {
+    pub fn with_credentials(strategy: MergeStrategy, composite_key: &'a CompositeKey) -> Self {
+        Self {
+            strategy,
+            composite_key: Some(composite_key),
+            memory_unlock: Some(RefCell::new(MemoryUnlockSession::new(composite_key))),
+        }
+    }
+
+    fn entry_differs(&self, _a_db: &Database, a: &Entry, _b_db: &Database, b: &Entry) -> bool {
+        let Some(_) = self.composite_key else {
+            return entry_differs(a, b);
+        };
+        let Some(unlock) = &self.memory_unlock else {
+            return true;
+        };
+        let mut unlock = unlock.borrow_mut();
+        let Ok(mut a) = a.semantic_clone(&mut unlock) else {
+            return true;
+        };
+        let Ok(mut b) = b.semantic_clone(&mut unlock) else {
+            return true;
+        };
+        a.id = b.id;
+        a.history.clear();
+        a.xml_extensions.history.clear();
+        b.history.clear();
+        b.xml_extensions.history.clear();
+        a != b
+    }
+
+    fn entry_history_differs(
+        &self,
+        _a_db: &Database,
+        a: &Entry,
+        _b_db: &Database,
+        b: &Entry,
+    ) -> bool {
+        let Some(_) = self.composite_key else {
+            return entry_history_differs(a, b);
+        };
+        let Some(unlock) = &self.memory_unlock else {
+            return true;
+        };
+        let mut unlock = unlock.borrow_mut();
+        match (a.semantic_clone(&mut unlock), b.semantic_clone(&mut unlock)) {
+            (Ok(a), Ok(b)) => {
+                a.history != b.history || a.xml_extensions.history != b.xml_extensions.history
+            }
+            _ => true,
+        }
+    }
+
+    fn rebind_entry(&self, entry: &mut Entry, new_id: NodeId) -> bool {
+        let Some(unlock) = &self.memory_unlock else {
+            entry.id = new_id;
+            for history in &mut entry.history {
+                history.id = new_id;
+            }
+            return true;
+        };
+        entry
+            .rebind_memory_protection(&mut unlock.borrow_mut(), new_id)
+            .is_ok()
     }
 }
 

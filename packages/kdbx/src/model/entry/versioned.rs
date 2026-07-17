@@ -2,10 +2,12 @@
 //!
 //! Handles mapping between KDB (v1) and KDBX (v3.1/v4) entry formats.
 
+use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
 use crate::model::core::date::DateInstant;
 use crate::model::core::node::NodeId;
 use crate::model::core::security::ProtectedString;
 use crate::model::entry::Entry;
+use crate::model::exception::DatabaseResult;
 use crate::model::meta::icon::IconImage;
 
 /// KDB (v1) specific entry fields
@@ -126,6 +128,61 @@ impl EntryKDB {
 
         fields.push((kdb_field::END, Vec::new()));
         fields
+    }
+
+    pub(crate) fn to_kdb_fields_with_memory(
+        entry: &Entry,
+        unlock: &mut MemoryUnlockSession<'_>,
+    ) -> DatabaseResult<Vec<(u16, Vec<u8>)>> {
+        let icon_id = match &entry.icon {
+            IconImage::Standard(icon) => icon.icon_id,
+            _ => 0,
+        };
+        let mut fields = Vec::new();
+        for (field_id, memory_field) in [
+            (kdb_field::TITLE, MemoryField::Title),
+            (kdb_field::USER_NAME, MemoryField::UserName),
+            (kdb_field::PASSWORD, MemoryField::Password),
+            (kdb_field::NOTES, MemoryField::Notes),
+        ] {
+            entry.with_memory_field(unlock, &memory_field, |value| {
+                fields.push((field_id, value.as_bytes().to_vec()));
+                Ok(())
+            })?;
+        }
+        fields.extend([
+            (kdb_field::ICON_ID, icon_id.to_le_bytes().to_vec()),
+            (
+                kdb_field::CREATION_TIME,
+                (entry.creation_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+            (
+                kdb_field::LAST_MODIFICATION_TIME,
+                (entry.last_modification_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+            (
+                kdb_field::LAST_ACCESS_TIME,
+                (entry.last_access_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+            (
+                kdb_field::EXPIRY_TIME,
+                (entry.expiry_time.as_millis().unwrap_or(0) / 1000)
+                    .to_le_bytes()
+                    .to_vec(),
+            ),
+        ]);
+        if let Some(binary) = entry.binaries.first() {
+            fields.push((kdb_field::BINARY_DESC, binary.name.as_bytes().to_vec()));
+            fields.push((kdb_field::ATTACHMENT, binary.data.clone()));
+        }
+        fields.push((kdb_field::END, Vec::new()));
+        Ok(fields)
     }
 }
 

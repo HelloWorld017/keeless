@@ -17,6 +17,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::Zeroize;
 
+use crate::crypto::memory_protection::{
+    EncryptedValue, MemoryField, MemoryProtectionContext, MemoryUnlockSession,
+};
+use crate::model::exception::{DatabaseError, DatabaseResult};
+
 pub use auto_type::{AutoType, AutoTypeAssociation};
 pub use field_references::{FieldReference, RefTarget};
 
@@ -81,6 +86,10 @@ pub struct Entry {
     #[doc(hidden)]
     #[serde(skip)]
     pub xml_extensions: EntryXmlExtensions,
+    #[serde(skip)]
+    pub(crate) protected_title: Option<EncryptedValue>,
+    #[serde(skip)]
+    pub(crate) protected_url: Option<EncryptedValue>,
 }
 
 /// A custom field in an entry.
@@ -150,6 +159,8 @@ impl Entry {
             custom_data: CustomData::default(),
             is_template: false,
             xml_extensions: EntryXmlExtensions::default(),
+            protected_title: None,
+            protected_url: None,
         }
     }
 
@@ -167,6 +178,305 @@ impl Entry {
                 .find(|f| f.name == name)
                 .map(|f| f.value.clone()),
         }
+    }
+
+    pub(crate) fn seal_protected_strings(
+        &mut self,
+        context: std::sync::Arc<MemoryProtectionContext>,
+        root: &[u8; 32],
+    ) -> DatabaseResult<()> {
+        if self.title_is_protected && self.protected_title.is_none() {
+            self.protected_title = Some(EncryptedValue::encrypt(
+                context.clone(),
+                root,
+                self.id,
+                &MemoryField::Title,
+                self.title.as_bytes(),
+            )?);
+            self.title.zeroize();
+            self.title.clear();
+        }
+        self.username
+            .seal(context.clone(), root, self.id, &MemoryField::UserName)?;
+        self.password
+            .seal(context.clone(), root, self.id, &MemoryField::Password)?;
+        if self.url_is_protected && self.protected_url.is_none() {
+            self.protected_url = Some(EncryptedValue::encrypt(
+                context.clone(),
+                root,
+                self.id,
+                &MemoryField::Url,
+                self.url.as_bytes(),
+            )?);
+            self.url.zeroize();
+            self.url.clear();
+        }
+        self.notes
+            .seal(context.clone(), root, self.id, &MemoryField::Notes)?;
+        for field in &mut self.custom_fields {
+            if field.is_protected {
+                field.value.seal_as_protected(
+                    context.clone(),
+                    root,
+                    self.id,
+                    &MemoryField::Custom(field.name.clone()),
+                )?;
+            }
+        }
+        for history in &mut self.history {
+            history.seal_protected_strings(context.clone(), root)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn with_memory_field<T>(
+        &self,
+        unlock: &mut MemoryUnlockSession<'_>,
+        field: &MemoryField,
+        use_value: impl FnOnce(&str) -> DatabaseResult<T>,
+    ) -> DatabaseResult<T> {
+        match field {
+            MemoryField::Title => {
+                if let Some(value) = &self.protected_title {
+                    let root = unlock.root(&value.context)?;
+                    let plaintext = value.decrypt(root, self.id, field)?;
+                    let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
+                        DatabaseError::DecryptionError(format!(
+                            "memory-protected title is not UTF-8: {err}"
+                        ))
+                    })?;
+                    use_value(text)
+                } else {
+                    use_value(&self.title)
+                }
+            }
+            MemoryField::UserName => self
+                .username
+                .with_plaintext(unlock, self.id, field, use_value),
+            MemoryField::Password => self
+                .password
+                .with_plaintext(unlock, self.id, field, use_value),
+            MemoryField::Url => {
+                if let Some(value) = &self.protected_url {
+                    let root = unlock.root(&value.context)?;
+                    let plaintext = value.decrypt(root, self.id, field)?;
+                    let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
+                        DatabaseError::DecryptionError(format!(
+                            "memory-protected URL is not UTF-8: {err}"
+                        ))
+                    })?;
+                    use_value(text)
+                } else {
+                    use_value(&self.url)
+                }
+            }
+            MemoryField::Notes => self.notes.with_plaintext(unlock, self.id, field, use_value),
+            MemoryField::Custom(name) => {
+                let value = self
+                    .custom_fields
+                    .iter()
+                    .find(|candidate| candidate.name == *name)
+                    .ok_or_else(|| {
+                        DatabaseError::InvalidFormat(format!("unknown field: {name}"))
+                    })?;
+                value
+                    .value
+                    .with_plaintext(unlock, self.id, field, use_value)
+            }
+        }
+    }
+
+    pub(crate) fn replace_memory_field(
+        &mut self,
+        context: std::sync::Arc<MemoryProtectionContext>,
+        root: &[u8; 32],
+        field: &MemoryField,
+        value: &str,
+        protected: bool,
+    ) -> DatabaseResult<()> {
+        match field {
+            MemoryField::Title => {
+                self.title_is_protected = protected;
+                if protected {
+                    self.protected_title = Some(EncryptedValue::encrypt(
+                        context,
+                        root,
+                        self.id,
+                        field,
+                        value.as_bytes(),
+                    )?);
+                    self.title.zeroize();
+                    self.title.clear();
+                } else {
+                    self.protected_title = None;
+                    self.title = value.to_string();
+                }
+            }
+            MemoryField::UserName => replace_protected_string(
+                &mut self.username,
+                context,
+                root,
+                self.id,
+                field,
+                value,
+                protected,
+            )?,
+            MemoryField::Password => replace_protected_string(
+                &mut self.password,
+                context,
+                root,
+                self.id,
+                field,
+                value,
+                protected,
+            )?,
+            MemoryField::Url => {
+                self.url_is_protected = protected;
+                if protected {
+                    self.protected_url = Some(EncryptedValue::encrypt(
+                        context,
+                        root,
+                        self.id,
+                        field,
+                        value.as_bytes(),
+                    )?);
+                    self.url.zeroize();
+                    self.url.clear();
+                } else {
+                    self.protected_url = None;
+                    self.url = value.to_string();
+                }
+            }
+            MemoryField::Notes => replace_protected_string(
+                &mut self.notes,
+                context,
+                root,
+                self.id,
+                field,
+                value,
+                protected,
+            )?,
+            MemoryField::Custom(name) => {
+                let target = self
+                    .custom_fields
+                    .iter_mut()
+                    .find(|candidate| candidate.name == *name)
+                    .ok_or_else(|| {
+                        DatabaseError::InvalidFormat(format!("unknown field: {name}"))
+                    })?;
+                target.is_protected = protected;
+                replace_protected_string(
+                    &mut target.value,
+                    context,
+                    root,
+                    self.id,
+                    field,
+                    value,
+                    protected,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn semantic_clone(
+        &self,
+        unlock: &mut MemoryUnlockSession<'_>,
+    ) -> DatabaseResult<Self> {
+        let mut clone = self.clone();
+        let title =
+            self.with_memory_field(unlock, &MemoryField::Title, |value| Ok(value.to_string()))?;
+        clone.title = title;
+        clone.protected_title = None;
+
+        for (field, target) in [
+            (MemoryField::UserName, &mut clone.username),
+            (MemoryField::Password, &mut clone.password),
+            (MemoryField::Notes, &mut clone.notes),
+        ] {
+            let value = self.with_memory_field(unlock, &field, |value| Ok(value.to_string()))?;
+            if target.is_protected() {
+                target.replace_unsealed(&value);
+            } else {
+                target.replace_plain(&value);
+            }
+        }
+
+        let url =
+            self.with_memory_field(unlock, &MemoryField::Url, |value| Ok(value.to_string()))?;
+        clone.url = url;
+        clone.protected_url = None;
+
+        for (source, target) in self.custom_fields.iter().zip(&mut clone.custom_fields) {
+            let field = MemoryField::Custom(source.name.clone());
+            let value = self.with_memory_field(unlock, &field, |value| Ok(value.to_string()))?;
+            if target.is_protected {
+                target.value.replace_unsealed(&value);
+            } else {
+                target.value.replace_plain(&value);
+            }
+        }
+
+        clone.history = self
+            .history
+            .iter()
+            .map(|history| history.semantic_clone(unlock))
+            .collect::<DatabaseResult<Vec<_>>>()?;
+        Ok(clone)
+    }
+
+    pub(crate) fn rebind_memory_protection(
+        &mut self,
+        unlock: &mut MemoryUnlockSession<'_>,
+        new_entry_id: NodeId,
+    ) -> DatabaseResult<()> {
+        let old_entry_id = self.id;
+        if let Some(value) = self.protected_title.take() {
+            let context = value.context.clone();
+            let root = unlock.root(&context)?;
+            let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Title)?;
+            self.protected_title = Some(EncryptedValue::encrypt(
+                context,
+                root,
+                new_entry_id,
+                &MemoryField::Title,
+                plaintext.as_slice(),
+            )?);
+        }
+        self.username
+            .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::UserName)?;
+        self.password
+            .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Password)?;
+        if let Some(value) = self.protected_url.take() {
+            let context = value.context.clone();
+            let root = unlock.root(&context)?;
+            let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Url)?;
+            self.protected_url = Some(EncryptedValue::encrypt(
+                context,
+                root,
+                new_entry_id,
+                &MemoryField::Url,
+                plaintext.as_slice(),
+            )?);
+        }
+        self.notes
+            .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Notes)?;
+        for field in &mut self.custom_fields {
+            field.value.rebind(
+                unlock,
+                old_entry_id,
+                new_entry_id,
+                &MemoryField::Custom(field.name.clone()),
+            )?;
+        }
+        for history in &mut self.history {
+            history.rebind_memory_protection(unlock, new_entry_id)?;
+        }
+        self.id = new_entry_id;
+        for history in &mut self.history {
+            history.id = new_entry_id;
+        }
+        Ok(())
     }
 
     /// Create a snapshot of this entry for history.
@@ -218,6 +528,23 @@ impl Entry {
     /// Get the number of history entries.
     pub fn history_count(&self) -> usize {
         self.history.len()
+    }
+}
+
+fn replace_protected_string(
+    target: &mut ProtectedString,
+    context: std::sync::Arc<MemoryProtectionContext>,
+    root: &[u8; 32],
+    entry_id: NodeId,
+    field: &MemoryField,
+    value: &str,
+    protected: bool,
+) -> DatabaseResult<()> {
+    if protected {
+        target.replace_sealed(context, root, entry_id, field, value)
+    } else {
+        target.replace_plain(value);
+        Ok(())
     }
 }
 

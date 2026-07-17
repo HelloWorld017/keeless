@@ -1,6 +1,6 @@
 use super::super::*;
 
-impl DatabaseMerger {
+impl DatabaseMerger<'_> {
     pub(super) fn merge_entries_three_way(
         &self,
         target: &mut Database,
@@ -17,7 +17,7 @@ impl DatabaseMerger {
                 }
                 (None, Some(target_entry)) => {
                     let target_entry = target_entry.clone();
-                    if entry_differs(&target_entry, source_entry) {
+                    if self.entry_differs(target, &target_entry, source, source_entry) {
                         let resolution = self.resolve_entry_conflict(
                             target,
                             source,
@@ -43,8 +43,8 @@ impl DatabaseMerger {
                     }
                 }
                 (Some(base_entry), None) => {
-                    if entry_differs(source_entry, base_entry)
-                        || entry_history_differs(source_entry, base_entry)
+                    if self.entry_differs(source, source_entry, base, base_entry)
+                        || self.entry_history_differs(source, source_entry, base, base_entry)
                     {
                         let deletion_time = deleted_time(target, id).unwrap_or(0);
                         let take_source = match self.strategy {
@@ -64,12 +64,14 @@ impl DatabaseMerger {
                             result.entries_added += 1;
                             ConflictResolution::TookIncoming
                         } else if self.strategy == MergeStrategy::KeepBoth {
-                            let mut duplicate = source_entry.clone();
-                            duplicate.id = NodeId::new_uuid();
-                            let duplicate =
-                                merge_entry_histories(duplicate, &[source_entry, base_entry]);
-                            add_entry_from(target, source, duplicate, *id);
-                            result.entries_added += 1;
+                            let mut duplicate = merge_entry_histories(
+                                source_entry.clone(),
+                                &[source_entry, base_entry],
+                            );
+                            if self.rebind_entry(&mut duplicate, NodeId::new_uuid()) {
+                                add_entry_from(target, source, duplicate, *id);
+                                result.entries_added += 1;
+                            }
                             ConflictResolution::Duplicated
                         } else {
                             ConflictResolution::KeptExisting
@@ -83,8 +85,10 @@ impl DatabaseMerger {
                 }
                 (Some(base_entry), Some(target_entry)) => {
                     let target_entry = target_entry.clone();
-                    let source_modified = entry_differs(source_entry, base_entry);
-                    let target_modified = entry_differs(&target_entry, base_entry);
+                    let source_modified =
+                        self.entry_differs(source, source_entry, base, base_entry);
+                    let target_modified =
+                        self.entry_differs(target, &target_entry, base, base_entry);
 
                     match (source_modified, target_modified) {
                         (true, false) => {
@@ -108,7 +112,7 @@ impl DatabaseMerger {
                             }
                         }
                         (true, true) => {
-                            if entry_differs(&target_entry, source_entry) {
+                            if self.entry_differs(target, &target_entry, source, source_entry) {
                                 let resolution = self.resolve_entry_conflict(
                                     target,
                                     source,
@@ -203,8 +207,8 @@ impl DatabaseMerger {
                     continue;
                 }
                 let target_entry = &target.entries[id];
-                let target_modified = entry_differs(target_entry, base_entry)
-                    || entry_history_differs(target_entry, base_entry)
+                let target_modified = self.entry_differs(target, target_entry, base, base_entry)
+                    || self.entry_history_differs(target, target_entry, base, base_entry)
                     || target.find_parent_group_of_entry(id) != base.find_parent_group_of_entry(id);
                 if target_modified {
                     let deletion_time = deleted_time(source, id).unwrap_or(0);
@@ -277,15 +281,16 @@ impl DatabaseMerger {
                     result.entries_modified += 1;
                 }
 
-                let mut duplicate = source_entry.clone();
-                duplicate.id = NodeId::new_uuid();
+                let duplicate = source_entry.clone();
                 let mut source_history = vec![source_entry];
                 if let Some(base_entry) = base_entry {
                     source_history.push(base_entry);
                 }
-                let duplicate = merge_entry_histories(duplicate, &source_history);
-                add_entry_from(target, source, duplicate, *id);
-                result.entries_added += 1;
+                let mut duplicate = merge_entry_histories(duplicate, &source_history);
+                if self.rebind_entry(&mut duplicate, NodeId::new_uuid()) {
+                    add_entry_from(target, source, duplicate, *id);
+                    result.entries_added += 1;
+                }
                 ConflictResolution::Duplicated
             }
             MergeStrategy::NewestWins => {

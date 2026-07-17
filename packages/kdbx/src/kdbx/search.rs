@@ -3,8 +3,11 @@
 
 use regex::Regex;
 
+use crate::crypto::memory_protection::MemoryField;
 use crate::model::core::node::NodeId;
+use crate::model::db::{CompositeKey, Database};
 use crate::model::entry::Entry;
+use crate::model::exception::DatabaseResult;
 
 /// Search parameters.
 #[derive(Debug, Clone)]
@@ -60,6 +63,51 @@ pub struct SearchResult {
 pub struct SearchHelper;
 
 impl SearchHelper {
+    /// Search a loaded database using credential-scoped protected-field access.
+    pub fn search_database(
+        database: &Database,
+        composite_key: &CompositeKey,
+        params: &SearchParameters,
+    ) -> DatabaseResult<Vec<SearchResult>> {
+        let query = if params.case_sensitive {
+            params.search_string.clone()
+        } else {
+            params.search_string.to_lowercase()
+        };
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let regex = if params.regex_mode {
+            match Regex::new(&params.search_string) {
+                Ok(regex) => Some(regex),
+                Err(_) => return Ok(Vec::new()),
+            }
+        } else {
+            None
+        };
+        let mut unlock = database.memory_unlock(composite_key);
+        let mut results = Vec::new();
+        for entry in database.entries.values() {
+            let score = if let Some(regex) = &regex {
+                score_memory_entry_regex(entry, &mut unlock, regex, params)?
+            } else {
+                score_memory_entry_plain(entry, &mut unlock, &query, params)?
+            };
+            if score > 0.0 {
+                results.push(SearchResult {
+                    entry_id: entry.id,
+                    score,
+                });
+            }
+        }
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(results)
+    }
+
     /// Search entries matching the given parameters.
     pub fn search_entries(entries: &[&Entry], params: &SearchParameters) -> Vec<SearchResult> {
         let query = if params.case_sensitive {
@@ -236,6 +284,92 @@ impl SearchHelper {
     }
 }
 
+fn score_memory_entry_plain(
+    entry: &Entry,
+    unlock: &mut crate::crypto::memory_protection::MemoryUnlockSession<'_>,
+    query: &str,
+    params: &SearchParameters,
+) -> DatabaseResult<f64> {
+    let mut score = 0.0;
+    for (enabled, weight, field) in [
+        (params.search_in_title, 2.0, MemoryField::Title),
+        (params.search_in_username, 1.5, MemoryField::UserName),
+        (params.search_in_url, 1.0, MemoryField::Url),
+        (params.search_in_notes, 0.5, MemoryField::Notes),
+        (params.search_in_password, 1.0, MemoryField::Password),
+    ] {
+        if enabled {
+            entry.with_memory_field(unlock, &field, |value| {
+                if field_matches(value, query, params.case_sensitive) {
+                    score += weight;
+                }
+                Ok(())
+            })?;
+        }
+    }
+    if params.search_in_tags
+        && entry
+            .tags
+            .iter()
+            .any(|tag| field_matches(tag, query, params.case_sensitive))
+    {
+        score += 1.0;
+    }
+    if params.search_in_other_fields {
+        for custom in &entry.custom_fields {
+            let field = MemoryField::Custom(custom.name.clone());
+            let matched = entry.with_memory_field(unlock, &field, |value| {
+                Ok(field_matches(value, query, params.case_sensitive))
+            })?;
+            if matched {
+                score += 0.5;
+                break;
+            }
+        }
+    }
+    Ok(score)
+}
+
+fn score_memory_entry_regex(
+    entry: &Entry,
+    unlock: &mut crate::crypto::memory_protection::MemoryUnlockSession<'_>,
+    regex: &Regex,
+    params: &SearchParameters,
+) -> DatabaseResult<f64> {
+    let mut score = 0.0;
+    for (enabled, weight, field) in [
+        (params.search_in_title, 2.0, MemoryField::Title),
+        (params.search_in_username, 1.5, MemoryField::UserName),
+        (params.search_in_url, 1.0, MemoryField::Url),
+        (params.search_in_notes, 0.5, MemoryField::Notes),
+        (params.search_in_password, 1.0, MemoryField::Password),
+    ] {
+        if enabled {
+            entry.with_memory_field(unlock, &field, |value| {
+                if regex.is_match(value) {
+                    score += weight;
+                }
+                Ok(())
+            })?;
+        }
+    }
+    if params.search_in_tags && entry.tags.iter().any(|tag| regex.is_match(tag)) {
+        score += 1.0;
+    }
+    if params.search_in_other_fields {
+        for custom in &entry.custom_fields {
+            let field = MemoryField::Custom(custom.name.clone());
+            let matched =
+                entry.with_memory_field(unlock, &field, |value| Ok(regex.is_match(value)))?;
+            if matched {
+                score += 0.5;
+                break;
+            }
+        }
+    }
+    Ok(score)
+}
+
 fn field_matches(field: &str, query: &str, case_sensitive: bool) -> bool {
     if case_sensitive {
         field.contains(query)
@@ -247,8 +381,11 @@ fn field_matches(field: &str, query: &str, case_sensitive: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
+    use crate::kdbx::kdf::KdfParameters;
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
+    use crate::model::db::DatabaseVersion;
 
     fn make_entry(id: u8, title: &str, username: &str) -> Entry {
         let mut e = Entry::new(NodeId::from_int(id as i32));
@@ -351,5 +488,34 @@ mod tests {
         params.search_in_notes = false;
         let results = SearchHelper::search_entries(&entries, &params);
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn search_database_unlocks_protected_values_for_the_operation() {
+        let mut database = Database::new(DatabaseVersion::KDBX4);
+        let mut parameters = KdfParameters::new(AES_KDF_UUID);
+        parameters.set_byte_array("S", &[0x22; 32]);
+        parameters.set_uint64("R", 1);
+        database.kdf_parameters = Some(parameters);
+        let entry_id = NodeId::new_uuid();
+        let mut entry = Entry::new(entry_id);
+        entry.password = ProtectedString::new_protected("needle-secret");
+        database.entries.insert(entry_id, entry);
+        let key = CompositeKey::new().with_password(b"search password");
+        database.protect_entry_strings(&key).unwrap();
+
+        let mut params = SearchParameters::new("needle");
+        params.search_in_title = false;
+        params.search_in_username = false;
+        params.search_in_password = true;
+        params.search_in_url = false;
+        params.search_in_notes = false;
+        params.search_in_other_fields = false;
+        let results = SearchHelper::search_database(&database, &key, &params).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entry_id, entry_id);
+
+        let wrong = CompositeKey::new().with_password(b"wrong");
+        assert!(SearchHelper::search_database(&database, &wrong, &params).is_err());
     }
 }

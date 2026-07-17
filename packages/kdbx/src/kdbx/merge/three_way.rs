@@ -4,7 +4,7 @@ mod meta;
 
 use super::*;
 
-impl DatabaseMerger {
+impl DatabaseMerger<'_> {
     /// Three-way merge: merge source into target using base as common ancestor.
     ///
     /// If only one side changed, that change is applied. If both sides changed,

@@ -7,15 +7,21 @@ mod validation;
 mod tests;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use uuid::Uuid;
 
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
+use crate::crypto::memory_protection::{MemoryField, MemoryProtectionContext, MemoryUnlockSession};
+use crate::kdbx::kdf::argon2_kdf::Argon2Kdf;
+use crate::kdbx::kdf::kdf_engine::KdfEngine;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::model::core::node::NodeId;
 use crate::model::core::security::MemoryProtectionConfig;
+use crate::model::db::composite_key::CompositeKey;
 use crate::model::entry::Entry;
+use crate::model::exception::{DatabaseError, DatabaseResult};
 use crate::model::group::Group;
 use crate::model::meta::icon::IconImageCustom;
 use crate::model::meta::{CustomData, DeletedObject};
@@ -29,6 +35,30 @@ pub enum DatabaseVersion {
     KDBX31,
     /// KDBX 4.0 (KeePass 2.x post-4)
     KDBX4,
+}
+
+/// Selects an entry string for credential-scoped access or replacement.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum EntryFieldSelector {
+    Title,
+    UserName,
+    Password,
+    Url,
+    Notes,
+    Custom(String),
+}
+
+impl EntryFieldSelector {
+    fn memory_field(&self) -> MemoryField {
+        match self {
+            Self::Title => MemoryField::Title,
+            Self::UserName => MemoryField::UserName,
+            Self::Password => MemoryField::Password,
+            Self::Url => MemoryField::Url,
+            Self::Notes => MemoryField::Notes,
+            Self::Custom(name) => MemoryField::Custom(name.clone()),
+        }
+    }
 }
 
 /// The main KeePass database structure.
@@ -92,6 +122,7 @@ pub struct Database {
     /// Opaque XML elements retained for forward-compatible round-trips.
     #[doc(hidden)]
     pub xml_extensions: DatabaseXmlExtensions,
+    pub(crate) memory_protection_context: Option<Arc<MemoryProtectionContext>>,
 }
 
 impl Database {
@@ -130,7 +161,95 @@ impl Database {
             custom_data: CustomData::default(),
             contains_unsupported_xml: false,
             xml_extensions: DatabaseXmlExtensions::default(),
+            memory_protection_context: None,
         }
+    }
+
+    /// Encrypt all KDBX-protected entry strings before exposing a loaded database.
+    pub(crate) fn seal_protected_strings(
+        &mut self,
+        composite_key: &CompositeKey,
+    ) -> DatabaseResult<()> {
+        let (context, root) = match &self.memory_protection_context {
+            Some(context) => {
+                let context = context.clone();
+                let mut unlock = MemoryUnlockSession::new(composite_key);
+                let root = zeroize::Zeroizing::new(*unlock.root(&context)?);
+                (context, root)
+            }
+            None => self.create_memory_context(composite_key)?,
+        };
+        for entry in self.entries.values_mut() {
+            entry.seal_protected_strings(context.clone(), &root)?;
+        }
+        self.memory_protection_context = Some(context);
+        Ok(())
+    }
+
+    /// Seal protected strings added through low-level model APIs.
+    pub fn protect_entry_strings(&mut self, composite_key: &CompositeKey) -> DatabaseResult<()> {
+        self.seal_protected_strings(composite_key)
+    }
+
+    /// Temporarily expose one entry field while the supplied credential is valid.
+    pub fn with_entry_field<T>(
+        &self,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+        selector: &EntryFieldSelector,
+        use_value: impl FnOnce(&str) -> T,
+    ) -> DatabaseResult<T> {
+        let entry = self
+            .entries
+            .get(entry_id)
+            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?;
+        let mut unlock = MemoryUnlockSession::new(composite_key);
+        entry.with_memory_field(&mut unlock, &selector.memory_field(), |value| {
+            Ok(use_value(value))
+        })
+    }
+
+    /// Replace an entry field and immediately memory-protect it when requested.
+    pub fn set_entry_field(
+        &mut self,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+        selector: &EntryFieldSelector,
+        value: &str,
+        protected: bool,
+    ) -> DatabaseResult<()> {
+        let context = match &self.memory_protection_context {
+            Some(context) => context.clone(),
+            None => {
+                let (context, _) = self.create_memory_context(composite_key)?;
+                self.memory_protection_context = Some(context.clone());
+                context
+            }
+        };
+        let mut unlock = MemoryUnlockSession::new(composite_key);
+        let root = unlock.root(&context)?;
+        self.entries
+            .get_mut(entry_id)
+            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?
+            .replace_memory_field(context, root, &selector.memory_field(), value, protected)
+    }
+
+    pub(crate) fn memory_unlock<'a>(
+        &self,
+        composite_key: &'a CompositeKey,
+    ) -> MemoryUnlockSession<'a> {
+        MemoryUnlockSession::new(composite_key)
+    }
+
+    fn create_memory_context(
+        &self,
+        composite_key: &CompositeKey,
+    ) -> DatabaseResult<(Arc<MemoryProtectionContext>, zeroize::Zeroizing<[u8; 32]>)> {
+        let parameters = self.kdf_parameters.clone().unwrap_or_else(|| {
+            let kdf = Argon2Kdf::argon2id();
+            kdf.default_parameters()
+        });
+        MemoryProtectionContext::create(composite_key, parameters)
     }
 
     /// Immutable reference to the root group, always read from `self.groups`.

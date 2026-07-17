@@ -6,6 +6,7 @@ pub(super) fn write_entry(
     inner_stream: &mut dyn InnerStreamCipher,
     use_binary_refs: bool,
     binary_index: &mut usize,
+    memory: &mut MemoryWriteAccess<'_>,
 ) -> DatabaseResult<()> {
     write_element(writer, "Entry", |writer| {
         if let Some(uuid) = entry.id.as_uuid() {
@@ -28,7 +29,7 @@ pub(super) fn write_entry(
             write_tag(writer, "Tags", &entry.tags.join(";"))?;
         }
 
-        write_fields(writer, entry, inner_stream)?;
+        write_fields(writer, entry, inner_stream, memory)?;
         write_auto_type(writer, entry, inner_stream)?;
         write_binaries(writer, entry, use_binary_refs, binary_index, inner_stream)?;
         super::data::write_custom_data(writer, &entry.custom_data, inner_stream)?;
@@ -53,6 +54,7 @@ pub(super) fn write_entry(
                         inner_stream,
                         use_binary_refs,
                         binary_index,
+                        memory,
                     )?;
                 }
                 write_preserved_elements(writer, &entry.xml_extensions.history, inner_stream)
@@ -67,88 +69,91 @@ fn write_fields(
     writer: &mut XmlWriter,
     entry: &Entry,
     inner_stream: &mut dyn InnerStreamCipher,
+    memory: &mut MemoryWriteAccess<'_>,
 ) -> DatabaseResult<()> {
-    write_field(
+    write_memory_field(
         writer,
+        entry,
         "Title",
-        &entry.title,
+        &MemoryField::Title,
         entry.title_is_protected,
         inner_stream,
-        entry
-            .xml_extensions
-            .strings
-            .get("Title")
-            .map(Vec::as_slice)
-            .unwrap_or_default(),
+        memory,
     )?;
-    write_field(
+    write_memory_field(
         writer,
+        entry,
         "UserName",
-        entry.username.as_str(),
+        &MemoryField::UserName,
         entry.username.is_protected(),
         inner_stream,
-        entry
-            .xml_extensions
-            .strings
-            .get("UserName")
-            .map(Vec::as_slice)
-            .unwrap_or_default(),
+        memory,
     )?;
-    write_field(
+    write_memory_field(
         writer,
+        entry,
         "Password",
-        entry.password.as_str(),
+        &MemoryField::Password,
         entry.password.is_protected(),
         inner_stream,
-        entry
-            .xml_extensions
-            .strings
-            .get("Password")
-            .map(Vec::as_slice)
-            .unwrap_or_default(),
+        memory,
     )?;
-    write_field(
+    write_memory_field(
         writer,
+        entry,
         "URL",
-        &entry.url,
+        &MemoryField::Url,
         entry.url_is_protected,
         inner_stream,
-        entry
-            .xml_extensions
-            .strings
-            .get("URL")
-            .map(Vec::as_slice)
-            .unwrap_or_default(),
+        memory,
     )?;
-    write_field(
+    write_memory_field(
         writer,
+        entry,
         "Notes",
-        entry.notes.as_str(),
+        &MemoryField::Notes,
         entry.notes.is_protected(),
         inner_stream,
-        entry
-            .xml_extensions
-            .strings
-            .get("Notes")
-            .map(Vec::as_slice)
-            .unwrap_or_default(),
+        memory,
     )?;
     for field in &entry.custom_fields {
+        write_memory_field(
+            writer,
+            entry,
+            &field.name,
+            &MemoryField::Custom(field.name.clone()),
+            field.is_protected,
+            inner_stream,
+            memory,
+        )?;
+    }
+    Ok(())
+}
+
+fn write_memory_field(
+    writer: &mut XmlWriter,
+    entry: &Entry,
+    key: &str,
+    field: &MemoryField,
+    protect: bool,
+    inner_stream: &mut dyn InnerStreamCipher,
+    memory: &mut MemoryWriteAccess<'_>,
+) -> DatabaseResult<()> {
+    memory.with_field(entry, field, |value| {
         write_field(
             writer,
-            &field.name,
-            field.value.as_str(),
-            field.is_protected,
+            key,
+            value,
+            protect,
             inner_stream,
             entry
                 .xml_extensions
                 .strings
-                .get(&field.name)
+                .get(key)
                 .map(Vec::as_slice)
                 .unwrap_or_default(),
-        )?;
-    }
-    Ok(())
+        )
+    })
 }
 
 fn write_field(

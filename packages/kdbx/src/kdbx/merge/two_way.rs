@@ -1,6 +1,6 @@
 use super::*;
 
-impl DatabaseMerger {
+impl DatabaseMerger<'_> {
     /// Two-way merge: merge source database into target database.
     pub fn merge(&self, target: &mut Database, source: &Database) -> MergeResult {
         let mut result = MergeResult::default();
@@ -91,11 +91,12 @@ impl DatabaseMerger {
                 let source_is_newer = source_entry.last_modified() > original.last_modified();
 
                 if source_is_newer && self.strategy == MergeStrategy::KeepBoth {
-                    let mut duplicate = source_entry.clone();
-                    duplicate.id = NodeId::new_uuid();
-                    let duplicate = merge_entry_histories(duplicate, &[source_entry]);
-                    add_entry_from(target, source, duplicate, *id);
-                    result.entries_added += 1;
+                    let mut duplicate =
+                        merge_entry_histories(source_entry.clone(), &[source_entry]);
+                    if self.rebind_entry(&mut duplicate, NodeId::new_uuid()) {
+                        add_entry_from(target, source, duplicate, *id);
+                        result.entries_added += 1;
+                    }
                     continue;
                 }
 

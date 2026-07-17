@@ -26,6 +26,15 @@ pub fn write_kdbx4<W: Write>(
     database: &Database,
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
+    write_kdbx4_with_credentials(writer, database, composite_key, composite_key)
+}
+
+pub(crate) fn write_kdbx4_with_credentials<W: Write>(
+    writer: &mut W,
+    database: &Database,
+    memory_key: &CompositeKey,
+    file_key: &CompositeKey,
+) -> DatabaseResult<()> {
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(32)?;
     let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
@@ -46,7 +55,7 @@ pub fn write_kdbx4<W: Write>(
     kdf.randomize(&mut kdf_params)?;
 
     // 2. Derive master key
-    let mut raw_key = composite_key.build_raw_key();
+    let mut raw_key = file_key.build_raw_key();
     if raw_key.is_empty() {
         return Err(DatabaseError::InvalidKey);
     }
@@ -64,7 +73,7 @@ pub fn write_kdbx4<W: Write>(
             inner_stream.process(data);
         }
     }
-    let xml = KdbxXmlWriter::write(database, inner_stream.as_mut())?;
+    let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
     let xml_bytes = xml.into_bytes();
 
     // 4. Build and then compress the complete inner payload.

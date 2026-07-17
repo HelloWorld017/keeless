@@ -28,6 +28,15 @@ pub fn write_kdbx31<W: Write>(
     database: &Database,
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
+    write_kdbx31_with_credentials(writer, database, composite_key, composite_key)
+}
+
+pub(crate) fn write_kdbx31_with_credentials<W: Write>(
+    writer: &mut W,
+    database: &Database,
+    memory_key: &CompositeKey,
+    file_key: &CompositeKey,
+) -> DatabaseResult<()> {
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(32)?;
     let transform_seed = generate_random_bytes(32)?;
@@ -49,16 +58,11 @@ pub fn write_kdbx31<W: Write>(
     };
 
     // 2. Derive final key
-    let final_key = derive_key(
-        composite_key,
-        &master_seed,
-        &transform_seed,
-        transform_rounds,
-    )?;
+    let final_key = derive_key(file_key, &master_seed, &transform_seed, transform_rounds)?;
 
     // 3. Serialize database to XML with inner stream protection
     let mut inner_stream = create_inner_stream(CrsAlgorithm::Salsa20, &inner_stream_key)?;
-    let xml = KdbxXmlWriter::write(database, inner_stream.as_mut())?;
+    let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
 
     // 4. Compress
     let xml_bytes = xml.into_bytes();

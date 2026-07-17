@@ -9,6 +9,7 @@ pub mod twofish_cipher;
 // ─── Stream / Block ─────────────────────────────────────────────────
 pub mod cipher_engine;
 pub mod inner_stream;
+pub(crate) mod memory_protection;
 pub mod stream_cipher;
 
 // ─── Hash / HMAC ────────────────────────────────────────────────────

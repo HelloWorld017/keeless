@@ -6,9 +6,12 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
 use crate::model::core::node::NodeId;
+use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::Database;
 use crate::model::entry::Entry;
+use crate::model::exception::DatabaseResult;
 use crate::model::group::Group;
 
 /// Change type recorded by the tracker.
@@ -69,6 +72,24 @@ impl ChangeTracker {
             tracker.group_hashes.insert(*id, Self::hash_group(group));
         }
         tracker
+    }
+
+    /// Create a snapshot while transiently unlocking protected entry strings.
+    pub fn from_snapshot_with_credentials(
+        database: &Database,
+        composite_key: &CompositeKey,
+    ) -> DatabaseResult<Self> {
+        let mut tracker = Self::new();
+        let mut unlock = database.memory_unlock(composite_key);
+        for (id, entry) in &database.entries {
+            tracker
+                .entry_hashes
+                .insert(*id, Self::hash_entry_with_memory(entry, &mut unlock)?);
+        }
+        for (id, group) in &database.groups {
+            tracker.group_hashes.insert(*id, Self::hash_group(group));
+        }
+        Ok(tracker)
     }
 
     /// Mark a node as created.
@@ -196,6 +217,59 @@ impl ChangeTracker {
         result
     }
 
+    /// Diff a loaded database without exposing protected field plaintext.
+    pub fn diff_against_snapshot_with_credentials(
+        &mut self,
+        database: &Database,
+        composite_key: &CompositeKey,
+    ) -> DatabaseResult<DiffResult> {
+        let mut result = DiffResult::default();
+        let mut unlock = database.memory_unlock(composite_key);
+        let current_entry_ids: HashSet<NodeId> = database.entries.keys().copied().collect();
+        for (id, entry) in &database.entries {
+            let current_hash = Self::hash_entry_with_memory(entry, &mut unlock)?;
+            match self.entry_hashes.get(id) {
+                Some(snapshot_hash) if current_hash != *snapshot_hash => {
+                    result.modified_entries.push(*id);
+                    result.total_changes += 1;
+                }
+                None => {
+                    result.new_entries.push(*id);
+                    result.total_changes += 1;
+                }
+                _ => {}
+            }
+        }
+        for id in self.entry_hashes.keys() {
+            if !current_entry_ids.contains(id) {
+                result.deleted_entries.push(*id);
+                result.total_changes += 1;
+            }
+        }
+        let current_group_ids: HashSet<NodeId> = database.groups.keys().copied().collect();
+        for (id, group) in &database.groups {
+            let current_hash = Self::hash_group(group);
+            match self.group_hashes.get(id) {
+                Some(snapshot_hash) if current_hash != *snapshot_hash => {
+                    result.modified_groups.push(*id);
+                    result.total_changes += 1;
+                }
+                None => {
+                    result.new_groups.push(*id);
+                    result.total_changes += 1;
+                }
+                _ => {}
+            }
+        }
+        for id in self.group_hashes.keys() {
+            if !current_group_ids.contains(id) {
+                result.deleted_groups.push(*id);
+                result.total_changes += 1;
+            }
+        }
+        Ok(result)
+    }
+
     /// Update the snapshot to the current database state.
     pub fn update_snapshot(&mut self, database: &Database) {
         self.entry_hashes.clear();
@@ -218,6 +292,40 @@ impl ChangeTracker {
         entry.url.hash(&mut hasher);
         entry.notes.as_str().hash(&mut hasher);
         hasher.finish()
+    }
+
+    fn hash_entry_with_memory(
+        entry: &Entry,
+        unlock: &mut MemoryUnlockSession<'_>,
+    ) -> DatabaseResult<u64> {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        for field in [
+            MemoryField::Title,
+            MemoryField::UserName,
+            MemoryField::Url,
+            MemoryField::Notes,
+            MemoryField::Password,
+        ] {
+            entry.with_memory_field(unlock, &field, |value| {
+                value.hash(&mut hasher);
+                Ok(())
+            })?;
+        }
+        for custom in &entry.custom_fields {
+            custom.name.hash(&mut hasher);
+            entry.with_memory_field(
+                unlock,
+                &MemoryField::Custom(custom.name.clone()),
+                |value| {
+                    value.hash(&mut hasher);
+                    Ok(())
+                },
+            )?;
+        }
+        Ok(hasher.finish())
     }
 
     fn hash_group(group: &Group) -> u64 {

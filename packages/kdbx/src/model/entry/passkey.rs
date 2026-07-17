@@ -7,7 +7,9 @@ use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
 use thiserror::Error;
 
+use crate::model::core::node::NodeId;
 use crate::model::core::security::ProtectedString;
+use crate::model::db::{CompositeKey, Database};
 use crate::model::entry::{Entry, EntryField};
 
 use key::CredentialKey;
@@ -206,12 +208,46 @@ impl PasskeyCredential {
         }))
     }
 
+    /// Parse a passkey from a loaded database without retaining field plaintext.
+    pub fn from_database_entry(
+        database: &Database,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+    ) -> Result<Option<Self>, PasskeyError> {
+        let entry = database
+            .entries
+            .get(entry_id)
+            .ok_or(PasskeyError::ProtectedFieldAccess)?;
+        let mut unlock = database.memory_unlock(composite_key);
+        let entry = entry
+            .semantic_clone(&mut unlock)
+            .map_err(|_| PasskeyError::ProtectedFieldAccess)?;
+        Self::from_entry(&entry)
+    }
+
     /// Store this credential unless the entry already contains passkey fields.
     pub fn store_in_entry(&self, entry: &mut Entry) -> Result<(), PasskeyError> {
         if is_passkey_entry(entry) {
             return Err(PasskeyError::PasskeyAlreadyExists);
         }
         self.write_fields(entry)
+    }
+
+    /// Store this credential and immediately seal its protected fields.
+    pub fn store_in_database(
+        &self,
+        database: &mut Database,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+    ) -> Result<(), PasskeyError> {
+        let entry = database
+            .entries
+            .get_mut(entry_id)
+            .ok_or(PasskeyError::ProtectedFieldAccess)?;
+        self.store_in_entry(entry)?;
+        database
+            .protect_entry_strings(composite_key)
+            .map_err(|_| PasskeyError::ProtectedFieldAccess)
     }
 
     /// Explicitly replace all passkey fields in an entry.
@@ -429,6 +465,8 @@ pub enum PasskeyError {
     CborEncoding,
     #[error("public key encoding failed")]
     PublicKeyEncoding,
+    #[error("protected passkey fields could not be unlocked")]
+    ProtectedFieldAccess,
 }
 
 fn validate_user_handle(user_handle: &[u8]) -> Result<(), PasskeyError> {

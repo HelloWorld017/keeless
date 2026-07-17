@@ -13,12 +13,14 @@ base32 = "0.5"
 base64 = "0.22"
 byteorder = "1"
 chacha20 = "0.9"
+chacha20poly1305 = "0.10"
 chrono = "0.4"
 ctr = "0.9"
 ed25519-dalek = { version = "=2.1.1", features = ["rand_core", "pkcs8", "pem"] }
 flate2 = "1"
 getrandom = "0.2"
 hmac = "0.12"
+hkdf = "0.12"
 log = "0.4"
 minicbor = { version = "=0.25.1", features = ["alloc"] }
 p256 = { version = "0.13", features = ["ecdsa", "pem"] }

@@ -7,6 +7,7 @@ pub(super) fn write_group(
     inner_stream: &mut dyn InnerStreamCipher,
     use_binary_refs: bool,
     binary_index: &mut usize,
+    memory: &mut MemoryWriteAccess<'_>,
 ) -> DatabaseResult<()> {
     write_element(writer, "Group", |writer| {
         if let Some(uuid) = group.id.as_uuid() {
@@ -50,6 +51,7 @@ pub(super) fn write_group(
                     inner_stream,
                     use_binary_refs,
                     binary_index,
+                    memory,
                 )?;
             }
         }
@@ -61,6 +63,7 @@ pub(super) fn write_group(
                     inner_stream,
                     use_binary_refs,
                     binary_index,
+                    memory,
                 )?;
             }
         }
