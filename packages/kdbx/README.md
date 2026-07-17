@@ -2,8 +2,7 @@
 
 Rust KeePass database library used by Keeless. The code was imported from
 `keepass-rs` 0.2.0 and hardened for KDBX interoperability, data preservation,
-untrusted input, and native/WebAssembly builds. See `UPSTREAM.md` for source
-and license provenance.
+untrusted input, and native/WebAssembly builds.
 
 ## Upstream Source
 
@@ -38,29 +37,4 @@ let key = CompositeKey::new().with_password(b"password")?;
 let database = open_database(std::fs::File::open("database.kdbx")?, &key)?;
 save_database(&mut std::fs::File::create("output.kdbx")?, &database, &key)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-## Passkeys
-
-The crate provides a software WebAuthn authenticator through
-`PasskeyAuthenticator` and stores credentials in KeePassXC-compatible
-`KPEX_PASSKEY_*` entry fields. ES256, RS256, and Ed25519 credentials are
-supported. Registration uses `none` attestation and a stable Keeless AAGUID;
-assertion counters remain zero because KDBX credentials can be synchronized or
-cloned.
-
-The caller supplies the exact `clientDataJSON` bytes plus the independently
-trusted origin and expected challenge from its browser boundary. Keeless checks
-that the JSON matches those values, validates the ceremony type and RP-ID
-relationship, then returns raw WebAuthn response bytes. User presence and user
-verification must be completed by the host before invoking registration or
-authentication.
-
-## Verification
-
-```text
-cargo test -p keeless_kdbx
-cargo test -p keeless_secure_types --features use_os
-cargo clippy -p keeless_kdbx --all-targets -- -D warnings
-cargo check -p keeless_kdbx --lib --target wasm32-unknown-unknown
 ```

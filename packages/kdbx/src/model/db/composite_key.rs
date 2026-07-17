@@ -12,6 +12,7 @@ pub struct CompositeKey {
     password_data: Option<SecureBytes>,
     key_file_data: Option<SecureBytes>,
     hardware_key: Option<SecureBytes>,
+    raw_key: Option<SecureArray<32>>,
 }
 
 impl CompositeKey {
@@ -20,20 +21,40 @@ impl CompositeKey {
             password_data: None,
             key_file_data: None,
             hardware_key: None,
+            raw_key: None,
+        }
+    }
+
+    /// Restore a composite key from its already-derived raw value.
+    pub fn from_raw_key(raw_key: SecureArray<32>) -> Self {
+        Self {
+            password_data: None,
+            key_file_data: None,
+            hardware_key: None,
+            raw_key: Some(raw_key),
         }
     }
 
     pub fn with_password(mut self, password: &[u8]) -> DatabaseResult<Self> {
+        if self.raw_key.is_some() {
+            return Err(DatabaseError::InvalidKey);
+        }
         self.password_data = Some(SecureBytes::from_slice(password)?);
         Ok(self)
     }
 
     pub fn with_key_file(mut self, key_file_data: &[u8]) -> DatabaseResult<Self> {
+        if self.raw_key.is_some() {
+            return Err(DatabaseError::InvalidKey);
+        }
         self.key_file_data = Some(SecureBytes::from_slice(key_file_data)?);
         Ok(self)
     }
 
     pub fn with_hardware_key(mut self, key: &[u8]) -> DatabaseResult<Self> {
+        if self.raw_key.is_some() {
+            return Err(DatabaseError::InvalidKey);
+        }
         self.hardware_key = Some(SecureBytes::from_slice(key)?);
         Ok(self)
     }
@@ -49,6 +70,10 @@ impl CompositeKey {
     /// Build the raw composite key by hashing each component and combining.
     /// Returns the combined key bytes before KDF transformation.
     pub fn build_raw_key(&self) -> DatabaseResult<SecureArray<32>> {
+        if let Some(raw_key) = &self.raw_key {
+            return Ok(raw_key.try_clone()?);
+        }
+
         let mut combined = Zeroizing::new(Vec::with_capacity(96));
 
         // Password component: SHA-256 hash
@@ -173,9 +198,57 @@ mod tests {
         let key2 = CompositeKey::new().with_password(b"test").unwrap();
         let raw1 = key1.build_raw_key().unwrap();
         let raw2 = key2.build_raw_key().unwrap();
-        assert!(raw1
-            .unlock(|left| raw2.unlock(|right| left == right))
-            .unwrap()
-            .unwrap());
+        assert!(
+            raw1.unlock(|left| raw2.unlock(|right| left == right))
+                .unwrap()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_composite_key_restores_independent_raw_key_clones() {
+        let expected = [7; 32];
+        let mut value = expected;
+        let key = CompositeKey::from_raw_key(SecureArray::from_array_mut(&mut value).unwrap());
+
+        let mut first = key.build_raw_key().unwrap();
+        first.unlock_mut(|value| value.fill(0)).unwrap();
+        let second = key.build_raw_key().unwrap();
+
+        assert!(second.unlock(|value| value == &expected).unwrap());
+    }
+
+    #[test]
+    fn test_raw_composite_key_rejects_components() {
+        fn raw_key() -> SecureArray<32> {
+            SecureArray::from_slice(&[7; 32]).unwrap()
+        }
+
+        assert!(matches!(
+            CompositeKey::from_raw_key(raw_key()).with_password(b"password"),
+            Err(DatabaseError::InvalidKey)
+        ));
+        assert!(matches!(
+            CompositeKey::from_raw_key(raw_key()).with_key_file(b"key file"),
+            Err(DatabaseError::InvalidKey)
+        ));
+        assert!(matches!(
+            CompositeKey::from_raw_key(raw_key()).with_hardware_key(b"hardware key"),
+            Err(DatabaseError::InvalidKey)
+        ));
+    }
+
+    #[test]
+    fn test_raw_composite_key_opens_password_database_without_rehashing() {
+        let password_key = CompositeKey::new().with_password(b"password").unwrap();
+        let restored_key = CompositeKey::from_raw_key(password_key.build_raw_key().unwrap());
+        let mut database = crate::Database::new(crate::DatabaseVersion::KDBX4);
+        let root_id = crate::NodeId::new_uuid();
+        database.groups.insert(root_id, crate::Group::new(root_id));
+        database.root_group_id = Some(root_id);
+        let mut bytes = Vec::new();
+
+        crate::save_database(&mut bytes, &database, &password_key).unwrap();
+        crate::open_database(bytes.as_slice(), &restored_key).unwrap();
     }
 }

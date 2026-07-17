@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keeless_kdbx::{
-    open_database, save_database, CompositeKey, Database, DatabaseMerger, MergeResult,
-    MergeStrategy,
+    CompositeKey, Database, DatabaseMerger, MergeResult, MergeStrategy, open_database,
+    save_database,
 };
 
 use crate::{
@@ -229,6 +229,12 @@ impl FileHandle {
 
     pub fn checkpoint_revision(&self) -> Option<&Revision> {
         self.checkpoint.revision.as_ref()
+    }
+
+    /// Verifies credentials against the exact remote representation used as this handle's base.
+    pub fn verify_credentials(&self, key: &CompositeKey) -> Result<(), SyncError> {
+        open_database(self.checkpoint.bytes.as_slice(), key).map(|_| ())?;
+        Ok(())
     }
 
     /// Pulls remote changes, merges concurrent edits, and conditionally writes local changes.

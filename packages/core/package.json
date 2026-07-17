@@ -2,22 +2,11 @@
   "name": "@keeless/core",
   "version": "0.0.0",
   "private": true,
-  "description": "backend for keeless",
+  "description": "Host-independent Rust backend for Keeless",
   "license": "AGPL-3.0",
-  "files": [
-    "dist"
-  ],
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
-    }
-  },
   "scripts": {
-    "build": "tsdown"
-  },
-  "devDependencies": {
-    "tsdown": "^0.22.7"
+    "build": "cargo check -p keeless_core",
+    "test": "cargo test -p keeless_core"
   }
 }
