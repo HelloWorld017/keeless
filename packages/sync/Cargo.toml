@@ -1,0 +1,30 @@
+[package]
+name = "keeless_sync"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.77"
+description = "Storage and synchronization primitives for Keeless"
+license = "MIT"
+
+[dependencies]
+bytes = "1"
+futures-util = "0.3"
+httpdate = "1"
+keeless_kdbx = { path = "../kdbx" }
+percent-encoding = "2"
+quick-xml = "0.37"
+thiserror = "2"
+url = "2"
+zeroize = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+futures-timer = "3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+wiremock = "0.6"

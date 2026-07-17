@@ -78,7 +78,7 @@ impl Drop for ProtectedString {
 }
 
 /// Memory protection configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryProtectionConfig {
     pub protect_title: bool,
     pub protect_username: bool,

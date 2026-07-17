@@ -32,7 +32,7 @@ pub enum DatabaseVersion {
 }
 
 /// The main KeePass database structure.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Database {
     /// Database version
     pub version: DatabaseVersion,

@@ -25,7 +25,7 @@ const VD_VERSION: u16 = 0x0100;
 const VDM_CRITICAL: u16 = 0xFF00;
 
 /// A typed value in a VariantDictionary
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VdValue {
     UInt32(u32),
     UInt64(u64),
@@ -37,7 +37,7 @@ pub enum VdValue {
 }
 
 /// VariantDictionary - a typed key-value store used in KDBX 4.0
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VariantDictionary {
     dict: HashMap<String, VdValue>,
 }

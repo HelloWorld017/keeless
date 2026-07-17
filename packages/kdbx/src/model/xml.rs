@@ -30,7 +30,7 @@ pub enum PreservedXmlContent {
 
 /// Database-level XML extension points.
 #[doc(hidden)]
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DatabaseXmlExtensions {
     pub(crate) keepass_file: Vec<PreservedXmlElement>,
     pub(crate) meta: Vec<PreservedXmlElement>,

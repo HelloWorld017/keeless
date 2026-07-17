@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::kdbx::variant_dictionary::VariantDictionary;
 
 /// KDF parameters stored as a VariantDictionary.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KdfParameters {
     /// UUID of the KDF engine
     pub kdf_uuid: Uuid,
