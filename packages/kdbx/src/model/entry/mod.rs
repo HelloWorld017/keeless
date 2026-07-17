@@ -164,6 +164,42 @@ impl Entry {
         }
     }
 
+    /// Use an entry field only when its plaintext is not sealed in memory.
+    ///
+    /// This does not require credentials. It returns `None` when the field is
+    /// sealed or when a selected custom field does not exist.
+    pub fn with_unsealed_field<T>(
+        &self,
+        selector: &crate::model::db::EntryFieldSelector,
+        use_value: impl FnOnce(&str) -> T,
+    ) -> Option<T> {
+        match selector {
+            crate::model::db::EntryFieldSelector::Title => self
+                .protected_title
+                .is_none()
+                .then(|| use_value(&self.title)),
+            crate::model::db::EntryFieldSelector::UserName => {
+                (!self.username.is_memory_protected()).then(|| use_value(self.username.as_str()))
+            }
+            crate::model::db::EntryFieldSelector::Password => {
+                (!self.password.is_memory_protected()).then(|| use_value(self.password.as_str()))
+            }
+            crate::model::db::EntryFieldSelector::Url => {
+                self.protected_url.is_none().then(|| use_value(&self.url))
+            }
+            crate::model::db::EntryFieldSelector::Notes => {
+                (!self.notes.is_memory_protected()).then(|| use_value(self.notes.as_str()))
+            }
+            crate::model::db::EntryFieldSelector::Custom(name) => {
+                let field = self
+                    .custom_fields
+                    .iter()
+                    .find(|candidate| candidate.name == *name)?;
+                (!field.value.is_memory_protected()).then(|| use_value(field.value.as_str()))
+            }
+        }
+    }
+
     /// Get the standard field value by name.
     pub fn get_field(&self, name: &str) -> Option<ProtectedString> {
         match name.to_lowercase().as_str() {

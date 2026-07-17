@@ -5,7 +5,7 @@ use regex::Regex;
 
 use crate::crypto::memory_protection::MemoryField;
 use crate::model::core::node::NodeId;
-use crate::model::db::{CompositeKey, Database};
+use crate::model::db::{CompositeKey, Database, EntryFieldSelector};
 use crate::model::entry::Entry;
 use crate::model::exception::DatabaseResult;
 
@@ -63,12 +63,16 @@ pub struct SearchResult {
 pub struct SearchHelper;
 
 impl SearchHelper {
-    /// Search a loaded database using credential-scoped protected-field access.
+    /// Search a loaded database, skipping sealed fields when credentials are omitted.
     pub fn search_database(
         database: &Database,
-        composite_key: &CompositeKey,
+        composite_key: Option<&CompositeKey>,
         params: &SearchParameters,
     ) -> DatabaseResult<Vec<SearchResult>> {
+        let Some(composite_key) = composite_key else {
+            let entries = database.entries.values().collect::<Vec<_>>();
+            return Ok(Self::search_entries(&entries, params));
+        };
         let query = if params.case_sensitive {
             params.search_string.clone()
         } else {
@@ -176,10 +180,18 @@ impl SearchHelper {
             }
         };
 
-        check(&entry.title)
-            || check(entry.username.as_str())
-            || check(&entry.url)
-            || check(entry.notes.as_str())
+        entry
+            .with_unsealed_field(&EntryFieldSelector::Title, check)
+            .unwrap_or(false)
+            || entry
+                .with_unsealed_field(&EntryFieldSelector::UserName, check)
+                .unwrap_or(false)
+            || entry
+                .with_unsealed_field(&EntryFieldSelector::Url, check)
+                .unwrap_or(false)
+            || entry
+                .with_unsealed_field(&EntryFieldSelector::Notes, check)
+                .unwrap_or(false)
     }
 
     /// Check if an entry matches a regex pattern.
@@ -189,37 +201,74 @@ impl SearchHelper {
             Err(_) => return false,
         };
 
-        re.is_match(&entry.title)
-            || re.is_match(entry.username.as_str())
-            || re.is_match(&entry.url)
-            || re.is_match(entry.notes.as_str())
+        entry
+            .with_unsealed_field(&EntryFieldSelector::Title, |value| re.is_match(value))
+            .unwrap_or(false)
+            || entry
+                .with_unsealed_field(&EntryFieldSelector::UserName, |value| re.is_match(value))
+                .unwrap_or(false)
+            || entry
+                .with_unsealed_field(&EntryFieldSelector::Url, |value| re.is_match(value))
+                .unwrap_or(false)
+            || entry
+                .with_unsealed_field(&EntryFieldSelector::Notes, |value| re.is_match(value))
+                .unwrap_or(false)
     }
 
     fn score_entry_plain(entry: &Entry, query: &str, params: &SearchParameters) -> f64 {
         let mut score = 0.0f64;
 
-        if params.search_in_title && field_matches(&entry.title, query, params.case_sensitive) {
+        if params.search_in_title
+            && unsealed_field_matches(
+                entry,
+                &EntryFieldSelector::Title,
+                query,
+                params.case_sensitive,
+            )
+        {
             score += 2.0;
         }
 
         if params.search_in_username
-            && field_matches(entry.username.as_str(), query, params.case_sensitive)
+            && unsealed_field_matches(
+                entry,
+                &EntryFieldSelector::UserName,
+                query,
+                params.case_sensitive,
+            )
         {
             score += 1.5;
         }
 
-        if params.search_in_url && field_matches(&entry.url, query, params.case_sensitive) {
+        if params.search_in_url
+            && unsealed_field_matches(
+                entry,
+                &EntryFieldSelector::Url,
+                query,
+                params.case_sensitive,
+            )
+        {
             score += 1.0;
         }
 
         if params.search_in_notes
-            && field_matches(entry.notes.as_str(), query, params.case_sensitive)
+            && unsealed_field_matches(
+                entry,
+                &EntryFieldSelector::Notes,
+                query,
+                params.case_sensitive,
+            )
         {
             score += 0.5;
         }
 
         if params.search_in_password
-            && field_matches(entry.password.as_str(), query, params.case_sensitive)
+            && unsealed_field_matches(
+                entry,
+                &EntryFieldSelector::Password,
+                query,
+                params.case_sensitive,
+            )
         {
             score += 1.0;
         }
@@ -235,7 +284,12 @@ impl SearchHelper {
 
         if params.search_in_other_fields {
             for field in &entry.custom_fields {
-                if field_matches(field.value.as_str(), query, params.case_sensitive) {
+                if unsealed_field_matches(
+                    entry,
+                    &EntryFieldSelector::Custom(field.name.clone()),
+                    query,
+                    params.case_sensitive,
+                ) {
                     score += 0.5;
                     break;
                 }
@@ -248,19 +302,28 @@ impl SearchHelper {
     fn score_entry_regex(entry: &Entry, re: &Regex, params: &SearchParameters) -> f64 {
         let mut score = 0.0f64;
 
-        if params.search_in_title && re.is_match(&entry.title) {
+        if params.search_in_title
+            && unsealed_field_matches_regex(entry, &EntryFieldSelector::Title, re)
+        {
             score += 2.0;
         }
-        if params.search_in_username && re.is_match(entry.username.as_str()) {
+        if params.search_in_username
+            && unsealed_field_matches_regex(entry, &EntryFieldSelector::UserName, re)
+        {
             score += 1.5;
         }
-        if params.search_in_url && re.is_match(&entry.url) {
+        if params.search_in_url && unsealed_field_matches_regex(entry, &EntryFieldSelector::Url, re)
+        {
             score += 1.0;
         }
-        if params.search_in_notes && re.is_match(entry.notes.as_str()) {
+        if params.search_in_notes
+            && unsealed_field_matches_regex(entry, &EntryFieldSelector::Notes, re)
+        {
             score += 0.5;
         }
-        if params.search_in_password && re.is_match(entry.password.as_str()) {
+        if params.search_in_password
+            && unsealed_field_matches_regex(entry, &EntryFieldSelector::Password, re)
+        {
             score += 1.0;
         }
         if params.search_in_tags {
@@ -273,7 +336,11 @@ impl SearchHelper {
         }
         if params.search_in_other_fields {
             for field in &entry.custom_fields {
-                if re.is_match(field.value.as_str()) {
+                if unsealed_field_matches_regex(
+                    entry,
+                    &EntryFieldSelector::Custom(field.name.clone()),
+                    re,
+                ) {
                     score += 0.5;
                     break;
                 }
@@ -282,6 +349,29 @@ impl SearchHelper {
 
         score
     }
+}
+
+fn unsealed_field_matches(
+    entry: &Entry,
+    selector: &EntryFieldSelector,
+    query: &str,
+    case_sensitive: bool,
+) -> bool {
+    entry
+        .with_unsealed_field(selector, |value| {
+            field_matches(value, query, case_sensitive)
+        })
+        .unwrap_or(false)
+}
+
+fn unsealed_field_matches_regex(
+    entry: &Entry,
+    selector: &EntryFieldSelector,
+    regex: &Regex,
+) -> bool {
+    entry
+        .with_unsealed_field(selector, |value| regex.is_match(value))
+        .unwrap_or(false)
 }
 
 fn score_memory_entry_plain(
@@ -386,6 +476,7 @@ mod tests {
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
     use crate::model::db::DatabaseVersion;
+    use crate::model::entry::EntryField;
 
     fn make_entry(id: u8, title: &str, username: &str) -> Entry {
         let mut e = Entry::new(NodeId::from_int(id as i32));
@@ -511,11 +602,89 @@ mod tests {
         params.search_in_url = false;
         params.search_in_notes = false;
         params.search_in_other_fields = false;
-        let results = SearchHelper::search_database(&database, &key, &params).unwrap();
+        let results = SearchHelper::search_database(&database, Some(&key), &params).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry_id, entry_id);
 
         let wrong = CompositeKey::new().with_password(b"wrong");
-        assert!(SearchHelper::search_database(&database, &wrong, &params).is_err());
+        assert!(SearchHelper::search_database(&database, Some(&wrong), &params).is_err());
+    }
+
+    #[test]
+    fn searches_unsealed_fields_without_credentials() {
+        let mut database = Database::new(DatabaseVersion::KDBX4);
+        let mut parameters = KdfParameters::new(AES_KDF_UUID);
+        parameters.set_byte_array("S", &[0x33; 32]);
+        parameters.set_uint64("R", 1);
+        database.kdf_parameters = Some(parameters);
+
+        let sealed_id = NodeId::new_uuid();
+        let mut sealed = Entry::new(sealed_id);
+        sealed.title = "needle title".into();
+        sealed.title_is_protected = true;
+        sealed.username = ProtectedString::new_protected("needle username");
+        sealed.password = ProtectedString::new_protected("needle password");
+        sealed.url = "https://needle.example".into();
+        sealed.url_is_protected = true;
+        sealed.notes = ProtectedString::new_protected("needle notes");
+        sealed.custom_fields.push(EntryField {
+            name: "Secret".into(),
+            value: ProtectedString::new_protected("needle custom"),
+            is_protected: true,
+        });
+        database.entries.insert(sealed_id, sealed);
+
+        let key = CompositeKey::new().with_password(b"search password");
+        database.protect_entry_strings(&key).unwrap();
+
+        let unsealed_id = NodeId::new_uuid();
+        let mut unsealed = Entry::new(unsealed_id);
+        unsealed.title = "needle title".into();
+        unsealed.title_is_protected = true;
+        unsealed.username = ProtectedString::new_protected("needle username");
+        unsealed.password = ProtectedString::new_protected("needle password");
+        unsealed.url = "https://needle.example".into();
+        unsealed.url_is_protected = true;
+        unsealed.notes = ProtectedString::new_protected("needle notes");
+        unsealed.custom_fields.push(EntryField {
+            name: "Secret".into(),
+            value: ProtectedString::new_protected("needle custom"),
+            is_protected: true,
+        });
+        database.entries.insert(unsealed_id, unsealed);
+
+        let mut params = SearchParameters::new("needle");
+        params.search_in_password = true;
+        let results = SearchHelper::search_database(&database, None, &params).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entry_id, unsealed_id);
+
+        let results = SearchHelper::search_database(&database, Some(&key), &params).unwrap();
+        assert_eq!(results.len(), 2);
+
+        let entries = database.entries.values().collect::<Vec<_>>();
+        let results = SearchHelper::search_entries(&entries, &params);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entry_id, unsealed_id);
+
+        let regex = SearchParameters::regex("needle");
+        let results = SearchHelper::search_database(&database, None, &regex).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].entry_id, unsealed_id);
+
+        let sealed = &database.entries[&sealed_id];
+        let unsealed = &database.entries[&unsealed_id];
+        assert_eq!(
+            sealed.with_unsealed_field(&EntryFieldSelector::Title, str::to_string),
+            None
+        );
+        assert_eq!(
+            unsealed.with_unsealed_field(&EntryFieldSelector::Title, str::to_string),
+            Some("needle title".into())
+        );
+        assert!(!SearchHelper::entry_matches(sealed, "needle", false));
+        assert!(SearchHelper::entry_matches(unsealed, "needle", false));
+        assert!(!SearchHelper::entry_matches_regex(sealed, "needle"));
+        assert!(SearchHelper::entry_matches_regex(unsealed, "needle"));
     }
 }
