@@ -57,6 +57,9 @@ pub use kdbx::file::writer::DatabaseWriter;
 // ─── Search ───────────────────────────────────────────────────────────
 pub use kdbx::search::{SearchHelper, SearchParameters, SearchResult};
 
+// ─── URL Matching ─────────────────────────────────────────────────────
+pub use kdbx::url::{UrlMatchParameters, UrlMatchResult, UrlMatcher};
+
 // ─── Merge ────────────────────────────────────────────────────────────
 pub use kdbx::merge::{
     ConflictResolution, ConflictType, DatabaseMerger, MergeConflict, MergeResult, MergeStrategy,
