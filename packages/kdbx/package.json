@@ -2,11 +2,11 @@
   "name": "@keeless/kdbx",
   "version": "0.0.0",
   "private": true,
-  "description": "keeless: minimal password manager",
+  "description": "kdbx library for keeless",
   "license": "MIT OR MulanPSL-2.0",
   "type": "module",
   "scripts": {
-    "build": "cargo test -p keeless_kdbx",
+    "build": "cargo build --release -p keeless_kdbx",
     "check": "pnpm run '/^check:.*/'",
     "check:lint": "pnpm run lint",
     "check:wasm": "cargo check -p keeless_kdbx --lib --target wasm32-unknown-unknown",

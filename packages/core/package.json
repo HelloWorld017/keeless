@@ -2,7 +2,7 @@
   "name": "@keeless/core",
   "version": "0.0.0",
   "private": true,
-  "description": "Host-independent Rust backend for Keeless",
+  "description": "host-independent backend for keeless",
   "license": "AGPL-3.0",
   "type": "module",
   "scripts": {

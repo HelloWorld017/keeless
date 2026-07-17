@@ -1,19 +1,16 @@
 {
-  "name": "keeless-workspace",
+  "name": "@keeless/root",
   "version": "0.0.0",
   "private": true,
-  "description": "KeePass database editor",
+  "description": "keeless: minimal password manager",
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @keeless/app dev",
     "build": "pnpm -r build",
-    "check": "pnpm run '/check:.*/'",
-    "check:lint": "pnpm run lint",
-    "check:format": "pnpm run format",
-    "check:type": "pnpm run typecheck",
-    "format": "oxfmt",
-    "lint": "oxlint",
-    "typecheck": "tsc --noEmit"
+    "check": "pnpm -r check",
+    "format": "pnpm -r format",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

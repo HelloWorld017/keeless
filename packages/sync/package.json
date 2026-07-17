@@ -1,0 +1,21 @@
+{
+  "name": "@keeless/sync",
+  "version": "0.0.0",
+  "private": true,
+  "description": "sync library for keeless",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "cargo build --release -p keeless_sync",
+    "check": "pnpm run '/^check:.*/'",
+    "check:lint": "pnpm run lint",
+    "check:wasm": "cargo check -p keeless_sync --lib --target wasm32-unknown-unknown",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_sync --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_sync"
+  },
+  "dependencies": {
+    "@keeless/kdbx": "workspace:*"
+  }
+}
+

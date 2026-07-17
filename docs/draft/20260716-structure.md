@@ -26,19 +26,24 @@ rust package는 wasm 및 네이티브로 동시에 컴파일 됨
 * 실질적인 백엔드 역할
   ```rust
   pub struct KeelessHost {
-    pub default_approved_keys: Vec<Vec<u8>>,
-    pub storage_providers: HashMap<String, Box<dyn KeelessStorageProvider>>,
-    pub config_provider: Box<dyn KeelessConfigProvider>,
+    pub default_approved_keys: Vec<String>,
+    pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
+    pub config_provider: Arc<dyn ConfigProvider>,
+    pub approval_provider: Arc<dyn ClientApprovalProvider>,
+    pub clock: Arc<dyn Clock>,
   }
 
   impl KeelessCore {
-    pub fn new(host: KeelessHost) -> Self {
+    pub async fn new(host: KeelessHost) -> Result<Self> {
     }
   }
   ```
+* Core config는 protocol identity private key와 approved client key를 포함
+  * `getConfig`에서는 public settings만 반환하고 identity/approved key는 노출하지 않음
+  * Host의 ConfigProvider는 OS 권한 또는 secure storage로 persisted config를 보호해야 함
 * 메모리 덤프로부터 평문 비밀번호가 탈취당하는 것을 보호하여야 함
-  * master key (CompositeKey) 를 들고 있을 때에는 한번 암호화해서 들고있기 -> 평문 검색 mitigate
-  * 암호화한 master key도 secure-types 을 사용해서 보호해서 들고있기
+  * raw composite key는 프로세스 임시 키를 사용한 XChaCha20-Poly1305 ciphertext로만 보관
+  * wrapping key와 ciphertext 모두 secure-types를 사용해서 보호
   * Paranoia Mode에서는 아예 비밀번호를 들고 있지 않고 Sync할 때마다 비밀번호를 입력받게
 
 ### `@keeless/app` (typescript)
@@ -131,24 +136,32 @@ graph LR
   version: 1,
   timestamp: number,
   nonce: string,
-  encryptionKey: string | null,
+  ephemeralPublicKey: string | null,
   publicKey: string,
   payload: string | null,
   signature: string
 }
 ```
 * 현재 timestamp로부터 500ms 윈도우 안에 들어오는 timestamp만 받기 허용
+  * protocol timestamp 검증에는 wall clock, nonce 만료와 auto-lock에는 monotonic clock 사용
 * 해당 윈도우 내에서는 nonce 재사용이 금지됨
   * nonce pool (len=2048) 이 가득찼다면 시간이 지나 비워지기까지 더 이상의 메세지는 받지 않음
-* signature는 signature를 제외한 message frame을 stable json stringify해서 서명
-* payload: null, encryptionKey: null인 경우에는 handshake
+* key bundle은 `v1.<ed25519-public-key>.<x25519-public-key>` 형식
+  * 각 binary 값은 padding 없는 base64url로 인코딩
+* signature는 Ed25519를 사용해서 아래 문자열을 서명
+  * `keeless-frame-v1|timestamp|nonce|ephemeralPublicKey-or-empty|publicKey|payload-or-empty`
+* payload: null, ephemeralPublicKey: null인 경우에는 handshake
   * approved key에 없을 경우 키를 승인할 것인지 묻는 다이얼로그가 나옴
   * 승인될 경우 approved key에 추가하고 서버 측 publicKey 반환
 
 * approved key에 있지 않고, payload가 있을 경우 drop
 * signature가 맞지 않을 경우 drop
-* encryptionKey를 수신자의 privateKey로 해제하고, encryptionKey로 payload를 해제
-  * payload는 `{ op, args }` 구조
+* 암호화된 메시지는 매 frame마다 ephemeral X25519 key를 생성
+  * X25519 shared secret과 nonce로 HKDF-SHA256을 수행하여 payload key 파생
+  * nonce는 24-byte random 값이며 replay ID와 XChaCha20-Poly1305 nonce로 함께 사용
+  * payload는 XChaCha20-Poly1305 ciphertext
+* 복호화된 요청 payload는 `{ requestId, op, args }` 구조
+* 응답 payload는 `{ requestId, status: 'success', op, result }` 또는 `{ requestId, status: 'error', error }` 구조
 
 ### Operations
 * `null -> { publicKey: string }`
@@ -166,4 +179,3 @@ graph LR
 ## UI Design
 * shadcn/ui 사용 (preset: `b1Q2La`)
 * Tag, Directory - Password Entries - Entry Details 3단 컬럼 구조
-

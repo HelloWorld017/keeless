@@ -2,7 +2,7 @@
   "name": "@keeless/extension",
   "version": "0.0.0",
   "private": true,
-  "description": "browser application for keeless",
+  "description": "browser extension for keeless",
   "license": "AGPL-3.0",
   "type": "module"
 }
