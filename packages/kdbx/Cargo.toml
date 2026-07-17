@@ -43,10 +43,10 @@ uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1"
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-secure-types = { path = "../secure-types", default-features = false, features = ["use_os"] }
+keeless_secure_types = { path = "../secure-types", default-features = false, features = ["use_os"] }
 
 [target.'cfg(not(any(target_os = "linux", target_os = "windows")))'.dependencies]
-secure-types = { path = "../secure-types", default-features = false, features = ["no_os"] }
+keeless_secure_types = { path = "../secure-types", default-features = false, features = ["no_os"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

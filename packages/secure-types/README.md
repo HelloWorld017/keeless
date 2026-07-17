@@ -1,4 +1,4 @@
-# secure-types
+# keeless_secure_types
 
 Keeless-vendored, byte-oriented fork based on `secure-types` 0.3.0:
 

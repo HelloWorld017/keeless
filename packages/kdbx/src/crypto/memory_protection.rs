@@ -6,7 +6,7 @@ use std::sync::Arc;
 use chacha20poly1305::aead::{Aead, Payload};
 use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce};
 use hkdf::Hkdf;
-use secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::{SecureArray, SecureBytes};
 use sha2::Sha256;
 use zeroize::{Zeroize, Zeroizing};
 

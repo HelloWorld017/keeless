@@ -9,7 +9,7 @@ mod tests;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use secure_types::SecureArray;
+use keeless_secure_types::SecureArray;
 
 use uuid::Uuid;
 

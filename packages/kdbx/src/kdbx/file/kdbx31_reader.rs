@@ -3,7 +3,7 @@
 //! Pipeline: signature → outer header → key derivation → decrypt → verify streamStartBytes
 //!           → hashed block stream → decompress → inner stream decrypt → XML → Database
 
-use secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::{SecureArray, SecureBytes};
 use std::io::Read;
 use zeroize::Zeroizing;
 

@@ -5,7 +5,7 @@
 use crate::crypto::{ChaCha20Cipher, Salsa20Cipher};
 use crate::kdbx::file::header::CrsAlgorithm;
 use crate::model::exception::{DatabaseError, DatabaseResult};
-use secure_types::SecureArray;
+use keeless_secure_types::SecureArray;
 use zeroize::{Zeroize, Zeroizing};
 
 /// Inner stream cipher trait.

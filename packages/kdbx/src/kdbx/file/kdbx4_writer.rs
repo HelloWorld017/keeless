@@ -6,7 +6,7 @@
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
 use crate::crypto::compression::CompressionAlgorithm;

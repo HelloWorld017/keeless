@@ -1,7 +1,7 @@
 //! Twofish block cipher implementation
 //!
 
-use secure_types::SecureArray;
+use keeless_secure_types::SecureArray;
 use twofish::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use twofish::Twofish;
 

@@ -15,7 +15,7 @@ pub mod kdbx;
 pub mod model;
 
 pub use model::exception::{DatabaseError, DatabaseResult};
-pub use secure_types::{SecureArray, SecureBytes, SecureString};
+pub use keeless_secure_types::{SecureArray, SecureBytes, SecureString};
 
 // Top-level convenience re-exports
 

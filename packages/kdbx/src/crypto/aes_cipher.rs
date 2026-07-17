@@ -3,7 +3,7 @@
 
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes256;
-use secure_types::SecureArray;
+use keeless_secure_types::SecureArray;
 
 use super::{BlockMode, CipherMode, CryptoError, CryptoResult};
 

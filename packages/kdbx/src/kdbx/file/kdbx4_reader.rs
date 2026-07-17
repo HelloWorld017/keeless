@@ -6,7 +6,7 @@
 use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::compression::CompressionAlgorithm;

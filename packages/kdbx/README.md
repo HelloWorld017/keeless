@@ -60,7 +60,7 @@ authentication.
 
 ```text
 cargo test -p keeless_kdbx
-cargo test -p secure-types --features use_os
+cargo test -p keeless_secure_types --features use_os
 cargo clippy -p keeless_kdbx --all-targets -- -D warnings
 cargo check -p keeless_kdbx --lib --target wasm32-unknown-unknown
 ```

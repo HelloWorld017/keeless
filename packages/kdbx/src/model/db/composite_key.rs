@@ -1,7 +1,7 @@
 //! Composite key - combination of password, keyfile, and hardware key
 //!
 
-use secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
 use crate::crypto::HashEngine;

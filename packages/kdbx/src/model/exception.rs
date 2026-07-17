@@ -77,8 +77,8 @@ impl From<quick_xml::events::attributes::AttrError> for DatabaseError {
     }
 }
 
-impl From<secure_types::Error> for DatabaseError {
-    fn from(error: secure_types::Error) -> Self {
+impl From<keeless_secure_types::Error> for DatabaseError {
+    fn from(error: keeless_secure_types::Error) -> Self {
         Self::SecureMemory(error.to_string())
     }
 }

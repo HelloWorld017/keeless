@@ -36,6 +36,10 @@ rust package는 wasm 및 네이티브로 동시에 컴파일 됨
     }
   }
   ```
+* 메모리 덤프로부터 평문 비밀번호가 탈취당하는 것을 보호하여야 함
+  * master key (CompositeKey) 를 들고 있을 때에는 한번 암호화해서 들고있기 -> 평문 검색 mitigate
+  * 암호화한 master key도 secure-types 을 사용해서 보호해서 들고있기
+  * Paranoia Mode에서는 아예 비밀번호를 들고 있지 않고 Sync할 때마다 비밀번호를 입력받게
 
 ### `@keeless/app` (typescript)
 * React 기반 웹 어플리케이션
@@ -63,6 +67,13 @@ rust package는 wasm 및 네이티브로 동시에 컴파일 됨
 * linux에서 백그라운드에서 떠있는 daemon
   * passkey 를 통한 인증을 가상 hid device를 가지고 처리
 * `soft-fido2-transport` 이용하여 구현
+
+### `keeless_secure_types` (rust)
+* 메모리 보호 및 zeroize 를 지원하는 컨테이너
+
+### `keeless_schema` `@keeless/schema` (rust)
+* Protocol의 Message Frame 및 Payload 정의
+* `specta` 를 통해서 typescript로 내보내기
 
 ### `@keeless/build-helpers` (typescript)
 * 공용 vite 설정 등을 저장

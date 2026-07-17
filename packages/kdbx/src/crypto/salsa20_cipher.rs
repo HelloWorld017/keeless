@@ -4,7 +4,7 @@
 
 use salsa20::cipher::{KeyIvInit, StreamCipher as StreamCipherTrait};
 use salsa20::Salsa20;
-use secure_types::SecureArray;
+use keeless_secure_types::SecureArray;
 
 use super::hash::HashEngine;
 use super::{CryptoError, CryptoResult};

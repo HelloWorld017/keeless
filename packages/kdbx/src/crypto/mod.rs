@@ -87,8 +87,8 @@ pub enum CryptoError {
     SecureMemory(String),
 }
 
-impl From<secure_types::Error> for CryptoError {
-    fn from(error: secure_types::Error) -> Self {
+impl From<keeless_secure_types::Error> for CryptoError {
+    fn from(error: keeless_secure_types::Error) -> Self {
         Self::SecureMemory(error.to_string())
     }
 }

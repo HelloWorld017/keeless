@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
