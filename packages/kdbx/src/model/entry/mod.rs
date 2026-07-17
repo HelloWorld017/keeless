@@ -4,6 +4,7 @@
 pub mod auto_type;
 pub mod field_references;
 pub mod otp;
+pub mod passkey;
 pub mod versioned;
 
 use crate::model::core::date::DateInstant;

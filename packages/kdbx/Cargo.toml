@@ -15,18 +15,23 @@ byteorder = "1"
 chacha20 = "0.9"
 chrono = "0.4"
 ctr = "0.9"
+ed25519-dalek = { version = "=2.1.1", features = ["rand_core", "pkcs8", "pem"] }
 flate2 = "1"
 getrandom = "0.2"
 hmac = "0.12"
 log = "0.4"
-p256 = { version = "0.13", features = ["ecdsa"] }
+minicbor = { version = "=0.25.1", features = ["alloc"] }
+p256 = { version = "0.13", features = ["ecdsa", "pem"] }
 percent-encoding = "2"
+psl = "2.1"
 quick-xml = "0.37"
+rand_core = { version = "0.6.4", features = ["getrandom"] }
 regex = "1"
-rsa = { version = "0.9", features = ["sha2"] }
+rsa = { version = "0.9", features = ["sha2", "pem"] }
 salsa20 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"
+serde_json = "1"
 sha1 = "0.10"
 sha2 = "0.10"
 thiserror = "2"
@@ -43,4 +48,3 @@ uuid = { version = "1", features = ["v4", "serde", "js"] }
 hex = "0.4"
 keepass = "=0.13.16"
 pretty_assertions = "1"
-serde_json = "1"

@@ -40,6 +40,22 @@ save_database(&mut std::fs::File::create("output.kdbx")?, &database, &key)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+## Passkeys
+
+The crate provides a software WebAuthn authenticator through
+`PasskeyAuthenticator` and stores credentials in KeePassXC-compatible
+`KPEX_PASSKEY_*` entry fields. ES256, RS256, and Ed25519 credentials are
+supported. Registration uses `none` attestation and a stable Keeless AAGUID;
+assertion counters remain zero because KDBX credentials can be synchronized or
+cloned.
+
+The caller supplies the exact `clientDataJSON` bytes plus the independently
+trusted origin and expected challenge from its browser boundary. Keeless checks
+that the JSON matches those values, validates the ceremony type and RP-ID
+relationship, then returns raw WebAuthn response bytes. User presence and user
+verification must be completed by the host before invoking registration or
+authentication.
+
 ## Verification
 
 ```text
