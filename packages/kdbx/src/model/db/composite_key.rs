@@ -200,11 +200,10 @@ mod tests {
         let key2 = CompositeKey::new().with_password(b"test").unwrap();
         let raw1 = key1.build_raw_key().unwrap();
         let raw2 = key2.build_raw_key().unwrap();
-        assert!(
-            raw1.unlock(|left| raw2.unlock(|right| left == right))
-                .unwrap()
-                .unwrap()
-        );
+        assert!(raw1
+            .unlock(|left| raw2.unlock(|right| left == right))
+            .unwrap()
+            .unwrap());
     }
 
     #[test]

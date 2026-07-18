@@ -14,8 +14,8 @@ pub mod crypto;
 pub mod kdbx;
 pub mod model;
 
-pub use model::exception::{DatabaseError, DatabaseResult};
 pub use keeless_secure_types::{SecureArray, SecureBytes, SecureString};
+pub use model::exception::{DatabaseError, DatabaseResult};
 
 // Top-level convenience re-exports
 

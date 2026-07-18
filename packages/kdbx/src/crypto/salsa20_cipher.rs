@@ -2,9 +2,9 @@
 //!
 //! Used for KDBX 3.1 inner stream protection.
 
+use keeless_secure_types::SecureArray;
 use salsa20::cipher::{KeyIvInit, StreamCipher as StreamCipherTrait};
 use salsa20::Salsa20;
-use keeless_secure_types::SecureArray;
 
 use super::hash::HashEngine;
 use super::{CryptoError, CryptoResult};

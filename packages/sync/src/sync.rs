@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keeless_kdbx::{
-    CompositeKey, Database, DatabaseMerger, MergeResult, MergeStrategy, open_database,
-    save_database,
+    open_database, save_database, CompositeKey, Database, DatabaseMerger, MergeResult,
+    MergeStrategy,
 };
 
 use crate::{
