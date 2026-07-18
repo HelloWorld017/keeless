@@ -61,12 +61,12 @@ impl BrowserCore {
         })
     }
 
-    #[wasm_bindgen(js_name = processFrame)]
-    pub async fn process_frame(&self, frame: Vec<u8>) -> Result<Option<Vec<u8>>, JsValue> {
+    #[wasm_bindgen(js_name = handle)]
+    pub async fn handle(&self, frame: Vec<u8>) -> Result<Option<Vec<u8>>, JsValue> {
         self.core
             .lock()
             .await
-            .process_frame_json(&frame)
+            .handle(&frame)
             .await
             .map_err(js_error)
     }
@@ -78,10 +78,6 @@ impl BrowserCore {
         bytes: Vec<u8>,
     ) -> Result<String, JsValue> {
         let base_path = imported_database_path(&file_name);
-        self.storage
-            .ensure_directory("databases")
-            .await
-            .map_err(js_error)?;
         let mut available_path = None;
         for number in 1..=10_000 {
             let path = numbered_database_path(&base_path, number);

@@ -144,27 +144,6 @@ impl StorageProvider for MemoryStorage {
             Ok(())
         })
     }
-
-    fn ensure_directory<'a>(
-        &'a self,
-        _: &'a str,
-    ) -> StorageFuture<'a, std::result::Result<(), StorageError>> {
-        Box::pin(async { Ok(()) })
-    }
-
-    fn list<'a>(
-        &'a self,
-        _: &'a str,
-    ) -> StorageFuture<'a, std::result::Result<Vec<String>, StorageError>> {
-        Box::pin(async { Ok(Vec::new()) })
-    }
-
-    fn read_directory<'a>(
-        &'a self,
-        _: &'a str,
-    ) -> StorageFuture<'a, std::result::Result<Vec<String>, StorageError>> {
-        Box::pin(async { Ok(Vec::new()) })
-    }
 }
 
 fn metadata(bytes: &[u8]) -> FileMetadata {
@@ -304,7 +283,7 @@ async fn failed_persistence_rolls_back_settings_and_client_approval() {
     let (signing, _, bundle) = client_identity();
     let frame = handshake_frame(1000, bundle.clone(), &signing).unwrap();
     assert!(matches!(
-        core.process_frame(&frame).await,
+        core.handle_frame(&frame).await,
         Err(CoreError::Host(_))
     ));
     assert!(!core.approved_clients.contains(&bundle));
@@ -419,10 +398,10 @@ async fn handshake_approves_persists_and_replay_is_dropped() {
     .unwrap();
     let (signing, _, bundle) = client_identity();
     let frame = handshake_frame(10_000, bundle.clone(), &signing).unwrap();
-    let response = core.process_frame(&frame).await.unwrap().unwrap();
+    let response = core.handle_frame(&frame).await.unwrap().unwrap();
     assert!(response.payload.is_none());
     assert!(response.ephemeral_public_key.is_none());
-    assert!(core.process_frame(&frame).await.unwrap().is_none());
+    assert!(core.handle_frame(&frame).await.unwrap().is_none());
     let saved: serde_json::Value =
         serde_json::from_slice(&config.0.lock().unwrap().clone().unwrap()).unwrap();
     assert!(
@@ -446,9 +425,9 @@ async fn denied_handshakes_consume_the_bounded_nonce_pool() {
     let (signing, _, bundle) = client_identity();
     let frame = handshake_frame(10_000, bundle, &signing).unwrap();
 
-    assert!(core.process_frame(&frame).await.unwrap().is_none());
+    assert!(core.handle_frame(&frame).await.unwrap().is_none());
     assert_eq!(core.nonce_cache.len(), 1);
-    assert!(core.process_frame(&frame).await.unwrap().is_none());
+    assert!(core.handle_frame(&frame).await.unwrap().is_none());
     assert_eq!(core.nonce_cache.len(), 1);
 }
 
@@ -512,7 +491,7 @@ async fn handshake_rejects_non_contributory_client_encryption_key() {
     );
     let frame = handshake_frame(10_000, bundle, &signing).unwrap();
 
-    assert!(core.process_frame(&frame).await.unwrap().is_none());
+    assert!(core.handle_frame(&frame).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -539,7 +518,7 @@ async fn encrypted_status_round_trip_and_tampering_drop() {
         &core_bundle.encryption,
     )
     .unwrap();
-    let response = core.process_frame(&frame).await.unwrap().unwrap();
+    let response = core.handle_frame(&frame).await.unwrap().unwrap();
     let plaintext = decrypt_frame(&response, &client_secret).unwrap();
     let response: OperationResponse = serde_json::from_slice(&plaintext).unwrap();
     assert_eq!(response.request_id, "request-1");
@@ -554,7 +533,7 @@ async fn encrypted_status_round_trip_and_tampering_drop() {
 
     let mut tampered = frame;
     tampered.nonce = URL_SAFE_NO_PAD.encode([1; 24]);
-    assert!(core.process_frame(&tampered).await.unwrap().is_none());
+    assert!(core.handle_frame(&tampered).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -570,13 +549,13 @@ async fn timestamp_boundaries_and_nonce_expiry_are_inclusive() {
     .unwrap();
     let (signing, _, bundle) = client_identity();
     let boundary = handshake_frame(500, bundle.clone(), &signing).unwrap();
-    assert!(core.process_frame(&boundary).await.unwrap().is_some());
+    assert!(core.handle_frame(&boundary).await.unwrap().is_some());
     let stale = handshake_frame(499, bundle.clone(), &signing).unwrap();
-    assert!(core.process_frame(&stale).await.unwrap().is_none());
+    assert!(core.handle_frame(&stale).await.unwrap().is_none());
 
     clock.set(1501);
     let fresh = handshake_frame(1501, bundle, &signing).unwrap();
-    assert!(core.process_frame(&fresh).await.unwrap().is_some());
+    assert!(core.handle_frame(&fresh).await.unwrap().is_some());
     assert_eq!(core.nonce_cache.len(), 1);
 }
 
@@ -595,7 +574,7 @@ async fn full_nonce_cache_rejects_without_eviction() {
     }
     let (signing, _, bundle) = client_identity();
     let frame = handshake_frame(2000, bundle, &signing).unwrap();
-    assert!(core.process_frame(&frame).await.unwrap().is_none());
+    assert!(core.handle_frame(&frame).await.unwrap().is_none());
     assert_eq!(core.nonce_cache.len(), NONCE_CACHE_CAPACITY);
 }
 

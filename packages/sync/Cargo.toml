@@ -11,8 +11,6 @@ bytes = "1"
 futures-util = "0.3"
 httpdate = "1"
 keeless_kdbx = { path = "../kdbx" }
-percent-encoding = "2"
-quick-xml = "0.37"
 thiserror = "2"
 url = "2"
 zeroize = "1"

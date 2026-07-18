@@ -129,33 +129,6 @@ async fn weak_etag_falls_back_to_last_modified() {
     );
 }
 
-#[tokio::test]
-async fn propfind_lists_direct_files_and_directories() {
-    let server = MockServer::start().await;
-    let xml = r#"<?xml version="1.0"?>
-        <d:multistatus xmlns:d="DAV:">
-          <d:response><d:href>/dav/folder/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
-          <d:response><d:href>/dav/folder/a%20b.kdbx</d:href><d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>
-          <d:response><d:href>/dav/folder/a%2Fb.kdbx</d:href><d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>
-          <d:response><d:href>/dav/folder/child/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
-          <d:response><d:href>/dav/folder/child/nested.kdbx</d:href><d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>
-        </d:multistatus>"#;
-    Mock::given(method("PROPFIND"))
-        .and(path("/dav/folder/"))
-        .and(header("depth", "1"))
-        .respond_with(ResponseTemplate::new(207).set_body_string(xml))
-        .expect(2)
-        .mount(&server)
-        .await;
-
-    let provider = WebDavProvider::new(format!("{}/dav", server.uri()), None).unwrap();
-    assert_eq!(provider.list("folder").await.unwrap(), vec!["a b.kdbx"]);
-    assert_eq!(
-        provider.read_directory("folder").await.unwrap(),
-        vec!["child"]
-    );
-}
-
 #[test]
 fn webdav_debug_output_does_not_expose_passwords() {
     let provider = WebDavProvider::new(

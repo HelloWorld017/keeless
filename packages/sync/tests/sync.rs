@@ -148,24 +148,6 @@ impl StorageProvider for MemoryStorage {
             Ok(())
         })
     }
-
-    fn ensure_directory<'a>(
-        &'a self,
-        _path: &'a str,
-    ) -> StorageFuture<'a, Result<(), StorageError>> {
-        Box::pin(async { Ok(()) })
-    }
-
-    fn list<'a>(&'a self, _path: &'a str) -> StorageFuture<'a, Result<Vec<String>, StorageError>> {
-        Box::pin(async { Ok(Vec::new()) })
-    }
-
-    fn read_directory<'a>(
-        &'a self,
-        _path: &'a str,
-    ) -> StorageFuture<'a, Result<Vec<String>, StorageError>> {
-        Box::pin(async { Ok(Vec::new()) })
-    }
 }
 
 fn options(max_retries: usize) -> SyncOptions {

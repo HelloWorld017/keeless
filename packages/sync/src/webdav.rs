@@ -1,9 +1,4 @@
-use std::collections::HashSet;
-
 use futures_util::StreamExt;
-use percent_encoding::percent_decode_str;
-use quick_xml::events::Event;
-use quick_xml::Reader;
 use reqwest::header::{
     CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_MATCH, IF_NONE_MATCH,
     IF_UNMODIFIED_SINCE, LAST_MODIFIED, RANGE,
@@ -18,7 +13,6 @@ use crate::{
 };
 
 const DEFAULT_MAX_FILE_SIZE: usize = 512 * 1024 * 1024;
-const MAX_PROPFIND_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct WebDavAuth {
@@ -121,7 +115,7 @@ impl WebDavProvider {
         &self.base_url
     }
 
-    fn url_for(&self, path: &str, directory: bool) -> Result<Url, StorageError> {
+    fn url_for(&self, path: &str) -> Result<Url, StorageError> {
         let mut url = self.base_url.clone();
         {
             let mut segments = url.path_segments_mut().map_err(|_| {
@@ -133,9 +127,6 @@ impl WebDavProvider {
             segments.pop_if_empty();
             for segment in normalized_segments(path)? {
                 segments.push(segment);
-            }
-            if directory {
-                segments.push("");
             }
         }
         Ok(url)
@@ -155,7 +146,7 @@ impl WebDavProvider {
         path: &str,
         range: Option<ByteRange>,
     ) -> Result<RemoteFile, StorageError> {
-        let url = self.url_for(path, false)?;
+        let url = self.url_for(path)?;
         let mut request = self.request(Method::GET, url);
         if let Some(range) = range {
             request = request.header(RANGE, format!("bytes={}-{}", range.start, range.end));
@@ -203,75 +194,6 @@ impl WebDavProvider {
             bytes,
         })
     }
-
-    async fn propfind(&self, path: &str) -> Result<Vec<PropfindEntry>, StorageError> {
-        let method = Method::from_bytes(b"PROPFIND").expect("PROPFIND is a valid HTTP method");
-        let response = self
-            .request(method, self.url_for(path, true)?)
-            .header("Depth", "1")
-            .send()
-            .await
-            .map_err(network_error)?;
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(Vec::new());
-        }
-        if !response.status().is_success() {
-            return Err(status_error("PROPFIND", path, response.status()));
-        }
-        let bytes = read_limited(
-            response,
-            MAX_PROPFIND_SIZE,
-            "WebDAV PROPFIND response",
-            path,
-        )
-        .await?;
-        let xml = std::str::from_utf8(&bytes).map_err(|error| {
-            StorageError::new(
-                StorageErrorKind::Other,
-                format!("invalid UTF-8 in WebDAV PROPFIND response: {error}"),
-            )
-        })?;
-        parse_propfind_entries(xml)
-    }
-
-    async fn list_kind(&self, path: &str, directories: bool) -> Result<Vec<String>, StorageError> {
-        let requested_url = self.url_for(path, true)?;
-        let requested_path = requested_url.path();
-        let mut names = HashSet::new();
-
-        for entry in self.propfind(path).await? {
-            if entry.is_directory != directories {
-                continue;
-            }
-            let resolved = match requested_url.join(&entry.href) {
-                Ok(url) => url,
-                Err(_) => continue,
-            };
-            let pathname = resolved.path();
-            let Some(relative) = pathname.strip_prefix(requested_path) else {
-                continue;
-            };
-            let relative = relative.trim_matches('/');
-            if relative.is_empty() || relative.contains('/') {
-                continue;
-            }
-            let Ok(decoded) = percent_decode_str(relative).decode_utf8() else {
-                continue;
-            };
-            if decoded.is_empty()
-                || decoded == "."
-                || decoded == ".."
-                || decoded.contains(['/', '\0'])
-            {
-                continue;
-            }
-            names.insert(decoded.into_owned());
-        }
-
-        let mut names: Vec<_> = names.into_iter().collect();
-        names.sort();
-        Ok(names)
-    }
 }
 
 impl StorageProvider for WebDavProvider {
@@ -289,7 +211,7 @@ impl StorageProvider for WebDavProvider {
     ) -> StorageFuture<'a, Result<Option<FileMetadata>, StorageError>> {
         Box::pin(async move {
             let response = self
-                .request(Method::HEAD, self.url_for(path, false)?)
+                .request(Method::HEAD, self.url_for(path)?)
                 .header(CACHE_CONTROL, "no-cache, no-store")
                 .send()
                 .await
@@ -318,7 +240,7 @@ impl StorageProvider for WebDavProvider {
         Box::pin(async move {
             let bytes = bytes::Bytes::from(bytes);
             let mut request = self
-                .request(Method::PUT, self.url_for(path, false)?)
+                .request(Method::PUT, self.url_for(path)?)
                 .header(CONTENT_TYPE, "application/octet-stream");
             request = match condition {
                 WriteCondition::Unconditional => request,
@@ -365,7 +287,7 @@ impl StorageProvider for WebDavProvider {
     fn delete<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Result<(), StorageError>> {
         Box::pin(async move {
             let response = self
-                .request(Method::DELETE, self.url_for(path, false)?)
+                .request(Method::DELETE, self.url_for(path)?)
                 .send()
                 .await
                 .map_err(network_error)?;
@@ -374,49 +296,6 @@ impl StorageProvider for WebDavProvider {
             }
             Err(status_error("delete", path, response.status()))
         })
-    }
-
-    fn ensure_directory<'a>(
-        &'a self,
-        path: &'a str,
-    ) -> StorageFuture<'a, Result<(), StorageError>> {
-        Box::pin(async move {
-            let method = Method::from_bytes(b"MKCOL").expect("MKCOL is a valid HTTP method");
-            let mut current = String::new();
-            for segment in normalized_segments(path)? {
-                if !current.is_empty() {
-                    current.push('/');
-                }
-                current.push_str(segment);
-                let response = self
-                    .request(method.clone(), self.url_for(&current, true)?)
-                    .send()
-                    .await
-                    .map_err(network_error)?;
-                if response.status().is_success()
-                    || response.status() == StatusCode::METHOD_NOT_ALLOWED
-                {
-                    continue;
-                }
-                return Err(status_error(
-                    "ensure directory",
-                    &current,
-                    response.status(),
-                ));
-            }
-            Ok(())
-        })
-    }
-
-    fn list<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Result<Vec<String>, StorageError>> {
-        Box::pin(async move { self.list_kind(path, false).await })
-    }
-
-    fn read_directory<'a>(
-        &'a self,
-        path: &'a str,
-    ) -> StorageFuture<'a, Result<Vec<String>, StorageError>> {
-        Box::pin(async move { self.list_kind(path, true).await })
     }
 }
 
@@ -510,75 +389,4 @@ fn status_error(operation: &str, path: &str, status: StatusCode) -> StorageError
         kind,
         format!("WebDAV {operation} failed for {path}: HTTP {status}"),
     )
-}
-
-#[derive(Debug)]
-struct PropfindEntry {
-    href: String,
-    is_directory: bool,
-}
-
-fn parse_propfind_entries(xml: &str) -> Result<Vec<PropfindEntry>, StorageError> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
-    let mut entries = Vec::new();
-    let mut current: Option<PropfindEntry> = None;
-    let mut reading_href = false;
-
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(event)) => match event.local_name().as_ref() {
-                b"response" => {
-                    current = Some(PropfindEntry {
-                        href: String::new(),
-                        is_directory: false,
-                    });
-                }
-                b"href" => reading_href = current.is_some(),
-                b"collection" => {
-                    if let Some(current) = &mut current {
-                        current.is_directory = true;
-                    }
-                }
-                _ => {}
-            },
-            Ok(Event::Empty(event)) if event.local_name().as_ref() == b"collection" => {
-                if let Some(current) = &mut current {
-                    current.is_directory = true;
-                }
-            }
-            Ok(Event::Text(text)) if reading_href => {
-                if let Some(current) = &mut current {
-                    let value = text.unescape().map_err(|error| {
-                        StorageError::new(
-                            StorageErrorKind::Other,
-                            format!("invalid WebDAV PROPFIND XML: {error}"),
-                        )
-                    })?;
-                    current.href.push_str(&value);
-                }
-            }
-            Ok(Event::End(event)) => match event.local_name().as_ref() {
-                b"href" => reading_href = false,
-                b"response" => {
-                    if let Some(current) = current.take() {
-                        if !current.href.is_empty() {
-                            entries.push(current);
-                        }
-                    }
-                }
-                _ => {}
-            },
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(error) => {
-                return Err(StorageError::new(
-                    StorageErrorKind::Other,
-                    format!("invalid WebDAV PROPFIND XML: {error}"),
-                ));
-            }
-        }
-    }
-
-    Ok(entries)
 }

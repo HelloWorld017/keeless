@@ -10,7 +10,7 @@ use crate::{
 };
 
 impl KeelessCore {
-    pub async fn process_frame(&mut self, frame: &MessageFrame) -> Result<Option<MessageFrame>> {
+    pub async fn handle_frame(&mut self, frame: &MessageFrame) -> Result<Option<MessageFrame>> {
         let frame_size = frame
             .nonce
             .len()
@@ -59,14 +59,14 @@ impl KeelessCore {
         .map(Some)
     }
 
-    pub async fn process_frame_json(&mut self, bytes: &[u8]) -> Result<Option<Vec<u8>>> {
+    pub async fn handle(&mut self, bytes: &[u8]) -> Result<Option<Vec<u8>>> {
         if bytes.len() > MAX_FRAME_SIZE {
             return Ok(None);
         }
         let Ok(frame) = serde_json::from_slice::<MessageFrame>(bytes) else {
             return Ok(None);
         };
-        self.process_frame(&frame)
+        self.handle_frame(&frame)
             .await?
             .map(|response| serde_json::to_vec(&response).map_err(Into::into))
             .transpose()

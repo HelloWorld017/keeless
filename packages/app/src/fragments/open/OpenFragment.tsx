@@ -8,9 +8,7 @@ import { CoreRequestError } from '@/utils/request';
 import {
   ArrowRight,
   Check,
-  Database,
   FileKey2,
-  KeyRound,
   LoaderCircle,
   LockKeyhole,
   ShieldCheck,
@@ -185,33 +183,6 @@ export const OpenFragment = () => {
       <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.025)_1px,transparent_1px)] [background-size:48px_48px]" />
 
       <section className="relative mx-auto grid w-full max-w-6xl items-center gap-12 px-6 py-10 lg:grid-cols-[1fr_27rem] lg:px-10">
-        <div className="max-w-xl self-end pb-2 lg:self-center">
-          <div className="mb-8 flex items-center gap-3 text-sm font-medium tracking-[0.18em] text-zinc-400 uppercase">
-            <span className="grid size-9 place-items-center rounded-lg border border-white/10 bg-white/5">
-              <KeyRound className="size-4 text-indigo-300" />
-            </span>
-            Keeless
-          </div>
-          <p className="mb-4 text-xs font-semibold tracking-[0.22em] text-indigo-300 uppercase">
-            Local-first password vault
-          </p>
-          <h1 className="max-w-lg text-4xl leading-[1.05] font-semibold tracking-[-0.045em] text-balance sm:text-6xl">
-            Your secrets stay where you put them.
-          </h1>
-          <p className="mt-6 max-w-md text-base leading-7 text-zinc-400">
-            Open a KeePass database directly in this browser. Your encrypted file is stored locally
-            and processed by the Keeless core.
-          </p>
-          <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-500">
-            <span className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-emerald-400" /> Authenticated core
-            </span>
-            <span className="flex items-center gap-2">
-              <Database className="size-4 text-indigo-300" /> IndexedDB storage
-            </span>
-          </div>
-        </div>
-
         <Card className="border-white/10 bg-zinc-950/75 text-zinc-100 shadow-2xl shadow-black/40 backdrop-blur-xl">
           <CardHeader className="border-b border-white/8 pb-5">
             <div className="mb-2 flex items-center justify-between">

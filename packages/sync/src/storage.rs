@@ -98,14 +98,4 @@ pub trait StorageProvider: StorageProviderRequirements {
     ) -> StorageFuture<'a, Result<WriteOutcome, StorageError>>;
 
     fn delete<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Result<(), StorageError>>;
-
-    fn ensure_directory<'a>(&'a self, path: &'a str)
-        -> StorageFuture<'a, Result<(), StorageError>>;
-
-    fn list<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Result<Vec<String>, StorageError>>;
-
-    fn read_directory<'a>(
-        &'a self,
-        path: &'a str,
-    ) -> StorageFuture<'a, Result<Vec<String>, StorageError>>;
 }
