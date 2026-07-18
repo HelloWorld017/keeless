@@ -110,6 +110,129 @@ fn create_request_and_response_have_stable_shapes() {
 }
 
 #[test]
+fn database_query_requests_support_uuid_and_integer_node_ids() {
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "group-1".into(),
+            operation: Operation::GetGroupEntries(GetGroupEntriesArgs {
+                group_id: DatabaseNodeId::Uuid("a1b2c3d4-e5f6-7890-abcd-ef1234567890".into()),
+            }),
+        },
+        json!({
+            "requestId": "group-1",
+            "op": "getGroupEntries",
+            "args": { "groupId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
+        }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "entry-1".into(),
+            operation: Operation::GetEntryDetail(GetEntryDetailArgs {
+                entry_id: DatabaseNodeId::Int(42),
+            }),
+        },
+        json!({
+            "requestId": "entry-1",
+            "op": "getEntryDetail",
+            "args": { "entryId": 42 }
+        }),
+    );
+}
+
+#[test]
+fn entry_detail_keeps_protected_fields_but_omits_their_values() {
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "entry-2".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::GetEntryDetail(Box::new(EntryDetailResult {
+                    id: DatabaseNodeId::Int(7),
+                    icon: IconReference {
+                        standard_id: 1,
+                        custom_uuid: None,
+                    },
+                    tags: vec!["work".into()],
+                    fields: vec![EntryFieldInformation {
+                        name: "Password".into(),
+                        value: None,
+                        is_protected: true,
+                    }],
+                    background_color: "#000000".into(),
+                    foreground_color: "#ffffff".into(),
+                    override_url: String::new(),
+                    creation_time_ms: Some(100),
+                    last_modification_time_ms: Some(200),
+                    last_access_time_ms: Some(300),
+                    location_changed_ms: Some(400),
+                    expires: false,
+                    expiry_time_ms: None,
+                    usage_count: 2,
+                    attachments: vec![EntryAttachmentInformation {
+                        name: "key.txt".into(),
+                        size: 12,
+                        is_protected: true,
+                    }],
+                })),
+            },
+        },
+        json!({
+            "requestId": "entry-2",
+            "status": "success",
+            "op": "getEntryDetail",
+            "result": {
+                "id": 7,
+                "icon": { "standardId": 1, "customUuid": null },
+                "tags": ["work"],
+                "fields": [{ "name": "Password", "value": null, "isProtected": true }],
+                "backgroundColor": "#000000",
+                "foregroundColor": "#ffffff",
+                "overrideUrl": "",
+                "creationTimeMs": 100,
+                "lastModificationTimeMs": 200,
+                "lastAccessTimeMs": 300,
+                "locationChangedMs": 400,
+                "expires": false,
+                "expiryTimeMs": null,
+                "usageCount": 2,
+                "attachments": [{ "name": "key.txt", "size": 12, "isProtected": true }]
+            }
+        }),
+    );
+}
+
+#[test]
+fn custom_icons_serialize_base64_data_and_metadata() {
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "icons-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::GetCustomIcons(CustomIconsResult {
+                    icons: vec![CustomIcon {
+                        uuid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890".into(),
+                        data_base64: "AQID".into(),
+                        name: "Custom".into(),
+                        last_modification_time_ms: 123,
+                    }],
+                }),
+            },
+        },
+        json!({
+            "requestId": "icons-1",
+            "status": "success",
+            "op": "getCustomIcons",
+            "result": {
+                "icons": [{
+                    "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "dataBase64": "AQID",
+                    "name": "Custom",
+                    "lastModificationTimeMs": 123
+                }]
+            }
+        }),
+    );
+}
+
+#[test]
 fn success_response_is_flat_and_operation_specific() {
     assert_roundtrip(
         OperationResponse {
@@ -173,6 +296,10 @@ fn all_request_and_success_variants_have_explicit_empty_objects() {
         json!({ "requestId": "2", "op": "lock", "args": {} }),
         json!({ "requestId": "3", "op": "getConfig", "args": {} }),
         json!({ "requestId": "4", "op": "setConfig", "args": { "config": { "paranoiaMode": true } } }),
+        json!({ "requestId": "5", "op": "getEntries", "args": {} }),
+        json!({ "requestId": "6", "op": "getGroupHierarchy", "args": {} }),
+        json!({ "requestId": "7", "op": "getTags", "args": {} }),
+        json!({ "requestId": "8", "op": "getCustomIcons", "args": {} }),
     ];
     for value in requests {
         let parsed: OperationRequest = serde_json::from_value(value.clone()).unwrap();

@@ -1,4 +1,4 @@
-//! Search engine
+//! Search engine.
 //!
 
 use regex::Regex;

@@ -10,6 +10,22 @@ export type KeelessConfig = { autoLockTimeoutMs: number | null; paranoiaMode: bo
 
 export type KeelessConfigPatch = { autoLockTimeoutMs?: number | null; paranoiaMode?: boolean }
 
+export type DatabaseNodeId = string | number
+
+export type IconReference = { standardId: number; customUuid: string | null }
+
+export type EntrySummary = { id: DatabaseNodeId; name: string | null; nameIsProtected: boolean; url: string | null; urlIsProtected: boolean; icon: IconReference; tags: string[] }
+
+export type CustomIcon = { uuid: string; dataBase64: string; name: string; lastModificationTimeMs: number }
+
+export type GroupHierarchyItem = { id: DatabaseNodeId; name: string; icon: IconReference; childGroupIds: DatabaseNodeId[] }
+
+export type TagSummary = { name: string; entryCount: number }
+
+export type EntryFieldInformation = { name: string; value: string | null; isProtected: boolean }
+
+export type EntryAttachmentInformation = { name: string; size: number; isProtected: boolean }
+
 export type OpenArgs = { storage: StorageDescriptor }
 
 export type CreateArgs = { password: string }
@@ -24,9 +40,21 @@ export type GetConfigArgs = Record<string, never>
 
 export type SetConfigArgs = { config: KeelessConfigPatch }
 
-export type Operation = { op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs }
+export type GetEntriesArgs = Record<string, never>
 
-export type OperationRequest = ({ op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs }) & { requestId: string }
+export type GetGroupHierarchyArgs = Record<string, never>
+
+export type GetGroupEntriesArgs = { groupId: DatabaseNodeId }
+
+export type GetTagsArgs = Record<string, never>
+
+export type GetEntryDetailArgs = { entryId: DatabaseNodeId }
+
+export type GetCustomIconsArgs = Record<string, never>
+
+export type Operation = { op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs } | { op: "getEntries"; args: GetEntriesArgs } | { op: "getGroupHierarchy"; args: GetGroupHierarchyArgs } | { op: "getGroupEntries"; args: GetGroupEntriesArgs } | { op: "getTags"; args: GetTagsArgs } | { op: "getEntryDetail"; args: GetEntryDetailArgs } | { op: "getCustomIcons"; args: GetCustomIconsArgs }
+
+export type OperationRequest = ({ op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs } | { op: "getEntries"; args: GetEntriesArgs } | { op: "getGroupHierarchy"; args: GetGroupHierarchyArgs } | { op: "getGroupEntries"; args: GetGroupEntriesArgs } | { op: "getTags"; args: GetTagsArgs } | { op: "getEntryDetail"; args: GetEntryDetailArgs } | { op: "getCustomIcons"; args: GetCustomIconsArgs }) & { requestId: string }
 
 export type EmptyResult = Record<string, never>
 
@@ -34,7 +62,17 @@ export type DatabaseStatusResult = { status: DatabaseStatus }
 
 export type ConfigResult = { config: KeelessConfig }
 
-export type OperationSuccess = { op: "open"; result: EmptyResult } | { op: "create"; result: EmptyResult } | { op: "unlock"; result: EmptyResult } | { op: "lock"; result: EmptyResult } | { op: "getDatabaseStatus"; result: DatabaseStatusResult } | { op: "getConfig"; result: ConfigResult } | { op: "setConfig"; result: EmptyResult }
+export type EntriesResult = { entries: EntrySummary[] }
+
+export type GroupHierarchyResult = { rootGroupId: DatabaseNodeId; groups: GroupHierarchyItem[] }
+
+export type TagsResult = { tags: TagSummary[] }
+
+export type EntryDetailResult = { id: DatabaseNodeId; icon: IconReference; tags: string[]; fields: EntryFieldInformation[]; backgroundColor: string; foregroundColor: string; overrideUrl: string; creationTimeMs: number | null; lastModificationTimeMs: number | null; lastAccessTimeMs: number | null; locationChangedMs: number | null; expires: boolean; expiryTimeMs: number | null; usageCount: number; attachments: EntryAttachmentInformation[] }
+
+export type CustomIconsResult = { icons: CustomIcon[] }
+
+export type OperationSuccess = { op: "open"; result: EmptyResult } | { op: "create"; result: EmptyResult } | { op: "unlock"; result: EmptyResult } | { op: "lock"; result: EmptyResult } | { op: "getDatabaseStatus"; result: DatabaseStatusResult } | { op: "getConfig"; result: ConfigResult } | { op: "setConfig"; result: EmptyResult } | { op: "getEntries"; result: EntriesResult } | { op: "getGroupHierarchy"; result: GroupHierarchyResult } | { op: "getGroupEntries"; result: EntriesResult } | { op: "getTags"; result: TagsResult } | { op: "getEntryDetail"; result: EntryDetailResult } | { op: "getCustomIcons"; result: CustomIconsResult }
 
 export type OperationError = { code: string; message: string }
 

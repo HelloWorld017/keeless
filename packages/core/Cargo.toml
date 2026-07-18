@@ -21,6 +21,7 @@ sha2 = "0.10"
 chacha20poly1305 = "0.10"
 getrandom = "0.2"
 zeroize = "1"
+uuid = "1"
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 keeless_secure_types = { path = "../secure-types", default-features = false, features = ["use_os"] }

@@ -52,6 +52,77 @@ pub struct KeelessConfigPatch {
     pub paranoia_mode: Option<bool>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(untagged)]
+pub enum DatabaseNodeId {
+    Uuid(String),
+    Int(i32),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IconReference {
+    pub standard_id: u32,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub custom_uuid: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntrySummary {
+    pub id: DatabaseNodeId,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub name: Option<String>,
+    pub name_is_protected: bool,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub url: Option<String>,
+    pub url_is_protected: bool,
+    pub icon: IconReference,
+    pub tags: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CustomIcon {
+    pub uuid: String,
+    pub data_base64: String,
+    pub name: String,
+    pub last_modification_time_ms: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GroupHierarchyItem {
+    pub id: DatabaseNodeId,
+    pub name: String,
+    pub icon: IconReference,
+    pub child_group_ids: Vec<DatabaseNodeId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TagSummary {
+    pub name: String,
+    pub entry_count: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryFieldInformation {
+    pub name: String,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub value: Option<String>,
+    pub is_protected: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryAttachmentInformation {
+    pub name: String,
+    pub size: u64,
+    pub is_protected: bool,
+}
+
 fn deserialize_present_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -104,6 +175,34 @@ pub struct SetConfigArgs {
     pub config: KeelessConfigPatch,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct GetEntriesArgs {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct GetGroupHierarchyArgs {}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetGroupEntriesArgs {
+    pub group_id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct GetTagsArgs {}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetEntryDetailArgs {
+    pub entry_id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct GetCustomIconsArgs {}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "args", rename_all = "camelCase")]
 pub enum Operation {
@@ -114,6 +213,12 @@ pub enum Operation {
     GetDatabaseStatus(GetDatabaseStatusArgs),
     GetConfig(GetConfigArgs),
     SetConfig(SetConfigArgs),
+    GetEntries(GetEntriesArgs),
+    GetGroupHierarchy(GetGroupHierarchyArgs),
+    GetGroupEntries(GetGroupEntriesArgs),
+    GetTags(GetTagsArgs),
+    GetEntryDetail(GetEntryDetailArgs),
+    GetCustomIcons(GetCustomIconsArgs),
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -141,6 +246,56 @@ pub struct ConfigResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct EntriesResult {
+    pub entries: Vec<EntrySummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupHierarchyResult {
+    pub root_group_id: DatabaseNodeId,
+    pub groups: Vec<GroupHierarchyItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TagsResult {
+    pub tags: Vec<TagSummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryDetailResult {
+    pub id: DatabaseNodeId,
+    pub icon: IconReference,
+    pub tags: Vec<String>,
+    pub fields: Vec<EntryFieldInformation>,
+    pub background_color: String,
+    pub foreground_color: String,
+    pub override_url: String,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub creation_time_ms: Option<i64>,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub last_modification_time_ms: Option<i64>,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub last_access_time_ms: Option<i64>,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub location_changed_ms: Option<i64>,
+    pub expires: bool,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub expiry_time_ms: Option<i64>,
+    pub usage_count: i64,
+    pub attachments: Vec<EntryAttachmentInformation>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomIconsResult {
+    pub icons: Vec<CustomIcon>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "result", rename_all = "camelCase")]
 pub enum OperationSuccess {
     Open(EmptyResult),
@@ -150,6 +305,12 @@ pub enum OperationSuccess {
     GetDatabaseStatus(DatabaseStatusResult),
     GetConfig(ConfigResult),
     SetConfig(EmptyResult),
+    GetEntries(EntriesResult),
+    GetGroupHierarchy(GroupHierarchyResult),
+    GetGroupEntries(EntriesResult),
+    GetTags(TagsResult),
+    GetEntryDetail(Box<EntryDetailResult>),
+    GetCustomIcons(CustomIconsResult),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

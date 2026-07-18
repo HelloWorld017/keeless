@@ -21,6 +21,12 @@ pub enum CoreError {
     InvalidCredentials,
     #[error("password is required")]
     PasswordRequired,
+    #[error("group does not exist")]
+    GroupNotFound,
+    #[error("entry does not exist")]
+    EntryNotFound,
+    #[error("invalid database node identifier")]
+    InvalidNodeId,
     #[error("cryptographic operation failed")]
     Crypto,
     #[error("serialization failed: {0}")]
@@ -81,6 +87,9 @@ impl From<&CoreError> for OperationError {
                 ("invalid_credentials", "Database credentials are invalid")
             }
             CoreError::PasswordRequired => ("password_required", "Password is required"),
+            CoreError::GroupNotFound => ("group_not_found", "Group does not exist"),
+            CoreError::EntryNotFound => ("entry_not_found", "Entry does not exist"),
+            CoreError::InvalidNodeId => ("invalid_node_id", "Database node identifier is invalid"),
             CoreError::Storage(_) | CoreError::Sync(_) => {
                 ("storage_error", "Storage operation failed")
             }

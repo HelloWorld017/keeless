@@ -6,7 +6,7 @@
 //! ## Architecture
 //! - `crypto` - Encryption algorithm abstractions and KDF engines
 //! - `model` - Data models (Entry, Group, Node, Icon, etc.)
-//! - `kdbx` - KDBX file I/O, KDF, merge, repair, search, XML, stream
+//! - `kdbx` - KDBX file I/O, KDF, merge, queries, repair, XML, stream
 //!
 //! KDBX4 compatibility is verified against independent fixtures and parser output.
 
@@ -55,11 +55,11 @@ pub use kdbx::kdf::{KdfEngine, KdfParameters};
 pub use kdbx::file::reader::DatabaseReader;
 pub use kdbx::file::writer::DatabaseWriter;
 
-// ─── Search ───────────────────────────────────────────────────────────
-pub use kdbx::search::{SearchHelper, SearchParameters, SearchResult};
-
-// ─── URL Matching ─────────────────────────────────────────────────────
-pub use kdbx::url::{UrlMatchParameters, UrlMatchResult, UrlMatcher};
+// ─── Queries ──────────────────────────────────────────────────────────
+pub use kdbx::query::{
+    SearchHelper, SearchParameters, SearchResult, TagQuery, TagResult, UrlMatchParameters,
+    UrlMatchResult, UrlMatcher,
+};
 
 // ─── Merge ────────────────────────────────────────────────────────────
 pub use kdbx::merge::{
