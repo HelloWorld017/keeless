@@ -5,6 +5,7 @@
 
 use std::io::{Read, Write};
 
+use crate::crypto::{HashEngine, HmacCompute};
 use crate::kdbx::limits::{MAX_HMAC_BLOCK_SIZE, MAX_HMAC_PAYLOAD_SIZE};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -16,7 +17,7 @@ pub const HMAC_BLOCK_SIZE: usize = 1024 * 1024;
 
 /// Derive the per-block HMAC key as SHA-512(index || base HMAC key).
 pub fn derive_block_hmac_key(hmac_key: &[u8], block_index: u64) -> DatabaseResult<[u8; 64]> {
-    Ok(crate::crypto::HashEngine::sha512_multi(&[
+    Ok(HashEngine::sha512_multi(&[
         &block_index.to_le_bytes(),
         hmac_key,
     ]))
@@ -31,14 +32,13 @@ pub fn compute_block_hmac(key: &[u8], block_index: u64, data: &[u8]) -> Database
     msg.extend_from_slice(&block_index.to_le_bytes());
     msg.extend_from_slice(&size.to_le_bytes());
     msg.extend_from_slice(data);
-    crate::crypto::HmacCompute::hmac_sha256(key, &msg)
-        .map_err(|e| DatabaseError::EncryptionError(e.to_string()))
+    HmacCompute::hmac_sha256(key, &msg).map_err(|e| DatabaseError::EncryptionError(e.to_string()))
 }
 
 /// Compute the header HMAC for KDBX 4.0 integrity check.
 pub fn compute_header_hmac(hmac_key: &[u8], header_bytes: &[u8]) -> DatabaseResult<[u8; 32]> {
     let header_key = derive_block_hmac_key(hmac_key, u64::MAX)?;
-    crate::crypto::HmacCompute::hmac_sha256(&header_key, header_bytes)
+    HmacCompute::hmac_sha256(&header_key, header_bytes)
         .map_err(|e| DatabaseError::EncryptionError(e.to_string()))
 }
 

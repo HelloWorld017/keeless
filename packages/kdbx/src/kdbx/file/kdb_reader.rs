@@ -9,8 +9,13 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
+use crate::crypto::cipher_engine::create_cipher_engine;
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
+use crate::crypto::HashEngine;
 use crate::kdbx::file::header::KdbHeader;
+use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
+use crate::kdbx::kdf::kdf_engine::KdfEngine;
+use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::model::core::node::NodeId;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::{Database, DatabaseVersion};
@@ -38,8 +43,7 @@ pub fn read_kdb<R: Read>(reader: &mut R, composite_key: &CompositeKey) -> Databa
     reader.read_exact(&mut encrypted)?;
 
     // 4. Decrypt content
-    let cipher =
-        crate::crypto::cipher_engine::create_cipher_engine(EncryptionAlgorithm::AesRijndael);
+    let cipher = create_cipher_engine(EncryptionAlgorithm::AesRijndael);
     let decrypted = Zeroizing::new(master_key.unlock(|key| {
         cipher
             .decrypt(key, &header.encryption_iv, &encrypted)
@@ -47,7 +51,7 @@ pub fn read_kdb<R: Read>(reader: &mut R, composite_key: &CompositeKey) -> Databa
     })??);
 
     // 5. Verify content hash
-    let content_hash = crate::crypto::HashEngine::sha256(&decrypted);
+    let content_hash = HashEngine::sha256(&decrypted);
     if content_hash[..] != header.content_hash[..] {
         return Err(DatabaseError::IntegrityError(
             "KDB content hash mismatch — file may be corrupted or password is wrong".into(),
@@ -163,17 +167,13 @@ fn derive_kdb_master_key(
     let raw_key = composite_key.build_raw_key()?;
 
     // KDB uses AES-KDF with the transform seed
-    let mut params = crate::kdbx::kdf::kdf_parameters::KdfParameters::new(
-        crate::kdbx::kdf::aes_kdf::AES_KDF_UUID,
-    );
+    let mut params = KdfParameters::new(AES_KDF_UUID);
     params.set_byte_array("S", &header.transform_seed);
     params.set_uint64("R", header.transform_rounds as u64);
 
-    let kdf = crate::kdbx::kdf::aes_kdf::AesKdf;
+    let kdf = AesKdf;
     let transformed =
-        SecureBytes::from_vec(raw_key.unlock(|key| {
-            crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, key, &params)
-        })??)?;
+        SecureBytes::from_vec(raw_key.unlock(|key| KdfEngine::transform(&kdf, key, &params))??)?;
 
     // Combine with master seed
     let mut combined = Zeroizing::new(Vec::with_capacity(
@@ -181,7 +181,7 @@ fn derive_kdb_master_key(
     ));
     combined.extend_from_slice(&header.master_seed);
     transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut master_key = crate::crypto::HashEngine::sha256(&combined);
+    let mut master_key = HashEngine::sha256(&combined);
     Ok(SecureArray::from_array_mut(&mut master_key)?)
 }
 

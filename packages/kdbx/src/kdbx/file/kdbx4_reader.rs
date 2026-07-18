@@ -9,13 +9,17 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::crypto::compression::CompressionAlgorithm;
+use crate::crypto::cipher_engine::create_cipher_engine;
+use crate::crypto::compression::{decompress_sensitive, CompressionAlgorithm};
+use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
+use crate::crypto::HashEngine;
 use crate::kdbx::file::header::{
-    header_field_4, inner_header_field_4, CrsAlgorithm, KdbxHeader4, KdbxInnerHeader4,
+    header_field_4, inner_header_field_4, CrsAlgorithm, KdbxBinary, KdbxHeader4, KdbxInnerHeader4,
     FILE_VERSION_4, KDBX_SIGNATURE_1, KDBX_SIGNATURE_2,
 };
 use crate::kdbx::kdf::create_kdf;
+use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::limits::{
     MAX_INNER_HEADER_FIELD_SIZE, MAX_INNER_HEADER_SIZE, MAX_OUTER_HEADER_FIELD_SIZE,
     MAX_OUTER_HEADER_SIZE,
@@ -63,7 +67,7 @@ pub fn read_kdbx4<R: Read>(
     // 3. Verify the unkeyed header hash before doing expensive KDF work.
     let mut stored_hash = [0u8; 32];
     reader.read_exact(&mut stored_hash)?;
-    let expected_hash = crate::crypto::HashEngine::sha256(&header_buf);
+    let expected_hash = HashEngine::sha256(&header_buf);
     if stored_hash != expected_hash {
         return Err(DatabaseError::InvalidFormat("Header hash mismatch".into()));
     }
@@ -83,16 +87,14 @@ pub fn read_kdbx4<R: Read>(
     let encrypted = hmac_key.unlock(|key| read_hmac_block_stream(reader, key))??;
 
     // 7. Decrypt and decompress the complete payload.
-    let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
+    let cipher = create_cipher_engine(header.encryption_algorithm);
     let decrypted = Zeroizing::new(master_key.unlock(|key| {
         cipher
             .decrypt(key, &header.encryption_iv, &encrypted)
             .map_err(DatabaseError::from_decryption_error)
     })??);
     let payload = match header.compression {
-        CompressionAlgorithm::Gzip => {
-            crate::crypto::compression::decompress_sensitive(decrypted.as_slice())?
-        }
+        CompressionAlgorithm::Gzip => decompress_sensitive(decrypted.as_slice())?,
         CompressionAlgorithm::None => decrypted,
     };
 
@@ -148,12 +150,10 @@ fn derive_keys(composite_key: &CompositeKey, header: &KdbxHeader4) -> DatabaseRe
         .ok_or_else(|| DatabaseError::InvalidFormat("No KDF parameters".into()))?;
 
     let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, params))??)?;
-    let mut master_key_bytes = transformed.unlock_slice(|value| {
-        crate::crypto::HashEngine::sha256_multi(&[&header.master_seed, value])
-    })?;
-    let mut hmac_key_bytes = transformed.unlock_slice(|value| {
-        crate::crypto::HashEngine::sha512_multi(&[&header.master_seed, value, &[0x01]])
-    })?;
+    let mut master_key_bytes = transformed
+        .unlock_slice(|value| HashEngine::sha256_multi(&[&header.master_seed, value]))?;
+    let mut hmac_key_bytes = transformed
+        .unlock_slice(|value| HashEngine::sha512_multi(&[&header.master_seed, value, &[0x01]]))?;
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
     let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
     Ok((master_key, hmac_key))
@@ -173,7 +173,7 @@ fn read_kdbx4_outer_header_from<R: Read>(reader: &mut R) -> DatabaseResult<KdbxH
     let mut header = KdbxHeader4 {
         version: FILE_VERSION_4,
         comment: None,
-        encryption_algorithm: crate::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael,
+        encryption_algorithm: EncryptionAlgorithm::AesRijndael,
         compression: CompressionAlgorithm::Gzip,
         master_seed: Vec::new(),
         encryption_iv: Vec::new(),
@@ -222,12 +222,9 @@ fn read_kdbx4_outer_header_from<R: Read>(reader: &mut R) -> DatabaseResult<KdbxH
                 }
                 let uuid = uuid::Uuid::from_slice(&data)
                     .map_err(|e| DatabaseError::InvalidFormat(e.to_string()))?;
-                cipher = Some(
-                    crate::crypto::encryption_algorithm::EncryptionAlgorithm::from_uuid(&uuid)
-                        .ok_or_else(|| {
-                            DatabaseError::InvalidFormat("Unknown KDBX4 cipher ID".into())
-                        })?,
-                );
+                cipher = Some(EncryptionAlgorithm::from_uuid(&uuid).ok_or_else(|| {
+                    DatabaseError::InvalidFormat("Unknown KDBX4 cipher ID".into())
+                })?);
             }
             header_field_4::COMPRESSION_FLAGS => {
                 if data.len() != 4 || compression.is_some() {
@@ -264,12 +261,9 @@ fn read_kdbx4_outer_header_from<R: Read>(reader: &mut R) -> DatabaseResult<KdbxH
                         "Duplicate KDF_PARAMETERS".into(),
                     ));
                 }
-                kdf_parameters = Some(
-                    crate::kdbx::kdf::kdf_parameters::KdfParameters::deserialize(&data)
-                        .ok_or_else(|| {
-                            DatabaseError::InvalidFormat("Malformed KDF parameters".into())
-                        })?,
-                );
+                kdf_parameters = Some(KdfParameters::deserialize(&data).ok_or_else(|| {
+                    DatabaseError::InvalidFormat("Malformed KDF parameters".into())
+                })?);
             }
             header_field_4::PUBLIC_CUSTOM_DATA => {
                 if saw_public_custom_data {
@@ -382,7 +376,7 @@ fn read_kdbx4_inner_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbxInnerH
                         "Inner binary field has no flags byte".into(),
                     ));
                 }
-                inner.binaries.push(crate::kdbx::file::header::KdbxBinary {
+                inner.binaries.push(KdbxBinary {
                     flags: data[0],
                     data: data[1..].to_vec(),
                 });
@@ -437,14 +431,15 @@ impl<'a, R: Read> Read for TeeReader<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kdbx::file::header::{KDBX_SIGNATURE_1, KDBX_SIGNATURE_2};
     use crate::model::db::composite_key::CompositeKey;
 
     #[test]
     fn test_invalid_version_rejected() {
         // Write KDBX 3.1 signature
         let mut data = Vec::new();
-        data.extend_from_slice(&crate::kdbx::file::header::KDBX_SIGNATURE_1.to_le_bytes());
-        data.extend_from_slice(&crate::kdbx::file::header::KDBX_SIGNATURE_2.to_le_bytes());
+        data.extend_from_slice(&KDBX_SIGNATURE_1.to_le_bytes());
+        data.extend_from_slice(&KDBX_SIGNATURE_2.to_le_bytes());
         data.extend_from_slice(&0x00030001u32.to_le_bytes()); // v3.1
 
         let mut cursor = std::io::Cursor::new(data);

@@ -8,7 +8,7 @@ use crate::model::core::node::NodeId;
 use crate::model::core::security::ProtectedString;
 use crate::model::entry::Entry;
 use crate::model::exception::DatabaseResult;
-use crate::model::meta::icon::IconImage;
+use crate::model::meta::icon::{IconImage, IconImageStandard};
 
 /// KDB (v1) specific entry fields
 /// KDB format uses numeric field IDs instead of string keys.
@@ -45,8 +45,7 @@ impl EntryKDB {
         if let Some(data) = fields.get(&kdb_field::ICON_ID) {
             if data.len() >= 4 {
                 let icon_id = u32::from_le_bytes(data[..4].try_into().unwrap_or([0; 4]));
-                e.icon =
-                    IconImage::Standard(crate::model::meta::icon::IconImageStandard::new(icon_id));
+                e.icon = IconImage::Standard(IconImageStandard::new(icon_id));
             }
         }
 
@@ -234,6 +233,7 @@ fn read_u64_le(data: &[u8]) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::entry::EntryBinary;
     use std::collections::HashMap;
 
     #[test]
@@ -287,7 +287,7 @@ mod tests {
         entry.username = ProtectedString::new_plain("u");
         entry.password = ProtectedString::new_protected("p");
         entry.notes = ProtectedString::new_plain("n");
-        entry.binaries.push(crate::model::entry::EntryBinary {
+        entry.binaries.push(EntryBinary {
             name: "file.txt".to_string(),
             data: vec![0x42, 0x43],
             is_protected: false,

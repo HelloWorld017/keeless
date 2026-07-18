@@ -6,6 +6,7 @@ use std::io::Read;
 use byteorder::{LittleEndian, ReadBytesExt};
 
 use super::header::*;
+use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::model::db::database::DatabaseVersion;
 use crate::model::exception::{DatabaseError, DatabaseResult};
@@ -52,7 +53,7 @@ impl DatabaseReader {
         let mut header = KdbxHeader31 {
             version: FILE_VERSION_31,
             encryption_algorithm: EncryptionAlgorithm::AesRijndael,
-            compression: crate::crypto::compression::CompressionAlgorithm::Gzip,
+            compression: CompressionAlgorithm::Gzip,
             master_seed: Vec::new(),
             transform_seed: Vec::new(),
             transform_rounds: 500_000,
@@ -86,11 +87,8 @@ impl DatabaseReader {
                             let flags = u32::from_le_bytes(data[..4].try_into().map_err(|_| {
                                 DatabaseError::InvalidFormat("Invalid COMPRESSION_FLAGS".into())
                             })?);
-                            header.compression =
-                                crate::crypto::compression::CompressionAlgorithm::from_id(flags)
-                                    .unwrap_or(
-                                        crate::crypto::compression::CompressionAlgorithm::Gzip,
-                                    );
+                            header.compression = CompressionAlgorithm::from_id(flags)
+                                .unwrap_or(CompressionAlgorithm::Gzip);
                         }
                     }
                     header_field_31::MASTER_SEED => header.master_seed = data,

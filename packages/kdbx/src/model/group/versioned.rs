@@ -5,7 +5,7 @@
 use crate::model::core::date::DateInstant;
 use crate::model::core::node::NodeId;
 use crate::model::group::Group;
-use crate::model::meta::icon::IconImage;
+use crate::model::meta::icon::{IconImage, IconImageStandard};
 
 /// KDB (v1) specific group fields
 pub mod kdb_group_field {
@@ -54,8 +54,7 @@ impl GroupKDB {
         if let Some(data) = fields.get(&kdb_group_field::ICON_ID) {
             if data.len() >= 4 {
                 let icon_id = u32::from_le_bytes(data[..4].try_into().unwrap_or([0; 4]));
-                g.icon =
-                    IconImage::Standard(crate::model::meta::icon::IconImageStandard::new(icon_id));
+                g.icon = IconImage::Standard(IconImageStandard::new(icon_id));
             }
         }
 

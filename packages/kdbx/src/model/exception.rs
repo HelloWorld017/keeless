@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::crypto::CryptoError;
+
 #[derive(Debug, Error)]
 pub enum DatabaseError {
     #[error("IO error: {0}")]
@@ -59,7 +61,7 @@ pub enum DatabaseError {
     SecureMemory(String),
 
     #[error("Crypto error: {0}")]
-    CryptoError(#[from] crate::crypto::CryptoError),
+    CryptoError(#[from] CryptoError),
 
     #[error("XML error: {0}")]
     QuickXmlError(String),
@@ -84,16 +86,16 @@ impl From<keeless_secure_types::Error> for DatabaseError {
 }
 
 impl DatabaseError {
-    pub(crate) fn from_encryption_error(error: crate::crypto::CryptoError) -> Self {
+    pub(crate) fn from_encryption_error(error: CryptoError) -> Self {
         match error {
-            crate::crypto::CryptoError::SecureMemory(message) => Self::SecureMemory(message),
+            CryptoError::SecureMemory(message) => Self::SecureMemory(message),
             error => Self::EncryptionError(error.to_string()),
         }
     }
 
-    pub(crate) fn from_decryption_error(error: crate::crypto::CryptoError) -> Self {
+    pub(crate) fn from_decryption_error(error: CryptoError) -> Self {
         match error {
-            crate::crypto::CryptoError::SecureMemory(message) => Self::SecureMemory(message),
+            CryptoError::SecureMemory(message) => Self::SecureMemory(message),
             error => Self::DecryptionError(error.to_string()),
         }
     }
@@ -107,12 +109,10 @@ mod tests {
 
     #[test]
     fn secure_memory_errors_keep_their_classification() {
-        let encryption = DatabaseError::from_encryption_error(
-            crate::crypto::CryptoError::SecureMemory("lock failed".into()),
-        );
-        let decryption = DatabaseError::from_decryption_error(
-            crate::crypto::CryptoError::SecureMemory("lock failed".into()),
-        );
+        let encryption =
+            DatabaseError::from_encryption_error(CryptoError::SecureMemory("lock failed".into()));
+        let decryption =
+            DatabaseError::from_decryption_error(CryptoError::SecureMemory("lock failed".into()));
 
         assert!(matches!(encryption, DatabaseError::SecureMemory(_)));
         assert!(matches!(decryption, DatabaseError::SecureMemory(_)));

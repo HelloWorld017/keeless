@@ -8,6 +8,7 @@ mod meta;
 use super::helpers::*;
 use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
 use crate::model::db::composite_key::CompositeKey;
+use crate::model::db::database::DatabaseVersion;
 
 type XmlWriter = quick_xml::Writer<Vec<u8>>;
 
@@ -41,10 +42,7 @@ impl KdbxXmlWriter {
     ) -> DatabaseResult<String> {
         let mut writer = XmlWriter::new(Vec::new());
         let mut binary_index = 0usize;
-        let use_binary_refs = matches!(
-            db.version,
-            crate::model::db::database::DatabaseVersion::KDBX4
-        );
+        let use_binary_refs = matches!(db.version, DatabaseVersion::KDBX4);
 
         writer
             .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))

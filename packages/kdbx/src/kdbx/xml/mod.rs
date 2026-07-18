@@ -13,12 +13,15 @@ pub use writer::KdbxXmlWriter;
 mod tests {
     use super::*;
     use crate::crypto::inner_stream::{InnerStreamCipher, Salsa20InnerStream};
+    use crate::kdbx::limits::MAX_XML_NESTING_DEPTH;
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
-    use crate::model::db::database::Database;
+    use crate::model::db::database::{Database, DatabaseVersion};
     use crate::model::entry::Entry;
     use crate::model::exception::DatabaseResult;
     use crate::model::group::Group;
+    use crate::model::DeletedObject;
+    use crate::DatabaseError;
     use base64::Engine;
     use uuid::Uuid;
 
@@ -96,7 +99,7 @@ mod tests {
         let mut stream = Salsa20InnerStream::new(b"invalid-value").unwrap();
         assert!(matches!(
             KdbxXmlReader::read(xml, &mut stream),
-            Err(crate::DatabaseError::InvalidFormat(_))
+            Err(DatabaseError::InvalidFormat(_))
         ));
     }
 
@@ -104,7 +107,7 @@ mod tests {
     fn test_deleted_object_time_roundtrip() {
         let mut db = make_test_db();
         let deleted_id = NodeId::new_uuid();
-        db.deleted_objects.push(crate::model::DeletedObject {
+        db.deleted_objects.push(DeletedObject {
             id: deleted_id,
             deletion_time: 1_725_000_123_000,
         });
@@ -187,7 +190,7 @@ mod tests {
             let mut stream = Salsa20InnerStream::new(b"required-values").unwrap();
             assert!(matches!(
                 KdbxXmlReader::read(xml, &mut stream),
-                Err(crate::DatabaseError::InvalidFormat(_))
+                Err(DatabaseError::InvalidFormat(_))
             ));
         }
     }
@@ -198,7 +201,7 @@ mod tests {
         let key = b"nested-extensions";
         let mut read_stream = Salsa20InnerStream::new(key).unwrap();
         let mut db = KdbxXmlReader::read(xml, &mut read_stream).unwrap();
-        db.version = crate::model::db::database::DatabaseVersion::KDBX31;
+        db.version = DatabaseVersion::KDBX31;
         let mut write_stream = Salsa20InnerStream::new(key).unwrap();
         let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();
 
@@ -232,12 +235,12 @@ mod tests {
 
     #[test]
     fn test_xml_nesting_limit_rejected() {
-        let depth = crate::kdbx::limits::MAX_XML_NESTING_DEPTH + 1;
+        let depth = MAX_XML_NESTING_DEPTH + 1;
         let xml = format!("{}{}", "<x>".repeat(depth), "</x>".repeat(depth));
         let mut stream = Salsa20InnerStream::new(b"nesting-limit").unwrap();
         assert!(matches!(
             KdbxXmlReader::read(&xml, &mut stream),
-            Err(crate::DatabaseError::InvalidFormat(_))
+            Err(DatabaseError::InvalidFormat(_))
         ));
     }
 

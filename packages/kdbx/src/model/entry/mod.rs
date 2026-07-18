@@ -8,8 +8,9 @@ pub mod passkey;
 pub mod versioned;
 
 use crate::model::core::date::DateInstant;
-use crate::model::core::node::{NodeId, NodeType};
+use crate::model::core::node::{Node, NodeId, NodeType};
 use crate::model::core::security::ProtectedString;
+use crate::model::db::EntryFieldSelector;
 use crate::model::meta::custom_data::CustomData;
 use crate::model::meta::icon::IconImage;
 use crate::model::xml::EntryXmlExtensions;
@@ -170,27 +171,25 @@ impl Entry {
     /// sealed or when a selected custom field does not exist.
     pub fn with_unsealed_field<T>(
         &self,
-        selector: &crate::model::db::EntryFieldSelector,
+        selector: &EntryFieldSelector,
         use_value: impl FnOnce(&str) -> T,
     ) -> Option<T> {
         match selector {
-            crate::model::db::EntryFieldSelector::Title => self
+            EntryFieldSelector::Title => self
                 .protected_title
                 .is_none()
                 .then(|| use_value(&self.title)),
-            crate::model::db::EntryFieldSelector::UserName => {
+            EntryFieldSelector::UserName => {
                 (!self.username.is_memory_protected()).then(|| use_value(self.username.as_str()))
             }
-            crate::model::db::EntryFieldSelector::Password => {
+            EntryFieldSelector::Password => {
                 (!self.password.is_memory_protected()).then(|| use_value(self.password.as_str()))
             }
-            crate::model::db::EntryFieldSelector::Url => {
-                self.protected_url.is_none().then(|| use_value(&self.url))
-            }
-            crate::model::db::EntryFieldSelector::Notes => {
+            EntryFieldSelector::Url => self.protected_url.is_none().then(|| use_value(&self.url)),
+            EntryFieldSelector::Notes => {
                 (!self.notes.is_memory_protected()).then(|| use_value(self.notes.as_str()))
             }
-            crate::model::db::EntryFieldSelector::Custom(name) => {
+            EntryFieldSelector::Custom(name) => {
                 let field = self
                     .custom_fields
                     .iter()
@@ -588,7 +587,7 @@ fn replace_protected_string(
     }
 }
 
-impl crate::model::core::node::Node for Entry {
+impl Node for Entry {
     fn node_id(&self) -> &NodeId {
         &self.id
     }

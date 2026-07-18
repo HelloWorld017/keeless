@@ -2,7 +2,7 @@
 //!
 //! Salsa20 for KDBX 3.1, ChaCha20 for KDBX 4.0
 
-use crate::crypto::{ChaCha20Cipher, Salsa20Cipher};
+use crate::crypto::{ChaCha20Cipher, HashEngine, Salsa20Cipher};
 use crate::kdbx::file::header::CrsAlgorithm;
 use crate::model::exception::{DatabaseError, DatabaseResult};
 use keeless_secure_types::SecureArray;
@@ -45,7 +45,7 @@ pub struct ChaCha20InnerStream {
 
 impl ChaCha20InnerStream {
     pub fn new(key: &[u8]) -> DatabaseResult<Self> {
-        let mut material_bytes = crate::crypto::HashEngine::sha512(key);
+        let mut material_bytes = HashEngine::sha512(key);
         let material = SecureArray::from_array_mut(&mut material_bytes)?;
         let cipher = material.unlock(|value| {
             ChaCha20Cipher::new(&value[..32], &value[32..44])

@@ -9,17 +9,23 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
-use crate::crypto::compression::CompressionAlgorithm;
+use crate::crypto::cipher_engine::create_cipher_engine;
+use crate::crypto::compression::{compress, CompressionAlgorithm};
 use crate::crypto::inner_stream::create_inner_stream;
+use crate::crypto::HashEngine;
 use crate::kdbx::file::header::{
     header_field_4, inner_header_field_4, CrsAlgorithm, KDBX_SIGNATURE_1, KDBX_SIGNATURE_2,
 };
+use crate::kdbx::kdf::argon2_kdf::ARGON2ID_UUID;
 use crate::kdbx::kdf::create_kdf;
+use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::stream::hmac_block_stream::{compute_header_hmac, write_hmac_block_stream};
 use crate::kdbx::xml::KdbxXmlWriter;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::Database;
+use crate::model::entry::Entry;
 use crate::model::exception::{DatabaseError, DatabaseResult};
+use crate::model::group::Group;
 
 /// Write a KDBX 4.0 database to a writer.
 pub fn write_kdbx4<W: Write>(
@@ -46,7 +52,7 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
         .kdf_parameters
         .as_ref()
         .map(|p| p.kdf_uuid)
-        .unwrap_or_else(|| crate::kdbx::kdf::argon2_kdf::ARGON2ID_UUID);
+        .unwrap_or(ARGON2ID_UUID);
     let kdf =
         create_kdf(&kdf_uuid).ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
     let mut kdf_params = database
@@ -59,11 +65,10 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
     let raw_key = file_key.build_raw_key()?;
     let transformed =
         SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &kdf_params))??)?;
-    let mut master_key_bytes = transformed
-        .unlock_slice(|value| crate::crypto::HashEngine::sha256_multi(&[&master_seed, value]))?;
-    let mut hmac_key_bytes = transformed.unlock_slice(|value| {
-        crate::crypto::HashEngine::sha512_multi(&[&master_seed, value, &[0x01]])
-    })?;
+    let mut master_key_bytes =
+        transformed.unlock_slice(|value| HashEngine::sha256_multi(&[&master_seed, value]))?;
+    let mut hmac_key_bytes = transformed
+        .unlock_slice(|value| HashEngine::sha512_multi(&[&master_seed, value, &[0x01]]))?;
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
     let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
 
@@ -84,12 +89,12 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
     inner_stream_key.unlock_slice(|key| write_inner_header(&mut *payload, key, &binaries))??;
     payload.extend_from_slice(&xml_bytes);
     let plaintext = Zeroizing::new(match database.compression {
-        CompressionAlgorithm::Gzip => crate::crypto::compression::compress(&payload)?,
+        CompressionAlgorithm::Gzip => compress(&payload)?,
         CompressionAlgorithm::None => payload.to_vec(),
     });
 
     // 6. Encrypt
-    let cipher = crate::crypto::cipher_engine::create_cipher_engine(database.encryption_algorithm);
+    let cipher = create_cipher_engine(database.encryption_algorithm);
     let encrypted = master_key.unlock(|key| {
         cipher
             .encrypt(key, &encryption_iv, &plaintext)
@@ -108,7 +113,7 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
     )?;
 
     // 8. Compute the unkeyed header hash and keyed header HMAC.
-    let header_hash = crate::crypto::HashEngine::sha256(&header_buf);
+    let header_hash = HashEngine::sha256(&header_buf);
     let header_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))??;
 
     // 9. Write HMAC block stream
@@ -141,7 +146,7 @@ fn write_outer_header<W: Write>(
     db: &Database,
     master_seed: &[u8],
     encryption_iv: &[u8],
-    kdf_params: &crate::kdbx::kdf::kdf_parameters::KdfParameters,
+    kdf_params: &KdfParameters,
 ) -> DatabaseResult<()> {
     if let Some(comment) = &db.header_comment {
         write_header_field_4(w, header_field_4::COMMENT, comment)?;
@@ -191,7 +196,7 @@ fn write_inner_header<W: Write>(
 }
 
 fn collect_binaries(database: &Database) -> Vec<(Vec<u8>, bool)> {
-    fn collect_entry(entry: &crate::model::entry::Entry, output: &mut Vec<(Vec<u8>, bool)>) {
+    fn collect_entry(entry: &Entry, output: &mut Vec<(Vec<u8>, bool)>) {
         output.extend(
             entry
                 .binaries
@@ -203,11 +208,7 @@ fn collect_binaries(database: &Database) -> Vec<(Vec<u8>, bool)> {
         }
     }
 
-    fn collect_group(
-        group: &crate::model::group::Group,
-        database: &Database,
-        output: &mut Vec<(Vec<u8>, bool)>,
-    ) {
+    fn collect_group(group: &Group, database: &Database, output: &mut Vec<(Vec<u8>, bool)>) {
         for child_id in &group.child_group_ids {
             if let Some(child) = database.groups.get(child_id) {
                 collect_group(child, database, output);
@@ -256,10 +257,12 @@ fn generate_random_bytes(len: usize) -> DatabaseResult<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kdbx::file::kdbx4_reader::read_kdbx4;
     use crate::model::core::node::NodeId;
+    use crate::model::core::security::ProtectedString;
     use crate::model::db::composite_key::CompositeKey;
     use crate::model::db::database::DatabaseVersion;
-    use crate::model::entry::Entry;
+    use crate::model::entry::{Entry, EntryBinary};
     use crate::model::group::Group;
     use uuid::Uuid;
 
@@ -273,8 +276,8 @@ mod tests {
         let entry_id = NodeId::from_uuid(Uuid::new_v4());
         let mut entry = Entry::new(entry_id);
         entry.title = "KDBX4 Test".to_string();
-        entry.password = crate::model::core::security::ProtectedString::new_protected("p@ssw0rd");
-        entry.binaries.push(crate::model::entry::EntryBinary {
+        entry.password = ProtectedString::new_protected("p@ssw0rd");
+        entry.binaries.push(EntryBinary {
             name: "protected.bin".to_string(),
             data: vec![0, 1, 2, 255],
             is_protected: true,
@@ -294,7 +297,7 @@ mod tests {
 
         // Read back
         let mut cursor = std::io::Cursor::new(buf);
-        let db2 = crate::kdbx::file::kdbx4_reader::read_kdbx4(&mut cursor, &key).unwrap();
+        let db2 = read_kdbx4(&mut cursor, &key).unwrap();
 
         assert_eq!(db2.version, DatabaseVersion::KDBX4);
         assert_eq!(db2.entries.len(), 1);

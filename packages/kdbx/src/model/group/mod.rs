@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::model::core::date::DateInstant;
-use crate::model::core::node::{NodeId, NodeType};
+use crate::model::core::node::{Node, NodeId, NodeType};
 use crate::model::meta::custom_data::CustomData;
 use crate::model::meta::icon::IconImage;
 use crate::model::xml::GroupXmlExtensions;
@@ -101,7 +101,7 @@ impl Group {
     }
 }
 
-impl crate::model::core::node::Node for Group {
+impl Node for Group {
     fn node_id(&self) -> &NodeId {
         &self.id
     }

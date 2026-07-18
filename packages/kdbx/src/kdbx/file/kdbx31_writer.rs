@@ -9,8 +9,10 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
-use crate::crypto::compression::CompressionAlgorithm;
+use crate::crypto::cipher_engine::create_cipher_engine;
+use crate::crypto::compression::{compress, CompressionAlgorithm};
 use crate::crypto::inner_stream::create_inner_stream;
+use crate::crypto::HashEngine;
 use crate::kdbx::file::header::{
     header_field_31, CrsAlgorithm, KdbxHeader31, FILE_VERSION_31, KDBX_SIGNATURE_1,
     KDBX_SIGNATURE_2,
@@ -69,7 +71,7 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     // 4. Compress
     let xml_bytes = Zeroizing::new(xml.into_bytes());
     let compressed = Zeroizing::new(match database.compression {
-        CompressionAlgorithm::Gzip => crate::crypto::compression::compress(&xml_bytes)?,
+        CompressionAlgorithm::Gzip => compress(&xml_bytes)?,
         CompressionAlgorithm::None => xml_bytes.to_vec(),
     });
 
@@ -81,13 +83,13 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     }
 
     // 6. Prepend stream start bytes (SHA-256 of final key)
-    let stream_start = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key))?;
+    let stream_start = final_key.unlock(|key| HashEngine::sha256(key))?;
     let mut plaintext = Zeroizing::new(Vec::with_capacity(32 + hashed_blocks.len()));
     plaintext.extend_from_slice(&stream_start);
     plaintext.extend_from_slice(&hashed_blocks);
 
     // 7. Encrypt
-    let cipher = crate::crypto::cipher_engine::create_cipher_engine(database.encryption_algorithm);
+    let cipher = create_cipher_engine(database.encryption_algorithm);
     let encrypted = final_key.unlock(|key| {
         cipher
             .encrypt(key, &encryption_iv, &plaintext)
@@ -120,7 +122,7 @@ fn derive_key(
     let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
     combined.extend_from_slice(master_seed);
     transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut final_key = crate::crypto::HashEngine::sha256(&combined);
+    let mut final_key = HashEngine::sha256(&combined);
     Ok(SecureArray::from_array_mut(&mut final_key)?)
 }
 
@@ -192,7 +194,9 @@ fn generate_random_bytes(len: usize) -> DatabaseResult<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kdbx::file::kdbx31_reader::read_kdbx31;
     use crate::model::core::node::NodeId;
+    use crate::model::core::security::ProtectedString;
     use crate::model::db::composite_key::CompositeKey;
     use crate::model::db::database::DatabaseVersion;
     use crate::model::entry::Entry;
@@ -209,7 +213,7 @@ mod tests {
         let entry_id = NodeId::from_uuid(Uuid::new_v4());
         let mut entry = Entry::new(entry_id);
         entry.title = "Test".to_string();
-        entry.password = crate::model::core::security::ProtectedString::new_protected("secret123");
+        entry.password = ProtectedString::new_protected("secret123");
 
         root.add_child_entry(entry_id);
         db.entries.insert(entry_id, entry);
@@ -225,7 +229,7 @@ mod tests {
 
         // Read back
         let mut cursor = std::io::Cursor::new(buf);
-        let db2 = crate::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &key).unwrap();
+        let db2 = read_kdbx31(&mut cursor, &key).unwrap();
 
         assert_eq!(db2.version, DatabaseVersion::KDBX31);
         assert_eq!(db2.entries.len(), 1);

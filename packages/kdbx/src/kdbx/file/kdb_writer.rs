@@ -9,7 +9,14 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
+use crate::crypto::cipher_engine::create_cipher_engine;
+use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
+use crate::crypto::memory_protection::MemoryUnlockSession;
+use crate::crypto::HashEngine;
 use crate::kdbx::file::header::{KDB_SIGNATURE_1, KDB_SIGNATURE_2};
+use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
+use crate::kdbx::kdf::kdf_engine::KdfEngine;
+use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::model::core::node::NodeId;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::Database;
@@ -49,33 +56,27 @@ pub(crate) fn write_kdb_with_credentials<W: Write>(
     write_kdb_entries(&mut *content, database, &mut memory)?;
 
     // 4. Compute content hash
-    let content_hash = crate::crypto::HashEngine::sha256(&content);
+    let content_hash = HashEngine::sha256(&content);
 
     // 5. Derive master key
     let raw_key = file_key.build_raw_key()?;
 
-    let mut params = crate::kdbx::kdf::kdf_parameters::KdfParameters::new(
-        crate::kdbx::kdf::aes_kdf::AES_KDF_UUID,
-    );
+    let mut params = KdfParameters::new(AES_KDF_UUID);
     params.set_byte_array("S", &transform_seed);
     params.set_uint64("R", transform_rounds as u64);
 
-    let kdf = crate::kdbx::kdf::aes_kdf::AesKdf;
+    let kdf = AesKdf;
     let transformed =
-        SecureBytes::from_vec(raw_key.unlock(|key| {
-            crate::kdbx::kdf::kdf_engine::KdfEngine::transform(&kdf, key, &params)
-        })??)?;
+        SecureBytes::from_vec(raw_key.unlock(|key| KdfEngine::transform(&kdf, key, &params))??)?;
 
     let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
     combined.extend_from_slice(&master_seed);
     transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut master_key_bytes = crate::crypto::HashEngine::sha256(&combined);
+    let mut master_key_bytes = HashEngine::sha256(&combined);
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
 
     // 6. Encrypt content
-    let cipher = crate::crypto::cipher_engine::create_cipher_engine(
-        crate::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael,
-    );
+    let cipher = create_cipher_engine(EncryptionAlgorithm::AesRijndael);
     let encrypted = master_key.unlock(|key| {
         cipher
             .encrypt(key, &encryption_iv, &content)
@@ -248,7 +249,7 @@ fn write_kdb_groups<W: Write>(writer: &mut W, database: &Database) -> DatabaseRe
 fn write_kdb_entries<W: Write>(
     writer: &mut W,
     database: &Database,
-    memory: &mut crate::crypto::memory_protection::MemoryUnlockSession<'_>,
+    memory: &mut MemoryUnlockSession<'_>,
 ) -> DatabaseResult<()> {
     let group_ids = assign_kdb_group_ids(database);
 

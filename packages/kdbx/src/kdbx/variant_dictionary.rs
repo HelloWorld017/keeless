@@ -7,6 +7,7 @@ use std::io::{Read, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
+use crate::kdbx::limits::MAX_OUTER_HEADER_FIELD_SIZE;
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
 /// VariantDictionary type tags
@@ -182,7 +183,7 @@ impl VariantDictionary {
                 .map_err(|e| DatabaseError::InvalidFormat(format!("Invalid VD name: {e}")))?;
 
             let value_len = reader.read_u32::<LittleEndian>()? as usize;
-            if value_len > crate::kdbx::limits::MAX_OUTER_HEADER_FIELD_SIZE {
+            if value_len > MAX_OUTER_HEADER_FIELD_SIZE {
                 return Err(DatabaseError::InvalidFormat(
                     "VariantDictionary value is too large".into(),
                 ));

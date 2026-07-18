@@ -7,8 +7,10 @@ use keeless_secure_types::{SecureArray, SecureBytes};
 use std::io::Read;
 use zeroize::Zeroizing;
 
-use crate::crypto::compression::CompressionAlgorithm;
+use crate::crypto::cipher_engine::create_cipher_engine;
+use crate::crypto::compression::{decompress_sensitive, CompressionAlgorithm};
 use crate::crypto::inner_stream::create_inner_stream;
+use crate::crypto::HashEngine;
 use crate::kdbx::file::header::KdbxHeader31;
 use crate::kdbx::file::reader::DatabaseReader;
 use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
@@ -63,7 +65,7 @@ pub fn read_kdbx31<R: Read>(
     }
 
     // 5. Decrypt
-    let cipher = crate::crypto::cipher_engine::create_cipher_engine(header.encryption_algorithm);
+    let cipher = create_cipher_engine(header.encryption_algorithm);
     let decrypted = Zeroizing::new(final_key.unlock(|key| {
         cipher
             .decrypt(key, &header.encryption_iv, &encrypted)
@@ -76,7 +78,7 @@ pub fn read_kdbx31<R: Read>(
             "Decrypted data too short".into(),
         ));
     }
-    let expected = final_key.unlock(|key| crate::crypto::HashEngine::sha256(key))?;
+    let expected = final_key.unlock(|key| HashEngine::sha256(key))?;
     if decrypted[..32] != expected {
         return Err(DatabaseError::InvalidKey);
     }
@@ -88,9 +90,7 @@ pub fn read_kdbx31<R: Read>(
 
     // 8. Decompress
     let xml_data = match header.compression {
-        CompressionAlgorithm::Gzip => {
-            crate::crypto::compression::decompress_sensitive(compressed.as_slice())?
-        }
+        CompressionAlgorithm::Gzip => decompress_sensitive(compressed.as_slice())?,
         CompressionAlgorithm::None => compressed,
     };
 
@@ -133,7 +133,7 @@ fn derive_kdbx31_key(
     ));
     combined.extend_from_slice(&header.master_seed);
     transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut final_key = crate::crypto::HashEngine::sha256(combined.as_slice());
+    let mut final_key = HashEngine::sha256(combined.as_slice());
     Ok(SecureArray::from_array_mut(&mut final_key)?)
 }
 

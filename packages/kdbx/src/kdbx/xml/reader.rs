@@ -6,6 +6,7 @@ mod group;
 mod meta;
 
 use super::helpers::*;
+use crate::kdbx::limits::MAX_XML_NESTING_DEPTH;
 
 /// KDBX XML reader.
 pub struct KdbxXmlReader;
@@ -135,10 +136,10 @@ fn validate_nesting(xml: &str) -> DatabaseResult<()> {
                 depth = depth.checked_add(1).ok_or_else(|| {
                     DatabaseError::InvalidFormat("XML nesting depth overflow".into())
                 })?;
-                if depth > crate::kdbx::limits::MAX_XML_NESTING_DEPTH {
+                if depth > MAX_XML_NESTING_DEPTH {
                     return Err(DatabaseError::InvalidFormat(format!(
                         "XML nesting exceeds {} levels",
-                        crate::kdbx::limits::MAX_XML_NESTING_DEPTH
+                        MAX_XML_NESTING_DEPTH
                     )));
                 }
             }

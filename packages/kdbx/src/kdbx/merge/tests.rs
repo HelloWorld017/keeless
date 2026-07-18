@@ -2,7 +2,7 @@ use super::*;
 use crate::model::core::date::DateInstant;
 use crate::model::core::security::ProtectedString;
 use crate::model::db::database::DatabaseVersion;
-use crate::model::meta::DeletedObject;
+use crate::model::meta::{DeletedObject, IconImageCustom};
 
 fn database_with_root(root_id: NodeId) -> Database {
     let mut db = Database::new(DatabaseVersion::KDBX4);
@@ -20,9 +20,8 @@ fn make_entry_with_title(id: NodeId, title: &str) -> Entry {
 fn make_entry_newer(id: NodeId, title: &str) -> Entry {
     let mut entry = Entry::new(id);
     entry.title = title.to_string();
-    entry.last_modification_time = crate::model::core::date::DateInstant::EpochMillis(
-        entry.last_modification_time.as_millis().unwrap_or(0) + 100_000,
-    );
+    entry.last_modification_time =
+        DateInstant::EpochMillis(entry.last_modification_time.as_millis().unwrap_or(0) + 100_000);
     entry
 }
 
@@ -46,11 +45,11 @@ fn three_way_merge_applies_database_metadata_and_keeps_local_conflicts() {
     let deleted_icon_id = *NodeId::new_uuid().as_uuid().unwrap();
     base.custom_icons.insert(
         updated_icon_id,
-        crate::model::meta::IconImageCustom::new(updated_icon_id, b"base".to_vec()),
+        IconImageCustom::new(updated_icon_id, b"base".to_vec()),
     );
     base.custom_icons.insert(
         deleted_icon_id,
-        crate::model::meta::IconImageCustom::new(deleted_icon_id, b"delete".to_vec()),
+        IconImageCustom::new(deleted_icon_id, b"delete".to_vec()),
     );
 
     let mut target = base.clone();
@@ -166,7 +165,7 @@ fn test_three_way_merge_source_only_change() {
     let mut source_entry = base_entry;
     source_entry.title = "Source Modified".into();
     source_entry.last_modification_time =
-        crate::model::core::date::DateInstant::EpochMillis(source_entry.last_modified() + 100_000);
+        DateInstant::EpochMillis(source_entry.last_modified() + 100_000);
     source.entries.insert(entry_id, source_entry);
 
     let merger = DatabaseMerger::new(MergeStrategy::Overwrite);
@@ -297,7 +296,7 @@ fn source_deletion_uses_timestamp_and_cleans_parent_reference() {
     let entry_id = NodeId::new_uuid();
     let mut target = database_with_root(root_id);
     let mut entry = Entry::new(entry_id);
-    entry.last_modification_time = crate::model::core::date::DateInstant::EpochMillis(100);
+    entry.last_modification_time = DateInstant::EpochMillis(100);
     target.add_entry(entry, &root_id);
     let mut source = database_with_root(root_id);
     source.deleted_objects.push(DeletedObject {

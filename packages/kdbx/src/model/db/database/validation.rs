@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::Database;
+use crate::model::entry::Entry;
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
 impl Database {
@@ -92,7 +93,7 @@ impl Database {
     }
 }
 
-fn validate_custom_field_names(entry: &crate::model::entry::Entry) -> DatabaseResult<()> {
+fn validate_custom_field_names(entry: &Entry) -> DatabaseResult<()> {
     let mut names = HashSet::new();
     for field in &entry.custom_fields {
         if !names.insert(field.name.as_str()) {

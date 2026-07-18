@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::crypto::memory_protection::{MemoryField, MemoryProtectionContext, MemoryUnlockSession};
+use crate::kdbx::file::header::{FILE_VERSION_31, FILE_VERSION_4};
 use crate::kdbx::kdf::argon2_kdf::Argon2Kdf;
 use crate::kdbx::kdf::kdf_engine::KdfEngine;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
@@ -131,8 +132,8 @@ impl Database {
     pub fn new(version: DatabaseVersion) -> Self {
         let file_version = match version {
             DatabaseVersion::KDB => 0x0001_0003,
-            DatabaseVersion::KDBX31 => crate::kdbx::file::header::FILE_VERSION_31,
-            DatabaseVersion::KDBX4 => crate::kdbx::file::header::FILE_VERSION_4,
+            DatabaseVersion::KDBX31 => FILE_VERSION_31,
+            DatabaseVersion::KDBX4 => FILE_VERSION_4,
         };
         Self {
             version,

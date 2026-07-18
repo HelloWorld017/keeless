@@ -5,6 +5,7 @@ use keeless_secure_types::{SecureArray, SecureBytes};
 use zeroize::Zeroizing;
 
 use crate::crypto::HashEngine;
+use crate::kdbx::kdf::{KdfEngine, KdfParameters};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
 /// A composite key combining multiple credential sources.
@@ -151,8 +152,8 @@ impl MasterCredential {
 pub fn make_final_key(
     composite_key: &CompositeKey,
     master_seed: &[u8],
-    kdf_engine: &dyn crate::kdbx::kdf::KdfEngine,
-    kdf_params: &crate::kdbx::kdf::KdfParameters,
+    kdf_engine: &dyn KdfEngine,
+    kdf_params: &KdfParameters,
 ) -> DatabaseResult<SecureArray<32>> {
     let raw_key = composite_key.build_raw_key()?;
 
@@ -174,6 +175,7 @@ pub fn make_final_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{open_database, save_database, Database, DatabaseVersion, Group, NodeId};
 
     #[test]
     fn test_composite_key_password_only() {
@@ -242,13 +244,13 @@ mod tests {
     fn test_raw_composite_key_opens_password_database_without_rehashing() {
         let password_key = CompositeKey::new().with_password(b"password").unwrap();
         let restored_key = CompositeKey::from_raw_key(password_key.build_raw_key().unwrap());
-        let mut database = crate::Database::new(crate::DatabaseVersion::KDBX4);
-        let root_id = crate::NodeId::new_uuid();
-        database.groups.insert(root_id, crate::Group::new(root_id));
+        let mut database = Database::new(DatabaseVersion::KDBX4);
+        let root_id = NodeId::new_uuid();
+        database.groups.insert(root_id, Group::new(root_id));
         database.root_group_id = Some(root_id);
         let mut bytes = Vec::new();
 
-        crate::save_database(&mut bytes, &database, &password_key).unwrap();
-        crate::open_database(bytes.as_slice(), &restored_key).unwrap();
+        save_database(&mut bytes, &database, &password_key).unwrap();
+        open_database(bytes.as_slice(), &restored_key).unwrap();
     }
 }

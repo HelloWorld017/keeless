@@ -3,7 +3,7 @@
 
 use regex::Regex;
 
-use crate::crypto::memory_protection::MemoryField;
+use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
 use crate::model::core::node::NodeId;
 use crate::model::db::{CompositeKey, Database, EntryFieldSelector};
 use crate::model::entry::Entry;
@@ -376,7 +376,7 @@ fn unsealed_field_matches_regex(
 
 fn score_memory_entry_plain(
     entry: &Entry,
-    unlock: &mut crate::crypto::memory_protection::MemoryUnlockSession<'_>,
+    unlock: &mut MemoryUnlockSession<'_>,
     query: &str,
     params: &SearchParameters,
 ) -> DatabaseResult<f64> {
@@ -422,7 +422,7 @@ fn score_memory_entry_plain(
 
 fn score_memory_entry_regex(
     entry: &Entry,
-    unlock: &mut crate::crypto::memory_protection::MemoryUnlockSession<'_>,
+    unlock: &mut MemoryUnlockSession<'_>,
     regex: &Regex,
     params: &SearchParameters,
 ) -> DatabaseResult<f64> {
