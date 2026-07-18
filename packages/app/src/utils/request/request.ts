@@ -1,4 +1,3 @@
-import { getHost } from '@/hosts';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
@@ -171,10 +170,10 @@ const handshake = async (host: Host, identity: ClientIdentity) => {
     throw new Error('Host rejected the handshake');
   }
 
-  const trusted = await loadTrustedCore(host.kind);
+  const trusted = await loadTrustedCore(host.id);
   verifyFrame(response, trusted);
   if (!trusted) {
-    await saveTrustedCore(host.kind, response.publicKey);
+    await saveTrustedCore(host.id, response.publicKey);
   }
   return response.publicKey;
 };
@@ -193,8 +192,7 @@ export class RequestClient {
     this.corePublicKeys = parseBundle(coreBundle);
   }
 
-  static async connect() {
-    const host = await getHost();
+  static async connect(host: Host) {
     const identity = await deriveIdentity();
     await host.connect(identity.bundle);
     const coreBundle = await handshake(host, identity);
@@ -292,12 +290,4 @@ export class RequestClient {
   }
 }
 
-let clientPromise: Promise<RequestClient> | undefined;
-
-export const getRequestClient = () => {
-  clientPromise ??= RequestClient.connect().catch(error => {
-    clientPromise = undefined;
-    throw error;
-  });
-  return clientPromise;
-};
+export const getRequestClient = (host: Host) => RequestClient.connect(host);

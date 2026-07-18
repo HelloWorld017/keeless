@@ -1,17 +1,21 @@
 //! Browser host bindings and IndexedDB storage for Keeless.
 
-const DATABASE_PATH: &str = "keeless.kdbx";
-
 #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
-fn database_path(path: &str) -> Result<&'static str, &'static str> {
+fn database_path(path: &str) -> Result<String, &'static str> {
     let segments: Vec<_> = path
         .split('/')
         .filter(|segment| !segment.is_empty())
         .collect();
-    if segments.as_slice() != [DATABASE_PATH] {
-        return Err("IndexedDB path must be keeless.kdbx");
+    if segments.is_empty() {
+        return Err("IndexedDB path must not be empty");
     }
-    Ok(DATABASE_PATH)
+    if segments
+        .iter()
+        .any(|segment| *segment == "." || *segment == "..")
+    {
+        return Err("IndexedDB path must not contain '.' or '..' segments");
+    }
+    Ok(segments.join("/"))
 }
 
 #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
@@ -45,15 +49,17 @@ pub use browser::BrowserCore;
 
 #[cfg(test)]
 mod tests {
-    use super::{DATABASE_PATH, database_path, inclusive_range};
+    use super::{database_path, inclusive_range};
 
     #[test]
-    fn accepts_only_the_fixed_database_path() {
-        assert_eq!(database_path(DATABASE_PATH), Ok(DATABASE_PATH));
-        assert_eq!(database_path("/keeless.kdbx/"), Ok(DATABASE_PATH));
-        assert!(database_path("databases/keeless.kdbx").is_err());
-        assert!(database_path("other.kdbx").is_err());
+    fn normalizes_database_paths() {
+        assert_eq!(database_path("/keeless.kdbx/"), Ok("keeless.kdbx".into()));
+        assert_eq!(
+            database_path("databases/vault.kdbx"),
+            Ok("databases/vault.kdbx".into())
+        );
         assert!(database_path("").is_err());
+        assert!(database_path("../vault.kdbx").is_err());
     }
 
     #[test]

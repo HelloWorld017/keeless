@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/label-has-associated-control -- associations are supplied at call sites */
 import { cn } from '@/utils/css/index';
 import * as React from 'react';
 

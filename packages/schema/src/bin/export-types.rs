@@ -24,6 +24,7 @@ fn generate() -> String {
     export::<KeelessConfig>(&mut output);
     export::<KeelessConfigPatch>(&mut output);
     export::<OpenArgs>(&mut output);
+    export::<CreateArgs>(&mut output);
     export::<UnlockArgs>(&mut output);
     export_empty("LockArgs", &mut output);
     export_empty("GetDatabaseStatusArgs", &mut output);

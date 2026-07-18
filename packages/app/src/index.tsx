@@ -8,7 +8,7 @@ if (!container) {
 }
 
 createRoot(container).render(
-  <AppFrame>
+  <AppFrame integration={{}}>
     <App />
   </AppFrame>,
 );

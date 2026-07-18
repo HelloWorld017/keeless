@@ -193,6 +193,40 @@ impl FileHandle {
         unreachable!("create retry loop always returns")
     }
 
+    /// Creates a new remote KDBX without merging with an existing file.
+    pub async fn create_new(
+        provider: Arc<dyn StorageProvider>,
+        path: impl Into<String>,
+        database: Database,
+        key: &CompositeKey,
+        options: SyncOptions,
+    ) -> Result<Self, SyncError> {
+        let path = path.into();
+        let bytes = serialize_database(&database, key)?;
+        let revision = match provider
+            .write(&path, bytes.clone(), WriteCondition::MustNotExist)
+            .await?
+        {
+            WriteOutcome::Applied { revision } => revision,
+            WriteOutcome::Conflict => {
+                return Err(crate::StorageError::new(
+                    StorageErrorKind::AlreadyExists,
+                    format!("remote file already exists: {path}"),
+                )
+                .into());
+            }
+        };
+        let database = open_database(bytes.as_slice(), key)?;
+        Ok(Self {
+            provider,
+            path,
+            database,
+            checkpoint: Checkpoint { bytes, revision },
+            options,
+            dirty: false,
+        })
+    }
+
     fn from_remote(
         provider: Arc<dyn StorageProvider>,
         path: String,

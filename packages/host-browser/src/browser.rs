@@ -2,6 +2,7 @@ use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use futures::lock::Mutex;
 use keeless_core::{ClientApprovalProvider, HostFuture, KeelessCore, KeelessHost, StorageProvider};
+use keeless_sync::{WebDavAuth, WebDavProvider};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 use crate::{
@@ -14,14 +15,8 @@ use crate::{
 struct BrowserApproval;
 
 impl ClientApprovalProvider for BrowserApproval {
-    fn approve(&self, public_key_bundle: &str) -> HostFuture<'_, keeless_core::Result<bool>> {
-        let message = format!("Allow this client to access Keeless?\n\n{public_key_bundle}");
-        Box::pin(async move {
-            web_sys::window()
-                .ok_or_else(|| keeless_core::CoreError::Host("window is unavailable".into()))?
-                .confirm_with_message(&message)
-                .map_err(|error| keeless_core::CoreError::Host(format!("{error:?}")))
-        })
+    fn approve(&self, _: &str) -> HostFuture<'_, keeless_core::Result<bool>> {
+        Box::pin(async { Ok(false) })
     }
 }
 
@@ -63,5 +58,21 @@ impl BrowserCore {
             .handle(&frame)
             .await
             .map_err(js_error)
+    }
+
+    #[wasm_bindgen(js_name = configureWebDav)]
+    pub async fn configure_webdav(
+        &self,
+        url: String,
+        username: String,
+        password: String,
+    ) -> Result<(), JsValue> {
+        let provider = WebDavProvider::new(url, Some(WebDavAuth::basic(username, password)))
+            .map_err(js_error)?;
+        self.core
+            .lock()
+            .await
+            .register_storage_provider("webdav", Arc::new(provider));
+        Ok(())
     }
 }

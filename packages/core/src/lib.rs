@@ -153,6 +153,14 @@ impl KeelessCore {
         Ok(report)
     }
 
+    pub fn register_storage_provider(
+        &mut self,
+        name: impl Into<String>,
+        provider: Arc<dyn StorageProvider>,
+    ) {
+        self.storage_providers.insert(name.into(), provider);
+    }
+
     fn enforce_auto_lock(&mut self) {
         let Some(timeout) = self.settings.auto_lock_timeout_ms else {
             return;

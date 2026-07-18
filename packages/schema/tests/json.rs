@@ -88,6 +88,28 @@ fn request_is_flat_with_stable_op_and_args() {
 }
 
 #[test]
+fn create_request_and_response_have_stable_shapes() {
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "create-1".into(),
+            operation: Operation::Create(CreateArgs {
+                password: "secret".into(),
+            }),
+        },
+        json!({ "requestId": "create-1", "op": "create", "args": { "password": "secret" } }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "create-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::Create(EmptyResult {}),
+            },
+        },
+        json!({ "requestId": "create-1", "status": "success", "op": "create", "result": {} }),
+    );
+}
+
+#[test]
 fn success_response_is_flat_and_operation_specific() {
     assert_roundtrip(
         OperationResponse {
@@ -157,7 +179,7 @@ fn all_request_and_success_variants_have_explicit_empty_objects() {
         assert_eq!(serde_json::to_value(parsed).unwrap(), value);
     }
 
-    for operation in ["open", "unlock", "lock", "setConfig"] {
+    for operation in ["open", "create", "unlock", "lock", "setConfig"] {
         let value = json!({ "requestId": "5", "status": "success", "op": operation, "result": {} });
         let parsed: OperationResponse = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(parsed).unwrap(), value);

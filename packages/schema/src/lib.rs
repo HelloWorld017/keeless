@@ -80,6 +80,12 @@ pub struct UnlockArgs {
     pub password: String,
 }
 
+#[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateArgs {
+    pub password: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
 pub struct LockArgs {}
@@ -102,6 +108,7 @@ pub struct SetConfigArgs {
 #[serde(tag = "op", content = "args", rename_all = "camelCase")]
 pub enum Operation {
     Open(OpenArgs),
+    Create(CreateArgs),
     Unlock(UnlockArgs),
     Lock(LockArgs),
     GetDatabaseStatus(GetDatabaseStatusArgs),
@@ -137,6 +144,7 @@ pub struct ConfigResult {
 #[serde(tag = "op", content = "result", rename_all = "camelCase")]
 pub enum OperationSuccess {
     Open(EmptyResult),
+    Create(EmptyResult),
     Unlock(EmptyResult),
     Lock(EmptyResult),
     GetDatabaseStatus(DatabaseStatusResult),

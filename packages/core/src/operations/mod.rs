@@ -1,3 +1,4 @@
+pub(crate) mod create;
 pub(crate) mod get_config;
 pub(crate) mod get_database_status;
 pub(crate) mod lock;
@@ -15,6 +16,7 @@ pub(crate) async fn execute(
 ) -> Result<OperationSuccess> {
     match operation {
         Operation::Open(args) => open::execute(core, args).await,
+        Operation::Create(args) => create::execute(core, args).await,
         Operation::Unlock(args) => unlock::execute(core, args).await,
         Operation::Lock(args) => lock::execute(core, args),
         Operation::GetDatabaseStatus(args) => get_database_status::execute(core, args),

@@ -12,6 +12,8 @@ export type KeelessConfigPatch = { autoLockTimeoutMs?: number | null; paranoiaMo
 
 export type OpenArgs = { storage: StorageDescriptor }
 
+export type CreateArgs = { password: string }
+
 export type UnlockArgs = { password: string }
 
 export type LockArgs = Record<string, never>
@@ -22,9 +24,9 @@ export type GetConfigArgs = Record<string, never>
 
 export type SetConfigArgs = { config: KeelessConfigPatch }
 
-export type Operation = { op: "open"; args: OpenArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs }
+export type Operation = { op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs }
 
-export type OperationRequest = ({ op: "open"; args: OpenArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs }) & { requestId: string }
+export type OperationRequest = ({ op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs }) & { requestId: string }
 
 export type EmptyResult = Record<string, never>
 
@@ -32,7 +34,7 @@ export type DatabaseStatusResult = { status: DatabaseStatus }
 
 export type ConfigResult = { config: KeelessConfig }
 
-export type OperationSuccess = { op: "open"; result: EmptyResult } | { op: "unlock"; result: EmptyResult } | { op: "lock"; result: EmptyResult } | { op: "getDatabaseStatus"; result: DatabaseStatusResult } | { op: "getConfig"; result: ConfigResult } | { op: "setConfig"; result: EmptyResult }
+export type OperationSuccess = { op: "open"; result: EmptyResult } | { op: "create"; result: EmptyResult } | { op: "unlock"; result: EmptyResult } | { op: "lock"; result: EmptyResult } | { op: "getDatabaseStatus"; result: DatabaseStatusResult } | { op: "getConfig"; result: ConfigResult } | { op: "setConfig"; result: EmptyResult }
 
 export type OperationError = { code: string; message: string }
 

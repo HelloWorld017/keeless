@@ -127,10 +127,14 @@ impl StorageProvider for MemoryStorage {
         &'a self,
         _: &'a str,
         bytes: Vec<u8>,
-        _: WriteCondition,
+        condition: WriteCondition,
     ) -> StorageFuture<'a, std::result::Result<WriteOutcome, StorageError>> {
         Box::pin(async move {
-            *self.0.lock().unwrap() = Some(bytes);
+            let mut current = self.0.lock().unwrap();
+            if condition == WriteCondition::MustNotExist && current.is_some() {
+                return Ok(WriteOutcome::Conflict);
+            }
+            *current = Some(bytes);
             Ok(WriteOutcome::Applied { revision: None })
         })
     }
@@ -383,6 +387,60 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Locked
     );
+}
+
+#[tokio::test]
+async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
+    let storage = Arc::new(MemoryStorage(Mutex::new(None)));
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage.clone());
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval(AtomicBool::new(true))),
+            Arc::new(FakeClock::new(100)),
+        )
+    })
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        operations::create::run(&mut core, b"secret").await,
+        Err(CoreError::NoDatabaseSelected)
+    ));
+    operations::open::run(
+        &mut core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "vault.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+    operations::create::run(&mut core, b"secret").await.unwrap();
+    assert_eq!(
+        operations::get_database_status::run(&mut core),
+        DatabaseStatus::Unlocked
+    );
+
+    operations::lock::run(&mut core);
+    assert!(matches!(
+        operations::unlock::run(&mut core, b"wrong").await,
+        Err(CoreError::InvalidCredentials)
+    ));
+    operations::unlock::run(&mut core, b"secret").await.unwrap();
+
+    operations::lock::run(&mut core);
+    assert!(matches!(
+        operations::create::run(&mut core, b"replacement").await,
+        Err(CoreError::DatabaseAlreadyExists)
+    ));
+    assert_eq!(
+        operations::get_database_status::run(&mut core),
+        DatabaseStatus::Locked
+    );
+    assert!(storage.0.lock().unwrap().is_some());
 }
 
 #[tokio::test]

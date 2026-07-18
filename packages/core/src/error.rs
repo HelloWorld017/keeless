@@ -13,6 +13,8 @@ pub enum CoreError {
     NoDatabaseSelected,
     #[error("database does not exist")]
     DatabaseNotFound,
+    #[error("database already exists")]
+    DatabaseAlreadyExists,
     #[error("database is locked")]
     DatabaseLocked,
     #[error("invalid database credentials")]
@@ -71,6 +73,9 @@ impl From<&CoreError> for OperationError {
             ),
             CoreError::NoDatabaseSelected => ("database_not_selected", "No database is selected"),
             CoreError::DatabaseNotFound => ("database_not_found", "Database does not exist"),
+            CoreError::DatabaseAlreadyExists => {
+                ("database_already_exists", "Database already exists")
+            }
             CoreError::DatabaseLocked => ("database_locked", "Database is locked"),
             CoreError::InvalidCredentials => {
                 ("invalid_credentials", "Database credentials are invalid")

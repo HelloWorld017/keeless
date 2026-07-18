@@ -27,7 +27,7 @@ impl StorageProvider for IndexedDbStorage {
             let path = database_path(path)
                 .map_err(|error| storage_error(StorageErrorKind::InvalidInput, error))?;
             let entry =
-                self.idb.get_entry(path).await?.ok_or_else(|| {
+                self.idb.get_entry(&path).await?.ok_or_else(|| {
                     storage_error(StorageErrorKind::NotFound, "file does not exist")
                 })?;
             if entry.kind != EntryKind::File {
@@ -55,7 +55,7 @@ impl StorageProvider for IndexedDbStorage {
                 .map_err(|error| storage_error(StorageErrorKind::InvalidInput, error))?;
             Ok(self
                 .idb
-                .get_entry(path)
+                .get_entry(&path)
                 .await?
                 .map(|entry| entry.metadata()))
         })
@@ -77,7 +77,7 @@ impl StorageProvider for IndexedDbStorage {
                 .map_err(idb_error)?;
             let store = transaction.store(ENTRY_STORE).map_err(idb_error)?;
             let current = store
-                .get(JsValue::from_str(path))
+                .get(JsValue::from_str(&path))
                 .await
                 .map_err(idb_error)?
                 .map(Entry::from_js)
@@ -109,7 +109,7 @@ impl StorageProvider for IndexedDbStorage {
                 .saturating_add(1)
                 .to_string();
             let entry = Entry {
-                path: path.into(),
+                path,
                 kind: EntryKind::File,
                 bytes,
                 revision: revision.clone(),
@@ -134,7 +134,7 @@ impl StorageProvider for IndexedDbStorage {
             transaction
                 .store(ENTRY_STORE)
                 .map_err(idb_error)?
-                .delete(JsValue::from_str(path))
+                .delete(JsValue::from_str(&path))
                 .await
                 .map_err(idb_error)?;
             transaction.done().await.map_err(idb_error)?;

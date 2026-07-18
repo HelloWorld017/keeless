@@ -1,5 +1,6 @@
 use keeless_sync::{
-    ByteRange, Revision, StorageProvider, WebDavAuth, WebDavProvider, WriteCondition, WriteOutcome,
+    ByteRange, Revision, StorageErrorKind, StorageProvider, WebDavAuth, WebDavProvider,
+    WriteCondition, WriteOutcome,
 };
 use wiremock::matchers::{header, header_regex, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -53,6 +54,13 @@ async fn write_maps_etag_conditions_and_precondition_failures() {
         .expect(1)
         .mount(&server)
         .await;
+    Mock::given(method("PUT"))
+        .and(path("/dav/missing/new.kdbx"))
+        .and(header("if-none-match", "*"))
+        .respond_with(ResponseTemplate::new(409))
+        .expect(1)
+        .mount(&server)
+        .await;
 
     let provider = WebDavProvider::new(format!("{}/dav", server.uri()), None).unwrap();
     let updated = provider
@@ -75,6 +83,16 @@ async fn write_maps_etag_conditions_and_precondition_failures() {
         .await
         .unwrap();
     assert_eq!(created, WriteOutcome::Conflict);
+
+    let missing_parent = provider
+        .write(
+            "missing/new.kdbx",
+            b"data".to_vec(),
+            WriteCondition::MustNotExist,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(missing_parent.kind(), StorageErrorKind::Conflict);
 }
 
 #[tokio::test]

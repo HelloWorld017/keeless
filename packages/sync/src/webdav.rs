@@ -258,10 +258,7 @@ impl StorageProvider for WebDavProvider {
                 .send()
                 .await
                 .map_err(network_error)?;
-            if matches!(
-                response.status(),
-                StatusCode::CONFLICT | StatusCode::PRECONDITION_FAILED
-            ) {
+            if response.status() == StatusCode::PRECONDITION_FAILED {
                 return Ok(WriteOutcome::Conflict);
             }
             if !response.status().is_success() {

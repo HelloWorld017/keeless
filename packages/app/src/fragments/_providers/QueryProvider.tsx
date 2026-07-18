@@ -1,14 +1,9 @@
 import { getRequestClient } from '@/utils/request';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useHost } from './HostProvider';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type { ReactNode } from 'react';
-
-const requestClientQuery = {
-  queryKey: ['request-client'] as const,
-  queryFn: getRequestClient,
-  staleTime: Infinity,
-};
 
 export const QueryProvider = ({ children }: { children: ReactNode }) => {
   const [queryClient] = useState(
@@ -23,7 +18,15 @@ export const QueryProvider = ({ children }: { children: ReactNode }) => {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 };
 
-export const useRequestClient = () => useQuery(requestClientQuery);
+export const useRequestClient = () => {
+  const host = useHost();
+  return useQuery({
+    queryKey: ['request-client', host?.id],
+    queryFn: () => getRequestClient(host!),
+    enabled: Boolean(host),
+    staleTime: Infinity,
+  });
+};
 export const useRequest = <TName extends OperationName>(
   name: TName,
   args: OperationArgs<TName>,
