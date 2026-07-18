@@ -1,11 +1,11 @@
-import { RouterProvider } from '@/fragments/_providers/RouterProvider';
-import { ReactNode, StrictMode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
 import { Button } from '@/components/button';
 import { QueryProvider, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { RouterProvider } from '@/fragments/_providers/RouterProvider';
 import { OpenFragment } from '@/fragments/open';
+import { IconAlertCircle, IconLoaderCircle } from '@/icons';
 import { getRoute } from '@/utils/route';
-import { AlertCircle, LoaderCircle } from 'lucide-react';
+import { ReactNode, StrictMode } from 'react';
 import { Redirect, Route, Switch } from 'wouter';
 
 export const App = () => {
@@ -13,10 +13,10 @@ export const App = () => {
 
   if (requestClient.isPending) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-[#090b10] text-zinc-400">
+      <main className="grid min-h-dvh place-items-center">
         <div className="flex items-center gap-3 text-sm">
-          <LoaderCircle className="size-4 animate-spin text-indigo-300" />
-          Starting the encrypted core...
+          <IconLoaderCircle className="animate-spin text-blue-300" />
+          Starting the core...
         </div>
       </main>
     );
@@ -24,9 +24,9 @@ export const App = () => {
 
   if (requestClient.isError) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-[#090b10] px-6 text-zinc-100">
-        <Alert variant="destructive" className="max-w-md border-red-400/20 bg-red-400/8">
-          <AlertCircle />
+      <main className="grid min-h-dvh place-items-center px-6">
+        <Alert variant="destructive">
+          <IconAlertCircle />
           <AlertTitle>Keeless could not start</AlertTitle>
           <AlertDescription>{requestClient.error.message}</AlertDescription>
           <Button
@@ -54,9 +54,7 @@ export const App = () => {
 export const AppFrame = ({ children }: { children: ReactNode }) => (
   <StrictMode>
     <QueryProvider>
-      <RouterProvider fallback="open">
-        {children}
-      </RouterProvider>
+      <RouterProvider fallback="open">{children}</RouterProvider>
     </QueryProvider>
   </StrictMode>
 );

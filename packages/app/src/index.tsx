@@ -7,4 +7,8 @@ if (!container) {
   throw new Error('App container was not found');
 }
 
-createRoot(container).render(<AppFrame><App /></AppFrame>);
+createRoot(container).render(
+  <AppFrame>
+    <App />
+  </AppFrame>,
+);
