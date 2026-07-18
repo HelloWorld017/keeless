@@ -1,8 +1,8 @@
+import '@/styles/index.css';
 import { App } from '@/fragments/App';
 import { QueryProvider, RouterProvider } from '@/fragments/_providers';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import '@/index.css';
 
 const container = document.getElementById('app');
 if (!container) {

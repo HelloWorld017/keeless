@@ -17,7 +17,7 @@ export const useCreateSignal = <T>(value: T): Signal<T> => {
         return () => subscriptions.delete(onUpdate);
       },
     }),
-    [valueRef, subscriptions]
+    [valueRef, subscriptions],
   );
 
   useLayoutEffect(() => {

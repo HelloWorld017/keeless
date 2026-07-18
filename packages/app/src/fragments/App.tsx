@@ -1,5 +1,5 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
+import { Button } from '@/components/button';
 import { useQueryState } from '@/fragments/_providers';
 import { OpenFragment } from '@/fragments/open';
 import { getRoute } from '@/utils/route';

@@ -1,8 +1,8 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
+import { Button } from '@/components/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/card';
+import { Input } from '@/components/input';
+import { Label } from '@/components/label';
 import { useQueryState } from '@/fragments/_providers';
 import { CoreRequestError } from '@/utils/request';
 import {
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { StoredDatabase } from '@/types/Host';
-import type { FormEvent } from 'react';
+import type { SubmitEvent } from 'react';
 
 type FlowState = 'selecting' | 'importing' | 'locked' | 'unlocking' | 'unlocked';
 const MAX_DATABASE_SIZE = 512 * 1024 * 1024;
@@ -144,7 +144,7 @@ export const OpenFragment = () => {
     }
   };
 
-  const unlock = async (event: FormEvent<HTMLFormElement>) => {
+  const unlock = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const input = passwordRef.current;
     const password = input?.value ?? '';

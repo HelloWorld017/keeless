@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/css/index';
 import { Input as InputPrimitive } from '@base-ui/react/input';
 import * as React from 'react';
 

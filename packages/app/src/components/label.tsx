@@ -1,10 +1,8 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/css/index';
 import * as React from 'react';
 
 function Label({ className, ...props }: React.ComponentProps<'label'>) {
   return (
-    // The association may be supplied through spread `htmlFor` props.
-    // oxlint-disable-next-line jsx-a11y/label-has-associated-control
     <label
       data-slot="label"
       className={cn(

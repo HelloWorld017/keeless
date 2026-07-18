@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from '@/utils/css/index';
 import * as React from 'react';
 
 function Card({
