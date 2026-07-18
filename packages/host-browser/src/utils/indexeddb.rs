@@ -141,19 +141,4 @@ impl IndexedDb {
         transaction.done().await.map_err(idb_error)?;
         value.map(Entry::from_js).transpose()
     }
-
-    pub(crate) async fn entries(&self) -> Result<Vec<Entry>, StorageError> {
-        let transaction = self
-            .db
-            .transaction(&[ENTRY_STORE], TransactionMode::ReadOnly)
-            .map_err(idb_error)?;
-        let values = transaction
-            .store(ENTRY_STORE)
-            .map_err(idb_error)?
-            .get_all(None, None)
-            .await
-            .map_err(idb_error)?;
-        transaction.done().await.map_err(idb_error)?;
-        values.into_iter().map(Entry::from_js).collect()
-    }
 }

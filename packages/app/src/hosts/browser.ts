@@ -1,9 +1,10 @@
-import type { Host, HostStorage } from '@/types/Host';
+import type { Host } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';
 import type { MessageFrame } from '@keeless/schema';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder(undefined, { fatal: true });
+const database = { provider: 'idb', path: 'keeless.kdbx' } as const;
 
 const isBrowserAvailable = () =>
   typeof window !== 'undefined' &&
@@ -20,34 +21,9 @@ export const createBrowserHost = (): Host => {
     return core;
   };
 
-  const indexedDbStorage: HostStorage = {
-    provider: 'idb',
-    label: 'This browser',
-    isAvailable: async () => isBrowserAvailable(),
-    listDatabases: async () =>
-      (await requireCore().listDatabases()).map(database => ({
-        descriptor: { provider: 'idb', path: database.path },
-        name: database.name,
-        size: database.size,
-      })),
-    importDatabase: async file => {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      try {
-        const path = await requireCore().importDatabase(file.name, bytes);
-        return {
-          descriptor: { provider: 'idb', path },
-          name: file.name,
-          size: file.size,
-        };
-      } finally {
-        bytes.fill(0);
-      }
-    },
-  };
-
   return {
     kind: 'browser',
-    storages: [indexedDbStorage],
+    database,
     isAvailable: async () => isBrowserAvailable(),
     connect: async defaultApprovedBundle => {
       if (core) {
@@ -58,7 +34,7 @@ export const createBrowserHost = (): Host => {
       core = await browserHost.BrowserCore.create(defaultApprovedBundle);
     },
     send: async frame => {
-      const response = await requireCore().processFrame(encoder.encode(JSON.stringify(frame)));
+      const response = await requireCore().handle(encoder.encode(JSON.stringify(frame)));
       if (!response) {
         return null;
       }

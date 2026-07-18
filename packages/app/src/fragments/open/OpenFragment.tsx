@@ -5,31 +5,14 @@ import { Input } from '@/components/input';
 import { Label } from '@/components/label';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { CoreRequestError } from '@/utils/request';
-import {
-  ArrowRight,
-  Check,
-  FileKey2,
-  LoaderCircle,
-  LockKeyhole,
-  ShieldCheck,
-  Upload,
-} from 'lucide-react';
+import { ArrowRight, Check, FileKey2, LoaderCircle, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { StoredDatabase } from '@/types/Host';
+import type { DatabaseStatus } from '@keeless/schema';
 import type { SubmitEvent } from 'react';
 
-type FlowState = 'selecting' | 'importing' | 'locked' | 'unlocking' | 'unlocked';
-const MAX_DATABASE_SIZE = 512 * 1024 * 1024;
+type FlowState = 'loading' | 'unlocking' | DatabaseStatus;
 
-const fileSize = (bytes: number) => {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-};
+const DATABASE_NAME = 'keeless.kdbx';
 
 const errorMessage = (error: unknown) => {
   if (error instanceof CoreRequestError) {
@@ -37,9 +20,9 @@ const errorMessage = (error: unknown) => {
       case 'invalid_credentials':
         return 'That password could not unlock this database.';
       case 'database_not_found':
-        return 'The selected database is no longer available.';
+        return `${DATABASE_NAME} no longer exists in this browser.`;
       case 'storage_error':
-        return 'The browser could not read the selected database.';
+        return `The browser could not read ${DATABASE_NAME}.`;
       default:
         return error.message;
     }
@@ -49,34 +32,36 @@ const errorMessage = (error: unknown) => {
 
 export const OpenFragment = () => {
   const { data: requestClient } = useRequestClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
-  const [flow, setFlow] = useState<FlowState>('selecting');
-  const [database, setDatabase] = useState<StoredDatabase | null>(null);
-  const [storedDatabases, setStoredDatabases] = useState<StoredDatabase[]>([]);
+  const [flow, setFlow] = useState<FlowState>('loading');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!requestClient) {
       return undefined;
     }
-    const storage = requestClient.host.storages[0];
-    if (!storage) {
-      return undefined;
-    }
     let active = true;
-    void storage.listDatabases().then(
-      databases => {
-        if (active) {
-          setStoredDatabases(databases);
+    const open = async () => {
+      setFlow('loading');
+      setError(null);
+      try {
+        await requestClient.request('open', { storage: requestClient.host.database });
+        const { status } = await requestClient.request('getDatabaseStatus', {});
+        if (!active) {
+          return;
         }
-      },
-      nextError => {
+        setFlow(status);
+        if (status === 'locked') {
+          requestAnimationFrame(() => passwordRef.current?.focus());
+        }
+      } catch (nextError) {
         if (active) {
+          setFlow('not_exist');
           setError(errorMessage(nextError));
         }
-      },
-    );
+      }
+    };
+    void open();
     return () => {
       active = false;
     };
@@ -85,62 +70,6 @@ export const OpenFragment = () => {
   if (!requestClient) {
     return null;
   }
-
-  const storage = requestClient.host.storages[0];
-
-  const chooseFile = () => fileInputRef.current?.click();
-
-  const openDatabase = async (selected: StoredDatabase) => {
-    setFlow('importing');
-    setError(null);
-    try {
-      await requestClient.request('open', { storage: selected.descriptor });
-      setDatabase(selected);
-      setFlow('locked');
-      requestAnimationFrame(() => passwordRef.current?.focus());
-    } catch (nextError) {
-      setDatabase(null);
-      setFlow('selecting');
-      setError(errorMessage(nextError));
-    }
-  };
-
-  const importFile = async (file: File) => {
-    if (!storage) {
-      setError('No browser storage provider is available.');
-      return;
-    }
-    if (!file.name.toLowerCase().endsWith('.kdbx')) {
-      setError('Choose a file with the .kdbx extension.');
-      return;
-    }
-    if (file.size === 0 || file.size > MAX_DATABASE_SIZE) {
-      setError('Choose a non-empty database smaller than 512 MB.');
-      return;
-    }
-    setFlow('importing');
-    setError(null);
-    try {
-      const selected = await storage.importDatabase(file);
-      setStoredDatabases(databases => [...databases, selected]);
-      await openDatabase(selected);
-    } catch (nextError) {
-      setDatabase(null);
-      setFlow('selecting');
-      setError(errorMessage(nextError));
-    } finally {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const onFileChange = (files: FileList | null) => {
-    const file = files?.item(0);
-    if (file) {
-      void importFile(file);
-    }
-  };
 
   const unlock = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -160,18 +89,22 @@ export const OpenFragment = () => {
       await requestClient.request('unlock', { password });
       setFlow('unlocked');
     } catch (nextError) {
-      setFlow('locked');
+      setFlow(
+        nextError instanceof CoreRequestError && nextError.code === 'database_not_found'
+          ? 'not_exist'
+          : 'locked',
+      );
       setError(errorMessage(nextError));
       requestAnimationFrame(() => input?.focus());
     }
   };
 
-  const reset = async () => {
+  const lock = async () => {
+    setError(null);
     try {
       await requestClient.request('lock', {});
-      setDatabase(null);
-      setError(null);
-      setFlow('selecting');
+      setFlow('locked');
+      requestAnimationFrame(() => passwordRef.current?.focus());
     } catch (nextError) {
       setError(errorMessage(nextError));
     }
@@ -189,6 +122,8 @@ export const OpenFragment = () => {
               <span className="grid size-10 place-items-center rounded-xl bg-indigo-500/12 text-indigo-300">
                 {flow === 'unlocked' ? (
                   <Check className="size-5" />
+                ) : flow === 'loading' ? (
+                  <LoaderCircle className="size-5 animate-spin" />
                 ) : (
                   <LockKeyhole className="size-5" />
                 )}
@@ -198,97 +133,56 @@ export const OpenFragment = () => {
               </span>
             </div>
             <CardTitle className="text-xl">
-              {flow === 'unlocked' ? 'Database unlocked' : 'Open your database'}
+              {flow === 'unlocked'
+                ? 'Database unlocked'
+                : flow === 'not_exist'
+                  ? 'Database not found'
+                  : flow === 'loading'
+                    ? 'Opening database'
+                    : 'Unlock your database'}
             </CardTitle>
             <CardDescription className="text-zinc-400">
               {flow === 'unlocked'
                 ? 'The core is ready for encrypted requests.'
-                : 'Choose a .kdbx file, then enter its master password.'}
+                : flow === 'not_exist'
+                  ? `${DATABASE_NAME} has not been created in this browser.`
+                  : flow === 'loading'
+                    ? `Looking for ${DATABASE_NAME} in IndexedDB.`
+                    : `Enter the master password for ${DATABASE_NAME}.`}
             </CardDescription>
           </CardHeader>
 
           <CardContent className="pt-6">
-            <Input
-              ref={fileInputRef}
-              type="file"
-              accept=".kdbx,application/octet-stream"
-              className="hidden"
-              aria-label="Choose KeePass database"
-              onChange={event => onFileChange(event.currentTarget.files)}
-            />
-
-            {!database && (
-              <div className="space-y-4">
-                {storedDatabases.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-xs font-medium tracking-wide text-zinc-500 uppercase">
-                      Stored in this browser
-                    </p>
-                    <div className="space-y-2">
-                      {storedDatabases.map(stored => (
-                        <button
-                          key={stored.descriptor.path}
-                          type="button"
-                          disabled={flow === 'importing'}
-                          onClick={() => void openDatabase(stored)}
-                          className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] p-3 text-start transition-colors hover:border-indigo-400/35 hover:bg-indigo-400/[0.04] focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-60"
-                        >
-                          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-indigo-500/10 text-indigo-300">
-                            <FileKey2 className="size-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">
-                              {stored.name}
-                            </span>
-                            <span className="text-xs text-zinc-500">{fileSize(stored.size)}</span>
-                          </span>
-                          <ArrowRight className="size-4 text-zinc-600" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={flow === 'importing'}
-                  onClick={chooseFile}
-                  className="group flex min-h-40 w-full flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-white/[0.025] px-6 text-center transition-colors hover:border-indigo-400/50 hover:bg-indigo-400/[0.04] focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-60"
-                >
-                  <span className="mb-4 grid size-11 place-items-center rounded-full border border-white/10 bg-white/5 text-zinc-300 transition-transform group-hover:-translate-y-0.5">
-                    {flow === 'importing' ? (
-                      <LoaderCircle className="size-5 animate-spin" />
-                    ) : (
-                      <Upload className="size-5" />
-                    )}
-                  </span>
-                  <span className="font-medium">
-                    {flow === 'importing' ? 'Opening database...' : 'Import another database'}
-                  </span>
-                  <span className="mt-2 text-sm text-zinc-500">.kdbx files up to 512 MB</span>
-                </button>
+            {flow === 'loading' && (
+              <div className="py-12 text-center text-zinc-400">
+                <LoaderCircle className="mx-auto mb-4 size-7 animate-spin text-indigo-300" />
+                <p className="text-sm">Opening {DATABASE_NAME}...</p>
               </div>
             )}
 
-            {database && flow !== 'unlocked' && (
+            {flow === 'not_exist' && (
+              <div className="py-8 text-center">
+                <span className="mx-auto mb-5 grid size-16 place-items-center rounded-full border border-white/10 bg-white/5 text-zinc-400">
+                  <FileKey2 className="size-7" />
+                </span>
+                <p className="font-medium">No local database</p>
+                <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+                  Database creation is not available yet. This browser will always use{' '}
+                  {DATABASE_NAME} when creation support is added.
+                </p>
+              </div>
+            )}
+
+            {(flow === 'locked' || flow === 'unlocking') && (
               <form onSubmit={unlock}>
                 <div className="mb-6 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] p-3.5">
                   <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-indigo-500/10 text-indigo-300">
                     <FileKey2 className="size-5" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{database.name}</span>
-                    <span className="text-xs text-zinc-500">{fileSize(database.size)}</span>
+                    <span className="block truncate text-sm font-medium">{DATABASE_NAME}</span>
+                    <span className="text-xs text-zinc-500">IndexedDB</span>
                   </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={flow === 'unlocking'}
-                    onClick={() => void reset()}
-                  >
-                    Change
-                  </Button>
                 </div>
 
                 <div className="space-y-2">
@@ -325,12 +219,12 @@ export const OpenFragment = () => {
               </form>
             )}
 
-            {database && flow === 'unlocked' && (
+            {flow === 'unlocked' && (
               <div className="py-6 text-center">
                 <span className="mx-auto mb-5 grid size-16 place-items-center rounded-full border border-emerald-400/20 bg-emerald-400/10 text-emerald-300">
                   <ShieldCheck className="size-7" />
                 </span>
-                <p className="font-medium">{database.name}</p>
+                <p className="font-medium">{DATABASE_NAME}</p>
                 <p className="mt-2 text-sm leading-6 text-zinc-500">
                   The database UI will appear here as core operations are added.
                 </p>
@@ -338,9 +232,9 @@ export const OpenFragment = () => {
                   type="button"
                   variant="outline"
                   className="mt-6"
-                  onClick={() => void reset()}
+                  onClick={() => void lock()}
                 >
-                  Open another database
+                  Lock database
                 </Button>
               </div>
             )}
@@ -356,7 +250,7 @@ export const OpenFragment = () => {
             )}
 
             <p className="mt-6 flex items-center justify-center gap-2 text-center text-xs text-zinc-600">
-              <ShieldCheck className="size-3.5" /> The original file never leaves this device.
+              <ShieldCheck className="size-3.5" /> The database never leaves this device.
             </p>
           </CardContent>
         </Card>

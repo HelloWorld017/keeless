@@ -9,7 +9,7 @@ use rexie::TransactionMode;
 use wasm_bindgen::JsValue;
 
 use crate::{
-    inclusive_range, normalize_path,
+    database_path, inclusive_range,
     utils::indexeddb::{ENTRY_STORE, Entry, EntryKind, IndexedDb, idb_error, storage_error},
 };
 
@@ -24,10 +24,10 @@ impl StorageProvider for IndexedDbStorage {
         range: Option<ByteRange>,
     ) -> StorageFuture<'a, Result<RemoteFile, StorageError>> {
         Box::pin(async move {
-            let path = normalize_path(path)
+            let path = database_path(path)
                 .map_err(|error| storage_error(StorageErrorKind::InvalidInput, error))?;
             let entry =
-                self.idb.get_entry(&path).await?.ok_or_else(|| {
+                self.idb.get_entry(path).await?.ok_or_else(|| {
                     storage_error(StorageErrorKind::NotFound, "file does not exist")
                 })?;
             if entry.kind != EntryKind::File {
@@ -51,11 +51,11 @@ impl StorageProvider for IndexedDbStorage {
         path: &'a str,
     ) -> StorageFuture<'a, Result<Option<FileMetadata>, StorageError>> {
         Box::pin(async move {
-            let path = normalize_path(path)
+            let path = database_path(path)
                 .map_err(|error| storage_error(StorageErrorKind::InvalidInput, error))?;
             Ok(self
                 .idb
-                .get_entry(&path)
+                .get_entry(path)
                 .await?
                 .map(|entry| entry.metadata()))
         })
@@ -68,14 +68,8 @@ impl StorageProvider for IndexedDbStorage {
         condition: WriteCondition,
     ) -> StorageFuture<'a, Result<WriteOutcome, StorageError>> {
         Box::pin(async move {
-            let path = normalize_path(path)
+            let path = database_path(path)
                 .map_err(|error| storage_error(StorageErrorKind::InvalidInput, error))?;
-            if path.is_empty() {
-                return Err(storage_error(
-                    StorageErrorKind::InvalidInput,
-                    "file path is empty",
-                ));
-            }
             let transaction = self
                 .idb
                 .db
@@ -83,7 +77,7 @@ impl StorageProvider for IndexedDbStorage {
                 .map_err(idb_error)?;
             let store = transaction.store(ENTRY_STORE).map_err(idb_error)?;
             let current = store
-                .get(JsValue::from_str(&path))
+                .get(JsValue::from_str(path))
                 .await
                 .map_err(idb_error)?
                 .map(Entry::from_js)
@@ -115,7 +109,7 @@ impl StorageProvider for IndexedDbStorage {
                 .saturating_add(1)
                 .to_string();
             let entry = Entry {
-                path,
+                path: path.into(),
                 kind: EntryKind::File,
                 bytes,
                 revision: revision.clone(),
@@ -130,7 +124,7 @@ impl StorageProvider for IndexedDbStorage {
 
     fn delete<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Result<(), StorageError>> {
         Box::pin(async move {
-            let path = normalize_path(path)
+            let path = database_path(path)
                 .map_err(|error| storage_error(StorageErrorKind::InvalidInput, error))?;
             let transaction = self
                 .idb
@@ -140,7 +134,7 @@ impl StorageProvider for IndexedDbStorage {
             transaction
                 .store(ENTRY_STORE)
                 .map_err(idb_error)?
-                .delete(JsValue::from_str(&path))
+                .delete(JsValue::from_str(path))
                 .await
                 .map_err(idb_error)?;
             transaction.done().await.map_err(idb_error)?;

@@ -1,56 +1,17 @@
 //! Browser host bindings and IndexedDB storage for Keeless.
 
+const DATABASE_PATH: &str = "keeless.kdbx";
+
 #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
-fn normalize_path(path: &str) -> Result<String, &'static str> {
+fn database_path(path: &str) -> Result<&'static str, &'static str> {
     let segments: Vec<_> = path
         .split('/')
         .filter(|segment| !segment.is_empty())
         .collect();
-    if segments.is_empty() {
-        return Ok(String::new());
+    if segments.as_slice() != [DATABASE_PATH] {
+        return Err("IndexedDB path must be keeless.kdbx");
     }
-    if segments
-        .iter()
-        .any(|segment| *segment == "." || *segment == ".." || segment.contains('\0'))
-    {
-        return Err("path contains an invalid segment");
-    }
-    Ok(segments.join("/"))
-}
-
-#[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
-fn imported_database_path(file_name: &str) -> String {
-    let name = file_name
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or_default()
-        .chars()
-        .map(|character| match character {
-            '/' | '\\' | '\0' => '_',
-            _ => character,
-        })
-        .collect::<String>();
-    let name = if name.is_empty() {
-        "database.kdbx"
-    } else {
-        &name
-    };
-    format!("databases/{name}")
-}
-
-#[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
-fn numbered_database_path(path: &str, number: u32) -> String {
-    if number <= 1 {
-        return path.to_owned();
-    }
-    let (base, extension) = path
-        .rsplit_once('.')
-        .map_or((path, ""), |(base, extension)| (base, extension));
-    if extension.is_empty() {
-        format!("{base} ({number})")
-    } else {
-        format!("{base} ({number}).{extension}")
-    }
+    Ok(DATABASE_PATH)
 }
 
 #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
@@ -84,15 +45,15 @@ pub use browser::BrowserCore;
 
 #[cfg(test)]
 mod tests {
-    use super::{imported_database_path, inclusive_range, normalize_path, numbered_database_path};
+    use super::{DATABASE_PATH, database_path, inclusive_range};
 
     #[test]
-    fn normalizes_paths_without_allowing_parent_traversal() {
-        assert_eq!(
-            normalize_path("/databases//vault.kdbx/"),
-            Ok("databases/vault.kdbx".into())
-        );
-        assert!(normalize_path("databases/../vault.kdbx").is_err());
+    fn accepts_only_the_fixed_database_path() {
+        assert_eq!(database_path(DATABASE_PATH), Ok(DATABASE_PATH));
+        assert_eq!(database_path("/keeless.kdbx/"), Ok(DATABASE_PATH));
+        assert!(database_path("databases/keeless.kdbx").is_err());
+        assert!(database_path("other.kdbx").is_err());
+        assert!(database_path("").is_err());
     }
 
     #[test]
@@ -101,18 +62,5 @@ mod tests {
         assert_eq!(inclusive_range(b"abcdef", 4, 99), Ok(b"ef".to_vec()));
         assert_eq!(inclusive_range(b"abcdef", 9, 10), Ok(Vec::new()));
         assert!(inclusive_range(b"abcdef", 3, 2).is_err());
-    }
-
-    #[test]
-    fn imported_paths_are_stable_and_drop_client_paths() {
-        assert_eq!(
-            imported_database_path("C:\\fakepath\\vault.kdbx"),
-            "databases/vault.kdbx"
-        );
-        assert_eq!(imported_database_path(""), "databases/database.kdbx");
-        assert_eq!(
-            numbered_database_path("databases/vault.kdbx", 2),
-            "databases/vault (2).kdbx"
-        );
     }
 }
