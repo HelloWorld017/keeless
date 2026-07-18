@@ -38,22 +38,15 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     database.groups.insert(root_id, root);
     database.root_group_id = Some(root_id);
 
-    let handle = match FileHandle::create_new(
-        provider,
-        path,
-        database,
-        &key,
-        SyncOptions::default(),
-    )
-    .await
-    {
-        Ok(handle) => handle,
-        Err(SyncError::Storage(error)) if error.kind() == StorageErrorKind::AlreadyExists => {
-            mark_existing(core);
-            return Err(CoreError::DatabaseAlreadyExists);
-        }
-        Err(error) => return Err(error.into()),
-    };
+    let handle =
+        match FileHandle::create(provider, path, database, &key, SyncOptions::default()).await {
+            Ok(handle) => handle,
+            Err(SyncError::Storage(error)) if error.kind() == StorageErrorKind::AlreadyExists => {
+                mark_existing(core);
+                return Err(CoreError::DatabaseAlreadyExists);
+            }
+            Err(error) => return Err(error.into()),
+        };
     core.handle = None;
     core.credential = credential;
     core.handle = Some(handle);

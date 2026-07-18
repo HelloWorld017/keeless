@@ -16,7 +16,6 @@ use keeless_sync::{
 struct MemoryState {
     files: HashMap<String, (Vec<u8>, u64)>,
     forced_conflicts: usize,
-    delete_on_create_conflict: bool,
     writes: usize,
 }
 
@@ -41,10 +40,6 @@ impl MemoryStorage {
 
     fn force_conflicts(&self, count: usize) {
         self.state.lock().unwrap().forced_conflicts = count;
-    }
-
-    fn delete_on_create_conflict(&self) {
-        self.state.lock().unwrap().delete_on_create_conflict = true;
     }
 
     fn writes(&self) -> usize {
@@ -108,15 +103,6 @@ impl StorageProvider for MemoryStorage {
                 state.forced_conflicts -= 1;
                 return Ok(WriteOutcome::Conflict);
             }
-            if state.delete_on_create_conflict
-                && matches!(&condition, WriteCondition::MustNotExist)
-                && state.files.contains_key(path)
-            {
-                state.delete_on_create_conflict = false;
-                state.files.remove(path);
-                return Ok(WriteOutcome::Conflict);
-            }
-
             let matches = match (&condition, state.files.get(path)) {
                 (WriteCondition::Unconditional, _) => true,
                 (WriteCondition::MustNotExist, None) => true,
@@ -378,38 +364,41 @@ async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
 }
 
 #[tokio::test]
-async fn create_merges_when_the_remote_file_already_exists() {
+async fn create_writes_a_new_remote_file() {
+    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (local, local_id) = database_with_entry("local");
+    let provider: Arc<dyn StorageProvider> = storage.clone();
+    let handle = FileHandle::create(provider, "vault.kdbx", local, &key, options(2))
+        .await
+        .unwrap();
+
+    assert!(handle.database().entries.contains_key(&local_id));
+    let persisted = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    assert!(persisted.entries.contains_key(&local_id));
+    assert_eq!(storage.writes(), 1);
+}
+
+#[tokio::test]
+async fn create_does_not_overwrite_an_existing_remote_file() {
     let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (remote, remote_id) = database_with_entry("remote");
     storage.put("vault.kdbx", encode(&remote, &key));
 
-    let (local, local_id) = database_with_entry("local");
+    let (local, _) = database_with_entry("local");
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let handle = FileHandle::create(provider, "vault.kdbx", local, &key, options(2))
+    let error = FileHandle::create(provider, "vault.kdbx", local, &key, options(2))
         .await
-        .unwrap();
+        .unwrap_err();
 
-    assert!(handle.database().entries.contains_key(&local_id));
-    assert!(handle.database().entries.contains_key(&remote_id));
-}
-
-#[tokio::test]
-async fn create_retries_when_a_conflicting_remote_is_deleted() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
-    let storage = Arc::new(MemoryStorage::default());
-    let (remote, _) = database_with_entry("remote");
-    storage.put("vault.kdbx", encode(&remote, &key));
-    storage.delete_on_create_conflict();
-
-    let (local, local_id) = database_with_entry("local");
-    let provider: Arc<dyn StorageProvider> = storage.clone();
-    let handle = FileHandle::create(provider, "vault.kdbx", local, &key, options(2))
-        .await
-        .unwrap();
-
-    assert!(handle.database().entries.contains_key(&local_id));
-    assert_eq!(storage.writes(), 2);
+    assert!(matches!(
+        error,
+        SyncError::Storage(error) if error.kind() == StorageErrorKind::AlreadyExists
+    ));
+    let persisted = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    assert!(persisted.entries.contains_key(&remote_id));
+    assert_eq!(storage.writes(), 1);
 }
 
 #[tokio::test]
