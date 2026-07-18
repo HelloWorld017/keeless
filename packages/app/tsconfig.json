@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "types": ["node", "react", "react-dom", "vite/client"],
     "paths": {
       "@/*": ["./src/*"]
     }

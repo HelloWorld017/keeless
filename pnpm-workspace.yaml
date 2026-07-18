@@ -1,11 +1,12 @@
 packages:
   - packages/*
 
+packageExtensions:
+  lucide-react:
+    peerDependencies:
+      '@types/react': '*'
+
 allowBuilds:
-  electron: true
   esbuild: false
 
 minimumReleaseAge: 1440
-
-minimumReleaseAgeExclude:
-  - '@simplei18n/core'

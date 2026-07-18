@@ -15,7 +15,6 @@
     // Types
     "target": "es2022",
     "lib": ["es2022", "dom"],
-    "types": ["node", "react", "react-dom"],
 
     // Others
     "jsx": "react-jsx",

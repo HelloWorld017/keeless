@@ -1,4 +1,4 @@
-import { MeshGradient } from '@mesh-gradient/react';
+import BackgroundImage from '@/assets/images/background.webp';
 import {
   useHost,
   useHostOverride,
@@ -302,15 +302,12 @@ const OpenFragmentContents = () => {
 };
 
 export const OpenFragment = () => (
-  <div className='flex h-dvh items-center'>
+  <div className='flex h-dvh items-center' style={{ '--primary': '#ffffff', '--primary-foreground': '#000000' }}>
     <div className='flex-[0_0_auto] max-w-200 w-full'>
       <OpenFragmentContents />
     </div>
     <div className='p-6 flex-[1_1_0] self-stretch'>
-        <MeshGradient
-          className='w-full h-full rounded-[30px] overflow-hidden'
-          options={{ colors: ['#ffffff', '#bcbcbc', '#7d7d7d', '#474747'] }}
-        />
+      <img src={BackgroundImage} className='w-full h-full grayscale object-cover rounded-[30px]' />
     </div>
   </div>
 );
