@@ -1,3 +1,4 @@
+import { IconCloud, IconDatabaseZap } from '@/icons';
 import type { Host, HostStorage } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';
 import type { MessageFrame } from '@keeless/schema';
@@ -10,12 +11,14 @@ const storages: readonly HostStorage[] = [
     label: 'IndexedDB',
     description: 'Store the database in this browser.',
     requiresDetails: false,
+    icon: <IconDatabaseZap />
   },
   {
     kind: 'webdav',
     label: 'WebDAV',
     description: 'Store the database on a WebDAV server.',
     requiresDetails: true,
+    icon: <IconCloud />
   },
 ];
 

@@ -1,10 +1,12 @@
 import type { MessageFrame, StorageDescriptor } from '@keeless/schema';
+import type { ReactNode } from 'react';
 
 export type HostKind = 'desktop' | 'extension' | 'browser';
 export type HostStorageKind = 'indexeddb' | 'webdav';
 
 export type HostStorage = {
   kind: HostStorageKind;
+  icon: ReactNode;
   label: string;
   description: string;
   requiresDetails: boolean;

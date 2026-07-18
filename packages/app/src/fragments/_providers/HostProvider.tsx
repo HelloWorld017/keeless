@@ -24,6 +24,7 @@ const [HostContextProvider, useHostContext] = buildContext(
       setIsLoading(true);
       void getHosts().then(nextHosts => {
         if (active) {
+          setHost(nextHosts[0]);
           setHosts(nextHosts);
           setIsLoading(false);
         }

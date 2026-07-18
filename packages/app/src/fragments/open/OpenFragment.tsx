@@ -1,17 +1,4 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
-import { Button } from '@/components/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/card';
-import { Input } from '@/components/input';
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemTitle,
-} from '@/components/item';
-import { Label } from '@/components/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/select';
+import { MeshGradient } from '@mesh-gradient/react';
 import {
   useHost,
   useHostOverride,
@@ -21,11 +8,15 @@ import {
   useSelectHost,
 } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { IconAlertCircle, IconChevronLeft, IconChevronRight, IconLoaderCircle } from '@/icons';
 import { CoreRequestError } from '@/utils/request';
 import { buildRoute } from '@/utils/route';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '../_providers/RouterProvider';
+import { CheckingStep } from './_components/CheckingStep';
+import { CreateStep } from './_components/CreateStep';
+import { DetailsStep } from './_components/DetailsStep';
+import { SelectStep } from './_components/SelectStep';
+import { UnlockStep } from './_components/UnlockStep';
 import type { PasswordInputMode } from '@/types/AppIntegration';
 import type { HostStorage, HostStorageInput } from '@/types/Host';
 import type { DatabaseStatus } from '@keeless/schema';
@@ -54,7 +45,7 @@ const formString = (data: FormData, name: string) => {
   return typeof value === 'string' ? value : '';
 };
 
-export const OpenFragment = () => {
+const OpenFragmentContents = () => {
   const host = useHost();
   const hosts = useHosts();
   const hostsLoading = useHostsLoading();
@@ -148,7 +139,7 @@ export const OpenFragment = () => {
       setStep('details');
       return;
     }
-    void openStorage({ kind: 'indexeddb' });
+    void openStorage({ kind: nextStorage.kind } as HostStorageInput);
   };
 
   const submitWebDav = (event: SubmitEvent<HTMLFormElement>) => {
@@ -237,246 +228,89 @@ export const OpenFragment = () => {
     }
   };
 
-  const renderError = () =>
-    error && (
-      <Alert variant="destructive">
-        <IconAlertCircle />
-        <AlertTitle>Could not continue</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    );
-
   if (step === 'checking') {
     const checkingPending = requestClient.isPending || isPending;
     const checkingError =
       error ?? (requestClient.isError ? errorMessage(requestClient.error) : undefined);
     return (
-      <SetupLayout title="Opening database" description="Checking the selected host.">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          {checkingPending && <IconLoaderCircle className="animate-spin" />}
-          {checkingPending
-            ? 'Checking database status...'
-            : 'Database status could not be checked.'}
-        </div>
-        {checkingError && (
-          <Alert variant="destructive">
-            <IconAlertCircle />
-            <AlertTitle>Could not continue</AlertTitle>
-            <AlertDescription>{checkingError}</AlertDescription>
-          </Alert>
-        )}
-        {checkingError && (
-          <Button type="button" variant="outline" onClick={() => void requestClient.refetch()}>
-            Try again
-          </Button>
-        )}
-      </SetupLayout>
+      <CheckingStep
+        isPending={checkingPending}
+        error={checkingError}
+        onRetry={() => void requestClient.refetch()}
+      />
     );
   }
 
   if (step === 'details') {
     return (
-      <SetupLayout
-        title="Connect WebDAV"
-        description="Enter the connection details for your server."
-      >
-        <form className="space-y-4" onSubmit={submitWebDav}>
-          <FormInput label="URL" name="url" type="url" autoComplete="url" required />
-          <FormInput label="User" name="username" autoComplete="username" required />
-          <FormInput
-            label="Password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
-          <FormInput label="Path (optional)" name="path" placeholder="keeless.kdbx" />
-          {renderError()}
-          <div className="flex justify-between gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isPending}
-              onClick={() => {
-                setError(undefined);
-                setStep('select');
-              }}
-            >
-              <IconChevronLeft /> Back
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending && <IconLoaderCircle className="animate-spin" />}
-              Continue
-            </Button>
-          </div>
-        </form>
-      </SetupLayout>
+      <DetailsStep
+        isPending={isPending}
+        error={error}
+        onSubmit={submitWebDav}
+        onBack={() => {
+          setError(undefined);
+          setStep('select');
+        }}
+      />
     );
   }
 
-  if (step === 'create' || step === 'unlock') {
-    const isCreate = step === 'create';
+  if (step === 'create') {
     return (
-      <SetupLayout
-        title={isCreate ? 'Create database' : 'Unlock database'}
-        description={
-          isCreate
-            ? 'Choose the master password for this database.'
-            : 'Enter the master password for this database.'
-        }
-      >
-        <form onSubmit={event => void submitPassword(step, event)} className="space-y-4">
-          {!onPasswordInput && (
-            <div className="space-y-2">
-              <Label htmlFor="master-password">Master password</Label>
-              <Input
-                ref={passwordRef}
-                id="master-password"
-                name="master-password"
-                type="password"
-                autoComplete={isCreate ? 'new-password' : 'current-password'}
-                disabled={isPending}
-                required
-              />
-            </div>
-          )}
-          {onPasswordInput && (
-            <p className="text-sm text-muted-foreground">
-              The master password will be entered in a secure system prompt.
-            </p>
-          )}
-          {renderError()}
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending && <IconLoaderCircle className="animate-spin" />}
-            {onPasswordInput
-              ? 'Enter master password'
-              : isCreate
-                ? 'Create database'
-                : 'Unlock database'}
-          </Button>
-        </form>
-      </SetupLayout>
+      <CreateStep
+        isPending={isPending}
+        error={error}
+        usesSecurePrompt={Boolean(onPasswordInput)}
+        passwordRef={passwordRef}
+        onSubmit={event => void submitPassword('create', event)}
+      />
+    );
+  }
+
+  if (step === 'unlock') {
+    return (
+      <UnlockStep
+        isPending={isPending}
+        error={error}
+        usesSecurePrompt={Boolean(onPasswordInput)}
+        passwordRef={passwordRef}
+        onSubmit={event => void submitPassword('unlock', event)}
+      />
     );
   }
 
   return (
-    <SetupLayout
-      title="Open a database"
-      description="Choose where Keeless should run and store its database."
-    >
-      <div className="space-y-2">
-        <Label htmlFor="host">Host</Label>
-        <Select
-          value={host?.kind ?? null}
-          onValueChange={value => {
-            if (value) {
-              selectHost(value);
-              setStorage(undefined);
-              setError(undefined);
-            }
-          }}
-          disabled={isHostOverride || hostsLoading || isPending}
-        >
-          <SelectTrigger id="host" className="w-full">
-            <SelectValue placeholder={hostsLoading ? 'Looking for hosts...' : 'Select a host'} />
-          </SelectTrigger>
-          <SelectContent>
-            {hosts.map(candidate => (
-              <SelectItem key={candidate.kind} value={candidate.kind}>
-                {candidate.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {host && (
-        <div className="space-y-2">
-          <Label>Storage</Label>
-          <ItemGroup className="gap-2">
-            {host.storages.map(candidate => (
-              <Item
-                key={candidate.kind}
-                variant="outline"
-                render={
-                  <button
-                    type="button"
-                    aria-label={`Use ${candidate.label}`}
-                    disabled={isPending || !requestClient.data}
-                  />
-                }
-                aria-pressed={storage?.kind === candidate.kind}
-                onClick={() => chooseStorage(candidate)}
-              >
-                <ItemContent>
-                  <ItemTitle>{candidate.label}</ItemTitle>
-                  <ItemDescription>{candidate.description}</ItemDescription>
-                </ItemContent>
-                <ItemActions>
-                  {isPending && storage?.kind === candidate.kind ? (
-                    <IconLoaderCircle className="animate-spin" />
-                  ) : (
-                    <IconChevronRight />
-                  )}
-                </ItemActions>
-              </Item>
-            ))}
-          </ItemGroup>
-        </div>
-      )}
-
-      {!hostsLoading && hosts.length === 0 && (
-        <Alert>
-          <AlertTitle>No compatible host</AlertTitle>
-          <AlertDescription>
-            Keeless could not find an available host on this device.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {host && requestClient.isError && (
-        <Alert variant="destructive">
-          <IconAlertCircle />
-          <AlertTitle>Host could not start</AlertTitle>
-          <AlertDescription>{errorMessage(requestClient.error)}</AlertDescription>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-2"
-            onClick={() => void requestClient.refetch()}
-          >
-            Try again
-          </Button>
-        </Alert>
-      )}
-      {renderError()}
-    </SetupLayout>
+    <SelectStep
+      host={host}
+      hosts={hosts}
+      storage={storage}
+      hostsLoading={hostsLoading}
+      isHostOverride={isHostOverride}
+      isPending={isPending}
+      isRequestReady={Boolean(requestClient.data)}
+      requestError={requestClient.isError ? errorMessage(requestClient.error) : undefined}
+      error={error}
+      onSelectHost={value => {
+        selectHost(value);
+        setStorage(undefined);
+        setError(undefined);
+      }}
+      onChooseStorage={chooseStorage}
+      onRetryRequest={() => void requestClient.refetch()}
+    />
   );
 };
 
-const SetupLayout = ({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) => (
-  <main className="flex min-h-dvh items-center justify-center px-4 py-10">
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">{children}</CardContent>
-    </Card>
-  </main>
-);
-
-const FormInput = ({ label, ...props }: { label: string } & React.ComponentProps<'input'>) => (
-  <div className="space-y-2">
-    <Label htmlFor={props.name}>{label}</Label>
-    <Input id={props.name} {...props} />
+export const OpenFragment = () => (
+  <div className='flex h-dvh items-center'>
+    <div className='flex-[0_0_auto] max-w-200 w-full'>
+      <OpenFragmentContents />
+    </div>
+    <div className='p-6 flex-[1_1_0] self-stretch'>
+        <MeshGradient
+          className='w-full h-full rounded-[30px] overflow-hidden'
+          options={{ colors: ['#ffffff', '#bcbcbc', '#7d7d7d', '#474747'] }}
+        />
+    </div>
   </div>
 );
