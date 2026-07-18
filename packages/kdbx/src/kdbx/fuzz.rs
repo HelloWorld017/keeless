@@ -147,7 +147,7 @@ pub fn mutate(seed: &[u8], iteration: usize) -> Vec<u8> {
         6 => {
             // Insert zeros
             let pos = if len == 0 { 0 } else { rng % len };
-            data.splice(pos..pos, std::iter::repeat(0).take(8));
+            data.splice(pos..pos, std::iter::repeat_n(0, 8));
         }
         7 if len >= 2 => {
             // Swap two bytes

@@ -1,15 +1,17 @@
+import { RouterProvider } from '@/fragments/_providers/RouterProvider';
+import { ReactNode, StrictMode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
 import { Button } from '@/components/button';
-import { useQueryState } from '@/fragments/_providers';
+import { QueryProvider, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { OpenFragment } from '@/fragments/open';
 import { getRoute } from '@/utils/route';
 import { AlertCircle, LoaderCircle } from 'lucide-react';
 import { Redirect, Route, Switch } from 'wouter';
 
 export const App = () => {
-  const query = useQueryState();
+  const requestClient = useRequestClient();
 
-  if (query.status === 'loading') {
+  if (requestClient.isPending) {
     return (
       <main className="grid min-h-dvh place-items-center bg-[#090b10] text-zinc-400">
         <div className="flex items-center gap-3 text-sm">
@@ -20,14 +22,19 @@ export const App = () => {
     );
   }
 
-  if (query.status === 'error') {
+  if (requestClient.isError) {
     return (
       <main className="grid min-h-dvh place-items-center bg-[#090b10] px-6 text-zinc-100">
         <Alert variant="destructive" className="max-w-md border-red-400/20 bg-red-400/8">
           <AlertCircle />
           <AlertTitle>Keeless could not start</AlertTitle>
-          <AlertDescription>{query.error.message}</AlertDescription>
-          <Button type="button" variant="outline" className="mt-3" onClick={query.retry}>
+          <AlertDescription>{requestClient.error.message}</AlertDescription>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3"
+            onClick={() => void requestClient.refetch()}
+          >
             Try again
           </Button>
         </Alert>
@@ -43,3 +50,13 @@ export const App = () => {
     </Switch>
   );
 };
+
+export const AppFrame = ({ children }: { children: ReactNode }) => (
+  <StrictMode>
+    <QueryProvider>
+      <RouterProvider fallback="open">
+        {children}
+      </RouterProvider>
+    </QueryProvider>
+  </StrictMode>
+);

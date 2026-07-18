@@ -151,7 +151,7 @@ impl<'a> BinaryStreamReader<'a> {
 
     /// Check if there's no data.
     pub fn is_empty(&self) -> bool {
-        self.len().map_or(true, |l| l == 0)
+        self.len().is_none_or(|l| l == 0)
     }
 }
 

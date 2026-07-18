@@ -87,7 +87,7 @@ fn read_decompressed(
         if decompressed
             .len()
             .checked_add(read)
-            .map_or(true, |size| size > limit)
+            .is_none_or(|size| size > limit)
         {
             return Err(DatabaseError::InvalidFormat(format!(
                 "Decompressed payload exceeds {limit} bytes"

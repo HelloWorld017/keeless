@@ -70,6 +70,14 @@ fn inclusive_range(bytes: &[u8], start: u64, end: u64) -> Result<Vec<u8>, &'stat
 
 #[cfg(target_arch = "wasm32")]
 mod browser;
+#[cfg(target_arch = "wasm32")]
+mod clock;
+#[cfg(target_arch = "wasm32")]
+mod config;
+#[cfg(target_arch = "wasm32")]
+mod storages;
+#[cfg(target_arch = "wasm32")]
+mod utils;
 
 #[cfg(target_arch = "wasm32")]
 pub use browser::BrowserCore;

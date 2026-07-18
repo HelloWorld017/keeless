@@ -151,7 +151,7 @@ impl DatabaseMerger<'_> {
                 base.groups.contains_key(id)
                     && !source.groups.contains_key(id)
                     && group_parent(base, id)
-                        .map_or(true, |parent| source.groups.contains_key(&parent))
+                        .is_none_or(|parent| source.groups.contains_key(&parent))
             })
             .copied()
             .collect();

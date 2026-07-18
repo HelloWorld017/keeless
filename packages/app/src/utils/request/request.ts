@@ -18,7 +18,7 @@ const EMPTY_SALT = new Uint8Array();
 const encoder = new TextEncoder();
 const decoder = new TextDecoder(undefined, { fatal: true });
 
-type OperationName = Operation['op'];
+export type OperationName = Operation['op'];
 export type OperationArgs<TName extends OperationName> = Extract<Operation, { op: TName }>['args'];
 export type OperationResult<TName extends OperationName> = Extract<
   OperationSuccess,

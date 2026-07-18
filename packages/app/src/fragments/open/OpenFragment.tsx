@@ -3,7 +3,7 @@ import { Button } from '@/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/card';
 import { Input } from '@/components/input';
 import { Label } from '@/components/label';
-import { useQueryState } from '@/fragments/_providers';
+import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { CoreRequestError } from '@/utils/request';
 import {
   ArrowRight,
@@ -50,7 +50,7 @@ const errorMessage = (error: unknown) => {
 };
 
 export const OpenFragment = () => {
-  const query = useQueryState();
+  const { data: requestClient } = useRequestClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const [flow, setFlow] = useState<FlowState>('selecting');
@@ -59,10 +59,10 @@ export const OpenFragment = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (query.status !== 'ready') {
+    if (!requestClient) {
       return undefined;
     }
-    const storage = query.client.host.storages[0];
+    const storage = requestClient.host.storages[0];
     if (!storage) {
       return undefined;
     }
@@ -82,13 +82,13 @@ export const OpenFragment = () => {
     return () => {
       active = false;
     };
-  }, [query]);
+  }, [requestClient]);
 
-  if (query.status !== 'ready') {
+  if (!requestClient) {
     return null;
   }
 
-  const storage = query.client.host.storages[0];
+  const storage = requestClient.host.storages[0];
 
   const chooseFile = () => fileInputRef.current?.click();
 
@@ -96,7 +96,7 @@ export const OpenFragment = () => {
     setFlow('importing');
     setError(null);
     try {
-      await query.client.request('open', { storage: selected.descriptor });
+      await requestClient.request('open', { storage: selected.descriptor });
       setDatabase(selected);
       setFlow('locked');
       requestAnimationFrame(() => passwordRef.current?.focus());
@@ -159,7 +159,7 @@ export const OpenFragment = () => {
       input.value = '';
     }
     try {
-      await query.client.request('unlock', { password });
+      await requestClient.request('unlock', { password });
       setFlow('unlocked');
     } catch (nextError) {
       setFlow('locked');
@@ -170,7 +170,7 @@ export const OpenFragment = () => {
 
   const reset = async () => {
     try {
-      await query.client.request('lock', {});
+      await requestClient.request('lock', {});
       setDatabase(null);
       setError(null);
       setFlow('selecting');
