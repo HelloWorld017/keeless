@@ -29,6 +29,8 @@
         default = packageFor "keeless_desktop";
       };
 
-      devShells.default = craneLib.devShell { };
+      devShells.default = craneLib.devShell {
+        packages = [ pkgs.lld pkgs.wasm-pack ];
+      };
     });
 }

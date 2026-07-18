@@ -1,6 +1,8 @@
 import { App } from '@/fragments/App';
+import { QueryProvider, RouterProvider } from '@/fragments/_providers';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@/index.css';
 
 const container = document.getElementById('app');
 if (!container) {
@@ -9,6 +11,10 @@ if (!container) {
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <QueryProvider>
+      <RouterProvider fallback="open">
+        <App />
+      </RouterProvider>
+    </QueryProvider>
   </StrictMode>,
 );

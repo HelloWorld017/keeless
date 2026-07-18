@@ -11,9 +11,6 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "esModuleInterop": true,
-    "paths": {
-      "@/*": ["./packages/keeless/src/*"]
-    },
 
     // Types
     "target": "es2022",

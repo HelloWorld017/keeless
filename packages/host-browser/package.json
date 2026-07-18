@@ -1,0 +1,25 @@
+{
+  "name": "@keeless/host-browser",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Rust/WASM browser host for Keeless",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "files": [
+    "dist",
+    "index.d.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./dist/keeless_host_browser.js"
+    }
+  },
+  "scripts": {
+    "build": "wasm-pack build --target web --out-dir dist --out-name keeless_host_browser",
+    "check": "cargo check -p keeless_host_browser --target wasm32-unknown-unknown",
+    "format": "cargo fmt --package keeless_host_browser",
+    "lint": "cargo clippy -p keeless_host_browser --target wasm32-unknown-unknown --no-deps -- -D warnings",
+    "test": "cargo test -p keeless_host_browser"
+  }
+}

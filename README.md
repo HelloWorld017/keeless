@@ -36,11 +36,11 @@
   For users who want extreme security, this mode ensures no passwords are ever kept in memory, prompting the user for the password on every synchronization attempt.
   
 * **Secure Master Key Input**  
-  In the desktop app, master key inputs bypass the web renderer (Tauri WebView) and are safely isolated and handled using `egui`, a native GUI library.
+  In the desktop app, master key inputs bypass the web renderer (Tauri WebView) and are handled using `egui`.
   
 * **Signed IPC Protocol**  
-  All messages between the clients (App/Extension) and the core are digitally signed and encrypted.
+  All messages between the clients (App/Extension) and the core are signed and encrypted.
   
 * **Approval-based Handshake**  
   Connecting the companion web extension is based on tofu(trust on first use).
-  Access from unregistered keys (Unknown Devices) is immediately dropped. An approval dialog ensures that only explicitly authorized devices can establish a connection and access the database.
+  Access from unregistered keys Devices) is immediately dropped. An approval dialog ensures that only explicitly authorized devices can establish a connection and access the database.
