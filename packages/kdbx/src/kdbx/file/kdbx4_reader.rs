@@ -14,6 +14,7 @@ use crate::crypto::compression::{decompress_sensitive, CompressionAlgorithm};
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::crypto::inner_stream::create_inner_stream;
 use crate::crypto::HashEngine;
+use crate::kdbx::diagnostics::{DiagnosticContext, DiagnosticStage};
 use crate::kdbx::file::header::{
     header_field_4, inner_header_field_4, CrsAlgorithm, KdbxBinary, KdbxHeader4, KdbxInnerHeader4,
     FILE_VERSION_4, KDBX_SIGNATURE_1, KDBX_SIGNATURE_2,
@@ -34,6 +35,15 @@ use crate::model::exception::{DatabaseError, DatabaseResult};
 pub fn read_kdbx4<R: Read>(
     reader: &mut R,
     composite_key: &CompositeKey,
+) -> DatabaseResult<Database> {
+    let mut diagnostics = DiagnosticContext::disabled();
+    read_kdbx4_diagnostic(reader, composite_key, &mut diagnostics)
+}
+
+pub(crate) fn read_kdbx4_diagnostic<R: Read>(
+    reader: &mut R,
+    composite_key: &CompositeKey,
+    diagnostics: &mut DiagnosticContext<'_>,
 ) -> DatabaseResult<Database> {
     // 1. Read and retain the exact version header. The minor version is part
     // of the authenticated header and cannot be reconstructed as 4.0.
@@ -58,67 +68,128 @@ pub fn read_kdbx4<R: Read>(
     header_buf.extend_from_slice(&signature1.to_le_bytes());
     header_buf.extend_from_slice(&signature2.to_le_bytes());
     header_buf.extend_from_slice(&raw_version.to_le_bytes());
-    let mut header = {
-        let mut tee = TeeReader::new(reader, &mut header_buf);
-        read_kdbx4_outer_header_from(&mut tee)?
-    };
+    let mut header = diagnostics.run(
+        DiagnosticStage::OuterHeader,
+        || {
+            let mut tee = TeeReader::new(reader, &mut header_buf);
+            read_kdbx4_outer_header_from(&mut tee)
+        },
+        |_| None,
+    )?;
     header.version = raw_version;
+    diagnostics.set_kdbx4_header(&header);
 
     // 3. Verify the unkeyed header hash before doing expensive KDF work.
-    let mut stored_hash = [0u8; 32];
-    reader.read_exact(&mut stored_hash)?;
-    let expected_hash = HashEngine::sha256(&header_buf);
-    if stored_hash != expected_hash {
-        return Err(DatabaseError::InvalidFormat("Header hash mismatch".into()));
-    }
+    diagnostics.run(
+        DiagnosticStage::HeaderHash,
+        || {
+            let mut stored_hash = [0u8; 32];
+            reader.read_exact(&mut stored_hash)?;
+            let expected_hash = HashEngine::sha256(&header_buf);
+            if stored_hash != expected_hash {
+                return Err(DatabaseError::InvalidFormat("Header hash mismatch".into()));
+            }
+            Ok(())
+        },
+        |_| None,
+    )?;
 
     // 4. Derive the separate cipher and HMAC keys.
-    let (master_key, hmac_key) = derive_keys(composite_key, &header)?;
+    let (master_key, hmac_key) = diagnostics.run(
+        DiagnosticStage::KeyDerivation,
+        || derive_keys(composite_key, &header),
+        |_| None,
+    )?;
 
     // 5. Verify header HMAC (next 32 bytes)
-    let mut stored_hmac = [0u8; 32];
-    reader.read_exact(&mut stored_hmac)?;
-    let expected_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))??;
-    if stored_hmac != expected_hmac {
-        return Err(DatabaseError::InvalidCredentials);
-    }
+    diagnostics.run(
+        DiagnosticStage::HeaderAuthentication,
+        || {
+            let mut stored_hmac = [0u8; 32];
+            reader.read_exact(&mut stored_hmac)?;
+            let expected_hmac = hmac_key.unlock(|key| compute_header_hmac(key, &header_buf))??;
+            if stored_hmac != expected_hmac {
+                return Err(DatabaseError::InvalidCredentials);
+            }
+            Ok(())
+        },
+        |_| None,
+    )?;
 
     // 6. Read HMAC block stream → encrypted data
-    let encrypted = hmac_key.unlock(|key| read_hmac_block_stream(reader, key))??;
+    let encrypted = diagnostics.run(
+        DiagnosticStage::PayloadIntegrity,
+        || hmac_key.unlock(|key| read_hmac_block_stream(reader, key))?,
+        |encrypted| Some(format!("{} bytes", encrypted.len())),
+    )?;
 
     // 7. Decrypt and decompress the complete payload.
     let cipher = create_cipher_engine(header.encryption_algorithm);
-    let decrypted = Zeroizing::new(master_key.unlock(|key| {
-        cipher
-            .decrypt(key, &header.encryption_iv, &encrypted)
-            .map_err(DatabaseError::from_decryption_error)
-    })??);
-    let payload = match header.compression {
-        CompressionAlgorithm::Gzip => decompress_sensitive(decrypted.as_slice())?,
-        CompressionAlgorithm::None => decrypted,
-    };
+    let decrypted = diagnostics.run(
+        DiagnosticStage::Decryption,
+        || {
+            Ok(Zeroizing::new(master_key.unlock(|key| {
+                cipher
+                    .decrypt(key, &header.encryption_iv, &encrypted)
+                    .map_err(DatabaseError::from_decryption_error)
+            })??))
+        },
+        |decrypted| Some(format!("{} bytes", decrypted.len())),
+    )?;
+    let payload = diagnostics.run(
+        DiagnosticStage::Decompression,
+        || match header.compression {
+            CompressionAlgorithm::Gzip => decompress_sensitive(decrypted.as_slice()),
+            CompressionAlgorithm::None => Ok(decrypted),
+        },
+        |payload| Some(format!("{} bytes", payload.len())),
+    )?;
 
     // 8. Parse inner header.
     let mut cursor = std::io::Cursor::new(payload.as_slice());
-    let mut inner = read_kdbx4_inner_header(&mut cursor)?;
+    let mut inner = diagnostics.run(
+        DiagnosticStage::InnerHeader,
+        || read_kdbx4_inner_header(&mut cursor),
+        |inner| Some(format!("{} binaries", inner.binaries.len())),
+    )?;
 
     // 9. Parse XML with inner stream cipher
     let inner_stream_key = Zeroizing::new(std::mem::take(&mut inner.inner_random_stream_key));
-    let mut inner_stream =
-        create_inner_stream(inner.inner_random_stream, inner_stream_key.as_slice())?;
-    let inner_binaries = std::mem::take(&mut inner.binaries);
-    let mut binaries = SensitiveBinaries(Vec::with_capacity(inner_binaries.len()));
-    for mut binary in inner_binaries {
-        let protected = binary.is_protected();
-        if protected {
-            inner_stream.process(&mut binary.data)?;
-        }
-        binaries.0.push((binary.data, protected));
-    }
+    let (mut inner_stream, binaries) = diagnostics.run(
+        DiagnosticStage::InnerProtection,
+        || {
+            let mut inner_stream =
+                create_inner_stream(inner.inner_random_stream, inner_stream_key.as_slice())?;
+            let inner_binaries = std::mem::take(&mut inner.binaries);
+            let mut binaries = SensitiveBinaries(Vec::with_capacity(inner_binaries.len()));
+            for mut binary in inner_binaries {
+                let protected = binary.is_protected();
+                if protected {
+                    inner_stream.process(&mut binary.data)?;
+                }
+                binaries.0.push((binary.data, protected));
+            }
+            Ok((inner_stream, binaries))
+        },
+        |(_, binaries)| Some(format!("{} binaries", binaries.0.len())),
+    )?;
     let xml_bytes = &payload[cursor.position() as usize..];
-    let xml_str =
-        std::str::from_utf8(xml_bytes).map_err(|e| DatabaseError::InvalidFormat(e.to_string()))?;
-    let mut db = KdbxXmlReader::read_with_binaries(xml_str, inner_stream.as_mut(), &binaries.0)?;
+    diagnostics.write_xml(xml_bytes)?;
+    let mut db = diagnostics.run(
+        DiagnosticStage::XmlParse,
+        || {
+            let xml_str = std::str::from_utf8(xml_bytes)
+                .map_err(|e| DatabaseError::InvalidFormat(e.to_string()))?;
+            KdbxXmlReader::read_with_binaries(xml_str, inner_stream.as_mut(), &binaries.0)
+        },
+        |database| {
+            Some(format!(
+                "{} groups, {} entries",
+                database.groups.len(),
+                database.entries.len()
+            ))
+        },
+    )?;
     db.version = DatabaseVersion::KDBX4;
     db.file_version = header.version;
     db.encryption_algorithm = header.encryption_algorithm;

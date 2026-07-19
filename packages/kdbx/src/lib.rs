@@ -40,6 +40,11 @@ pub use crypto::{
 };
 
 // ─── Signatures & Variant Dictionary ─────────────────────────────────
+pub use kdbx::diagnostics::{
+    DatabaseDiagnosticSummary, DiagnosticFailure, DiagnosticOptions, DiagnosticReport,
+    DiagnosticStage, DiagnosticStageStatus, DiagnosticStep, DiagnosticSuccess, FormatDiagnostic,
+    KdfDiagnostic,
+};
 pub use kdbx::signature::{
     DigitalSignature, PublicKey, SignatureAlgorithm, SignatureStatus, SignatureVerifier,
 };
@@ -108,22 +113,76 @@ pub use kdbx::xml::{KdbxXmlReader, KdbxXmlWriter};
 /// let db = open_database(file, &key)?;
 /// println!("Opened {} entries", db.entry_count());
 /// ```
-pub fn open_database<R: std::io::Read>(
+pub fn open_database<R: std::io::Read>(reader: R, key: &CompositeKey) -> DatabaseResult<Database> {
+    let mut diagnostics = kdbx::diagnostics::DiagnosticContext::disabled();
+    open_database_internal(reader, key, &mut diagnostics, false)
+}
+
+/// Open a KDBX database and return a structured report even when opening fails.
+pub fn diagnose_database<R: std::io::Read>(
+    reader: R,
+    key: &CompositeKey,
+    options: DiagnosticOptions<'_>,
+) -> Result<DiagnosticSuccess, DiagnosticFailure> {
+    let mut diagnostics = kdbx::diagnostics::DiagnosticContext::enabled(options);
+    let result = open_database_internal(reader, key, &mut diagnostics, true);
+    match result {
+        Ok(database) => Ok(DiagnosticSuccess {
+            database,
+            report: diagnostics.into_report(),
+        }),
+        Err(error) => Err(DiagnosticFailure {
+            error: Box::new(error),
+            report: Box::new(diagnostics.into_report()),
+        }),
+    }
+}
+
+fn open_database_internal<R: std::io::Read>(
     mut reader: R,
     key: &CompositeKey,
+    diagnostics: &mut kdbx::diagnostics::DiagnosticContext<'_>,
+    kdbx_only: bool,
 ) -> DatabaseResult<Database> {
+    use kdbx::diagnostics::DiagnosticStage;
+    use kdbx::file::header::{KDBX_SIGNATURE_1, KDBX_SIGNATURE_2, KDB_SIGNATURE_2};
     use std::io::Read;
 
     // Read only the 12-byte signature once for version detection, then chain
     // it back in front of the original reader so format readers can re-consume
     // it themselves (each reader calls `detect_version` internally).
     let mut sig = [0u8; 12];
-    reader.read_exact(&mut sig)?;
+    diagnostics.run(
+        DiagnosticStage::Signature,
+        || {
+            reader.read_exact(&mut sig)?;
+            let sig1 = u32::from_le_bytes(sig[0..4].try_into().unwrap());
+            let sig2 = u32::from_le_bytes(sig[4..8].try_into().unwrap());
+            if sig1 != KDBX_SIGNATURE_1 || !matches!(sig2, KDBX_SIGNATURE_2 | KDB_SIGNATURE_2) {
+                return Err(DatabaseError::InvalidSignature(
+                    "Expected a KeePass KDBX/KDB signature".into(),
+                ));
+            }
+            Ok(())
+        },
+        |_| None,
+    )?;
 
-    let version = {
-        let mut sig_cursor = std::io::Cursor::new(&sig);
-        kdbx::file::reader::DatabaseReader::detect_version(&mut sig_cursor)?
-    };
+    let version = diagnostics.run(
+        DiagnosticStage::Version,
+        || {
+            let mut sig_cursor = std::io::Cursor::new(&sig);
+            kdbx::file::reader::DatabaseReader::detect_version(&mut sig_cursor)
+        },
+        |version| Some(format!("{version:?}")),
+    )?;
+    let raw_version = u32::from_le_bytes(sig[8..12].try_into().unwrap());
+    diagnostics.set_version(version, raw_version);
+    if kdbx_only && version == DatabaseVersion::KDB {
+        return Err(DatabaseError::Unsupported(
+            "kdbx-debug supports KDBX 3.1 and KDBX 4.x, not KDB v1".into(),
+        ));
+    }
 
     // Chain: [12-byte signature replay] ++ [rest of original stream].
     // The result is a single `Read` impl that yields the original byte stream
@@ -132,10 +191,26 @@ pub fn open_database<R: std::io::Read>(
 
     let mut database = match version {
         DatabaseVersion::KDB => kdbx::file::kdb_reader::read_kdb(&mut chained, key),
-        DatabaseVersion::KDBX31 => kdbx::file::kdbx31_reader::read_kdbx31(&mut chained, key),
-        DatabaseVersion::KDBX4 => kdbx::file::kdbx4_reader::read_kdbx4(&mut chained, key),
+        DatabaseVersion::KDBX31 => {
+            kdbx::file::kdbx31_reader::read_kdbx31_diagnostic(&mut chained, key, diagnostics)
+        }
+        DatabaseVersion::KDBX4 => {
+            kdbx::file::kdbx4_reader::read_kdbx4_diagnostic(&mut chained, key, diagnostics)
+        }
     }?;
-    database.seal_protected_strings(key)?;
+    if diagnostics.is_enabled() {
+        diagnostics.run(
+            DiagnosticStage::ModelValidation,
+            || database.validate(),
+            |_| None,
+        )?;
+    }
+    diagnostics.run(
+        DiagnosticStage::MemoryProtection,
+        || database.seal_protected_strings(key),
+        |_| None,
+    )?;
+    diagnostics.set_summary(&database);
     Ok(database)
 }
 

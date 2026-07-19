@@ -1,0 +1,19 @@
+[package]
+name = "keeless_kdbx_debug"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Diagnostic CLI for KDBX files"
+license = "MIT"
+
+[[bin]]
+name = "kdbx-debug"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+keeless_kdbx = { path = "../kdbx" }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = "1"

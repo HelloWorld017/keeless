@@ -1,7 +1,9 @@
 //! Composite key - combination of password, keyfile, and hardware key
 //!
 
+use base64::Engine;
 use keeless_secure_types::{SecureArray, SecureBytes};
+use quick_xml::events::Event;
 use zeroize::Zeroizing;
 
 use crate::crypto::HashEngine;
@@ -50,6 +52,32 @@ impl CompositeKey {
         }
         self.key_file_data = Some(SecureBytes::from_slice(key_file_data)?);
         Ok(self)
+    }
+
+    /// Add a KeePass key file, decoding standard XML and hex key-file formats.
+    ///
+    /// Arbitrary binary files retain KeePass's normal SHA-256 fallback through
+    /// [`Self::with_key_file`].
+    pub fn with_key_file_contents(self, contents: &[u8]) -> DatabaseResult<Self> {
+        if contents.len() == 32 {
+            return self.with_key_file(contents);
+        }
+
+        if let Some(decoded) = decode_hex_key(contents) {
+            return self.with_key_file(&decoded);
+        }
+
+        if contents
+            .iter()
+            .copied()
+            .find(|byte| !byte.is_ascii_whitespace())
+            == Some(b'<')
+        {
+            let decoded = Zeroizing::new(decode_xml_key_file(contents)?);
+            return self.with_key_file(decoded.as_slice());
+        }
+
+        self.with_key_file(contents)
     }
 
     pub fn with_hardware_key(mut self, key: &[u8]) -> DatabaseResult<Self> {
@@ -107,6 +135,143 @@ impl CompositeKey {
         let mut raw_key = HashEngine::sha256(&combined);
         Ok(SecureArray::from_array_mut(&mut raw_key)?)
     }
+}
+
+fn decode_xml_key_file(contents: &[u8]) -> DatabaseResult<Vec<u8>> {
+    let mut reader = quick_xml::Reader::from_reader(contents);
+    reader.config_mut().trim_text(true);
+    let mut buffer = Vec::new();
+    let mut in_data = false;
+    let mut encoded = String::new();
+    let mut expected_hash = None;
+
+    loop {
+        buffer.clear();
+        match reader.read_event_into(&mut buffer) {
+            Ok(Event::Start(start)) if start.name().as_ref() == b"Data" => {
+                if in_data || !encoded.is_empty() {
+                    return Err(DatabaseError::InvalidFormat(
+                        "KeePass key file contains duplicate Data elements".into(),
+                    ));
+                }
+                in_data = true;
+                for attribute in start.attributes() {
+                    let attribute = attribute.map_err(|error| {
+                        DatabaseError::InvalidFormat(format!(
+                            "Invalid KeePass key-file attribute: {error}"
+                        ))
+                    })?;
+                    if attribute.key.as_ref() == b"Hash" {
+                        expected_hash = Some(
+                            std::str::from_utf8(attribute.value.as_ref())
+                                .map_err(|error| {
+                                    DatabaseError::InvalidFormat(format!(
+                                        "Invalid KeePass key-file hash: {error}"
+                                    ))
+                                })?
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+            Ok(Event::Text(text)) if in_data => {
+                encoded.push_str(&text.unescape().map_err(|error| {
+                    DatabaseError::InvalidFormat(format!("Invalid KeePass key-file data: {error}"))
+                })?);
+            }
+            Ok(Event::CData(data)) if in_data => {
+                encoded.push_str(std::str::from_utf8(data.as_ref()).map_err(|error| {
+                    DatabaseError::InvalidFormat(format!("Invalid KeePass key-file data: {error}"))
+                })?);
+            }
+            Ok(Event::End(end)) if end.name().as_ref() == b"Data" => {
+                in_data = false;
+            }
+            Ok(Event::DocType(_)) => {
+                return Err(DatabaseError::InvalidFormat(
+                    "DTD is not allowed in a KeePass key file".into(),
+                ));
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(error) => {
+                return Err(DatabaseError::InvalidFormat(format!(
+                    "Malformed KeePass key file: {error}"
+                )));
+            }
+        }
+    }
+
+    if in_data || encoded.is_empty() {
+        return Err(DatabaseError::InvalidFormat(
+            "KeePass key file has no complete Data element".into(),
+        ));
+    }
+
+    let compact: String = encoded
+        .chars()
+        .filter(|char| !char.is_whitespace())
+        .collect();
+    let decoded = if expected_hash.is_some() {
+        decode_hex(&compact).ok_or_else(|| {
+            DatabaseError::InvalidFormat("KeePass XML v2 key data is not valid hex".into())
+        })?
+    } else {
+        base64::engine::general_purpose::STANDARD
+            .decode(&compact)
+            .map_err(|error| {
+                DatabaseError::InvalidFormat(format!(
+                    "KeePass XML v1 key data is not valid base64: {error}"
+                ))
+            })?
+    };
+    if decoded.len() != 32 {
+        return Err(DatabaseError::InvalidFormat(format!(
+            "KeePass key data must be 32 bytes, got {}",
+            decoded.len()
+        )));
+    }
+
+    if let Some(expected_hash) = expected_hash {
+        let expected = decode_hex(expected_hash.trim()).ok_or_else(|| {
+            DatabaseError::InvalidFormat("KeePass key-file Hash is not valid hex".into())
+        })?;
+        let actual = HashEngine::sha256(&decoded);
+        if expected.as_slice() != &actual[..expected.len().min(actual.len())]
+            || expected.is_empty()
+            || expected.len() > actual.len()
+        {
+            return Err(DatabaseError::IntegrityError(
+                "KeePass key-file hash mismatch".into(),
+            ));
+        }
+    }
+
+    Ok(decoded)
+}
+
+fn decode_hex_key(contents: &[u8]) -> Option<Vec<u8>> {
+    let text = std::str::from_utf8(contents).ok()?.trim();
+    if text.len() != 64 {
+        return None;
+    }
+    let decoded = decode_hex(text)?;
+    (decoded.len() == 32).then_some(decoded)
+}
+
+fn decode_hex(value: &str) -> Option<Vec<u8>> {
+    if value.len() % 2 != 0 {
+        return None;
+    }
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let high = (pair[0] as char).to_digit(16)?;
+            let low = (pair[1] as char).to_digit(16)?;
+            Some(((high << 4) | low) as u8)
+        })
+        .collect()
 }
 
 impl std::fmt::Debug for CompositeKey {
@@ -204,6 +369,50 @@ mod tests {
             .unlock(|left| raw2.unlock(|right| left == right))
             .unwrap()
             .unwrap());
+    }
+
+    #[test]
+    fn standard_key_file_formats_produce_the_same_component() {
+        let key_bytes = [0x42; 32];
+        let hex = "42".repeat(32);
+        let xml_v1 = format!(
+            "<KeyFile><Meta><Version>1.00</Version></Meta><Key><Data>{}</Data></Key></KeyFile>",
+            base64::engine::general_purpose::STANDARD.encode(key_bytes)
+        );
+        let hash = HashEngine::sha256(&key_bytes);
+        let hash_prefix: String = hash[..4].iter().map(|byte| format!("{byte:02X}")).collect();
+        let xml_v2 = format!(
+            "<KeyFile><Meta><Version>2.0</Version></Meta><Key><Data Hash=\"{hash_prefix}\">{hex}</Data></Key></KeyFile>"
+        );
+
+        let expected = CompositeKey::new()
+            .with_key_file(&key_bytes)
+            .unwrap()
+            .build_raw_key()
+            .unwrap();
+        for contents in [hex.as_bytes(), xml_v1.as_bytes(), xml_v2.as_bytes()] {
+            let actual = CompositeKey::new()
+                .with_key_file_contents(contents)
+                .unwrap()
+                .build_raw_key()
+                .unwrap();
+            assert!(expected
+                .unlock(|left| actual.unlock(|right| left == right))
+                .unwrap()
+                .unwrap());
+        }
+    }
+
+    #[test]
+    fn xml_v2_key_file_rejects_bad_hash() {
+        let xml = format!(
+            "<KeyFile><Key><Data Hash=\"00000000\">{}</Data></Key></KeyFile>",
+            "42".repeat(32)
+        );
+        assert!(matches!(
+            CompositeKey::new().with_key_file_contents(xml.as_bytes()),
+            Err(DatabaseError::IntegrityError(_))
+        ));
     }
 
     #[test]

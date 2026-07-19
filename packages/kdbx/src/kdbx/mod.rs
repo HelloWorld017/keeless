@@ -1,5 +1,6 @@
 //! KDBX-specific modules: file I/O, KDF engines, merge, queries, repair, fuzz testing, stream processing, XML serialization, signatures, and variant dictionary.
 
+pub mod diagnostics;
 pub mod file;
 pub mod fuzz;
 pub mod kdf;

@@ -38,3 +38,7 @@ let database = open_database(std::fs::File::open("database.kdbx")?, &key)?;
 save_database(&mut std::fs::File::create("output.kdbx")?, &database, &key)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+Use `diagnose_database` when callers need structured per-stage failure details.
+The `kdbx-debug` workspace package provides a human-readable and JSON CLI on
+top of this API.
