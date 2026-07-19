@@ -36,6 +36,7 @@ fn generate() -> String {
     export::<UnlockArgs>(&mut output);
     export_empty("LockArgs", &mut output);
     export_empty("GetDatabaseStatusArgs", &mut output);
+    export_empty("GetStorageDescriptorArgs", &mut output);
     export_empty("GetConfigArgs", &mut output);
     export::<SetConfigArgs>(&mut output);
     export_empty("GetEntriesArgs", &mut output);
@@ -44,10 +45,12 @@ fn generate() -> String {
     export_empty("GetTagsArgs", &mut output);
     export::<GetEntryDetailArgs>(&mut output);
     export_empty("GetCustomIconsArgs", &mut output);
+    export::<MoveGroupArgs>(&mut output);
     export::<Operation>(&mut output);
     export::<OperationRequest>(&mut output);
     export_empty("EmptyResult", &mut output);
     export::<DatabaseStatusResult>(&mut output);
+    export::<StorageDescriptorResult>(&mut output);
     export::<ConfigResult>(&mut output);
     export::<EntriesResult>(&mut output);
     export::<GroupHierarchyResult>(&mut output);

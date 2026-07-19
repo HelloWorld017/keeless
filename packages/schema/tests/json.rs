@@ -110,6 +110,54 @@ fn create_request_and_response_have_stable_shapes() {
 }
 
 #[test]
+fn storage_descriptor_operation_supports_unselected_and_selected_storage() {
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "storage-1".into(),
+            operation: Operation::GetStorageDescriptor(GetStorageDescriptorArgs {}),
+        },
+        json!({ "requestId": "storage-1", "op": "getStorageDescriptor", "args": {} }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "storage-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::GetStorageDescriptor(StorageDescriptorResult {
+                    storage: None,
+                }),
+            },
+        },
+        json!({
+            "requestId": "storage-1",
+            "status": "success",
+            "op": "getStorageDescriptor",
+            "result": { "storage": null }
+        }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "storage-2".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::GetStorageDescriptor(StorageDescriptorResult {
+                    storage: Some(StorageDescriptor {
+                        provider: "webdav".into(),
+                        path: "vault.kdbx".into(),
+                    }),
+                }),
+            },
+        },
+        json!({
+            "requestId": "storage-2",
+            "status": "success",
+            "op": "getStorageDescriptor",
+            "result": {
+                "storage": { "provider": "webdav", "path": "vault.kdbx" }
+            }
+        }),
+    );
+}
+
+#[test]
 fn database_query_requests_support_uuid_and_integer_node_ids() {
     assert_roundtrip(
         OperationRequest {
@@ -135,6 +183,21 @@ fn database_query_requests_support_uuid_and_integer_node_ids() {
             "requestId": "entry-1",
             "op": "getEntryDetail",
             "args": { "entryId": 42 }
+        }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "move-1".into(),
+            operation: Operation::MoveGroup(MoveGroupArgs {
+                group_id: DatabaseNodeId::Int(42),
+                parent_group_id: DatabaseNodeId::Int(7),
+                destination_index: 2,
+            }),
+        },
+        json!({
+            "requestId": "move-1",
+            "op": "moveGroup",
+            "args": { "groupId": 42, "parentGroupId": 7, "destinationIndex": 2 }
         }),
     );
 }
@@ -264,6 +327,7 @@ fn required_nullable_and_empty_types_reject_ambiguous_shapes() {
     });
     assert!(serde_json::from_value::<MessageFrame>(missing_ephemeral).is_err());
     assert!(serde_json::from_value::<LockArgs>(json!({ "ignored": true })).is_err());
+    assert!(serde_json::from_value::<StorageDescriptorResult>(json!({})).is_err());
 }
 
 #[test]
@@ -306,7 +370,7 @@ fn all_request_and_success_variants_have_explicit_empty_objects() {
         assert_eq!(serde_json::to_value(parsed).unwrap(), value);
     }
 
-    for operation in ["open", "create", "unlock", "lock", "setConfig"] {
+    for operation in ["open", "create", "unlock", "lock", "setConfig", "moveGroup"] {
         let value = json!({ "requestId": "5", "status": "success", "op": operation, "result": {} });
         let parsed: OperationResponse = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(parsed).unwrap(), value);

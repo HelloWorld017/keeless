@@ -167,6 +167,10 @@ pub struct GetDatabaseStatusArgs {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
+pub struct GetStorageDescriptorArgs {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
 pub struct GetConfigArgs {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -203,6 +207,14 @@ pub struct GetEntryDetailArgs {
 #[serde(deny_unknown_fields)]
 pub struct GetCustomIconsArgs {}
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MoveGroupArgs {
+    pub group_id: DatabaseNodeId,
+    pub parent_group_id: DatabaseNodeId,
+    pub destination_index: u64,
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "args", rename_all = "camelCase")]
 pub enum Operation {
@@ -211,6 +223,7 @@ pub enum Operation {
     Unlock(UnlockArgs),
     Lock(LockArgs),
     GetDatabaseStatus(GetDatabaseStatusArgs),
+    GetStorageDescriptor(GetStorageDescriptorArgs),
     GetConfig(GetConfigArgs),
     SetConfig(SetConfigArgs),
     GetEntries(GetEntriesArgs),
@@ -219,6 +232,7 @@ pub enum Operation {
     GetTags(GetTagsArgs),
     GetEntryDetail(GetEntryDetailArgs),
     GetCustomIcons(GetCustomIconsArgs),
+    MoveGroup(MoveGroupArgs),
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -241,6 +255,13 @@ pub struct DatabaseStatusResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub struct StorageDescriptorResult {
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub storage: Option<StorageDescriptor>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct ConfigResult {
     pub config: KeelessConfig,
 }
@@ -254,7 +275,10 @@ pub struct EntriesResult {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupHierarchyResult {
+    pub database_name: String,
     pub root_group_id: DatabaseNodeId,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub recycle_bin_id: Option<DatabaseNodeId>,
     pub groups: Vec<GroupHierarchyItem>,
 }
 
@@ -303,6 +327,7 @@ pub enum OperationSuccess {
     Unlock(EmptyResult),
     Lock(EmptyResult),
     GetDatabaseStatus(DatabaseStatusResult),
+    GetStorageDescriptor(StorageDescriptorResult),
     GetConfig(ConfigResult),
     SetConfig(EmptyResult),
     GetEntries(EntriesResult),
@@ -311,6 +336,7 @@ pub enum OperationSuccess {
     GetTags(TagsResult),
     GetEntryDetail(Box<EntryDetailResult>),
     GetCustomIcons(CustomIconsResult),
+    MoveGroup(EmptyResult),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

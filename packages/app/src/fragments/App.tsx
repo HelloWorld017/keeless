@@ -12,6 +12,9 @@ import type { ReactNode } from 'react';
 export const App = () => (
   <Switch>
     <Route path={getRoute('open')} component={OpenFragment} />
+    <Route path={getRoute('group')} component={DatabaseFragment} />
+    <Route path={getRoute('tag')} component={DatabaseFragment} />
+    <Route path={getRoute('trash')} component={DatabaseFragment} />
     <Route path={getRoute('database')} component={DatabaseFragment} />
     <Redirect to={getRoute('open')} replace />
   </Switch>

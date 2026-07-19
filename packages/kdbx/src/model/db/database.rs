@@ -20,6 +20,7 @@ use crate::kdbx::file::header::{FILE_VERSION_31, FILE_VERSION_4};
 use crate::kdbx::kdf::argon2_kdf::Argon2Kdf;
 use crate::kdbx::kdf::kdf_engine::KdfEngine;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
+use crate::model::core::date::DateInstant;
 use crate::model::core::node::NodeId;
 use crate::model::core::security::MemoryProtectionConfig;
 use crate::model::db::composite_key::CompositeKey;
@@ -474,6 +475,54 @@ impl Database {
         }
         self.mark_modified();
         self.groups.get(group_id).cloned()
+    }
+
+    /// Move a group to a parent and place it at the requested final child index.
+    /// Root and recycle-bin groups cannot be moved, and cycles are rejected.
+    pub fn reposition_group(
+        &mut self,
+        group_id: &NodeId,
+        new_parent_id: &NodeId,
+        destination_index: usize,
+    ) -> bool {
+        if self.root_group_id == Some(*group_id)
+            || self.is_recycle_bin(group_id)
+            || self.is_recycle_bin(new_parent_id)
+            || group_id == new_parent_id
+            || !self.groups.contains_key(group_id)
+            || !self.groups.contains_key(new_parent_id)
+            || self
+                .collect_descendant_groups(group_id)
+                .contains(new_parent_id)
+        {
+            return false;
+        }
+
+        let Some(old_parent_id) = self.find_parent_group_of_group(group_id) else {
+            return false;
+        };
+        let destination_len = self
+            .groups
+            .get(new_parent_id)
+            .map(|parent| {
+                parent.child_group_ids.len() - usize::from(old_parent_id == *new_parent_id)
+            })
+            .unwrap_or_default();
+        if destination_index > destination_len {
+            return false;
+        }
+
+        if let Some(parent) = self.groups.get_mut(&old_parent_id) {
+            parent.child_group_ids.retain(|id| id != group_id);
+        }
+        if let Some(parent) = self.groups.get_mut(new_parent_id) {
+            parent.child_group_ids.insert(destination_index, *group_id);
+        }
+        if let Some(group) = self.groups.get_mut(group_id) {
+            group.location_changed = DateInstant::now();
+        }
+        self.mark_modified();
+        true
     }
 
     // ─── Recycle Bin ───

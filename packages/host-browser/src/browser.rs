@@ -34,7 +34,7 @@ impl BrowserCore {
         let idb = IndexedDb::open().await?;
         let mut storage_providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
         storage_providers.insert(
-            "idb".into(),
+            "indexeddb".into(),
             Arc::new(IndexedDbStorage { idb: idb.clone() }),
         );
         let host = KeelessHost {

@@ -158,6 +158,66 @@ fn test_add_group() {
 }
 
 #[test]
+fn test_reposition_group_changes_parent_and_order() {
+    let mut db = make_test_db();
+    let root_id = db.root_group_id.unwrap();
+    let first_id = NodeId::new_uuid();
+    let second_id = NodeId::new_uuid();
+    let nested_id = NodeId::new_uuid();
+
+    db.add_group(Group::new(first_id), &root_id);
+    db.add_group(Group::new(second_id), &root_id);
+    db.add_group(Group::new(nested_id), &first_id);
+    db.get_group_mut(&nested_id).unwrap().location_changed = DateInstant::EpochMillis(0);
+
+    assert!(db.reposition_group(&second_id, &root_id, 0));
+    assert_eq!(
+        db.get_group(&root_id).unwrap().child_group_ids,
+        vec![second_id, first_id]
+    );
+
+    assert!(db.reposition_group(&nested_id, &root_id, 1));
+    assert!(db.get_group(&first_id).unwrap().child_group_ids.is_empty());
+    assert_eq!(
+        db.get_group(&root_id).unwrap().child_group_ids,
+        vec![second_id, nested_id, first_id]
+    );
+    assert!(db
+        .get_group(&nested_id)
+        .unwrap()
+        .location_changed
+        .as_millis()
+        .is_some_and(|value| value > 0));
+    assert!(db.data_modified);
+}
+
+#[test]
+fn test_reposition_group_rejects_invalid_hierarchy_changes() {
+    let mut db = make_test_db();
+    let root_id = db.root_group_id.unwrap();
+    let parent_id = NodeId::new_uuid();
+    let child_id = NodeId::new_uuid();
+    db.add_group(Group::new(parent_id), &root_id);
+    db.add_group(Group::new(child_id), &parent_id);
+    let recycle_id = db.create_recycle_bin();
+
+    assert!(!db.reposition_group(&root_id, &parent_id, 0));
+    assert!(!db.reposition_group(&parent_id, &child_id, 0));
+    assert!(!db.reposition_group(&parent_id, &parent_id, 0));
+    assert!(!db.reposition_group(&parent_id, &recycle_id, 0));
+    assert!(!db.reposition_group(&recycle_id, &root_id, 0));
+    assert!(!db.reposition_group(&parent_id, &root_id, 3));
+    assert_eq!(
+        db.get_group(&root_id).unwrap().child_group_ids,
+        vec![parent_id, recycle_id]
+    );
+    assert_eq!(
+        db.get_group(&parent_id).unwrap().child_group_ids,
+        vec![child_id]
+    );
+}
+
+#[test]
 fn test_remove_group() {
     let mut db = make_test_db();
     let root_id = db.root_group_id.unwrap();

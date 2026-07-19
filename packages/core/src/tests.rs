@@ -11,8 +11,8 @@ use keeless_kdbx::{
 };
 use keeless_schema::{
     DatabaseNodeId, DatabaseStatusResult, GetDatabaseStatusArgs, GetEntryDetailArgs,
-    GetGroupEntriesArgs, Operation, OperationOutcome, OperationRequest, OperationResponse,
-    OperationSuccess,
+    GetGroupEntriesArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
+    OperationResponse, OperationSuccess,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -203,6 +203,7 @@ fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
     let nested_entry_id = NodeId::from_uuid(ids.nested_entry);
 
     let mut database = Database::new(DatabaseVersion::KDBX4);
+    database.name = "Test Database".into();
     let mut root = Group::new(root_group_id);
     root.title = "Root".into();
     root.child_group_ids.push(child_group_id);
@@ -458,15 +459,18 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         operations::get_database_status::run(&mut core),
         DatabaseStatus::NotExist
     );
-    operations::open::run(
-        &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
-        },
-    )
-    .await
-    .unwrap();
+    assert_eq!(operations::get_storage_descriptor::run(&mut core), None);
+    let descriptor = StorageDescriptor {
+        provider: "memory".into(),
+        path: "vault.kdbx".into(),
+    };
+    operations::open::run(&mut core, descriptor.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        operations::get_storage_descriptor::run(&mut core),
+        Some(descriptor)
+    );
     assert_eq!(
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Locked
@@ -774,6 +778,8 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
     assert!(!root_entry.url_is_protected);
 
     let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
+    assert_eq!(hierarchy.database_name, "Test Database");
+    assert_eq!(hierarchy.recycle_bin_id, None);
     assert_eq!(hierarchy.root_group_id, schema_id(ids.root_group));
     assert_eq!(
         hierarchy
@@ -830,6 +836,54 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
     assert_eq!(icons.icons[0].data_base64, "AQID");
     assert_eq!(icons.icons[0].name, "Custom");
     assert_eq!(icons.icons[0].last_modification_time_ms, 1_700_000_000_000);
+}
+
+#[tokio::test]
+async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
+    let (mut core, ids) = query_core().await;
+
+    operations::move_group::run(
+        &mut core,
+        MoveGroupArgs {
+            group_id: schema_id(ids.nested_group),
+            parent_group_id: schema_id(ids.root_group),
+            destination_index: 0,
+        },
+    )
+    .unwrap();
+    let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
+    let root = hierarchy
+        .groups
+        .iter()
+        .find(|group| group.id == schema_id(ids.root_group))
+        .unwrap();
+    assert_eq!(
+        root.child_group_ids,
+        vec![schema_id(ids.nested_group), schema_id(ids.child_group)]
+    );
+
+    assert!(matches!(
+        operations::move_group::run(
+            &mut core,
+            MoveGroupArgs {
+                group_id: schema_id(ids.child_group),
+                parent_group_id: schema_id(ids.child_group),
+                destination_index: 0,
+            },
+        ),
+        Err(CoreError::InvalidGroupMove)
+    ));
+    assert!(matches!(
+        operations::move_group::run(
+            &mut core,
+            MoveGroupArgs {
+                group_id: schema_id(ids.root_group),
+                parent_group_id: schema_id(ids.child_group),
+                destination_index: 0,
+            },
+        ),
+        Err(CoreError::InvalidGroupMove)
+    ));
 }
 
 #[tokio::test]

@@ -10,6 +10,7 @@ export const RouteMap = {
   database: '/',
   group: '/group/:group',
   tag: '/tag/:tag',
+  trash: '/trash',
   config: '/config',
   open: '/open',
 } as const;
@@ -33,7 +34,7 @@ export const buildRoute = <TKind extends RouteKind>(
   }
 
   return Object.entries<string>(params).reduce(
-    (route, [key, value]) => route.replace(`:${key}`, value),
+    (route, [key, value]) => route.replace(`:${key}`, encodeURIComponent(value)),
     baseRoute,
   );
 };

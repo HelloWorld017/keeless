@@ -53,7 +53,7 @@ export const createBrowserHost = (): Host => {
     },
     configureStorage: async input => {
       if (input.kind === 'indexeddb') {
-        return { provider: 'idb', path: 'keeless.kdbx' };
+        return { provider: 'indexeddb', path: 'keeless.kdbx' };
       }
       await requireCore().configureWebDav(input.url, input.username, input.password);
       return {

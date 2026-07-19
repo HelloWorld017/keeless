@@ -162,6 +162,7 @@ impl KeelessCore {
         self.storage_providers.insert(name.into(), provider);
     }
 
+    // FIXME ai slop, lock with own ticking, not from each methods
     fn enforce_auto_lock(&mut self) {
         let Some(timeout) = self.settings.auto_lock_timeout_ms else {
             return;

@@ -1,4 +1,20 @@
-import { AlertCircleIcon, ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon, CloudIcon, DatabaseZapIcon, LoaderCircleIcon } from 'lucide-react';
+import {
+  AlertCircleIcon,
+  ArrowRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloudIcon,
+  DatabaseIcon,
+  DatabaseZapIcon,
+  FolderIcon,
+  GripVerticalIcon,
+  ListIcon,
+  LoaderCircleIcon,
+  PanelLeftIcon,
+  TagIcon,
+  Trash2Icon,
+  XIcon,
+} from 'lucide-react';
 import type { ComponentType } from 'react';
 
 const wrapLucideComponent = <TProps,>(LucideIcon: ComponentType<TProps>) => {
@@ -17,5 +33,13 @@ export const IconArrowRight = wrapLucideComponent(ArrowRightIcon);
 export const IconChevronLeft = wrapLucideComponent(ChevronLeftIcon);
 export const IconChevronRight = wrapLucideComponent(ChevronRightIcon);
 export const IconCloud = wrapLucideComponent(CloudIcon);
+export const IconDatabase = wrapLucideComponent(DatabaseIcon);
 export const IconDatabaseZap = wrapLucideComponent(DatabaseZapIcon);
+export const IconFolder = wrapLucideComponent(FolderIcon);
+export const IconGripVertical = wrapLucideComponent(GripVerticalIcon);
+export const IconList = wrapLucideComponent(ListIcon);
 export const IconLoaderCircle = wrapLucideComponent(LoaderCircleIcon);
+export const IconPanelLeft = wrapLucideComponent(PanelLeftIcon);
+export const IconTag = wrapLucideComponent(TagIcon);
+export const IconTrash = wrapLucideComponent(Trash2Icon);
+export const IconX = wrapLucideComponent(XIcon);

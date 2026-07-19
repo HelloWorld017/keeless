@@ -168,7 +168,12 @@ pub(super) fn group_hierarchy(database: &Database) -> Result<GroupHierarchyResul
     }
 
     Ok(GroupHierarchyResult {
+        database_name: database.name.clone(),
         root_group_id: node_id(root_group_id),
+        recycle_bin_id: database
+            .recycle_bin_uuid
+            .map(NodeId::from_uuid)
+            .map(node_id),
         groups,
     })
 }
