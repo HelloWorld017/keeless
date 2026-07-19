@@ -4,11 +4,12 @@ use futures::lock::Mutex;
 use keeless_core::{ClientApprovalProvider, HostFuture, KeelessCore, KeelessHost, StorageProvider};
 use keeless_sync::{WebDavAuth, WebDavProvider};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+use web_sys::{File, FileSystemFileHandle};
 
 use crate::{
     clock::BrowserClock,
     config::BrowserConfig,
-    storages::indexeddb::IndexedDbStorage,
+    storages::{indexeddb::IndexedDbStorage, local_file::LocalFileStorage},
     utils::indexeddb::{IndexedDb, js_error},
 };
 
@@ -73,6 +74,19 @@ impl BrowserCore {
             .lock()
             .await
             .register_storage_provider("webdav", Arc::new(provider));
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = configureLocalFile)]
+    pub async fn configure_local_file(
+        &self,
+        file: File,
+        handle: Option<FileSystemFileHandle>,
+    ) -> Result<(), JsValue> {
+        self.core
+            .lock()
+            .await
+            .register_storage_provider("local-file", Arc::new(LocalFileStorage { file, handle }));
         Ok(())
     }
 }

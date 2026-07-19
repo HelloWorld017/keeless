@@ -1287,6 +1287,7 @@ dependencies = [
  "keeless_core",
  "keeless_sync",
  "rexie",
+ "sha2 0.10.9",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

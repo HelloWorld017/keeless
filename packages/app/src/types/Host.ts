@@ -1,26 +1,38 @@
 import type { MessageFrame, StorageDescriptor } from '@keeless/schema';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 export type HostKind = 'desktop' | 'extension' | 'browser';
-export type HostStorageKind = 'indexeddb' | 'webdav';
+
+export type StorageDescriptorGetter = () => StorageDescriptor | Promise<StorageDescriptor>;
+
+export type StorageSetupComponentProps = {
+  isPending: boolean;
+  error?: string;
+  onBack: () => void;
+  onOpen: (getDescriptor: StorageDescriptorGetter) => Promise<void>;
+};
+
+export type HostStorageSetup =
+  | {
+      title?: string;
+      description?: string;
+      component: ComponentType<StorageSetupComponentProps>;
+      getDefaultDescriptor?: never;
+    }
+  | {
+      title?: string;
+      description?: string;
+      component: null;
+      getDefaultDescriptor: StorageDescriptorGetter;
+    };
 
 export type HostStorage = {
-  kind: HostStorageKind;
+  kind: string;
   icon: ReactNode;
   label: string;
   description: string;
-  requiresDetails: boolean;
+  setup: HostStorageSetup;
 };
-
-export type HostStorageInput =
-  | { kind: 'indexeddb' }
-  | {
-      kind: 'webdav';
-      url: string;
-      username: string;
-      password: string;
-      path?: string;
-    };
 
 export interface Host {
   readonly id: string;
@@ -29,6 +41,5 @@ export interface Host {
   readonly storages: readonly HostStorage[];
   isAvailable(): Promise<boolean>;
   connect(defaultApprovedBundle: string): Promise<void>;
-  configureStorage(input: HostStorageInput): Promise<StorageDescriptor>;
   send(frame: MessageFrame): Promise<MessageFrame | null>;
 }

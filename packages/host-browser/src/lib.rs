@@ -7,7 +7,7 @@ fn database_path(path: &str) -> Result<String, &'static str> {
         .filter(|segment| !segment.is_empty())
         .collect();
     if segments.is_empty() {
-        return Err("IndexedDB path must not be empty");
+        return Ok("keeless.kdbx".into());
     }
     if segments
         .iter()
@@ -58,7 +58,7 @@ mod tests {
             database_path("databases/vault.kdbx"),
             Ok("databases/vault.kdbx".into())
         );
-        assert!(database_path("").is_err());
+        assert_eq!(database_path(""), Ok("keeless.kdbx".into()));
         assert!(database_path("../vault.kdbx").is_err());
     }
 

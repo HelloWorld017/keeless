@@ -14,15 +14,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
 import { CreateStep } from './_components/CreateStep';
-import { DetailsStep } from './_components/DetailsStep';
 import { SelectStep } from './_components/SelectStep';
+import { SetupLayout } from './_components/SetupLayout';
 import { UnlockStep } from './_components/UnlockStep';
 import type { PasswordInputMode } from '@/types/AppIntegration';
-import type { HostStorage, HostStorageInput } from '@/types/Host';
+import type { HostStorage, StorageDescriptorGetter } from '@/types/Host';
 import type { DatabaseStatus } from '@keeless/schema';
 import type { SubmitEvent } from 'react';
 
-type SetupStep = 'select' | 'details' | 'create' | 'unlock' | 'checking';
+type SetupStep = 'select' | 'storage' | 'create' | 'unlock' | 'checking';
 
 const errorMessage = (error: unknown) => {
   if (error instanceof CoreRequestError) {
@@ -38,11 +38,6 @@ const errorMessage = (error: unknown) => {
     }
   }
   return error instanceof Error ? error.message : 'An unexpected error occurred.';
-};
-
-const formString = (data: FormData, name: string) => {
-  const value = data.get(name);
-  return typeof value === 'string' ? value : '';
 };
 
 const OpenFragmentContents = () => {
@@ -105,22 +100,15 @@ const OpenFragmentContents = () => {
     setStep(status === 'locked' ? 'unlock' : 'create');
   };
 
-  const openStorage = async (input: HostStorageInput) => {
-    if (!host || !requestClient.data || operationPendingRef.current) {
+  const openStorage = async (getDescriptor: StorageDescriptorGetter) => {
+    if (!requestClient.data || operationPendingRef.current) {
       return;
     }
     operationPendingRef.current = true;
     setIsPending(true);
     setError(undefined);
     try {
-      let descriptor;
-      try {
-        descriptor = await host.configureStorage(input);
-      } finally {
-        if (input.kind === 'webdav') {
-          input.password = '';
-        }
-      }
+      const descriptor = await getDescriptor();
       await requestClient.data.request('open', { storage: descriptor });
       const { status } = await requestClient.data.request('getDatabaseStatus', {});
       moveFromStatus(status);
@@ -135,29 +123,11 @@ const OpenFragmentContents = () => {
   const chooseStorage = (nextStorage: HostStorage) => {
     setStorage(nextStorage);
     setError(undefined);
-    if (nextStorage.requiresDetails) {
-      setStep('details');
+    if (nextStorage.setup.component) {
+      setStep('storage');
       return;
     }
-    void openStorage({ kind: nextStorage.kind } as HostStorageInput);
-  };
-
-  const submitWebDav = (event: SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const passwordInput = form.elements.namedItem('password');
-    const input: HostStorageInput = {
-      kind: 'webdav',
-      url: formString(data, 'url').trim(),
-      username: formString(data, 'username').trim(),
-      password: formString(data, 'password'),
-      path: formString(data, 'path').trim(),
-    };
-    if (passwordInput instanceof HTMLInputElement) {
-      passwordInput.value = '';
-    }
-    void openStorage(input);
+    void openStorage(nextStorage.setup.getDefaultDescriptor);
   };
 
   const requestPassword = async (
@@ -241,17 +211,23 @@ const OpenFragmentContents = () => {
     );
   }
 
-  if (step === 'details') {
+  if (step === 'storage' && storage?.setup.component) {
+    const StorageSetup = storage.setup.component;
     return (
-      <DetailsStep
-        isPending={isPending}
-        error={error}
-        onSubmit={submitWebDav}
-        onBack={() => {
-          setError(undefined);
-          setStep('select');
-        }}
-      />
+      <SetupLayout
+        title={storage.setup.title ?? storage.label}
+        description={storage.setup.description ?? storage.description}
+      >
+        <StorageSetup
+          isPending={isPending}
+          error={error}
+          onOpen={openStorage}
+          onBack={() => {
+            setError(undefined);
+            setStep('select');
+          }}
+        />
+      </SetupLayout>
     );
   }
 
@@ -302,12 +278,19 @@ const OpenFragmentContents = () => {
 };
 
 export const OpenFragment = () => (
-  <div className='flex h-dvh items-center' style={{ '--primary': '#ffffff', '--primary-foreground': '#000000' }}>
-    <div className='flex-[0_0_auto] max-w-200 w-full'>
+  <div
+    className="flex h-dvh items-center"
+    style={{ '--primary': '#ffffff', '--primary-foreground': '#000000' }}
+  >
+    <div className="flex-[0_0_auto] max-w-200 w-full">
       <OpenFragmentContents />
     </div>
-    <div className='p-6 flex-[1_1_0] self-stretch'>
-      <img src={BackgroundImage} className='w-full h-full grayscale object-cover rounded-[30px]' />
+    <div className="p-6 flex-[1_1_0] self-stretch">
+      <img
+        src={BackgroundImage}
+        alt=""
+        className="w-full h-full grayscale object-cover rounded-[30px]"
+      />
     </div>
   </div>
 );

@@ -6,6 +6,7 @@ import {
   CloudIcon,
   DatabaseIcon,
   DatabaseZapIcon,
+  FileIcon,
   FolderIcon,
   GripVerticalIcon,
   ListIcon,
@@ -35,6 +36,7 @@ export const IconChevronRight = wrapLucideComponent(ChevronRightIcon);
 export const IconCloud = wrapLucideComponent(CloudIcon);
 export const IconDatabase = wrapLucideComponent(DatabaseIcon);
 export const IconDatabaseZap = wrapLucideComponent(DatabaseZapIcon);
+export const IconFile = wrapLucideComponent(FileIcon);
 export const IconFolder = wrapLucideComponent(FolderIcon);
 export const IconGripVertical = wrapLucideComponent(GripVerticalIcon);
 export const IconList = wrapLucideComponent(ListIcon);

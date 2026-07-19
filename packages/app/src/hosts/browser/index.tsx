@@ -1,27 +1,12 @@
-import { IconCloud, IconDatabaseZap } from '@/icons';
+import { IconCloud, IconDatabaseZap, IconFile } from '@/icons';
+import { LocalFileSetup } from './_components/LocalFileSetup';
+import { WebDavSetup } from './_components/WebDavSetup';
 import type { Host, HostStorage } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';
 import type { MessageFrame } from '@keeless/schema';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder(undefined, { fatal: true });
-const storages: readonly HostStorage[] = [
-  {
-    kind: 'indexeddb',
-    label: 'IndexedDB',
-    description: 'Store the database in this browser.',
-    requiresDetails: false,
-    icon: <IconDatabaseZap />
-  },
-  {
-    kind: 'webdav',
-    label: 'WebDAV',
-    description: 'Store the database on a WebDAV server.',
-    requiresDetails: true,
-    icon: <IconCloud />
-  },
-];
-
 const isBrowserAvailable = () =>
   typeof window !== 'undefined' &&
   typeof WebAssembly !== 'undefined' &&
@@ -37,6 +22,41 @@ export const createBrowserHost = (): Host => {
     return core;
   };
 
+  const storages: readonly HostStorage[] = [
+    {
+      kind: 'indexeddb',
+      label: 'IndexedDB',
+      description: 'Store the database in this browser.',
+      icon: <IconDatabaseZap />,
+      setup: {
+        component: null,
+        getDefaultDescriptor: () => ({ provider: 'indexeddb', path: '' }),
+      },
+    },
+    {
+      kind: 'local-file',
+      label: 'Local file',
+      description: 'Open a KeePass database from this device.',
+      icon: <IconFile />,
+      setup: {
+        title: 'Open a local file',
+        description: 'Choose or drop an existing KeePass database.',
+        component: props => <LocalFileSetup {...props} getCore={requireCore} />,
+      },
+    },
+    {
+      kind: 'webdav',
+      label: 'WebDAV',
+      description: 'Store the database on a WebDAV server.',
+      icon: <IconCloud />,
+      setup: {
+        title: 'Connect WebDAV',
+        description: 'Enter the connection details for your server.',
+        component: props => <WebDavSetup {...props} getCore={requireCore} />,
+      },
+    },
+  ];
+
   return {
     id: 'browser',
     kind: 'browser',
@@ -50,16 +70,6 @@ export const createBrowserHost = (): Host => {
       const browserHost = await import('@keeless/host-browser');
       await browserHost.default();
       core = await browserHost.BrowserCore.create(defaultApprovedBundle);
-    },
-    configureStorage: async input => {
-      if (input.kind === 'indexeddb') {
-        return { provider: 'indexeddb', path: 'keeless.kdbx' };
-      }
-      await requireCore().configureWebDav(input.url, input.username, input.password);
-      return {
-        provider: 'webdav',
-        path: input.path?.trim() || 'keeless.kdbx',
-      };
     },
     send: async frame => {
       const response = await requireCore().handle(encoder.encode(JSON.stringify(frame)));
