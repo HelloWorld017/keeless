@@ -62,15 +62,16 @@ pub(super) fn entry_summary(entry: &Entry) -> EntrySummary {
     }
 }
 
-pub(super) fn all_entry_summaries(database: &Database) -> Vec<EntrySummary> {
-    fn visit_group(
-        database: &Database,
+pub(super) fn all_entries(database: &Database, exclude_trash: bool) -> Vec<&Entry> {
+    fn visit_group<'a>(
+        database: &'a Database,
         group_id: &NodeId,
+        excluded_group: Option<NodeId>,
         visited_groups: &mut HashSet<NodeId>,
         visited_entries: &mut HashSet<NodeId>,
-        entries: &mut Vec<EntrySummary>,
+        entries: &mut Vec<&'a Entry>,
     ) {
-        if !visited_groups.insert(*group_id) {
+        if excluded_group == Some(*group_id) || !visited_groups.insert(*group_id) {
             return;
         }
         let Some(group) = database.get_group(group_id) else {
@@ -81,13 +82,14 @@ pub(super) fn all_entry_summaries(database: &Database) -> Vec<EntrySummary> {
             if visited_entries.insert(*entry_id)
                 && let Some(entry) = database.get_entry(entry_id)
             {
-                entries.push(entry_summary(entry));
+                entries.push(entry);
             }
         }
         for child_group_id in &group.child_group_ids {
             visit_group(
                 database,
                 child_group_id,
+                excluded_group,
                 visited_groups,
                 visited_entries,
                 entries,
@@ -95,13 +97,27 @@ pub(super) fn all_entry_summaries(database: &Database) -> Vec<EntrySummary> {
         }
     }
 
-    let mut entries = Vec::with_capacity(database.entries.len());
+    let excluded_group = exclude_trash
+        .then(|| database.recycle_bin_uuid.map(NodeId::from_uuid))
+        .flatten()
+        .filter(|id| database.get_group(id).is_some());
+    let excluded_entries = excluded_group
+        .map(|id| {
+            database
+                .get_all_entries_in_group(&id)
+                .into_iter()
+                .map(|entry| entry.id)
+                .collect::<HashSet<_>>()
+        })
+        .unwrap_or_default();
+    let mut entries = Vec::with_capacity(database.entries.len() - excluded_entries.len());
     let mut visited_groups = HashSet::new();
     let mut visited_entries = HashSet::new();
     if let Some(root_group_id) = &database.root_group_id {
         visit_group(
             database,
             root_group_id,
+            excluded_group,
             &mut visited_groups,
             &mut visited_entries,
             &mut entries,
@@ -111,16 +127,22 @@ pub(super) fn all_entry_summaries(database: &Database) -> Vec<EntrySummary> {
     let mut remaining = database
         .entries
         .keys()
-        .filter(|id| !visited_entries.contains(id))
+        .filter(|id| !visited_entries.contains(id) && !excluded_entries.contains(id))
         .collect::<Vec<_>>();
     remaining.sort_by_key(|id| node_id_sort_key(id));
     entries.extend(
         remaining
             .into_iter()
-            .filter_map(|id| database.get_entry(id))
-            .map(entry_summary),
+            .filter_map(|id| database.get_entry(id)),
     );
     entries
+}
+
+pub(super) fn all_entry_summaries(database: &Database, exclude_trash: bool) -> Vec<EntrySummary> {
+    all_entries(database, exclude_trash)
+        .into_iter()
+        .map(entry_summary)
+        .collect()
 }
 
 pub(super) fn group_hierarchy(database: &Database) -> Result<GroupHierarchyResult> {

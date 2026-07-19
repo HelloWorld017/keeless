@@ -369,20 +369,36 @@ impl Database {
         Some(entry)
     }
 
-    /// Move an entry from one group to another.
-    fn move_entry(&mut self, entry_id: &NodeId, new_parent_id: &NodeId) -> Option<Entry> {
-        let old_parent_id = self.find_parent_group_of_entry(entry_id)?;
+    /// Move an entry to another group, appending it after existing entries.
+    pub fn reposition_entry(&mut self, entry_id: &NodeId, new_parent_id: &NodeId) -> bool {
+        if !self.entries.contains_key(entry_id) || !self.groups.contains_key(new_parent_id) {
+            return false;
+        }
+        let Some(old_parent_id) = self.find_parent_group_of_entry(entry_id) else {
+            return false;
+        };
+        if old_parent_id == *new_parent_id {
+            return true;
+        }
 
-        // Remove from old parent
         if let Some(parent) = self.groups.get_mut(&old_parent_id) {
             parent.child_entry_ids.retain(|id| id != entry_id);
         }
-        // Add to new parent
         if let Some(parent) = self.groups.get_mut(new_parent_id) {
             parent.add_child_entry(*entry_id);
         }
+        if let Some(entry) = self.entries.get_mut(entry_id) {
+            entry.location_changed = DateInstant::now();
+        }
         self.mark_modified();
-        self.entries.get(entry_id).cloned()
+        true
+    }
+
+    /// Move an entry from one group to another.
+    fn move_entry(&mut self, entry_id: &NodeId, new_parent_id: &NodeId) -> Option<Entry> {
+        self.reposition_entry(entry_id, new_parent_id)
+            .then(|| self.entries.get(entry_id).cloned())
+            .flatten()
     }
 
     // ─── Group CRUD ───

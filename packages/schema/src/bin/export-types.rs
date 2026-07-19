@@ -39,13 +39,16 @@ fn generate() -> String {
     export_empty("GetStorageDescriptorArgs", &mut output);
     export_empty("GetConfigArgs", &mut output);
     export::<SetConfigArgs>(&mut output);
-    export_empty("GetEntriesArgs", &mut output);
+    export::<GetEntriesArgs>(&mut output);
     export_empty("GetGroupHierarchyArgs", &mut output);
     export::<GetGroupEntriesArgs>(&mut output);
+    export::<GetTagEntriesArgs>(&mut output);
+    export_empty("GetTrashEntriesArgs", &mut output);
     export_empty("GetTagsArgs", &mut output);
     export::<GetEntryDetailArgs>(&mut output);
     export_empty("GetCustomIconsArgs", &mut output);
     export::<MoveGroupArgs>(&mut output);
+    export::<MoveEntryArgs>(&mut output);
     export::<Operation>(&mut output);
     export::<OperationRequest>(&mut output);
     export_empty("EmptyResult", &mut output);

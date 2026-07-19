@@ -10,9 +10,9 @@ use keeless_kdbx::{
     IconImageStandard, NodeId, ProtectedString, save_database,
 };
 use keeless_schema::{
-    DatabaseNodeId, DatabaseStatusResult, GetDatabaseStatusArgs, GetEntryDetailArgs,
-    GetGroupEntriesArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
-    OperationResponse, OperationSuccess,
+    DatabaseNodeId, DatabaseStatusResult, GetDatabaseStatusArgs, GetEntriesArgs,
+    GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs,
+    Operation, OperationOutcome, OperationRequest, OperationResponse, OperationSuccess,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -746,7 +746,9 @@ async fn encrypted_status_round_trip_and_tampering_drop() {
 async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
     let (mut core, ids) = query_core().await;
 
-    let entries = operations::get_entries::run(&mut core).unwrap().entries;
+    let entries = operations::get_entries::run(&mut core, GetEntriesArgs::default())
+        .unwrap()
+        .entries;
     assert_eq!(
         entries
             .iter()
@@ -836,6 +838,198 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
     assert_eq!(icons.icons[0].data_base64, "AQID");
     assert_eq!(icons.icons[0].name, "Custom");
     assert_eq!(icons.icons[0].last_modification_time_ms, 1_700_000_000_000);
+}
+
+#[tokio::test]
+async fn trash_and_tag_queries_filter_recursively_and_preserve_order() {
+    let (mut core, ids) = query_core().await;
+    let trash_entry_id = NodeId::from_uuid(Uuid::from_u128(20));
+    let trash_group_id = NodeId::from_uuid(Uuid::from_u128(21));
+    let nested_trash_entry_id = NodeId::from_uuid(Uuid::from_u128(22));
+    {
+        let database = core.handle.as_mut().unwrap().database_mut();
+        database
+            .get_entry_mut(&NodeId::from_uuid(ids.child_entry))
+            .unwrap()
+            .tags
+            .push(" Work ".into());
+        let recycle_bin_id = database.create_recycle_bin();
+        let mut trash_entry = Entry::new(trash_entry_id);
+        trash_entry.title = "Trash".into();
+        trash_entry.tags = vec![" work ".into(), "TrashOnly".into(), "".into()];
+        assert!(database.add_entry(trash_entry, &recycle_bin_id));
+        assert!(database.add_group(Group::new(trash_group_id), &recycle_bin_id));
+        let mut nested_trash_entry = Entry::new(nested_trash_entry_id);
+        nested_trash_entry.title = "Nested Trash".into();
+        nested_trash_entry.tags = vec!["nested".into()];
+        assert!(database.add_entry(nested_trash_entry, &trash_group_id));
+    }
+
+    for args in [
+        GetEntriesArgs::default(),
+        GetEntriesArgs {
+            exclude_trash: true,
+        },
+    ] {
+        assert_eq!(
+            operations::get_entries::run(&mut core, args)
+                .unwrap()
+                .entries
+                .into_iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            vec![
+                schema_id(ids.root_entry),
+                schema_id(ids.child_entry),
+                schema_id(ids.nested_entry),
+            ]
+        );
+    }
+    assert_eq!(
+        operations::get_entries::run(
+            &mut core,
+            GetEntriesArgs {
+                exclude_trash: false,
+            },
+        )
+        .unwrap()
+        .entries
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect::<Vec<_>>(),
+        vec![
+            schema_id(ids.root_entry),
+            schema_id(ids.child_entry),
+            schema_id(ids.nested_entry),
+            schema_id(Uuid::from_u128(20)),
+            schema_id(Uuid::from_u128(22)),
+        ]
+    );
+    assert_eq!(
+        operations::get_trash_entries::run(&mut core)
+            .unwrap()
+            .entries
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>(),
+        vec![
+            schema_id(Uuid::from_u128(20)),
+            schema_id(Uuid::from_u128(22)),
+        ]
+    );
+
+    let tagged = |core: &mut KeelessCore, tag: &str| {
+        operations::get_tag_entries::run(core, GetTagEntriesArgs { tag: tag.into() })
+            .unwrap()
+            .entries
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(tagged(&mut core, "work"), vec![schema_id(ids.root_entry)]);
+    assert_eq!(tagged(&mut core, "Work"), vec![schema_id(ids.child_entry)]);
+    assert!(tagged(&mut core, " work ").is_empty());
+    assert!(tagged(&mut core, "TrashOnly").is_empty());
+
+    let tags = operations::get_tags::run(&mut core).unwrap().tags;
+    assert!(
+        tags.iter()
+            .any(|tag| tag.name == "Work" && tag.entry_count == 1)
+    );
+    assert!(!tags.iter().any(|tag| tag.name == "TrashOnly"));
+
+    core.handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .recycle_bin_uuid = Some(Uuid::from_u128(999));
+    assert!(
+        operations::get_trash_entries::run(&mut core)
+            .unwrap()
+            .entries
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_moves() {
+    let (mut core, ids) = query_core().await;
+    let recycle_bin_id = core
+        .handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .create_recycle_bin();
+
+    operations::move_entry::run(
+        &mut core,
+        MoveEntryArgs {
+            entry_id: schema_id(ids.root_entry),
+            parent_group_id: schema_id(match recycle_bin_id {
+                NodeId::Uuid(id) => id,
+                NodeId::Int(_) => unreachable!(),
+            }),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        operations::get_trash_entries::run(&mut core)
+            .unwrap()
+            .entries[0]
+            .id,
+        schema_id(ids.root_entry)
+    );
+
+    operations::move_entry::run(
+        &mut core,
+        MoveEntryArgs {
+            entry_id: schema_id(ids.root_entry),
+            parent_group_id: schema_id(ids.nested_group),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        operations::get_group_entries::run(
+            &mut core,
+            GetGroupEntriesArgs {
+                group_id: schema_id(ids.nested_group),
+            },
+        )
+        .unwrap()
+        .entries
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect::<Vec<_>>(),
+        vec![schema_id(ids.nested_entry), schema_id(ids.root_entry)]
+    );
+
+    let orphan_id = NodeId::from_uuid(Uuid::from_u128(999));
+    core.handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .entries
+        .insert(orphan_id, Entry::new(orphan_id));
+    assert!(matches!(
+        operations::move_entry::run(
+            &mut core,
+            MoveEntryArgs {
+                entry_id: schema_id(Uuid::from_u128(999)),
+                parent_group_id: schema_id(ids.root_group),
+            },
+        ),
+        Err(CoreError::InvalidEntryMove)
+    ));
+    assert!(matches!(
+        operations::move_entry::run(
+            &mut core,
+            MoveEntryArgs {
+                entry_id: schema_id(Uuid::from_u128(998)),
+                parent_group_id: schema_id(ids.root_group),
+            },
+        ),
+        Err(CoreError::EntryNotFound)
+    ));
 }
 
 #[tokio::test]
@@ -982,7 +1176,7 @@ async fn database_query_operations_report_lookup_errors_and_require_unlock() {
 
     operations::lock::run(&mut core);
     assert!(matches!(
-        operations::get_entries::run(&mut core),
+        operations::get_entries::run(&mut core, GetEntriesArgs::default()),
         Err(CoreError::DatabaseLocked)
     ));
     assert!(matches!(

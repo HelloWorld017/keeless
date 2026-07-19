@@ -17,17 +17,54 @@ import {
   useSidebar,
 } from '@/components/sidebar';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { IconDatabase, IconList, IconTag, IconTrash } from '@/icons';
+import { IconList, IconTag, IconTrash } from '@/icons';
 import { buildRoute } from '@/utils/route';
+import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { Link, useLocation } from 'wouter';
-import { DatabaseGroupTree, moveGroupInHierarchy } from './DatabaseGroupTree';
-import type { GroupHierarchyResult, MoveGroupArgs } from '@keeless/schema';
-import {useMemo} from 'react';
+import { GroupTree, moveGroupInHierarchy } from './GroupTree';
+import { databaseNodeKey, type TrashDropData } from './dnd';
+import type { DatabaseNodeId, GroupHierarchyResult, MoveGroupArgs } from '@keeless/schema';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
 
-export const DatabaseSidebar = () => {
+const TrashMenuItem = ({
+  recycleBinId,
+  location,
+  onNavigate,
+}: {
+  recycleBinId: DatabaseNodeId | null | undefined;
+  location: string;
+  onNavigate: () => void;
+}) => {
+  const hasRecycleBin = recycleBinId !== null && recycleBinId !== undefined;
+  const { active } = useDndContext();
+  const data: TrashDropData | undefined = hasRecycleBin
+    ? { type: 'trash', groupId: recycleBinId, title: 'Trash' }
+    : undefined;
+  const { isOver, setNodeRef } = useDroppable({
+    id: hasRecycleBin ? `trash:${databaseNodeKey(recycleBinId)}` : 'trash:unavailable',
+    data,
+    disabled: !hasRecycleBin || active?.data.current?.type === 'group',
+  });
+  const isEntryOver = isOver && active?.data.current?.type === 'entry';
+
+  return (
+    <SidebarMenuItem ref={setNodeRef}>
+      <SidebarMenuButton
+        render={<Link href={buildRoute('trash')} replace />}
+        isActive={location === buildRoute('trash') || isEntryOver}
+        onClick={onNavigate}
+      >
+        <IconTrash />
+        <span>Trash</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+};
+
+const DatabaseSidebar = () => {
   const [location] = useLocation();
   const hierarchy = useRequest('getGroupHierarchy', {});
   const tags = useRequest('getTags', {});
@@ -66,7 +103,7 @@ export const DatabaseSidebar = () => {
   const storageName = useMemo(() => {
     const provider = storage.data?.storage?.provider;
     const storages = requestClient.data?.host.storages;
-    return storages?.find(storage => storage.kind === provider)?.label;
+    return storages?.find(candidate => candidate.kind === provider)?.label;
   }, [requestClient.data, storage.data]);
 
   return (
@@ -75,11 +112,11 @@ export const DatabaseSidebar = () => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" disabled={!databaseName}>
-              <div className='flex gap-4 items-center'>
+              <div className="flex gap-4 items-center">
                 <div className="aspect-square size-8">
-                  <img src={Logo} />
+                  <img src={Logo} alt="" />
                 </div>
-                <div className='flex flex-col'>
+                <div className="flex flex-col">
                   <span className="font-semibold">{databaseName ?? 'Loading database'}</span>
                   <span>{storageName}</span>
                 </div>
@@ -112,7 +149,7 @@ export const DatabaseSidebar = () => {
             {hierarchy.isPending && <SidebarMenuSkeleton />}
             {hierarchy.isError && <SidebarEmpty>Groups could not be loaded.</SidebarEmpty>}
             {hierarchy.data && (
-              <DatabaseGroupTree
+              <GroupTree
                 hierarchy={hierarchy.data}
                 location={location}
                 disabled={moveGroup.isPending}
@@ -140,7 +177,7 @@ export const DatabaseSidebar = () => {
                   return (
                     <SidebarMenuItem key={tag.name}>
                       <SidebarMenuButton
-                        render={<Link href={href} />}
+                        render={<Link href={href} replace />}
                         isActive={location === href}
                         className="pr-8"
                         onClick={closeMobile}
@@ -160,18 +197,15 @@ export const DatabaseSidebar = () => {
       <SidebarSeparator />
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              render={<Link href={buildRoute('trash')} />}
-              isActive={location === buildRoute('trash')}
-              onClick={closeMobile}
-            >
-              <IconTrash />
-              <span>Trash</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          <TrashMenuItem
+            recycleBinId={hierarchy.data?.recycleBinId}
+            location={location}
+            onNavigate={closeMobile}
+          />
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   );
 };
+
+export { DatabaseSidebar as Sidebar };

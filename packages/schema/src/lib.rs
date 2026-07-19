@@ -179,9 +179,25 @@ pub struct SetConfigArgs {
     pub config: KeelessConfigPatch,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(deny_unknown_fields)]
-pub struct GetEntriesArgs {}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetEntriesArgs {
+    #[serde(default = "default_true")]
+    #[specta(optional = true)]
+    pub exclude_trash: bool,
+}
+
+impl Default for GetEntriesArgs {
+    fn default() -> Self {
+        Self {
+            exclude_trash: true,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
@@ -192,6 +208,16 @@ pub struct GetGroupHierarchyArgs {}
 pub struct GetGroupEntriesArgs {
     pub group_id: DatabaseNodeId,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct GetTagEntriesArgs {
+    pub tag: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct GetTrashEntriesArgs {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
@@ -215,6 +241,13 @@ pub struct MoveGroupArgs {
     pub destination_index: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MoveEntryArgs {
+    pub entry_id: DatabaseNodeId,
+    pub parent_group_id: DatabaseNodeId,
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "args", rename_all = "camelCase")]
 pub enum Operation {
@@ -229,10 +262,13 @@ pub enum Operation {
     GetEntries(GetEntriesArgs),
     GetGroupHierarchy(GetGroupHierarchyArgs),
     GetGroupEntries(GetGroupEntriesArgs),
+    GetTagEntries(GetTagEntriesArgs),
+    GetTrashEntries(GetTrashEntriesArgs),
     GetTags(GetTagsArgs),
     GetEntryDetail(GetEntryDetailArgs),
     GetCustomIcons(GetCustomIconsArgs),
     MoveGroup(MoveGroupArgs),
+    MoveEntry(MoveEntryArgs),
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -333,10 +369,13 @@ pub enum OperationSuccess {
     GetEntries(EntriesResult),
     GetGroupHierarchy(GroupHierarchyResult),
     GetGroupEntries(EntriesResult),
+    GetTagEntries(EntriesResult),
+    GetTrashEntries(EntriesResult),
     GetTags(TagsResult),
     GetEntryDetail(Box<EntryDetailResult>),
     GetCustomIcons(CustomIconsResult),
     MoveGroup(EmptyResult),
+    MoveEntry(EmptyResult),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

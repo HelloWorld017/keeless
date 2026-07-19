@@ -42,11 +42,15 @@ export type GetConfigArgs = Record<string, never>
 
 export type SetConfigArgs = { config: KeelessConfigPatch }
 
-export type GetEntriesArgs = Record<string, never>
+export type GetEntriesArgs = { excludeTrash?: boolean }
 
 export type GetGroupHierarchyArgs = Record<string, never>
 
 export type GetGroupEntriesArgs = { groupId: DatabaseNodeId }
+
+export type GetTagEntriesArgs = { tag: string }
+
+export type GetTrashEntriesArgs = Record<string, never>
 
 export type GetTagsArgs = Record<string, never>
 
@@ -56,9 +60,11 @@ export type GetCustomIconsArgs = Record<string, never>
 
 export type MoveGroupArgs = { groupId: DatabaseNodeId; parentGroupId: DatabaseNodeId; destinationIndex: number }
 
-export type Operation = { op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getStorageDescriptor"; args: GetStorageDescriptorArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs } | { op: "getEntries"; args: GetEntriesArgs } | { op: "getGroupHierarchy"; args: GetGroupHierarchyArgs } | { op: "getGroupEntries"; args: GetGroupEntriesArgs } | { op: "getTags"; args: GetTagsArgs } | { op: "getEntryDetail"; args: GetEntryDetailArgs } | { op: "getCustomIcons"; args: GetCustomIconsArgs } | { op: "moveGroup"; args: MoveGroupArgs }
+export type MoveEntryArgs = { entryId: DatabaseNodeId; parentGroupId: DatabaseNodeId }
 
-export type OperationRequest = ({ op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getStorageDescriptor"; args: GetStorageDescriptorArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs } | { op: "getEntries"; args: GetEntriesArgs } | { op: "getGroupHierarchy"; args: GetGroupHierarchyArgs } | { op: "getGroupEntries"; args: GetGroupEntriesArgs } | { op: "getTags"; args: GetTagsArgs } | { op: "getEntryDetail"; args: GetEntryDetailArgs } | { op: "getCustomIcons"; args: GetCustomIconsArgs } | { op: "moveGroup"; args: MoveGroupArgs }) & { requestId: string }
+export type Operation = { op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getStorageDescriptor"; args: GetStorageDescriptorArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs } | { op: "getEntries"; args: GetEntriesArgs } | { op: "getGroupHierarchy"; args: GetGroupHierarchyArgs } | { op: "getGroupEntries"; args: GetGroupEntriesArgs } | { op: "getTagEntries"; args: GetTagEntriesArgs } | { op: "getTrashEntries"; args: GetTrashEntriesArgs } | { op: "getTags"; args: GetTagsArgs } | { op: "getEntryDetail"; args: GetEntryDetailArgs } | { op: "getCustomIcons"; args: GetCustomIconsArgs } | { op: "moveGroup"; args: MoveGroupArgs } | { op: "moveEntry"; args: MoveEntryArgs }
+
+export type OperationRequest = ({ op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getStorageDescriptor"; args: GetStorageDescriptorArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs } | { op: "getEntries"; args: GetEntriesArgs } | { op: "getGroupHierarchy"; args: GetGroupHierarchyArgs } | { op: "getGroupEntries"; args: GetGroupEntriesArgs } | { op: "getTagEntries"; args: GetTagEntriesArgs } | { op: "getTrashEntries"; args: GetTrashEntriesArgs } | { op: "getTags"; args: GetTagsArgs } | { op: "getEntryDetail"; args: GetEntryDetailArgs } | { op: "getCustomIcons"; args: GetCustomIconsArgs } | { op: "moveGroup"; args: MoveGroupArgs } | { op: "moveEntry"; args: MoveEntryArgs }) & { requestId: string }
 
 export type EmptyResult = Record<string, never>
 
@@ -78,7 +84,7 @@ export type EntryDetailResult = { id: DatabaseNodeId; icon: IconReference; tags:
 
 export type CustomIconsResult = { icons: CustomIcon[] }
 
-export type OperationSuccess = { op: "open"; result: EmptyResult } | { op: "create"; result: EmptyResult } | { op: "unlock"; result: EmptyResult } | { op: "lock"; result: EmptyResult } | { op: "getDatabaseStatus"; result: DatabaseStatusResult } | { op: "getStorageDescriptor"; result: StorageDescriptorResult } | { op: "getConfig"; result: ConfigResult } | { op: "setConfig"; result: EmptyResult } | { op: "getEntries"; result: EntriesResult } | { op: "getGroupHierarchy"; result: GroupHierarchyResult } | { op: "getGroupEntries"; result: EntriesResult } | { op: "getTags"; result: TagsResult } | { op: "getEntryDetail"; result: EntryDetailResult } | { op: "getCustomIcons"; result: CustomIconsResult } | { op: "moveGroup"; result: EmptyResult }
+export type OperationSuccess = { op: "open"; result: EmptyResult } | { op: "create"; result: EmptyResult } | { op: "unlock"; result: EmptyResult } | { op: "lock"; result: EmptyResult } | { op: "getDatabaseStatus"; result: DatabaseStatusResult } | { op: "getStorageDescriptor"; result: StorageDescriptorResult } | { op: "getConfig"; result: ConfigResult } | { op: "setConfig"; result: EmptyResult } | { op: "getEntries"; result: EntriesResult } | { op: "getGroupHierarchy"; result: GroupHierarchyResult } | { op: "getGroupEntries"; result: EntriesResult } | { op: "getTagEntries"; result: EntriesResult } | { op: "getTrashEntries"; result: EntriesResult } | { op: "getTags"; result: TagsResult } | { op: "getEntryDetail"; result: EntryDetailResult } | { op: "getCustomIcons"; result: CustomIconsResult } | { op: "moveGroup"; result: EmptyResult } | { op: "moveEntry"; result: EmptyResult }
 
 export type OperationError = { code: string; message: string }
 

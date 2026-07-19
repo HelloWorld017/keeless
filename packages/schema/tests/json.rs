@@ -200,6 +200,51 @@ fn database_query_requests_support_uuid_and_integer_node_ids() {
             "args": { "groupId": 42, "parentGroupId": 7, "destinationIndex": 2 }
         }),
     );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "tag-1".into(),
+            operation: Operation::GetTagEntries(GetTagEntriesArgs { tag: "Work".into() }),
+        },
+        json!({ "requestId": "tag-1", "op": "getTagEntries", "args": { "tag": "Work" } }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "trash-1".into(),
+            operation: Operation::GetTrashEntries(GetTrashEntriesArgs {}),
+        },
+        json!({ "requestId": "trash-1", "op": "getTrashEntries", "args": {} }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "move-entry-1".into(),
+            operation: Operation::MoveEntry(MoveEntryArgs {
+                entry_id: DatabaseNodeId::Int(42),
+                parent_group_id: DatabaseNodeId::Int(7),
+            }),
+        },
+        json!({
+            "requestId": "move-entry-1",
+            "op": "moveEntry",
+            "args": { "entryId": 42, "parentGroupId": 7 }
+        }),
+    );
+}
+
+#[test]
+fn get_entries_excludes_trash_by_default_and_accepts_explicit_false() {
+    assert_eq!(GetEntriesArgs::default().exclude_trash, true);
+    assert_eq!(
+        serde_json::from_value::<GetEntriesArgs>(json!({}))
+            .unwrap()
+            .exclude_trash,
+        true
+    );
+    assert_roundtrip(
+        GetEntriesArgs {
+            exclude_trash: false,
+        },
+        json!({ "excludeTrash": false }),
+    );
 }
 
 #[test]
@@ -360,7 +405,7 @@ fn all_request_and_success_variants_have_explicit_empty_objects() {
         json!({ "requestId": "2", "op": "lock", "args": {} }),
         json!({ "requestId": "3", "op": "getConfig", "args": {} }),
         json!({ "requestId": "4", "op": "setConfig", "args": { "config": { "paranoiaMode": true } } }),
-        json!({ "requestId": "5", "op": "getEntries", "args": {} }),
+        json!({ "requestId": "5", "op": "getEntries", "args": { "excludeTrash": true } }),
         json!({ "requestId": "6", "op": "getGroupHierarchy", "args": {} }),
         json!({ "requestId": "7", "op": "getTags", "args": {} }),
         json!({ "requestId": "8", "op": "getCustomIcons", "args": {} }),
@@ -370,7 +415,15 @@ fn all_request_and_success_variants_have_explicit_empty_objects() {
         assert_eq!(serde_json::to_value(parsed).unwrap(), value);
     }
 
-    for operation in ["open", "create", "unlock", "lock", "setConfig", "moveGroup"] {
+    for operation in [
+        "open",
+        "create",
+        "unlock",
+        "lock",
+        "setConfig",
+        "moveGroup",
+        "moveEntry",
+    ] {
         let value = json!({ "requestId": "5", "status": "success", "op": operation, "result": {} });
         let parsed: OperationResponse = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(parsed).unwrap(), value);

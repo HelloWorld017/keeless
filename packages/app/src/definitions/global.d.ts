@@ -27,3 +27,5 @@ declare global {
     showOpenFilePicker?(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>;
   }
 }
+
+export {};

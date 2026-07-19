@@ -145,6 +145,64 @@ fn test_remove_entry_to_recycle_bin() {
 }
 
 #[test]
+fn test_reposition_entry_validates_before_moving_and_updates_metadata() {
+    let mut db = make_test_db();
+    let root_id = db.root_group_id.unwrap();
+    let destination_id = NodeId::new_uuid();
+    let entry_id = NodeId::new_uuid();
+    db.add_group(Group::new(destination_id), &root_id);
+    db.add_entry(Entry::new(entry_id), &root_id);
+    db.get_entry_mut(&entry_id).unwrap().location_changed = DateInstant::EpochMillis(0);
+    db.data_modified = false;
+
+    assert!(!db.reposition_entry(&entry_id, &NodeId::new_uuid()));
+    assert_eq!(
+        db.get_group(&root_id).unwrap().child_entry_ids,
+        vec![entry_id]
+    );
+    assert!(db
+        .get_group(&destination_id)
+        .unwrap()
+        .child_entry_ids
+        .is_empty());
+
+    assert!(db.reposition_entry(&entry_id, &destination_id));
+    assert!(db.get_group(&root_id).unwrap().child_entry_ids.is_empty());
+    assert_eq!(
+        db.get_group(&destination_id).unwrap().child_entry_ids,
+        vec![entry_id]
+    );
+    assert!(db
+        .get_entry(&entry_id)
+        .unwrap()
+        .location_changed
+        .as_millis()
+        .is_some_and(|value| value > 0));
+    assert!(db.data_modified);
+}
+
+#[test]
+fn test_reposition_entry_same_parent_is_an_unmodified_success() {
+    let mut db = make_test_db();
+    let root_id = db.root_group_id.unwrap();
+    let entry_id = NodeId::new_uuid();
+    db.add_entry(Entry::new(entry_id), &root_id);
+    db.get_entry_mut(&entry_id).unwrap().location_changed = DateInstant::EpochMillis(0);
+    db.data_modified = false;
+
+    assert!(db.reposition_entry(&entry_id, &root_id));
+    assert_eq!(
+        db.get_group(&root_id).unwrap().child_entry_ids,
+        vec![entry_id]
+    );
+    assert_eq!(
+        db.get_entry(&entry_id).unwrap().location_changed,
+        DateInstant::EpochMillis(0)
+    );
+    assert!(!db.data_modified);
+}
+
+#[test]
 fn test_add_group() {
     let mut db = make_test_db();
     let root_id = db.root_group_id.unwrap();

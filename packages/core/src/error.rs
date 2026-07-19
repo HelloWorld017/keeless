@@ -29,6 +29,8 @@ pub enum CoreError {
     InvalidNodeId,
     #[error("group cannot be moved to the requested location")]
     InvalidGroupMove,
+    #[error("entry cannot be moved to the requested location")]
+    InvalidEntryMove,
     #[error("cryptographic operation failed")]
     Crypto,
     #[error("serialization failed: {0}")]
@@ -95,6 +97,10 @@ impl From<&CoreError> for OperationError {
             CoreError::InvalidGroupMove => (
                 "invalid_group_move",
                 "Group cannot be moved to the requested location",
+            ),
+            CoreError::InvalidEntryMove => (
+                "invalid_entry_move",
+                "Entry cannot be moved to the requested location",
             ),
             CoreError::Storage(_) | CoreError::Sync(_) => {
                 ("storage_error", "Storage operation failed")

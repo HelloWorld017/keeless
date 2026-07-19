@@ -7,8 +7,11 @@ pub(crate) mod get_entry_detail;
 pub(crate) mod get_group_entries;
 pub(crate) mod get_group_hierarchy;
 pub(crate) mod get_storage_descriptor;
+pub(crate) mod get_tag_entries;
 pub(crate) mod get_tags;
+pub(crate) mod get_trash_entries;
 pub(crate) mod lock;
+pub(crate) mod move_entry;
 pub(crate) mod move_group;
 pub(crate) mod open;
 pub(crate) mod set_config;
@@ -34,9 +37,12 @@ pub(crate) async fn execute(
         Operation::GetEntries(args) => get_entries::execute(core, args),
         Operation::GetGroupHierarchy(args) => get_group_hierarchy::execute(core, args),
         Operation::GetGroupEntries(args) => get_group_entries::execute(core, args),
+        Operation::GetTagEntries(args) => get_tag_entries::execute(core, args),
+        Operation::GetTrashEntries(args) => get_trash_entries::execute(core, args),
         Operation::GetTags(args) => get_tags::execute(core, args),
         Operation::GetEntryDetail(args) => get_entry_detail::execute(core, args),
         Operation::GetCustomIcons(args) => get_custom_icons::execute(core, args),
         Operation::MoveGroup(args) => move_group::execute(core, args),
+        Operation::MoveEntry(args) => move_entry::execute(core, args),
     }
 }

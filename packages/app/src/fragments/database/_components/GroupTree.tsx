@@ -8,12 +8,7 @@ import {
 import { IconFolder, IconGripVertical } from '@/icons';
 import { buildRoute } from '@/utils/route';
 import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
+  useDndMonitor,
   type DragEndEvent,
   type DragMoveEvent,
   type DragOverEvent,
@@ -22,13 +17,13 @@ import {
 import {
   SortableContext,
   arrayMove,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
 import { Link } from 'wouter';
+import { groupDndId, type GroupDragData } from './dnd';
 import type {
   DatabaseNodeId,
   GroupHierarchyItem,
@@ -38,7 +33,7 @@ import type {
 
 const INDENTATION_WIDTH = 16;
 
-const nodeKey = (id: DatabaseNodeId) => `${typeof id === 'number' ? 'int' : 'uuid'}:${id}`;
+const nodeKey = groupDndId;
 
 type FlatGroup = {
   id: DatabaseNodeId;
@@ -172,10 +167,22 @@ const SortableGroup = ({
   disabled: boolean;
   onNavigate: () => void;
 }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: item.key,
-    disabled,
-  });
+  const data: GroupDragData = {
+    type: 'group',
+    groupId: item.id,
+    title: item.group.name || 'Untitled group',
+  };
+  const {
+    active: draggedItem,
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id: item.key, data, disabled });
+  const isEntryOver = isOver && draggedItem?.data.current?.type === 'entry';
   return (
     <SidebarMenuItem
       ref={setNodeRef}
@@ -187,8 +194,8 @@ const SortableGroup = ({
       }}
     >
       <SidebarMenuButton
-        render={<Link href={buildRoute('group', { group: String(item.id) })} />}
-        isActive={active}
+        render={<Link href={buildRoute('group', { group: String(item.id) })} replace />}
+        isActive={active || isEntryOver}
         className="pr-8"
         onClick={onNavigate}
       >
@@ -210,7 +217,7 @@ const SortableGroup = ({
   );
 };
 
-export const DatabaseGroupTree = ({
+export const GroupTree = ({
   hierarchy,
   location,
   disabled,
@@ -227,10 +234,6 @@ export const DatabaseGroupTree = ({
   const [activeKey, setActiveKey] = useState<string>();
   const [overKey, setOverKey] = useState<string>();
   const [dragOffset, setDragOffset] = useState(0);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
   const items = activeKey
     ? flattened.filter(item => !item.ancestors.includes(activeKey))
     : flattened;
@@ -245,13 +248,26 @@ export const DatabaseGroupTree = ({
     setDragOffset(0);
   };
   const handleDragStart = ({ active }: DragStartEvent) => {
+    if (active.data.current?.type !== 'group') {
+      return;
+    }
     setActiveKey(String(active.id));
     setOverKey(String(active.id));
   };
-  const handleDragMove = ({ delta }: DragMoveEvent) => setDragOffset(delta.x);
-  const handleDragOver = ({ over }: DragOverEvent) =>
-    setOverKey(over ? String(over.id) : undefined);
+  const handleDragMove = ({ active, delta }: DragMoveEvent) => {
+    if (active.data.current?.type === 'group') {
+      setDragOffset(delta.x);
+    }
+  };
+  const handleDragOver = ({ active, over }: DragOverEvent) => {
+    if (active.data.current?.type === 'group') {
+      setOverKey(over ? String(over.id) : undefined);
+    }
+  };
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (active.data.current?.type !== 'group') {
+      return;
+    }
     if (!over || !projection) {
       reset();
       return;
@@ -282,35 +298,36 @@ export const DatabaseGroupTree = ({
     });
     reset();
   };
+  useDndMonitor({
+    onDragStart: handleDragStart,
+    onDragMove: handleDragMove,
+    onDragOver: handleDragOver,
+    onDragCancel: event => {
+      if (event.active.data.current?.type === 'group') {
+        reset();
+      }
+    },
+    onDragEnd: handleDragEnd,
+  });
 
   if (flattened.length === 0) {
     return <SidebarEmpty>No groups</SidebarEmpty>;
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragOver={handleDragOver}
-      onDragCancel={reset}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext items={items.map(item => item.key)} strategy={verticalListSortingStrategy}>
-        <SidebarMenu>
-          {items.map(item => (
-            <SortableGroup
-              key={item.key}
-              item={item}
-              depth={item.key === activeKey && projection ? projection.depth : item.depth}
-              active={location === buildRoute('group', { group: String(item.id) })}
-              disabled={disabled}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </SidebarMenu>
-      </SortableContext>
-    </DndContext>
+    <SortableContext items={items.map(item => item.key)} strategy={verticalListSortingStrategy}>
+      <SidebarMenu>
+        {items.map(item => (
+          <SortableGroup
+            key={item.key}
+            item={item}
+            depth={item.key === activeKey && projection ? projection.depth : item.depth}
+            active={location === buildRoute('group', { group: String(item.id) })}
+            disabled={disabled}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </SidebarMenu>
+    </SortableContext>
   );
 };
