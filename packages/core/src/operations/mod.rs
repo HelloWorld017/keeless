@@ -1,5 +1,4 @@
 pub(crate) mod create;
-mod database_dto;
 pub(crate) mod get_config;
 pub(crate) mod get_custom_icons;
 pub(crate) mod get_database_status;

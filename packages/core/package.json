@@ -6,7 +6,7 @@
   "license": "AGPL-3.0",
   "type": "module",
   "scripts": {
-    "build": "cargo check -p keeless_core",
+    "check": "cargo check -p keeless_core",
     "test": "cargo test -p keeless_core"
   }
 }

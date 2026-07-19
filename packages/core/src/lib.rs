@@ -5,6 +5,7 @@ mod config;
 mod credential;
 mod error;
 mod host;
+mod model;
 mod network;
 mod operations;
 mod protocol;

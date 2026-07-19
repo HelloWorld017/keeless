@@ -1,6 +1,6 @@
 use keeless_schema::{EntriesResult, GetGroupEntriesArgs, OperationSuccess};
 
-use super::database_dto::{entry_summary, parse_node_id};
+use crate::model::{entry_summary, parse_node_id};
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore, args: GetGroupEntriesArgs) -> Result<EntriesResult> {

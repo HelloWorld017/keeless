@@ -1,6 +1,6 @@
 use keeless_schema::{EntryDetailResult, GetEntryDetailArgs, OperationSuccess};
 
-use super::database_dto::{entry_detail, parse_node_id};
+use crate::model::{entry_detail, parse_node_id};
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore, args: GetEntryDetailArgs) -> Result<EntryDetailResult> {

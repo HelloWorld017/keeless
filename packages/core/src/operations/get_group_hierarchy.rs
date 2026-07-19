@@ -1,6 +1,6 @@
 use keeless_schema::{GetGroupHierarchyArgs, GroupHierarchyResult, OperationSuccess};
 
-use super::database_dto::group_hierarchy;
+use crate::model::group_hierarchy;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Result<GroupHierarchyResult> {

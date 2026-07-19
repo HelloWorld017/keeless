@@ -1,6 +1,6 @@
 use keeless_schema::{EntriesResult, GetEntriesArgs, OperationSuccess};
 
-use super::database_dto::all_entry_summaries;
+use crate::model::all_entry_summaries;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Result<EntriesResult> {
