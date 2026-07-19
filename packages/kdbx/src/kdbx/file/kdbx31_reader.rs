@@ -78,8 +78,12 @@ pub fn read_kdbx31<R: Read>(
             "Decrypted data too short".into(),
         ));
     }
-    let expected = final_key.unlock(|key| HashEngine::sha256(key))?;
-    if decrypted[..32] != expected {
+    if header.stream_start_bytes.len() != 32 {
+        return Err(DatabaseError::InvalidFormat(
+            "KDBX 3.1 stream start bytes must be 32 bytes".into(),
+        ));
+    }
+    if decrypted[..32] != header.stream_start_bytes {
         return Err(DatabaseError::InvalidKey);
     }
 

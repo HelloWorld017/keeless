@@ -23,6 +23,10 @@
 * **Modern UI**  
   I put some efforts on design.
 
+## Status
+* Working on my Machine (TM)
+* If you intend to use, please backup your database and expect for data loss.
+
 ## Installation
 
 ## Screenshot

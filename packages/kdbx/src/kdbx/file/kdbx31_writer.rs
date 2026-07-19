@@ -46,6 +46,7 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     let transform_seed = generate_random_bytes(32)?;
     let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
     let inner_stream_key = Zeroizing::new(generate_random_bytes(32)?);
+    let stream_start_bytes = Zeroizing::new(generate_random_bytes(32)?);
     let transform_rounds: u64 = 1_000;
 
     let header = KdbxHeader31 {
@@ -57,7 +58,7 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
         transform_rounds,
         encryption_iv: encryption_iv.clone(),
         inner_random_stream_key: inner_stream_key.to_vec(),
-        stream_start_bytes: Vec::new(),
+        stream_start_bytes: stream_start_bytes.to_vec(),
         inner_random_stream: CrsAlgorithm::Salsa20,
     };
 
@@ -82,10 +83,9 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
         hbw.write_all(&compressed)?;
     }
 
-    // 6. Prepend stream start bytes (SHA-256 of final key)
-    let stream_start = final_key.unlock(|key| HashEngine::sha256(key))?;
+    // 6. Prepend the random stream start bytes recorded in the header.
     let mut plaintext = Zeroizing::new(Vec::with_capacity(32 + hashed_blocks.len()));
-    plaintext.extend_from_slice(&stream_start);
+    plaintext.extend_from_slice(&stream_start_bytes);
     plaintext.extend_from_slice(&hashed_blocks);
 
     // 7. Encrypt
@@ -165,14 +165,18 @@ fn write_kdbx31_header<W: Write>(writer: &mut W, header: &KdbxHeader31) -> Datab
     write_header_field(
         writer,
         header_field_31::STREAM_START_BYTES,
-        &header.inner_random_stream_key,
+        &header.stream_start_bytes,
     )?;
     write_header_field(
         writer,
         header_field_31::INNER_RANDOM_STREAM_ID,
         &header.inner_random_stream.to_id().to_le_bytes(),
     )?;
-    write_header_field(writer, header_field_31::END_OF_HEADER, &[])?;
+    write_header_field(
+        writer,
+        header_field_31::END_OF_HEADER,
+        &[0x0D, 0x0A, 0x0D, 0x0A],
+    )?;
     Ok(())
 }
 

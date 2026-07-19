@@ -201,13 +201,10 @@ fn read_kdbx4_outer_header_from<R: Read>(reader: &mut R) -> DatabaseResult<KdbxH
                     "KDBX4 end header field must contain the four-byte marker".into(),
                 ));
             }
+            // Some compatible producers emit a non-canonical marker. Its
+            // exact bytes are authenticated by the header hash and HMAC.
             let mut marker = [0u8; 4];
             reader.read_exact(&mut marker)?;
-            if marker != [0x0D, 0x0A, 0x0D, 0x0A] {
-                return Err(DatabaseError::InvalidFormat(
-                    "Invalid KDBX4 end header marker".into(),
-                ));
-            }
             break;
         }
 
@@ -339,10 +336,14 @@ fn read_kdbx4_inner_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbxInnerH
             ));
         }
         if field_id == inner_header_field_4::END_OF_HEADER {
-            if field_size != 0 {
-                return Err(DatabaseError::InvalidFormat(
-                    "KDBX4 inner end field must be empty".into(),
-                ));
+            // KeePass-compatible readers consume non-empty end fields emitted
+            // by KdbxWeb. The enclosing authenticated payload makes this safe.
+            let mut remaining = field_size;
+            let mut buffer = [0u8; 1024];
+            while remaining > 0 {
+                let chunk_size = remaining.min(buffer.len());
+                reader.read_exact(&mut buffer[..chunk_size])?;
+                remaining -= chunk_size;
             }
             break;
         }
@@ -472,5 +473,24 @@ mod tests {
             read_kdbx4_inner_header(&mut &data[..]),
             Err(DatabaseError::InvalidFormat(_))
         ));
+    }
+
+    #[test]
+    fn test_inner_header_consumes_nonempty_end_field() {
+        let mut data = vec![inner_header_field_4::INNER_RANDOM_STREAM_ID];
+        data.extend_from_slice(&4u32.to_le_bytes());
+        data.extend_from_slice(&CrsAlgorithm::ChaCha20.to_id().to_le_bytes());
+        data.push(inner_header_field_4::INNER_RANDOM_STREAM_KEY);
+        data.extend_from_slice(&32u32.to_le_bytes());
+        data.extend_from_slice(&[0u8; 32]);
+        data.push(inner_header_field_4::END_OF_HEADER);
+        data.extend_from_slice(&4u32.to_le_bytes());
+        data.extend_from_slice(&[0x00, 0xD0, 0xAD, 0x0A]);
+        data.extend_from_slice(b"<KeePassFile/>");
+
+        let mut cursor = std::io::Cursor::new(data.as_slice());
+        read_kdbx4_inner_header(&mut cursor).unwrap();
+
+        assert_eq!(&data[cursor.position() as usize..], b"<KeePassFile/>");
     }
 }

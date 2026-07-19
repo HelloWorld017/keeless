@@ -42,6 +42,27 @@ fn opens_external_argon2id_chacha20_fixture() {
     assert_external_fixture_opens("test_db_kdbx4_with_password_argon2id_chacha20.kdbx", 1);
 }
 
+#[test]
+fn opens_complex_kdbx_fixture() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/resources/test_db_complex.kdbx"
+    );
+    let database = open_database(
+        File::open(path).expect("fixture should exist"),
+        &CompositeKey::new().with_password(b"asdfasdf").unwrap(),
+    )
+    .expect("complex KDBX4 fixture should open");
+
+    assert_eq!(database.version, DatabaseVersion::KDBX4);
+    assert_eq!(database.file_version, 0x0004_0000);
+    assert_eq!(database.group_count(), 2);
+    assert_eq!(database.entry_count(), 1);
+    let entry = database.entries.values().next().unwrap();
+    assert_eq!(entry.binaries.len(), 1);
+    assert_eq!(entry.binaries[0].data.len(), 981_815);
+}
+
 fn assert_external_fixture_opens(name: &str, expected_entries: usize) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/resources")

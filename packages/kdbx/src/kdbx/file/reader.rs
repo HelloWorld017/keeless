@@ -68,6 +68,10 @@ impl DatabaseReader {
             let field_size = reader.read_u16::<LittleEndian>()? as usize;
 
             if field_id == header_field_31::END_OF_HEADER {
+                // KeePass writes a four-byte CRLF marker in this field. Older
+                // Keeless output left it empty, so consume either form.
+                let mut marker = vec![0u8; field_size];
+                reader.read_exact(&mut marker)?;
                 break;
             }
 
