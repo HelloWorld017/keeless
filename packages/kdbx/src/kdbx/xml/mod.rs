@@ -104,6 +104,56 @@ mod tests {
     }
 
     #[test]
+    fn test_kdbx31_meta_binary_reference_is_resolved_by_id() {
+        let pool = (0..=5)
+            .map(|id| {
+                let data =
+                    base64::engine::general_purpose::STANDARD.encode(format!("attachment-{id}"));
+                format!(r#"<Binary ID="{id}" Compressed="False">{data}</Binary>"#)
+            })
+            .collect::<String>();
+        let xml = format!(
+            r#"<KeePassFile><Meta><Binaries>{pool}</Binaries></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><Binary><Key>file.txt</Key><Value Ref="4"/></Binary></Entry></Group></Root></KeePassFile>"#
+        );
+        let mut stream = Salsa20InnerStream::new(b"kdbx31-binary-ref").unwrap();
+
+        let db = KdbxXmlReader::read(&xml, &mut stream).unwrap();
+        let binary = &db.entries.values().next().unwrap().binaries[0];
+        assert_eq!(binary.name, "file.txt");
+        assert_eq!(binary.data, b"attachment-4");
+        assert!(!binary.is_protected);
+    }
+
+    #[test]
+    fn test_kdbx31_compressed_meta_binary_is_decompressed() {
+        let expected = b"compressed attachment";
+        let compressed = crate::crypto::compression::compress(expected).unwrap();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(compressed);
+        let xml = format!(
+            r#"<KeePassFile><Meta><Binaries><Binary ID="7" Compressed="True">{encoded}</Binary></Binaries></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><Binary><Key>file.bin</Key><Value Ref="7"/></Binary></Entry></Group></Root></KeePassFile>"#
+        );
+        let mut stream = Salsa20InnerStream::new(b"compressed-binary").unwrap();
+
+        let db = KdbxXmlReader::read(&xml, &mut stream).unwrap();
+        assert_eq!(
+            db.entries.values().next().unwrap().binaries[0].data,
+            expected
+        );
+    }
+
+    #[test]
+    fn test_kdbx4_binary_reference_remains_positional() {
+        let xml = r#"<KeePassFile><Meta></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><Binary><Key>file.bin</Key><Value Ref="1"/></Binary></Entry></Group></Root></KeePassFile>"#;
+        let binaries = vec![(b"zero".to_vec(), false), (b"one".to_vec(), true)];
+        let mut stream = Salsa20InnerStream::new(b"kdbx4-binary-ref").unwrap();
+
+        let db = KdbxXmlReader::read_with_binaries(xml, &mut stream, &binaries).unwrap();
+        let binary = &db.entries.values().next().unwrap().binaries[0];
+        assert_eq!(binary.data, b"one");
+        assert!(binary.is_protected);
+    }
+
+    #[test]
     fn test_deleted_object_time_roundtrip() {
         let mut db = make_test_db();
         let deleted_id = NodeId::new_uuid();

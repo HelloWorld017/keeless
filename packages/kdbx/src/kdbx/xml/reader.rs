@@ -6,7 +6,22 @@ mod group;
 mod meta;
 
 use super::helpers::*;
-use crate::kdbx::limits::MAX_XML_NESTING_DEPTH;
+use crate::crypto::compression::decompress;
+use crate::kdbx::limits::{MAX_DECOMPRESSED_PAYLOAD_SIZE, MAX_XML_NESTING_DEPTH};
+
+enum BinaryReferences<'a> {
+    ById(&'a std::collections::HashMap<usize, (Vec<u8>, bool)>),
+    ByIndex(&'a [(Vec<u8>, bool)]),
+}
+
+impl BinaryReferences<'_> {
+    fn get(&self, reference: usize) -> Option<&(Vec<u8>, bool)> {
+        match self {
+            Self::ById(binaries) => binaries.get(&reference),
+            Self::ByIndex(binaries) => binaries.get(reference),
+        }
+    }
+}
 
 /// KDBX XML reader.
 pub struct KdbxXmlReader;
@@ -15,7 +30,8 @@ impl KdbxXmlReader {
     /// Parse a KDBX XML string into a Database.
     /// `inner_stream` is used to decrypt protected field values.
     pub fn read(xml: &str, inner_stream: &mut dyn InnerStreamCipher) -> DatabaseResult<Database> {
-        Self::read_with_binaries(xml, inner_stream, &[])
+        let binaries = read_meta_binaries(xml)?;
+        Self::read_internal(xml, inner_stream, BinaryReferences::ById(&binaries))
     }
 
     /// Parse XML and resolve KDBX4 inner-header binary references.
@@ -23,6 +39,14 @@ impl KdbxXmlReader {
         xml: &str,
         inner_stream: &mut dyn InnerStreamCipher,
         binaries: &[(Vec<u8>, bool)],
+    ) -> DatabaseResult<Database> {
+        Self::read_internal(xml, inner_stream, BinaryReferences::ByIndex(binaries))
+    }
+
+    fn read_internal(
+        xml: &str,
+        inner_stream: &mut dyn InnerStreamCipher,
+        binaries: BinaryReferences<'_>,
     ) -> DatabaseResult<Database> {
         validate_nesting(xml)?;
         let mut reader = Reader::from_str(xml);
@@ -53,7 +77,7 @@ impl KdbxXmlReader {
                     }
                     "Root" if saw_keepass_file && saw_meta && !saw_root => {
                         saw_root = true;
-                        read_root(&mut reader, &mut db, inner_stream, binaries, &mut buf)?
+                        read_root(&mut reader, &mut db, inner_stream, &binaries, &mut buf)?
                     }
                     "Root" => {
                         return Err(DatabaseError::InvalidFormat(
@@ -127,6 +151,168 @@ impl KdbxXmlReader {
     }
 }
 
+fn read_meta_binaries(
+    xml: &str,
+) -> DatabaseResult<std::collections::HashMap<usize, (Vec<u8>, bool)>> {
+    let mut reader = Reader::from_str(xml);
+    let mut buf = Zeroizing::new(Vec::new());
+    let mut binaries = std::collections::HashMap::new();
+    let mut total_size = 0usize;
+    let mut depth = 0usize;
+    let mut in_meta = false;
+    let mut in_binaries = false;
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) if in_binaries && depth == 3 && tag(&e) == "Binary" => {
+                let (id, compressed) = read_binary_attributes(&e)?;
+                let encoded = read_meta_binary_text(&mut reader, &mut buf)?;
+                let data = decode_meta_binary(&encoded, compressed)?;
+                add_meta_binary(&mut binaries, &mut total_size, id, data)?;
+            }
+            Event::Empty(e) if in_binaries && depth == 3 && tag(&e) == "Binary" => {
+                let (id, compressed) = read_binary_attributes(&e)?;
+                let data = decode_meta_binary("", compressed)?;
+                add_meta_binary(&mut binaries, &mut total_size, id, data)?;
+            }
+            Event::Start(e) => {
+                let name = tag(&e);
+                if depth == 1 && name == "Meta" {
+                    in_meta = true;
+                } else if in_meta && depth == 2 && name == "Binaries" {
+                    in_binaries = true;
+                }
+                depth = depth.checked_add(1).ok_or_else(|| {
+                    DatabaseError::InvalidFormat("XML nesting depth overflow".into())
+                })?;
+            }
+            Event::End(e) => {
+                depth = depth.checked_sub(1).ok_or_else(|| {
+                    DatabaseError::InvalidFormat("Unbalanced XML end element".into())
+                })?;
+                let name = tag_end(&e);
+                if in_binaries && depth == 2 && name == "Binaries" {
+                    in_binaries = false;
+                } else if in_meta && depth == 1 && name == "Meta" {
+                    in_meta = false;
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    Ok(binaries)
+}
+
+fn read_meta_binary_text<R: std::io::BufRead>(
+    reader: &mut quick_xml::Reader<R>,
+    buf: &mut Vec<u8>,
+) -> DatabaseResult<String> {
+    let mut encoded = String::new();
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf)? {
+            Event::Text(text) => encoded.push_str(
+                &text
+                    .unescape()
+                    .map_err(|err| DatabaseError::InvalidFormat(err.to_string()))?,
+            ),
+            Event::CData(value) => {
+                encoded.push_str(std::str::from_utf8(value.as_ref()).map_err(|err| {
+                    DatabaseError::InvalidFormat(format!("invalid binary base64: {err}"))
+                })?)
+            }
+            Event::End(e) if tag_end(&e) == "Binary" => return Ok(encoded),
+            Event::Start(_) | Event::Empty(_) => {
+                return Err(DatabaseError::InvalidFormat(
+                    "Meta/Binaries/Binary contains nested elements".into(),
+                ))
+            }
+            Event::Eof => {
+                return Err(DatabaseError::InvalidFormat(
+                    "unexpected end of Meta/Binaries/Binary element".into(),
+                ))
+            }
+            _ => {}
+        }
+    }
+}
+
+fn read_binary_attributes(e: &BytesStart<'_>) -> DatabaseResult<(usize, bool)> {
+    let mut id = None;
+    let mut compressed = None;
+    for attribute in e.attributes() {
+        let attribute = attribute?;
+        match attribute.key.as_ref() {
+            b"ID" => {
+                if id.is_some() {
+                    return Err(DatabaseError::InvalidFormat(
+                        "duplicate Meta/Binaries/Binary ID attribute".into(),
+                    ));
+                }
+                let value = std::str::from_utf8(&attribute.value).map_err(|err| {
+                    DatabaseError::InvalidFormat(format!("invalid binary ID: {err}"))
+                })?;
+                id = Some(value.parse::<u32>().map_err(|err| {
+                    DatabaseError::InvalidFormat(format!("invalid binary ID: {err}"))
+                })? as usize);
+            }
+            b"Compressed" => {
+                if compressed.is_some() {
+                    return Err(DatabaseError::InvalidFormat(
+                        "duplicate Meta/Binaries/Binary Compressed attribute".into(),
+                    ));
+                }
+                let value = std::str::from_utf8(&attribute.value).map_err(|err| {
+                    DatabaseError::InvalidFormat(format!("invalid Compressed attribute: {err}"))
+                })?;
+                compressed = Some(bool_from_xml(value, "binary Compressed")?);
+            }
+            _ => {}
+        }
+    }
+
+    let id = id
+        .ok_or_else(|| DatabaseError::InvalidFormat("Meta/Binaries/Binary is missing ID".into()))?;
+    Ok((id, compressed.unwrap_or(false)))
+}
+
+fn decode_meta_binary(encoded: &str, compressed: bool) -> DatabaseResult<Vec<u8>> {
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(encoded.trim())
+        .map_err(|err| DatabaseError::InvalidFormat(format!("invalid binary base64: {err}")))?;
+    if compressed {
+        decompress(&data)
+    } else {
+        Ok(data)
+    }
+}
+
+fn add_meta_binary(
+    binaries: &mut std::collections::HashMap<usize, (Vec<u8>, bool)>,
+    total_size: &mut usize,
+    id: usize,
+    data: Vec<u8>,
+) -> DatabaseResult<()> {
+    if binaries.contains_key(&id) {
+        return Err(DatabaseError::InvalidFormat(format!(
+            "duplicate Meta/Binaries/Binary ID {id}"
+        )));
+    }
+    *total_size = total_size
+        .checked_add(data.len())
+        .ok_or_else(|| DatabaseError::InvalidFormat("binary pool size overflow".into()))?;
+    if *total_size > MAX_DECOMPRESSED_PAYLOAD_SIZE {
+        return Err(DatabaseError::InvalidFormat(format!(
+            "binary pool exceeds {MAX_DECOMPRESSED_PAYLOAD_SIZE} bytes"
+        )));
+    }
+    binaries.insert(id, (data, false));
+    Ok(())
+}
+
 fn validate_nesting(xml: &str) -> DatabaseResult<()> {
     let mut reader = Reader::from_str(xml);
     let mut depth = 0usize;
@@ -169,7 +355,7 @@ fn read_root<R: std::io::BufRead>(
     reader: &mut quick_xml::Reader<R>,
     db: &mut Database,
     inner_stream: &mut dyn InnerStreamCipher,
-    binaries: &[(Vec<u8>, bool)],
+    binaries: &BinaryReferences<'_>,
     buf: &mut Vec<u8>,
 ) -> DatabaseResult<()> {
     let mut saw_group = false;

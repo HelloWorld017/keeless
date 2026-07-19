@@ -1,11 +1,12 @@
 use super::super::helpers::*;
+use super::BinaryReferences;
 
 /// Recursively read a `<Group>` element and insert its descendants into `db`.
 pub(super) fn read_group<R: std::io::BufRead>(
     reader: &mut quick_xml::Reader<R>,
     db: &mut Database,
     inner_stream: &mut dyn InnerStreamCipher,
-    binaries: &[(Vec<u8>, bool)],
+    binaries: &BinaryReferences<'_>,
     buf: &mut Vec<u8>,
 ) -> DatabaseResult<Group> {
     let mut group = Group::new(NodeId::new_uuid());

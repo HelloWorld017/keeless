@@ -1,3 +1,4 @@
+use super::super::BinaryReferences;
 use crate::kdbx::xml::helpers::*;
 
 pub(super) fn read_history<R: std::io::BufRead>(
@@ -5,7 +6,7 @@ pub(super) fn read_history<R: std::io::BufRead>(
     entry: &mut Entry,
     db: &mut Database,
     inner_stream: &mut dyn InnerStreamCipher,
-    binaries: &[(Vec<u8>, bool)],
+    binaries: &BinaryReferences<'_>,
     buf: &mut Vec<u8>,
 ) -> DatabaseResult<()> {
     loop {

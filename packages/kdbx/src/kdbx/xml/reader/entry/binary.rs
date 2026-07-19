@@ -1,9 +1,10 @@
+use super::super::BinaryReferences;
 use crate::kdbx::xml::helpers::*;
 
 pub(super) fn read_entry_binary<R: std::io::BufRead>(
     reader: &mut quick_xml::Reader<R>,
     entry: &mut Entry,
-    binaries: &[(Vec<u8>, bool)],
+    binaries: &BinaryReferences<'_>,
     inner_stream: &mut dyn InnerStreamCipher,
     unsupported: &mut bool,
     buf: &mut Vec<u8>,
@@ -129,7 +130,10 @@ fn parse_binary_reference(value: &[u8]) -> DatabaseResult<usize> {
         .map_err(|err| DatabaseError::InvalidFormat(format!("invalid binary Ref: {err}")))
 }
 
-fn binary_at(binaries: &[(Vec<u8>, bool)], index: usize) -> DatabaseResult<&(Vec<u8>, bool)> {
+fn binary_at<'a>(
+    binaries: &'a BinaryReferences<'_>,
+    index: usize,
+) -> DatabaseResult<&'a (Vec<u8>, bool)> {
     binaries
         .get(index)
         .ok_or_else(|| DatabaseError::InvalidFormat(format!("binary Ref {index} is out of range")))

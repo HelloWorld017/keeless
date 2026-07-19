@@ -5,12 +5,13 @@ mod history;
 mod times;
 
 use super::super::helpers::*;
+use super::BinaryReferences;
 
 pub(super) fn read_entry<R: std::io::BufRead>(
     reader: &mut quick_xml::Reader<R>,
     db: &mut Database,
     inner_stream: &mut dyn InnerStreamCipher,
-    binaries: &[(Vec<u8>, bool)],
+    binaries: &BinaryReferences<'_>,
     buf: &mut Vec<u8>,
 ) -> DatabaseResult<Entry> {
     let mut entry = Entry::new(NodeId::new_uuid());
