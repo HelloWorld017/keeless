@@ -366,6 +366,27 @@ impl Database {
         true
     }
 
+    /// Duplicate an entry with a fresh identity, redacting protected content when credentials
+    /// are unavailable.
+    pub fn duplicate_entry(
+        &mut self,
+        source_entry_id: &NodeId,
+        parent_group_id: &NodeId,
+        composite_key: Option<&CompositeKey>,
+    ) -> DatabaseResult<Option<NodeId>> {
+        if !self.groups.contains_key(parent_group_id) {
+            return Ok(None);
+        }
+        let Some(mut entry) = self.entries.get(source_entry_id).cloned() else {
+            return Ok(None);
+        };
+
+        let id = NodeId::new_uuid();
+        let mut unlock = composite_key.map(MemoryUnlockSession::new);
+        entry.prepare_duplicate(id, unlock.as_mut())?;
+        Ok(self.add_entry(entry, parent_group_id).then_some(id))
+    }
+
     /// Remove an entry from the database.
     /// If `use_recycle_bin` is true and a recycle bin exists, move to recycle bin instead.
     /// Returns the removed entry, or None if not found.

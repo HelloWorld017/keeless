@@ -36,6 +36,6 @@ pub use entry::{Entry, EntryBinary, EntryField};
 pub use group::versioned::{GroupKDB, GroupKDBX};
 pub use group::Group;
 pub use meta::{
-    parse_tags, serialize_tags, CustomData, CustomDataItem, DeletedObject, IconImage,
-    IconImageCustom, IconImageStandard, Tag, Template, TemplateField, TemplateFieldType,
+    get_builtin_templates, parse_tags, serialize_tags, CustomData, CustomDataItem, DeletedObject,
+    IconImage, IconImageCustom, IconImageStandard, Tag, Template, TemplateField, TemplateFieldType,
 };

@@ -1,10 +1,10 @@
 import { SidebarInset, SidebarProvider } from '@/components/sidebar';
-import { useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { cx } from '@/utils/css';
+import { buildRoute } from '@/utils/route';
 import {
   DndContext,
   DragOverlay,
-  KeyboardSensor,
   PointerSensor,
   closestCenter,
   pointerWithin,
@@ -15,23 +15,19 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
-  type KeyboardCoordinateGetter,
   type Modifier,
 } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { useSearchParams } from 'wouter';
+import { Redirect, useSearchParams } from 'wouter';
 import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
 import { GroupDragOverlay } from './_components/GroupTree';
 import { Sidebar } from './_components/Sidebar';
 import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
-
-const keyboardDirections = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'] as const;
 
 const collisionDetection: CollisionDetection = args =>
   args.active.data.current?.type === 'entry' && args.pointerCoordinates
@@ -43,83 +39,23 @@ const snapEntryCenterToCursor: Modifier = args =>
 
 const entryOverlayModifiers = [snapEntryCenterToCursor];
 
-const isKeyboardDirection = (code: string): code is (typeof keyboardDirections)[number] =>
-  keyboardDirections.includes(code as (typeof keyboardDirections)[number]);
-
-const keyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
-  if (args.context.active?.data.current?.type !== 'entry') {
-    return sortableKeyboardCoordinates(event, args);
-  }
-  if (!isKeyboardDirection(event.code)) {
-    return undefined;
-  }
-
-  event.preventDefault();
-  const { collisionRect, droppableContainers, droppableRects, over } = args.context;
-  if (!collisionRect) {
-    return undefined;
-  }
-  const referenceRect = (over && droppableRects.get(over.id)) || collisionRect;
-  const referenceCenter = {
-    x: referenceRect.left + referenceRect.width / 2,
-    y: referenceRect.top + referenceRect.height / 2,
-  };
-  const candidates = droppableContainers
-    .getEnabled()
-    .filter(container => {
-      const data = container.data.current;
-      const rect = droppableRects.get(container.id);
-      if (!rect || (data?.type !== 'group' && data?.type !== 'trash')) {
-        return false;
-      }
-      const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      switch (event.code) {
-        case 'ArrowDown':
-          return center.y > referenceCenter.y;
-        case 'ArrowRight':
-          return center.x > referenceCenter.x;
-        case 'ArrowUp':
-          return center.y < referenceCenter.y;
-        case 'ArrowLeft':
-          return center.x < referenceCenter.x;
-        default:
-          return false;
-      }
-    })
-    .map(container => droppableRects.get(container.id)!);
-  const distance = (rect: (typeof candidates)[number]) =>
-    Math.hypot(
-      rect.left + rect.width / 2 - referenceCenter.x,
-      rect.top + rect.height / 2 - referenceCenter.y,
-    );
-  const target = candidates.reduce<(typeof candidates)[number] | undefined>(
-    (closest, candidate) =>
-      !closest || distance(candidate) < distance(closest) ? candidate : closest,
-    undefined,
-  );
-  if (!target) {
-    return undefined;
-  }
-  return {
-    x: target.left + (target.width - collisionRect.width) / 2,
-    y: target.top + (target.height - collisionRect.height) / 2,
-  };
-};
-
 const announcements = {
   onDragStart: ({ active }: DragStartEvent) => {
     const data = active.data.current;
     return data?.title ? `Picked up ${data.title}.` : undefined;
   },
+
   onDragOver: ({ over }: { over: DragEndEvent['over'] }) => {
     const title = over?.data.current?.title;
     return title ? `Over ${title}.` : 'Not over a destination.';
   },
+
   onDragEnd: ({ active, over }: DragEndEvent) => {
     const activeTitle = active.data.current?.title;
     const overTitle = over?.data.current?.title;
     return activeTitle && overTitle ? `Dropped ${activeTitle} in ${overTitle}.` : 'Drag cancelled.';
   },
+
   onDragCancel: ({ active }: DragEndEvent) => {
     const title = active.data.current?.title;
     return title ? `Cancelled dragging ${title}.` : 'Drag cancelled.';
@@ -135,7 +71,7 @@ const entryQueryNames = [
   'getEntryDetail',
 ] as const;
 
-export const DatabaseFragment = () => {
+const DatabaseFragmentContents = () => {
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
   const [activeDrag, setActiveDrag] = useState<DragDropData | null>(null);
@@ -146,18 +82,17 @@ export const DatabaseFragment = () => {
   const dropAnimation: DropAnimation = {
     keyframes: ({ active, transform }) => {
       const initial = { transform: CSS.Transform.toString(transform.initial) };
+
       if (active.data.current?.type === 'group') {
         return [initial, initial];
       }
+
       return validEntryDrop.current
         ? [initial, { ...initial, opacity: 0 }]
         : [initial, { transform: CSS.Transform.toString(transform.final), opacity: 0 }];
     },
   };
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const moveEntry = useMutation({
     mutationFn: (args: MoveEntryArgs) => requestClient.data!.request('moveEntry', args),
     onSettled: async () => {
@@ -222,6 +157,7 @@ export const DatabaseFragment = () => {
         overData.type === 'group' &&
         databaseNodeKey(activeData.source.groupId) === databaseNodeKey(overData.groupId)) ||
       (activeData.source.type === 'trash' && overData.type === 'trash');
+
     if (sameDestination) {
       validEntryDrop.current = false;
       clearDrag();
@@ -234,9 +170,11 @@ export const DatabaseFragment = () => {
       (activeData.source.type === 'trash' && overData.type === 'group') ||
       ((activeData.source.type === 'all' || activeData.source.type === 'tag') &&
         overData.type === 'trash');
+
     if (leavesCurrentList) {
       setMovingEntry({ entryId: activeData.entryId, source: activeData.source });
     }
+
     clearDrag();
     moveEntry.mutate({ entryId: activeData.entryId, parentGroupId: overData.groupId });
   };
@@ -289,4 +227,18 @@ export const DatabaseFragment = () => {
       </DragOverlay>
     </DndContext>
   );
+};
+
+export const DatabaseFragment = () => {
+  const databaseStatus = useRequest('getDatabaseStatus', {});
+
+  if (databaseStatus.data?.status === 'unlocked') {
+    return <DatabaseFragmentContents />;
+  }
+
+  if (databaseStatus.isPending || databaseStatus.isFetching) {
+    return null;
+  }
+
+  return <Redirect to={buildRoute('open')} replace />;
 };

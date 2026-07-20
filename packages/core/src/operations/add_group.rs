@@ -1,4 +1,4 @@
-use keeless_kdbx::{Group, NodeId};
+use keeless_kdbx::{Group, IconImage, IconImageStandard, NodeId};
 use keeless_schema::{AddGroupArgs, AddGroupResult, OperationSuccess};
 
 use crate::model::{node_id, parse_node_id};
@@ -18,6 +18,7 @@ pub(crate) fn run(core: &mut KeelessCore, args: AddGroupArgs) -> Result<AddGroup
     let id = NodeId::new_uuid();
     let mut group = Group::new(id);
     group.title = "Untitled Group".into();
+    group.icon = IconImage::Standard(IconImageStandard::new(48));
     if !handle.database_mut().add_group(group, &parent_group_id) {
         return Err(CoreError::GroupNotFound);
     }

@@ -1,4 +1,5 @@
 pub(crate) mod add_entry;
+pub(crate) mod add_entry_from_template;
 pub(crate) mod add_group;
 pub(crate) mod create;
 pub(crate) mod get_config;
@@ -6,6 +7,7 @@ pub(crate) mod get_custom_icons;
 pub(crate) mod get_database_status;
 pub(crate) mod get_entries;
 pub(crate) mod get_entry_detail;
+pub(crate) mod get_entry_templates;
 pub(crate) mod get_group_entries;
 pub(crate) mod get_group_hierarchy;
 pub(crate) mod get_storage_descriptor;
@@ -46,9 +48,11 @@ pub(crate) async fn execute(
         Operation::GetTags(args) => get_tags::execute(core, args),
         Operation::GetEntryDetail(args) => get_entry_detail::execute(core, args),
         Operation::GetCustomIcons(args) => get_custom_icons::execute(core, args),
+        Operation::GetEntryTemplates(args) => get_entry_templates::execute(core, args),
         Operation::MoveGroup(args) => move_group::execute(core, args),
         Operation::MoveEntry(args) => move_entry::execute(core, args),
         Operation::AddEntry(args) => add_entry::execute(core, args),
+        Operation::AddEntryFromTemplate(args) => add_entry_from_template::execute(core, args),
         Operation::AddGroup(args) => add_group::execute(core, args),
         Operation::RenameGroup(args) => rename_group::execute(core, args),
         Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args),

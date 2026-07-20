@@ -1,6 +1,7 @@
 import {
   AlertCircleIcon,
   ArrowRightIcon,
+  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloudIcon,
@@ -35,6 +36,7 @@ const wrapLucideComponent = <TProps,>(LucideIcon: ComponentType<TProps>) => {
 
 export const IconAlertCircle = wrapLucideComponent(AlertCircleIcon);
 export const IconArrowRight = wrapLucideComponent(ArrowRightIcon);
+export const IconChevronDown = wrapLucideComponent(ChevronDownIcon);
 export const IconChevronLeft = wrapLucideComponent(ChevronLeftIcon);
 export const IconChevronRight = wrapLucideComponent(ChevronRightIcon);
 export const IconCloud = wrapLucideComponent(CloudIcon);

@@ -47,9 +47,11 @@ fn generate() -> String {
     export_empty("GetTagsArgs", &mut output);
     export::<GetEntryDetailArgs>(&mut output);
     export_empty("GetCustomIconsArgs", &mut output);
+    export_empty("GetEntryTemplatesArgs", &mut output);
     export::<MoveGroupArgs>(&mut output);
     export::<MoveEntryArgs>(&mut output);
     export::<AddEntryArgs>(&mut output);
+    export::<AddEntryFromTemplateArgs>(&mut output);
     export::<AddGroupArgs>(&mut output);
     export::<RenameGroupArgs>(&mut output);
     export::<RevealEntryFieldArgs>(&mut output);

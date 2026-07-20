@@ -10,4 +10,4 @@ pub use custom_data::{CustomData, CustomDataItem};
 pub use deleted_object::DeletedObject;
 pub use icon::{IconImage, IconImageCustom, IconImageStandard};
 pub use tags::{parse_tags, serialize_tags, Tag};
-pub use template::{Template, TemplateField, TemplateFieldType};
+pub use template::{get_builtin_templates, Template, TemplateField, TemplateFieldType};

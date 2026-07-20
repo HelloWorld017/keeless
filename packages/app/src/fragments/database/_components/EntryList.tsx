@@ -5,9 +5,10 @@ import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvid
 import { useHistoryBack } from '@/fragments/_providers/RouterProvider';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { IconAlertCircle, IconLoaderCircle, IconPlus } from '@/icons';
+import { IconAlertCircle, IconChevronDown, IconLoaderCircle, IconPlus } from '@/icons';
 import { cn, cx } from '@/utils/css';
 import { getRoute } from '@/utils/route';
+import { Menu } from '@base-ui/react/menu';
 import { useDraggable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -21,8 +22,15 @@ import {
 } from '../_utils/dragAndDrop';
 import { EntryDetail } from './EntryDetail';
 import { EntryItem, getEntryTitle } from './EntryItem';
+import { ItemIcon } from './ItemIcon';
 import type { OperationArgs, OperationName } from '@/utils/request';
-import type { AddEntryArgs, DatabaseNodeId, EntriesResult, EntrySummary } from '@keeless/schema';
+import type {
+  AddEntryArgs,
+  AddEntryFromTemplateArgs,
+  DatabaseNodeId,
+  EntriesResult,
+  EntrySummary,
+} from '@keeless/schema';
 
 type EntryOperationName = Extract<
   OperationName,
@@ -189,22 +197,33 @@ const EntryQuery = <TName extends EntryOperationName>({
   creationParentId?: DatabaseNodeId;
 }) => {
   const entries = useRequest(name, args);
+  const templates = useRequest('getEntryTemplates', {});
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const historyBack = useHistoryBack();
   const selectedEntry = searchParams.get('entry');
+  const onAddSuccess = async (result: { id: DatabaseNodeId }) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
+      queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
+      queryClient.invalidateQueries({ queryKey: ['request', 'getEntryTemplates'] }),
+      queryClient.invalidateQueries({ queryKey: ['request', 'getTagEntries'] }),
+      queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] }),
+    ]);
+    setSearchParams({ entry: String(result.id) }, { replace: !isMobile });
+  };
   const addEntry = useMutation({
     mutationFn: (addArgs: AddEntryArgs) => requestClient.data!.request('addEntry', addArgs),
-    onSuccess: async result => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
-      ]);
-      setSearchParams({ entry: String(result.id) }, { replace: !isMobile });
-    },
+    onSuccess: onAddSuccess,
   });
+  const addEntryFromTemplate = useMutation({
+    mutationFn: (addArgs: AddEntryFromTemplateArgs) =>
+      requestClient.data!.request('addEntryFromTemplate', addArgs),
+    onSuccess: onAddSuccess,
+  });
+  const addPending = addEntry.isPending || addEntryFromTemplate.isPending;
   const result = entries.data as EntriesResult | undefined;
   const resultSorted = useMemo(
     () =>
@@ -250,16 +269,85 @@ const EntryQuery = <TName extends EntryOperationName>({
               )}
             </div>
             {creationParentId !== undefined && (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Add entry"
-                disabled={movePending || addEntry.isPending}
-                onClick={() => addEntry.mutate({ parentGroupId: creationParentId })}
-              >
-                {addEntry.isPending ? <IconLoaderCircle className="animate-spin" /> : <IconPlus />}
-              </Button>
+              <div className="flex shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="rounded-r-none"
+                  aria-label="Add entry"
+                  disabled={movePending || addPending}
+                  onClick={() => addEntry.mutate({ parentGroupId: creationParentId })}
+                >
+                  {addPending ? <IconLoaderCircle className="animate-spin" /> : <IconPlus />}
+                </Button>
+                <Menu.Root>
+                  <Menu.Trigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="-ml-px rounded-l-none"
+                        aria-label="Add entry from template"
+                      />
+                    }
+                    disabled={movePending || addPending}
+                  >
+                    <IconChevronDown />
+                  </Menu.Trigger>
+                  <Menu.Portal>
+                    <Menu.Positioner align="end" sideOffset={4} className="isolate z-50">
+                      <Menu.Popup className="max-h-(--available-height) min-w-52 origin-(--transform-origin) overflow-y-auto rounded-lg bg-popover/90 p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 backdrop-blur-xl duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+                        {templates.isPending && (
+                          <Menu.Item
+                            disabled
+                            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-none"
+                          >
+                            <IconLoaderCircle className="animate-spin" />
+                            Loading templates
+                          </Menu.Item>
+                        )}
+                        {templates.isError && (
+                          <Menu.Item
+                            disabled
+                            className="rounded-md px-2 py-1.5 text-sm text-destructive outline-none"
+                          >
+                            Templates could not be loaded
+                          </Menu.Item>
+                        )}
+                        {templates.data?.entries.length === 0 && (
+                          <Menu.Item
+                            disabled
+                            className="rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-none"
+                          >
+                            No templates
+                          </Menu.Item>
+                        )}
+                        {templates.data?.entries.map(template => (
+                          <Menu.Item
+                            key={String(template.id)}
+                            className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none data-highlighted:bg-foreground/10"
+                            onClick={() =>
+                              addEntryFromTemplate.mutate({
+                                parentGroupId: creationParentId,
+                                templateEntryId: template.id,
+                              })
+                            }
+                          >
+                            <ItemIcon
+                              icon={template.icon}
+                              fallback="entry"
+                              className="size-4 shrink-0 text-muted-foreground"
+                            />
+                            <span className="min-w-0 truncate">{getEntryTitle(template)}</span>
+                          </Menu.Item>
+                        ))}
+                      </Menu.Popup>
+                    </Menu.Positioner>
+                  </Menu.Portal>
+                </Menu.Root>
+              </div>
             )}
           </header>
 
@@ -270,7 +358,7 @@ const EntryQuery = <TName extends EntryOperationName>({
               <AlertDescription>Try moving the entry again.</AlertDescription>
             </Alert>
           )}
-          {addEntry.isError && (
+          {(addEntry.isError || addEntryFromTemplate.isError) && (
             <Alert variant="destructive" className="m-3 mb-0 w-auto">
               <IconAlertCircle />
               <AlertTitle>Entry could not be added</AlertTitle>

@@ -256,7 +256,7 @@ const SortableGroup = ({
   return (
     <SidebarMenuItem
       ref={setNodeRef}
-      className={isDragging ? 'z-10' : undefined}
+      className={cx('group', isDragging && 'z-10')}
       style={{
         paddingLeft: depth * INDENTATION_WIDTH,
         transform: CSS.Transform.toString(transform),
@@ -267,11 +267,12 @@ const SortableGroup = ({
         <div
           className={cx(
             'pointer-events-none absolute right-1 z-20 h-0.5 bg-primary',
-            indicator.edge === 'before' ? '-top-px' : '-bottom-px',
+            indicator.edge === 'before' ? '-top-2' : '-bottom-2',
           )}
           style={{ left: indicator.depth * INDENTATION_WIDTH + 8 }}
         ></div>
       )}
+
       {editing ? (
         <div className="flex h-8 items-center gap-2 px-2 pr-8">
           <ItemIcon icon={item.group.icon} fallback="group" className="size-4 shrink-0" />
@@ -313,7 +314,7 @@ const SortableGroup = ({
           }
           isActive={active}
           className={cx(
-            'border-2 border-transparent pr-14',
+            'border-2 border-transparent pr-14 group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground select-none',
             isEntryOver && 'border-sidebar-ring',
             isDragging && 'opacity-0',
           )}
@@ -323,12 +324,13 @@ const SortableGroup = ({
           <span>{item.group.name || 'Untitled group'}</span>
         </SidebarMenuButton>
       )}
+
       {!editing && (
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
-          className="absolute top-1 right-7 text-sidebar-foreground/60 hover:bg-sidebar-accent"
+          className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 right-7 text-sidebar-foreground/60 hover:bg-sidebar-accent"
           aria-label={`Rename ${item.group.name || 'untitled group'}`}
           disabled={disabled}
           onClick={startEditing}
@@ -337,14 +339,15 @@ const SortableGroup = ({
         </Button>
       )}
       <Button
+
         ref={setActivatorNodeRef}
         type="button"
         variant="ghost"
         size="icon-xs"
         className={cx(
-          'absolute top-1 right-1 cursor-grab touch-none text-sidebar-foreground/60 hover:bg-sidebar-accent active:translate-y-0',
+          'opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 right-1 cursor-grab touch-none text-sidebar-foreground/60 hover:bg-sidebar-accent active:translate-y-0',
           editing && 'hidden',
-          isDragging && 'cursor-grabbing opacity-0',
+          isDragging && 'cursor-grabbing opacity-0!',
         )}
         aria-label={`Move ${item.group.name || 'untitled group'}`}
         {...attributes}

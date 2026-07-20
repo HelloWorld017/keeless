@@ -377,6 +377,13 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
 fn database_editing_operations_have_stable_shapes() {
     assert_roundtrip(
         OperationRequest {
+            request_id: "templates-1".into(),
+            operation: Operation::GetEntryTemplates(GetEntryTemplatesArgs {}),
+        },
+        json!({ "requestId": "templates-1", "op": "getEntryTemplates", "args": {} }),
+    );
+    assert_roundtrip(
+        OperationRequest {
             request_id: "add-entry-1".into(),
             operation: Operation::AddEntry(AddEntryArgs {
                 parent_group_id: DatabaseNodeId::Int(7),
@@ -394,6 +401,36 @@ fn database_editing_operations_have_stable_shapes() {
             },
         },
         json!({ "requestId": "add-entry-1", "status": "success", "op": "addEntry", "result": { "id": 8 } }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "add-template-1".into(),
+            operation: Operation::AddEntryFromTemplate(AddEntryFromTemplateArgs {
+                parent_group_id: DatabaseNodeId::Int(7),
+                template_entry_id: DatabaseNodeId::Int(4),
+            }),
+        },
+        json!({
+            "requestId": "add-template-1",
+            "op": "addEntryFromTemplate",
+            "args": { "parentGroupId": 7, "templateEntryId": 4 }
+        }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "add-template-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::AddEntryFromTemplate(AddEntryResult {
+                    id: DatabaseNodeId::Int(10),
+                }),
+            },
+        },
+        json!({
+            "requestId": "add-template-1",
+            "status": "success",
+            "op": "addEntryFromTemplate",
+            "result": { "id": 10 }
+        }),
     );
     assert_roundtrip(
         OperationRequest {

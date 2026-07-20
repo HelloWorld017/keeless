@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use keeless_kdbx::{CompositeKey, Database, DatabaseVersion, Group, NodeId};
+use keeless_kdbx::{
+    CompositeKey, Database, DatabaseVersion, Group, IconImage, IconImageStandard, NodeId,
+    get_builtin_templates,
+};
 use keeless_schema::{CreateArgs, EmptyResult, OperationSuccess};
 use keeless_sync::{FileHandle, StorageErrorKind, SyncError, SyncOptions};
 use zeroize::Zeroizing;
@@ -37,6 +40,17 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     root.title = "Root".into();
     database.groups.insert(root_id, root);
     database.root_group_id = Some(root_id);
+
+    let templates_id = NodeId::new_uuid();
+    let mut templates = Group::new(templates_id);
+    templates.title = "Templates".into();
+    templates.icon = IconImage::Standard(IconImageStandard::new(48));
+    templates.enable_searching = false;
+    database.add_group(templates, &root_id);
+    database.entry_templates_uuid = templates_id.as_uuid().copied();
+    for template in get_builtin_templates() {
+        database.add_entry(template.into_entry(), &templates_id);
+    }
 
     let handle =
         match FileHandle::create(provider, path, database, &key, SyncOptions::default()).await {

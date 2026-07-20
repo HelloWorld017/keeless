@@ -6,14 +6,14 @@ use std::sync::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
 use keeless_kdbx::{
-    Database, DatabaseVersion, Entry, EntryBinary, EntryField, Group, IconImageCustom,
-    IconImageStandard, NodeId, ProtectedString, save_database,
+    Database, DatabaseVersion, Entry, EntryBinary, EntryField, EntryFieldSelector, Group,
+    IconImageCustom, IconImageStandard, NodeId, ProtectedString, save_database,
 };
 use keeless_schema::{
-    AddEntryArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult, GetDatabaseStatusArgs,
-    GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, MoveEntryArgs,
-    MoveGroupArgs, Operation, OperationOutcome, OperationRequest, OperationResponse,
-    OperationSuccess, RenameGroupArgs,
+    AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
+    GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
+    GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
+    OperationResponse, OperationSuccess, RenameGroupArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -337,6 +337,13 @@ fn schema_id(id: Uuid) -> DatabaseNodeId {
     DatabaseNodeId::Uuid(id.hyphenated().to_string())
 }
 
+fn model_id(id: DatabaseNodeId) -> NodeId {
+    match id {
+        DatabaseNodeId::Uuid(value) => NodeId::from_uuid(Uuid::parse_str(&value).unwrap()),
+        DatabaseNodeId::Int(value) => NodeId::from_int(value),
+    }
+}
+
 fn host(
     config: Arc<dyn ConfigProvider>,
     approval: Arc<Approval>,
@@ -592,6 +599,45 @@ async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Unlocked
     );
+    let templates = operations::get_entry_templates::run(&mut core)
+        .unwrap()
+        .entries;
+    assert_eq!(
+        templates
+            .iter()
+            .map(|template| template.name.as_deref().unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            "General",
+            "Credit Card",
+            "Email Account",
+            "Wireless Router",
+            "Bank Account",
+            "Secure Note",
+            "SSH Key",
+            "Membership",
+        ]
+    );
+    assert!(
+        operations::get_entries::run(&mut core, GetEntriesArgs::default())
+            .unwrap()
+            .entries
+            .is_empty()
+    );
+    {
+        let database = core.handle.as_ref().unwrap().database();
+        let templates_group_id = NodeId::from_uuid(database.entry_templates_uuid.unwrap());
+        let templates_group = database.get_group(&templates_group_id).unwrap();
+        assert_eq!(templates_group.title, "Templates");
+        assert!(!templates_group.enable_searching);
+        assert!(
+            database
+                .root_group()
+                .unwrap()
+                .child_group_ids
+                .contains(&templates_group_id)
+        );
+    }
 
     operations::lock::run(&mut core);
     assert!(matches!(
@@ -867,6 +913,181 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
     assert_eq!(icons.icons[0].data_base64, "AQID");
     assert_eq!(icons.icons[0].name, "Custom");
     assert_eq!(icons.icons[0].last_modification_time_ms, 1_700_000_000_000);
+}
+
+#[tokio::test]
+async fn template_queries_are_direct_and_excluded_from_regular_results() {
+    let (mut core, ids) = query_core().await;
+    let templates_uuid = Uuid::from_u128(30);
+    let templates_id = NodeId::from_uuid(templates_uuid);
+    let nested_group_id = NodeId::from_uuid(Uuid::from_u128(31));
+    let direct_template_id = NodeId::from_uuid(Uuid::from_u128(32));
+    let nested_template_id = NodeId::from_uuid(Uuid::from_u128(33));
+    {
+        let database = core.handle.as_mut().unwrap().database_mut();
+        let mut templates = Group::new(templates_id);
+        templates.title = "Templates".into();
+        templates.enable_searching = false;
+        assert!(database.add_group(templates, &NodeId::from_uuid(ids.root_group)));
+        assert!(database.add_group(Group::new(nested_group_id), &templates_id));
+
+        let mut direct = Entry::new(direct_template_id);
+        direct.title = "Direct Template".into();
+        direct.tags = vec!["template-only".into()];
+        assert!(database.add_entry(direct, &templates_id));
+
+        let mut nested = Entry::new(nested_template_id);
+        nested.title = "Nested Template".into();
+        nested.tags = vec!["template-only".into()];
+        assert!(database.add_entry(nested, &nested_group_id));
+        database.entry_templates_uuid = Some(templates_uuid);
+    }
+
+    let templates = operations::get_entry_templates::run(&mut core)
+        .unwrap()
+        .entries;
+    assert_eq!(templates.len(), 1);
+    assert_eq!(templates[0].id, schema_id(Uuid::from_u128(32)));
+    assert!(
+        operations::get_entries::run(&mut core, GetEntriesArgs::default())
+            .unwrap()
+            .entries
+            .iter()
+            .all(|entry| entry.id != schema_id(Uuid::from_u128(32))
+                && entry.id != schema_id(Uuid::from_u128(33)))
+    );
+    assert!(
+        operations::get_tags::run(&mut core)
+            .unwrap()
+            .tags
+            .iter()
+            .all(|tag| tag.name != "template-only")
+    );
+}
+
+#[tokio::test]
+async fn add_entry_from_template_uses_credentials_or_redacts_protected_content() {
+    let (mut core, ids) = query_core().await;
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let templates_uuid = Uuid::from_u128(40);
+    let templates_id = NodeId::from_uuid(templates_uuid);
+    let template_id = NodeId::from_uuid(Uuid::from_u128(41));
+    {
+        let database = core.handle.as_mut().unwrap().database_mut();
+        assert!(database.add_group(Group::new(templates_id), &NodeId::from_uuid(ids.root_group)));
+        let mut template = Entry::new(template_id);
+        template.title = "Secret Template".into();
+        template.title_is_protected = true;
+        template.username = ProtectedString::new_plain("public-user");
+        template.password = ProtectedString::new_protected("secret-password");
+        template.custom_fields.push(EntryField {
+            name: "Secret Field".into(),
+            value: ProtectedString::new_protected("secret-value"),
+            is_protected: true,
+        });
+        template.binaries = vec![
+            EntryBinary {
+                name: "public.txt".into(),
+                data: b"public".to_vec(),
+                is_protected: false,
+            },
+            EntryBinary {
+                name: "secret.txt".into(),
+                data: b"secret".to_vec(),
+                is_protected: true,
+            },
+        ];
+        template.history.push(Entry::new(template_id));
+        template.usage_count = 9;
+        template.is_template = true;
+        assert!(database.add_entry(template, &templates_id));
+        database.entry_templates_uuid = Some(templates_uuid);
+        database.protect_entry_strings(&key).unwrap();
+    }
+
+    assert!(matches!(
+        operations::add_entry_from_template::run(
+            &mut core,
+            AddEntryFromTemplateArgs {
+                parent_group_id: schema_id(ids.child_group),
+                template_entry_id: schema_id(ids.root_entry),
+            },
+        ),
+        Err(CoreError::EntryNotFound)
+    ));
+
+    let copied_id = model_id(
+        operations::add_entry_from_template::run(
+            &mut core,
+            AddEntryFromTemplateArgs {
+                parent_group_id: schema_id(ids.child_group),
+                template_entry_id: schema_id(Uuid::from_u128(41)),
+            },
+        )
+        .unwrap()
+        .id,
+    );
+    {
+        let database = core.handle.as_ref().unwrap().database();
+        assert_eq!(
+            database
+                .with_entry_field(
+                    &key,
+                    &copied_id,
+                    &EntryFieldSelector::Password,
+                    str::to_owned
+                )
+                .unwrap(),
+            "secret-password"
+        );
+        let copied = database.get_entry(&copied_id).unwrap();
+        assert_eq!(copied.binaries.len(), 2);
+        assert!(copied.history.is_empty());
+        assert_eq!(copied.usage_count, 0);
+        assert!(!copied.is_template);
+    }
+
+    core.credential = None;
+    let redacted_id = model_id(
+        operations::add_entry_from_template::run(
+            &mut core,
+            AddEntryFromTemplateArgs {
+                parent_group_id: schema_id(ids.child_group),
+                template_entry_id: schema_id(Uuid::from_u128(41)),
+            },
+        )
+        .unwrap()
+        .id,
+    );
+    let database = core.handle.as_ref().unwrap().database();
+    assert_eq!(
+        database
+            .with_entry_field(
+                &key,
+                &redacted_id,
+                &EntryFieldSelector::Title,
+                str::to_owned
+            )
+            .unwrap(),
+        ""
+    );
+    let redacted = database.get_entry(&redacted_id).unwrap();
+    assert_eq!(redacted.username.as_str(), "public-user");
+    assert_eq!(redacted.password.as_str(), "");
+    assert_eq!(redacted.custom_fields[0].value.as_str(), "");
+    assert_eq!(redacted.binaries.len(), 1);
+    assert_eq!(redacted.binaries[0].name, "public.txt");
+    assert_eq!(
+        database
+            .with_entry_field(
+                &key,
+                &template_id,
+                &EntryFieldSelector::Password,
+                str::to_owned
+            )
+            .unwrap(),
+        "secret-password"
+    );
 }
 
 #[tokio::test]
@@ -1260,15 +1481,13 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
     )
     .unwrap();
     let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
-    assert_eq!(
-        hierarchy
-            .groups
-            .iter()
-            .find(|candidate| candidate.id == group.id)
-            .unwrap()
-            .name,
-        "Renamed Group"
-    );
+    let created_group = hierarchy
+        .groups
+        .iter()
+        .find(|candidate| candidate.id == group.id)
+        .unwrap();
+    assert_eq!(created_group.name, "Renamed Group");
+    assert_eq!(created_group.icon.standard_id, 48);
     assert!(matches!(
         operations::rename_group::run(
             &mut core,

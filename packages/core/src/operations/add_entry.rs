@@ -16,8 +16,7 @@ pub(crate) fn run(core: &mut KeelessCore, args: AddEntryArgs) -> Result<AddEntry
     }
 
     let id = NodeId::new_uuid();
-    let mut entry = Entry::new(id);
-    entry.title = "Untitled Entry".into();
+    let entry = Entry::new(id);
     if !handle.database_mut().add_entry(entry, &parent_group_id) {
         return Err(CoreError::GroupNotFound);
     }

@@ -2,6 +2,10 @@
 //!
 //! Template definitions and inference for entry types (Login, Credit Card, etc.)
 
+use crate::model::core::{NodeId, ProtectedString};
+use crate::model::entry::{Entry, EntryField};
+use crate::model::meta::icon::{IconImage, IconImageStandard};
+
 /// Template field definition
 #[derive(Debug, Clone)]
 pub struct TemplateField {
@@ -65,6 +69,37 @@ impl Template {
 
         // Match if at least half of the required fields are present
         matches_count * 2 >= required.len()
+    }
+
+    pub fn into_entry(self) -> Entry {
+        let mut entry = Entry::new(NodeId::from_uuid(self.uuid));
+        entry.title = self.title;
+        entry.icon = IconImage::Standard(IconImageStandard::new(self.icon_id));
+        entry.is_template = true;
+
+        for field in self.fields {
+            let value = || {
+                if field.is_protected {
+                    ProtectedString::new_protected("")
+                } else {
+                    ProtectedString::new_plain("")
+                }
+            };
+            match field.name.as_str() {
+                "Title" => entry.title_is_protected = field.is_protected,
+                "UserName" => entry.username = value(),
+                "Password" => entry.password = value(),
+                "URL" => entry.url_is_protected = field.is_protected,
+                "Notes" => entry.notes = value(),
+                _ => entry.custom_fields.push(EntryField {
+                    name: field.name,
+                    value: value(),
+                    is_protected: field.is_protected,
+                }),
+            }
+        }
+
+        entry
     }
 }
 
@@ -343,6 +378,31 @@ mod tests {
         assert!(!templates.is_empty());
         assert!(templates.iter().any(|t| t.name == "General"));
         assert!(templates.iter().any(|t| t.name == "Credit Card"));
+    }
+
+    #[test]
+    fn builtin_template_converts_to_template_entry() {
+        let template = get_builtin_templates()
+            .into_iter()
+            .find(|template| template.name == "Credit Card")
+            .unwrap();
+        let entry = template.into_entry();
+
+        assert_eq!(entry.title, "Credit Card");
+        assert!(entry.is_template);
+        assert_eq!(entry.custom_fields.len(), 5);
+        assert!(
+            entry
+                .custom_fields
+                .iter()
+                .find(|field| field.name == "Card Number")
+                .unwrap()
+                .is_protected
+        );
+        assert!(matches!(
+            entry.icon,
+            IconImage::Standard(IconImageStandard { icon_id: 37 })
+        ));
     }
 
     #[test]

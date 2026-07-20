@@ -68,12 +68,12 @@ pub(super) fn all_entries(database: &Database, exclude_trash: bool) -> Vec<&Entr
     fn visit_group<'a>(
         database: &'a Database,
         group_id: &NodeId,
-        excluded_group: Option<NodeId>,
+        excluded_groups: &HashSet<NodeId>,
         visited_groups: &mut HashSet<NodeId>,
         visited_entries: &mut HashSet<NodeId>,
         entries: &mut Vec<&'a Entry>,
     ) {
-        if excluded_group == Some(*group_id) || !visited_groups.insert(*group_id) {
+        if excluded_groups.contains(group_id) || !visited_groups.insert(*group_id) {
             return;
         }
         let Some(group) = database.get_group(group_id) else {
@@ -91,7 +91,7 @@ pub(super) fn all_entries(database: &Database, exclude_trash: bool) -> Vec<&Entr
             visit_group(
                 database,
                 child_group_id,
-                excluded_group,
+                excluded_groups,
                 visited_groups,
                 visited_entries,
                 entries,
@@ -99,27 +99,31 @@ pub(super) fn all_entries(database: &Database, exclude_trash: bool) -> Vec<&Entr
         }
     }
 
-    let excluded_group = exclude_trash
-        .then(|| database.recycle_bin_uuid.map(NodeId::from_uuid))
-        .flatten()
-        .filter(|id| database.get_group(id).is_some());
-    let excluded_entries = excluded_group
-        .map(|id| {
-            database
-                .get_all_entries_in_group(&id)
-                .into_iter()
-                .map(|entry| entry.id)
-                .collect::<HashSet<_>>()
-        })
-        .unwrap_or_default();
-    let mut entries = Vec::with_capacity(database.entries.len() - excluded_entries.len());
+    let mut excluded_groups = HashSet::new();
+    if let Some(id) = database.entry_templates_uuid.map(NodeId::from_uuid) {
+        excluded_groups.insert(id);
+    }
+    if exclude_trash && let Some(id) = database.recycle_bin_uuid.map(NodeId::from_uuid) {
+        excluded_groups.insert(id);
+    }
+    let excluded_entries = excluded_groups
+        .iter()
+        .flat_map(|id| database.get_all_entries_in_group(id))
+        .map(|entry| entry.id)
+        .collect::<HashSet<_>>();
+    let mut entries = Vec::with_capacity(
+        database
+            .entries
+            .len()
+            .saturating_sub(excluded_entries.len()),
+    );
     let mut visited_groups = HashSet::new();
     let mut visited_entries = HashSet::new();
     if let Some(root_group_id) = &database.root_group_id {
         visit_group(
             database,
             root_group_id,
-            excluded_group,
+            &excluded_groups,
             &mut visited_groups,
             &mut visited_entries,
             &mut entries,

@@ -237,6 +237,10 @@ pub struct GetEntryDetailArgs {
 #[serde(deny_unknown_fields)]
 pub struct GetCustomIconsArgs {}
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct GetEntryTemplatesArgs {}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MoveGroupArgs {
@@ -256,6 +260,13 @@ pub struct MoveEntryArgs {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AddEntryArgs {
     pub parent_group_id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AddEntryFromTemplateArgs {
+    pub parent_group_id: DatabaseNodeId,
+    pub template_entry_id: DatabaseNodeId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -300,9 +311,11 @@ pub enum Operation {
     GetTags(GetTagsArgs),
     GetEntryDetail(GetEntryDetailArgs),
     GetCustomIcons(GetCustomIconsArgs),
+    GetEntryTemplates(GetEntryTemplatesArgs),
     MoveGroup(MoveGroupArgs),
     MoveEntry(MoveEntryArgs),
     AddEntry(AddEntryArgs),
+    AddEntryFromTemplate(AddEntryFromTemplateArgs),
     AddGroup(AddGroupArgs),
     RenameGroup(RenameGroupArgs),
     RevealEntryField(RevealEntryFieldArgs),
@@ -429,9 +442,11 @@ pub enum OperationSuccess {
     GetTags(TagsResult),
     GetEntryDetail(Box<EntryDetailResult>),
     GetCustomIcons(CustomIconsResult),
+    GetEntryTemplates(EntriesResult),
     MoveGroup(EmptyResult),
     MoveEntry(EmptyResult),
     AddEntry(AddEntryResult),
+    AddEntryFromTemplate(AddEntryResult),
     AddGroup(AddGroupResult),
     RenameGroup(EmptyResult),
     RevealEntryField(RevealEntryFieldResult),

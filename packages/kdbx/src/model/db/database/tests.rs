@@ -1,5 +1,6 @@
 use super::*;
 use crate::model::core::security::ProtectedString;
+use crate::model::entry::{EntryBinary, EntryField};
 use crate::model::exception::DatabaseError;
 
 fn make_test_db() -> Database {
@@ -382,4 +383,102 @@ fn test_find_parent_group() {
 
     let found = db.find_parent_group_of_entry(&entry_id);
     assert_eq!(found, Some(root_id));
+}
+
+#[test]
+fn duplicate_entry_rebinds_or_redacts_protected_content() {
+    let mut db = make_test_db();
+    let root_id = db.root_group_id.unwrap();
+    let destination_id = NodeId::new_uuid();
+    let source_id = NodeId::new_uuid();
+    db.add_group(Group::new(destination_id), &root_id);
+
+    let mut source = Entry::new(source_id);
+    source.title = "Protected title".into();
+    source.title_is_protected = true;
+    source.username = ProtectedString::new_plain("public-user");
+    source.password = ProtectedString::new_protected("secret-password");
+    source.custom_fields = vec![
+        EntryField {
+            name: "Public".into(),
+            value: ProtectedString::new_plain("public-value"),
+            is_protected: false,
+        },
+        EntryField {
+            name: "Secret".into(),
+            value: ProtectedString::new_protected("secret-value"),
+            is_protected: true,
+        },
+    ];
+    source.binaries = vec![
+        EntryBinary {
+            name: "public.txt".into(),
+            data: b"public".to_vec(),
+            is_protected: false,
+        },
+        EntryBinary {
+            name: "secret.txt".into(),
+            data: b"secret".to_vec(),
+            is_protected: true,
+        },
+    ];
+    source.history.push(Entry::new(source_id));
+    source.creation_time = DateInstant::EpochMillis(1);
+    source.usage_count = 7;
+    source.is_template = true;
+    db.add_entry(source, &root_id);
+
+    let key = CompositeKey::new().with_password(b"password").unwrap();
+    db.protect_entry_strings(&key).unwrap();
+
+    let copied_id = db
+        .duplicate_entry(&source_id, &destination_id, Some(&key))
+        .unwrap()
+        .unwrap();
+    assert_ne!(copied_id, source_id);
+    assert_eq!(
+        db.with_entry_field(&key, &copied_id, &EntryFieldSelector::Title, str::to_owned)
+            .unwrap(),
+        "Protected title"
+    );
+    assert_eq!(
+        db.with_entry_field(
+            &key,
+            &copied_id,
+            &EntryFieldSelector::Password,
+            str::to_owned,
+        )
+        .unwrap(),
+        "secret-password"
+    );
+    let copied = db.get_entry(&copied_id).unwrap();
+    assert!(copied.history.is_empty());
+    assert_eq!(copied.usage_count, 0);
+    assert!(!copied.is_template);
+    assert_eq!(copied.binaries.len(), 2);
+    assert_ne!(copied.creation_time, DateInstant::EpochMillis(1));
+
+    let redacted_id = db
+        .duplicate_entry(&source_id, &destination_id, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        db.with_entry_field(
+            &key,
+            &redacted_id,
+            &EntryFieldSelector::Title,
+            str::to_owned
+        )
+        .unwrap(),
+        ""
+    );
+    let redacted = db.get_entry(&redacted_id).unwrap();
+    assert_eq!(redacted.username.as_str(), "public-user");
+    assert!(redacted.password.is_protected());
+    assert_eq!(redacted.password.as_str(), "");
+    assert_eq!(redacted.custom_fields[0].value.as_str(), "public-value");
+    assert!(redacted.custom_fields[1].is_protected);
+    assert_eq!(redacted.custom_fields[1].value.as_str(), "");
+    assert_eq!(redacted.binaries.len(), 1);
+    assert_eq!(redacted.binaries[0].name, "public.txt");
 }

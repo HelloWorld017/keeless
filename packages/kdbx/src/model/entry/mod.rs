@@ -135,11 +135,11 @@ impl Entry {
             id,
             title: String::new(),
             title_is_protected: false,
-            username: ProtectedString::new(),
+            username: ProtectedString::new_plain(""),
             password: ProtectedString::new(),
             url: String::new(),
             url_is_protected: false,
-            notes: ProtectedString::new(),
+            notes: ProtectedString::new_plain(""),
             icon: IconImage::default(),
             custom_icon_uuid: None,
             background_color: String::new(),
@@ -515,6 +515,54 @@ impl Entry {
         for history in &mut self.history {
             history.id = new_entry_id;
         }
+        Ok(())
+    }
+
+    pub(crate) fn prepare_duplicate(
+        &mut self,
+        new_entry_id: NodeId,
+        unlock: Option<&mut MemoryUnlockSession<'_>>,
+    ) -> DatabaseResult<()> {
+        self.history.clear();
+        self.xml_extensions.history.clear();
+
+        if let Some(unlock) = unlock {
+            self.rebind_memory_protection(unlock, new_entry_id)?;
+        } else {
+            if self.title_is_protected {
+                self.title.clear();
+                self.protected_title = None;
+            }
+            if self.username.is_protected() {
+                self.username = ProtectedString::new_protected("");
+            }
+            if self.password.is_protected() {
+                self.password = ProtectedString::new_protected("");
+            }
+            if self.url_is_protected {
+                self.url.clear();
+                self.protected_url = None;
+            }
+            if self.notes.is_protected() {
+                self.notes = ProtectedString::new_protected("");
+            }
+            for field in &mut self.custom_fields {
+                if field.is_protected || field.value.is_protected() {
+                    field.is_protected = true;
+                    field.value = ProtectedString::new_protected("");
+                }
+            }
+            self.binaries.retain(|binary| !binary.is_protected);
+            self.id = new_entry_id;
+        }
+
+        let now = DateInstant::now();
+        self.creation_time = now;
+        self.last_modification_time = now;
+        self.last_access_time = now;
+        self.location_changed = now;
+        self.usage_count = 0;
+        self.is_template = false;
         Ok(())
     }
 

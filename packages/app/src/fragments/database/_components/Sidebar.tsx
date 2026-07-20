@@ -89,6 +89,7 @@ const DatabaseSidebar = () => {
       setOpenMobile(false);
     }
   };
+
   const moveGroup = useMutation({
     mutationFn: (args: MoveGroupArgs) => requestClient.data!.request('moveGroup', args),
     onMutate: async args => {
@@ -107,6 +108,7 @@ const DatabaseSidebar = () => {
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
   });
+
   const addGroup = useMutation({
     mutationFn: (args: AddGroupArgs) => requestClient.data!.request('addGroup', args),
     onSuccess: async result => {
@@ -115,10 +117,32 @@ const DatabaseSidebar = () => {
       closeMobile();
     },
   });
+
   const renameGroup = useMutation({
     mutationFn: (args: RenameGroupArgs) => requestClient.data!.request('renameGroup', args),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
+    onMutate: async args => {
+      await queryClient.cancelQueries({ queryKey: hierarchyQueryKey });
+      const previous = queryClient.getQueryData<GroupHierarchyResult>(hierarchyQueryKey);
+      queryClient.setQueryData<GroupHierarchyResult>(hierarchyQueryKey, current =>
+        current
+          ? {
+              ...current,
+              groups: current.groups.map(group =>
+                group.id === args.groupId ? { ...group, name: args.name } : group,
+              ),
+            }
+          : current,
+      );
+      return { previous };
+    },
+    onError: (_error, _args, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(hierarchyQueryKey, context.previous);
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
   });
+
   const databaseName = hierarchy.data
     ? hierarchy.data.databaseName ||
       hierarchy.data.groups.find(group => group.id === hierarchy.data.rootGroupId)?.name ||

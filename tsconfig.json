@@ -13,8 +13,8 @@
     "esModuleInterop": true,
 
     // Types
-    "target": "es2022",
-    "lib": ["es2022", "dom"],
+    "target": "es2023",
+    "lib": ["es2023", "dom"],
 
     // Others
     "jsx": "react-jsx",
