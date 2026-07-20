@@ -16,6 +16,7 @@ use keeless_sync::{
 struct MemoryState {
     files: HashMap<String, (Vec<u8>, u64)>,
     forced_conflicts: usize,
+    write_error: Option<StorageErrorKind>,
     writes: usize,
 }
 
@@ -40,6 +41,10 @@ impl MemoryStorage {
 
     fn force_conflicts(&self, count: usize) {
         self.state.lock().unwrap().forced_conflicts = count;
+    }
+
+    fn fail_writes_with(&self, kind: StorageErrorKind) {
+        self.state.lock().unwrap().write_error = Some(kind);
     }
 
     fn writes(&self) -> usize {
@@ -99,6 +104,9 @@ impl StorageProvider for MemoryStorage {
         Box::pin(async move {
             let mut state = self.state.lock().unwrap();
             state.writes += 1;
+            if let Some(kind) = state.write_error {
+                return Err(StorageError::new(kind, "forced write failure"));
+            }
             if state.forced_conflicts > 0 {
                 state.forced_conflicts -= 1;
                 return Ok(WriteOutcome::Conflict);
@@ -186,6 +194,7 @@ async fn open_syncs_local_changes_with_cas() {
         .get_mut(&entry_id)
         .unwrap()
         .title = "local".into();
+    assert!(handle.is_dirty());
 
     let report = handle.sync(&key).await.unwrap();
     assert!(report.uploaded);
@@ -361,6 +370,66 @@ async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
     assert!(matches!(error, SyncError::RetryExhausted { attempts: 2 }));
     assert_eq!(handle.database().entries[&entry_id].title, "unsaved");
     assert_eq!(handle.checkpoint_revision(), original_revision.as_ref());
+    assert!(handle.is_dirty());
+}
+
+#[tokio::test]
+async fn unsupported_write_preserves_the_local_database_and_checkpoint() {
+    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (database, entry_id) = database_with_entry("base");
+    storage.put("vault.kdbx", encode(&database, &key));
+    let provider: Arc<dyn StorageProvider> = storage.clone();
+    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+        .await
+        .unwrap();
+    let original_revision = handle.checkpoint_revision().cloned();
+    handle
+        .database_mut()
+        .entries
+        .get_mut(&entry_id)
+        .unwrap()
+        .title = "unsaved".into();
+    storage.fail_writes_with(StorageErrorKind::Unsupported);
+
+    let error = handle.sync(&key).await.unwrap_err();
+    assert!(matches!(
+        error,
+        SyncError::Storage(error) if error.kind() == StorageErrorKind::Unsupported
+    ));
+    assert_eq!(handle.database().entries[&entry_id].title, "unsaved");
+    assert_eq!(handle.checkpoint_revision(), original_revision.as_ref());
+    assert!(handle.is_dirty());
+}
+
+#[tokio::test]
+async fn transactional_noop_and_error_do_not_dirty_or_mutate() {
+    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (database, entry_id) = database_with_entry("base");
+    storage.put("vault.kdbx", encode(&database, &key));
+    let provider: Arc<dyn StorageProvider> = storage;
+    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+        .await
+        .unwrap();
+
+    assert!(!handle
+        .transact::<()>(|database| {
+            database.entries.get_mut(&entry_id).unwrap().title = "discarded".into();
+            Ok(false)
+        })
+        .unwrap());
+    assert_eq!(handle.database().entries[&entry_id].title, "base");
+    assert!(!handle.is_dirty());
+    let error = handle
+        .transact::<&str>(|database| {
+            database.entries.get_mut(&entry_id).unwrap().title = "discarded".into();
+            Err("failed")
+        })
+        .unwrap_err();
+    assert_eq!(error, "failed");
+    assert_eq!(handle.database().entries[&entry_id].title, "base");
+    assert!(!handle.is_dirty());
 }
 
 #[tokio::test]

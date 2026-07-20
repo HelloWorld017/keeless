@@ -11,9 +11,10 @@ use keeless_kdbx::{
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
-    DeleteGroupArgs, GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs,
-    GetGroupEntriesArgs, GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation,
-    OperationOutcome, OperationRequest, OperationResponse, OperationSuccess, RenameGroupArgs,
+    DeleteEntryArgs, DeleteGroupArgs, EntryFieldUpdate as SchemaEntryFieldUpdate,
+    GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
+    GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
+    OperationResponse, OperationSuccess, RenameGroupArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -530,7 +531,9 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         core.sync(Some(b"wrong")).await,
         Err(CoreError::InvalidCredentials)
     ));
-    core.sync(Some(b"correct")).await.unwrap();
+    operations::save_database::run(&mut core, Some(b"correct"))
+        .await
+        .unwrap();
     operations::set_config::run(
         &mut core,
         KeelessConfigPatch {
@@ -1464,6 +1467,274 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
         !serde_json::to_string(&protected_title)
             .unwrap()
             .contains("protected-title-secret")
+    );
+}
+
+#[tokio::test]
+async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_secrets() {
+    let (mut core, ids) = query_core().await;
+    let entry_id = schema_id(ids.root_entry);
+    let old = core
+        .handle
+        .as_ref()
+        .unwrap()
+        .database()
+        .get_entry(&model_id(entry_id.clone()))
+        .unwrap()
+        .clone();
+    let fields = vec![
+        SchemaEntryFieldUpdate {
+            field_index: Some(0),
+            name: "Title".into(),
+            value: Some("Updated".into()),
+            is_protected: false,
+        },
+        SchemaEntryFieldUpdate {
+            field_index: Some(1),
+            name: "UserName".into(),
+            value: Some("alice".into()),
+            is_protected: false,
+        },
+        SchemaEntryFieldUpdate {
+            field_index: Some(2),
+            name: "Password".into(),
+            value: None,
+            is_protected: true,
+        },
+        SchemaEntryFieldUpdate {
+            field_index: Some(3),
+            name: "URL".into(),
+            value: Some("https://example.test".into()),
+            is_protected: false,
+        },
+        SchemaEntryFieldUpdate {
+            field_index: Some(4),
+            name: "Notes".into(),
+            value: None,
+            is_protected: true,
+        },
+        SchemaEntryFieldUpdate {
+            field_index: Some(8),
+            name: "Renamed".into(),
+            value: None,
+            is_protected: true,
+        },
+        SchemaEntryFieldUpdate {
+            field_index: Some(7),
+            name: "Duplicate".into(),
+            value: None,
+            is_protected: true,
+        },
+        SchemaEntryFieldUpdate {
+            field_index: None,
+            name: "Added".into(),
+            value: Some("new-secret".into()),
+            is_protected: true,
+        },
+    ];
+    operations::update_entry::run(&mut core, entry_id.clone(), fields, None).unwrap();
+
+    let entry = core
+        .handle
+        .as_ref()
+        .unwrap()
+        .database()
+        .get_entry(&model_id(entry_id.clone()))
+        .unwrap();
+    assert_eq!(entry.history.len(), old.history.len() + 1);
+    assert_eq!(
+        entry.history.last().unwrap().last_modification_time,
+        old.last_modification_time
+    );
+    assert_eq!(
+        entry
+            .custom_fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Renamed", "Duplicate", "Added"]
+    );
+    assert_eq!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 5, None)
+            .unwrap()
+            .value,
+        "duplicate-second"
+    );
+    assert_eq!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 6, None)
+            .unwrap()
+            .value,
+        "duplicate-first"
+    );
+    assert_eq!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 7, None)
+            .unwrap()
+            .value,
+        "new-secret"
+    );
+
+    let before_failure = core
+        .handle
+        .as_ref()
+        .unwrap()
+        .database()
+        .get_entry(&model_id(entry_id.clone()))
+        .unwrap()
+        .clone();
+    assert!(matches!(
+        operations::update_entry::run(
+            &mut core,
+            entry_id,
+            vec![SchemaEntryFieldUpdate {
+                field_index: Some(0),
+                name: "Wrong".into(),
+                value: Some("bad".into()),
+                is_protected: false
+            }],
+            None,
+        ),
+        Err(CoreError::InvalidEntryUpdate)
+    ));
+    assert_eq!(
+        core.handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&before_failure.id)
+            .unwrap(),
+        &before_failure
+    );
+
+    let current_fields = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: schema_id(ids.root_entry),
+        },
+    )
+    .unwrap()
+    .fields
+    .into_iter()
+    .map(|field| SchemaEntryFieldUpdate {
+        field_index: Some(field.field_index),
+        name: field.name,
+        value: field.value,
+        is_protected: field.is_protected,
+    })
+    .collect::<Vec<_>>();
+    operations::set_config::run(
+        &mut core,
+        KeelessConfigPatch {
+            auto_lock_timeout_ms: None,
+            paranoia_mode: Some(true),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        operations::update_entry::run(
+            &mut core,
+            schema_id(ids.root_entry),
+            current_fields.clone(),
+            None,
+        ),
+        Err(CoreError::PasswordRequired)
+    ));
+    operations::update_entry::run(
+        &mut core,
+        schema_id(ids.root_entry),
+        current_fields,
+        Some(b"correct"),
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn delete_entry_requires_trash_for_permanent_removal() {
+    let (mut core, ids) = query_core().await;
+    let entry_id = schema_id(ids.nested_entry);
+    assert!(matches!(
+        operations::delete_entry::run(
+            &mut core,
+            DeleteEntryArgs {
+                entry_id: entry_id.clone(),
+                permanent: true
+            }
+        ),
+        Err(CoreError::InvalidEntryDelete)
+    ));
+    assert!(
+        core.handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&model_id(entry_id.clone()))
+            .is_some()
+    );
+
+    operations::delete_entry::run(
+        &mut core,
+        DeleteEntryArgs {
+            entry_id: entry_id.clone(),
+            permanent: false,
+        },
+    )
+    .unwrap();
+    let database = core.handle.as_ref().unwrap().database();
+    assert!(database.is_entry_in_recycle_bin(&model_id(entry_id.clone())));
+    assert!(matches!(
+        operations::delete_entry::run(
+            &mut core,
+            DeleteEntryArgs {
+                entry_id: entry_id.clone(),
+                permanent: false,
+            }
+        ),
+        Err(CoreError::InvalidEntryDelete)
+    ));
+    operations::delete_entry::run(
+        &mut core,
+        DeleteEntryArgs {
+            entry_id: entry_id.clone(),
+            permanent: true,
+        },
+    )
+    .unwrap();
+    assert!(
+        core.handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&model_id(entry_id))
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn save_database_protocol_uses_sync_and_preserves_dirty_memory_on_failure() {
+    let (mut core, ids) = query_core().await;
+    core.handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
+        .unwrap()
+        .title = "unsaved".into();
+    assert!(core.handle.as_ref().unwrap().is_dirty());
+    assert!(
+        operations::save_database::run(&mut core, None)
+            .await
+            .is_err()
+    );
+    assert!(core.handle.as_ref().unwrap().is_dirty());
+    assert_eq!(
+        core.handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&NodeId::from_uuid(ids.root_entry))
+            .unwrap()
+            .title,
+        "unsaved"
     );
 }
 

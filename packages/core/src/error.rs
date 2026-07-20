@@ -37,6 +37,10 @@ pub enum CoreError {
     InvalidGroupName,
     #[error("entry field is invalid or is not protected")]
     InvalidEntryField,
+    #[error("entry update is invalid")]
+    InvalidEntryUpdate,
+    #[error("entry cannot be deleted in the requested mode")]
+    InvalidEntryDelete,
     #[error("cryptographic operation failed")]
     Crypto,
     #[error("serialization failed: {0}")]
@@ -113,6 +117,11 @@ impl From<&CoreError> for OperationError {
             CoreError::InvalidEntryField => (
                 "invalid_entry_field",
                 "Entry field is invalid or is not protected",
+            ),
+            CoreError::InvalidEntryUpdate => ("invalid_entry_update", "Entry update is invalid"),
+            CoreError::InvalidEntryDelete => (
+                "invalid_entry_delete",
+                "Entry cannot be deleted in the requested mode",
             ),
             CoreError::Storage(_) | CoreError::Sync(_) => {
                 ("storage_error", "Storage operation failed")

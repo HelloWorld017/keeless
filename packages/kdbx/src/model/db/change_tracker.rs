@@ -316,8 +316,9 @@ impl ChangeTracker {
         }
         for custom in &entry.custom_fields {
             custom.name.hash(&mut hasher);
-            entry.with_memory_field(
+            custom.value.with_plaintext(
                 unlock,
+                entry.id,
                 &MemoryField::Custom(custom.name.clone()),
                 |value| {
                     value.hash(&mut hasher);

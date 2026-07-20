@@ -2,6 +2,7 @@ pub(crate) mod add_entry;
 pub(crate) mod add_entry_from_template;
 pub(crate) mod add_group;
 pub(crate) mod create;
+pub(crate) mod delete_entry;
 pub(crate) mod delete_group;
 pub(crate) mod get_config;
 pub(crate) mod get_custom_icons;
@@ -21,8 +22,10 @@ pub(crate) mod move_group;
 pub(crate) mod open;
 pub(crate) mod rename_group;
 pub(crate) mod reveal_entry_field;
+pub(crate) mod save_database;
 pub(crate) mod set_config;
 pub(crate) mod unlock;
+pub(crate) mod update_entry;
 
 use keeless_schema::{Operation, OperationSuccess};
 
@@ -48,6 +51,9 @@ pub(crate) async fn execute(
         Operation::GetTrashEntries(args) => get_trash_entries::execute(core, args),
         Operation::GetTags(args) => get_tags::execute(core, args),
         Operation::GetEntryDetail(args) => get_entry_detail::execute(core, args),
+        Operation::UpdateEntry(args) => update_entry::execute(core, args),
+        Operation::DeleteEntry(args) => delete_entry::execute(core, args),
+        Operation::SaveDatabase(args) => save_database::execute(core, args).await,
         Operation::GetCustomIcons(args) => get_custom_icons::execute(core, args),
         Operation::GetEntryTemplates(args) => get_entry_templates::execute(core, args),
         Operation::MoveGroup(args) => move_group::execute(core, args),

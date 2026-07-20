@@ -111,26 +111,38 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
         key.ok_or_else(|| DatabaseError::InvalidFormat("String element is missing Key".into()))?;
     let value = value
         .ok_or_else(|| DatabaseError::InvalidFormat("String element is missing Value".into()))?;
-    if entry.xml_extensions.strings.contains_key(&key) {
+    let is_standard = matches!(
+        key.as_str(),
+        "Title" | "UserName" | "Password" | "URL" | "Notes"
+    );
+    if is_standard && entry.xml_extensions.strings.contains_key(&key) {
         return Err(DatabaseError::InvalidFormat(format!(
             "duplicate entry String key: {key}"
         )));
     }
-    entry.xml_extensions.strings.insert(key.clone(), extensions);
-
     match key.as_str() {
-        "Title" => entry.title = protected_string(&value, protected),
+        "Title" => {
+            entry.xml_extensions.strings.insert(key, extensions);
+            entry.title = protected_string(&value, protected);
+        }
         "UserName" => {
+            entry.xml_extensions.strings.insert(key, extensions);
             entry.username = protected_string(&value, protected);
         }
         "Password" => {
+            entry.xml_extensions.strings.insert(key, extensions);
             entry.password = protected_string(&value, protected);
         }
-        "URL" => entry.url = protected_string(&value, protected),
+        "URL" => {
+            entry.xml_extensions.strings.insert(key, extensions);
+            entry.url = protected_string(&value, protected);
+        }
         "Notes" => {
+            entry.xml_extensions.strings.insert(key, extensions);
             entry.notes = protected_string(&value, protected);
         }
         _ => {
+            entry.xml_extensions.custom_strings.push(extensions);
             entry.custom_fields.push(EntryField {
                 name: key,
                 value: protected_string(&value, protected),

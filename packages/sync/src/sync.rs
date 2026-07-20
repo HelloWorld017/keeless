@@ -165,6 +165,24 @@ impl FileHandle {
         &mut self.database
     }
 
+    /// Applies a database mutation to a clone and commits it only on success and change.
+    pub fn transact<E>(
+        &mut self,
+        mutate: impl FnOnce(&mut Database) -> Result<bool, E>,
+    ) -> Result<bool, E> {
+        let mut database = self.database.clone();
+        let changed = mutate(&mut database)?;
+        if changed {
+            self.database = database;
+            self.dirty = true;
+        }
+        Ok(changed)
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
     pub fn path(&self) -> &str {
         &self.path
     }

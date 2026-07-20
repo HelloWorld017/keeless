@@ -116,18 +116,44 @@ fn write_fields(
         inner_stream,
         memory,
     )?;
-    for field in &entry.custom_fields {
-        write_memory_field(
+    for (index, field) in entry.custom_fields.iter().enumerate() {
+        write_custom_field(
             writer,
             entry,
+            index,
             &field.name,
-            &MemoryField::Custom(field.name.clone()),
             field.value.is_protected(),
             inner_stream,
             memory,
         )?;
     }
     Ok(())
+}
+
+fn write_custom_field(
+    writer: &mut XmlWriter,
+    entry: &Entry,
+    index: usize,
+    key: &str,
+    protect: bool,
+    inner_stream: &mut dyn InnerStreamCipher,
+    memory: &mut MemoryWriteAccess<'_>,
+) -> DatabaseResult<()> {
+    memory.with_custom_field(entry, index, |value| {
+        write_field(
+            writer,
+            key,
+            value,
+            protect,
+            inner_stream,
+            entry
+                .xml_extensions
+                .custom_strings
+                .get(index)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
+        )
+    })
 }
 
 fn write_memory_field(

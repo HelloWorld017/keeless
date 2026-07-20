@@ -125,6 +125,30 @@ impl MemoryWriteAccess<'_> {
             },
         }
     }
+
+    pub(super) fn with_custom_field<T>(
+        &mut self,
+        entry: &Entry,
+        index: usize,
+        use_value: impl FnOnce(&str) -> DatabaseResult<T>,
+    ) -> DatabaseResult<T> {
+        let field = entry
+            .custom_fields
+            .get(index)
+            .ok_or_else(|| DatabaseError::InvalidFormat(format!("unknown field index: {index}")))?;
+        let memory_field = MemoryField::Custom(field.name.clone());
+        match self {
+            Self::Unlocked(unlock) => {
+                field
+                    .value
+                    .with_plaintext(unlock, entry.id, &memory_field, use_value)
+            }
+            Self::Unsealed if field.value.is_memory_protected() => {
+                Err(DatabaseError::InvalidCredentials)
+            }
+            Self::Unsealed => use_value(field.value.as_str()),
+        }
+    }
 }
 
 pub(super) fn write_element<F>(writer: &mut XmlWriter, name: &str, content: F) -> DatabaseResult<()>

@@ -16,7 +16,7 @@ mod tests {
     use crate::kdbx::limits::MAX_XML_NESTING_DEPTH;
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
-    use crate::model::db::database::{Database, DatabaseVersion};
+    use crate::model::db::database::{Database, DatabaseVersion, EntryFieldUpdate};
     use crate::model::entry::Entry;
     use crate::model::exception::DatabaseResult;
     use crate::model::group::Group;
@@ -192,6 +192,58 @@ mod tests {
         let reread = KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
         assert!(reread.contains_unsupported_xml);
         assert_eq!(reread.name, "Changed");
+    }
+
+    #[test]
+    fn duplicate_custom_string_extensions_follow_fields_through_updates() {
+        let xml = r#"<KeePassFile><Meta></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><String><Key>Title</Key><Value>title</Value></String><String><Key>UserName</Key><Value>user</Value></String><String><Key>Password</Key><Value>password</Value></String><String><Key>URL</Key><Value>url</Value></String><String><Key>Notes</Key><Value>notes</Value></String><String><Key>Duplicate</Key><Value>first</Value><First/></String><String><Key>Duplicate</Key><Value>second</Value><Second/></String><String><Key>Delete</Key><Value>delete</Value><Deleted/></String></Entry></Group></Root></KeePassFile>"#;
+        let stream_key = b"custom-extensions";
+        let mut read_stream = Salsa20InnerStream::new(stream_key).unwrap();
+        let mut db = KdbxXmlReader::read(xml, &mut read_stream).unwrap();
+        let entry_id = *db.entries.keys().next().unwrap();
+        let fields = [
+            (Some(0), "Title", "title"),
+            (Some(1), "UserName", "user"),
+            (Some(2), "Password", "password"),
+            (Some(3), "URL", "url"),
+            (Some(4), "Notes", "notes"),
+            (Some(6), "Renamed", "second"),
+            (Some(5), "Duplicate", "first"),
+            (None, "Added", "added"),
+        ]
+        .into_iter()
+        .map(|(field_index, name, value)| EntryFieldUpdate {
+            field_index,
+            name: name.into(),
+            value: Some(value.into()),
+            is_protected: false,
+        })
+        .collect::<Vec<_>>();
+        let key = crate::CompositeKey::new().with_password(b"test").unwrap();
+
+        assert!(db.update_entry_fields(&key, &entry_id, &fields).unwrap());
+        db.entries.get_mut(&entry_id).unwrap().history.clear();
+        let mut write_stream = Salsa20InnerStream::new(stream_key).unwrap();
+        let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();
+        assert!(
+            output.contains("<String><Key>Renamed</Key><Value>second</Value><Second/></String>")
+        );
+        assert!(
+            output.contains("<String><Key>Duplicate</Key><Value>first</Value><First/></String>")
+        );
+        assert!(output.contains("<String><Key>Added</Key><Value>added</Value></String>"));
+        assert!(!output.contains("<Deleted/>"));
+
+        let mut reread_stream = Salsa20InnerStream::new(stream_key).unwrap();
+        let reread = KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
+        assert_eq!(
+            reread.entries[&entry_id]
+                .custom_fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Renamed", "Duplicate", "Added"]
+        );
     }
 
     #[test]

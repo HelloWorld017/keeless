@@ -46,6 +46,10 @@ fn generate() -> String {
     export_empty("GetTrashEntriesArgs", &mut output);
     export_empty("GetTagsArgs", &mut output);
     export::<GetEntryDetailArgs>(&mut output);
+    export::<EntryFieldUpdate>(&mut output);
+    export::<UpdateEntryArgs>(&mut output);
+    export::<DeleteEntryArgs>(&mut output);
+    export::<SaveDatabaseArgs>(&mut output);
     export_empty("GetCustomIconsArgs", &mut output);
     export_empty("GetEntryTemplatesArgs", &mut output);
     export::<MoveGroupArgs>(&mut output);

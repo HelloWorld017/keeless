@@ -24,11 +24,11 @@ pub use model::{
     get_builtin_templates, parse_tags, serialize_tags, AutoType, AutoTypeAssociation, BinaryCache,
     BinaryData, BinaryPool, BinaryStreamReader, BinaryStreamWriter, ChangeRecord, ChangeTracker,
     ChangeType, CompositeKey, CustomData, CustomDataItem, Database, DatabaseVersion, DateInstant,
-    DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldSelector, EntryKDB,
-    EntryKDBX, FieldReference, Group, GroupKDB, GroupKDBX, IconImage, IconImageCustom,
-    IconImageStandard, MasterCredential, MemoryProtectionConfig, Node, NodeHandler, NodeId,
-    NodeType, ProtectedString, RefTarget, SortNodeEnum, Tag, Template, TemplateField,
-    TemplateFieldType, TraversalOrder,
+    DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldSelector,
+    EntryFieldUpdate, EntryKDB, EntryKDBX, FieldReference, Group, GroupKDB, GroupKDBX, IconImage,
+    IconImageCustom, IconImageStandard, MasterCredential, MemoryProtectionConfig, Node,
+    NodeHandler, NodeId, NodeType, ProtectedString, RefTarget, SortNodeEnum, Tag, Template,
+    TemplateField, TemplateFieldType, TraversalOrder,
 };
 
 // ─── Crypto ───────────────────────────────────────────────────────────

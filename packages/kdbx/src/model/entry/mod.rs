@@ -338,7 +338,9 @@ impl Entry {
 
         for (source, target) in self.custom_fields.iter().zip(&mut clone.custom_fields) {
             let field = MemoryField::Custom(source.name.clone());
-            let value = self.with_memory_field(unlock, &field, |value| Ok(value.to_string()))?;
+            let value = source
+                .value
+                .with_plaintext(unlock, self.id, &field, |value| Ok(value.to_string()))?;
             if target.value.is_protected() {
                 target.value.replace_unsealed(&value);
             } else {

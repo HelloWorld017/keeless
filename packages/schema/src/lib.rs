@@ -233,6 +233,42 @@ pub struct GetEntryDetailArgs {
     pub entry_id: DatabaseNodeId,
 }
 
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryFieldUpdate {
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub field_index: Option<u64>,
+    pub name: String,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub value: Option<String>,
+    pub is_protected: bool,
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateEntryArgs {
+    pub entry_id: DatabaseNodeId,
+    pub fields: Vec<EntryFieldUpdate>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub password: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteEntryArgs {
+    pub entry_id: DatabaseNodeId,
+    pub permanent: bool,
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveDatabaseArgs {
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub password: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
 pub struct GetCustomIconsArgs {}
@@ -316,6 +352,9 @@ pub enum Operation {
     GetTrashEntries(GetTrashEntriesArgs),
     GetTags(GetTagsArgs),
     GetEntryDetail(GetEntryDetailArgs),
+    UpdateEntry(UpdateEntryArgs),
+    DeleteEntry(DeleteEntryArgs),
+    SaveDatabase(SaveDatabaseArgs),
     GetCustomIcons(GetCustomIconsArgs),
     GetEntryTemplates(GetEntryTemplatesArgs),
     MoveGroup(MoveGroupArgs),
@@ -448,6 +487,9 @@ pub enum OperationSuccess {
     GetTrashEntries(EntriesResult),
     GetTags(TagsResult),
     GetEntryDetail(Box<EntryDetailResult>),
+    UpdateEntry(EmptyResult),
+    DeleteEntry(EmptyResult),
+    SaveDatabase(EmptyResult),
     GetCustomIcons(CustomIconsResult),
     GetEntryTemplates(EntriesResult),
     MoveGroup(EmptyResult),

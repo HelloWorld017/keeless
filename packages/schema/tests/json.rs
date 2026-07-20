@@ -231,6 +231,58 @@ fn database_query_requests_support_uuid_and_integer_node_ids() {
 }
 
 #[test]
+fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "update-1".into(),
+            operation: Operation::UpdateEntry(UpdateEntryArgs {
+                entry_id: DatabaseNodeId::Int(42),
+                fields: vec![
+                    EntryFieldUpdate {
+                        field_index: Some(2),
+                        name: "Password".into(),
+                        value: None,
+                        is_protected: true,
+                    },
+                    EntryFieldUpdate {
+                        field_index: None,
+                        name: "Account".into(),
+                        value: Some("value".into()),
+                        is_protected: false,
+                    },
+                ],
+                password: None,
+            }),
+        },
+        json!({
+            "requestId": "update-1",
+            "op": "updateEntry",
+            "args": {
+                "entryId": 42,
+                "password": null,
+                "fields": [
+                    { "fieldIndex": 2, "name": "Password", "value": null, "isProtected": true },
+                    { "fieldIndex": null, "name": "Account", "value": "value", "isProtected": false }
+                ]
+            }
+        }),
+    );
+    assert_roundtrip(
+        Operation::DeleteEntry(DeleteEntryArgs {
+            entry_id: DatabaseNodeId::Int(42),
+            permanent: false,
+        }),
+        json!({ "op": "deleteEntry", "args": { "entryId": 42, "permanent": false } }),
+    );
+    assert_roundtrip(
+        Operation::SaveDatabase(SaveDatabaseArgs {
+            password: Some("secret".into()),
+        }),
+        json!({ "op": "saveDatabase", "args": { "password": "secret" } }),
+    );
+}
+
+#[test]
 fn get_entries_excludes_trash_by_default_and_accepts_explicit_false() {
     assert_eq!(GetEntriesArgs::default().exclude_trash, true);
     assert_eq!(
