@@ -9,7 +9,15 @@ import {
   ItemMedia,
   ItemTitle,
 } from '@/components/item';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/select';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/select';
 import { IconAlertCircle, IconArrowRight, IconLoaderCircle } from '@/icons';
 import { SetupLayout } from './SetupLayout';
 import { StepError } from './StepError';
@@ -53,7 +61,10 @@ export const SelectStep = ({
         disabled={isHostOverride || hostsLoading || isPending}
       >
         <SelectTrigger id="host" className="w-full max-w-48">
-          <SelectValue placeholder={hostsLoading ? 'Looking for hosts...' : 'Select a host'} className="capitalize" />
+          <SelectValue
+            placeholder={hostsLoading ? 'Looking for hosts...' : 'Select a host'}
+            className="capitalize"
+          />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -78,7 +89,7 @@ export const SelectStep = ({
               render={
                 <button
                   type="button"
-                  className='transition-colors hover:bg-muted'
+                  className="transition-colors hover:bg-muted"
                   aria-label={`Use ${candidate.label}`}
                   disabled={isPending || !isRequestReady}
                 />
@@ -86,11 +97,9 @@ export const SelectStep = ({
               aria-pressed={storage?.kind === candidate.kind}
               onClick={() => onChooseStorage(candidate)}
             >
-              <ItemMedia variant="icon">
-                {candidate.icon}
-              </ItemMedia>
-              <ItemContent className='gap-0'>
-                <ItemTitle className='font-semibold'>{candidate.label}</ItemTitle>
+              <ItemMedia variant="icon">{candidate.icon}</ItemMedia>
+              <ItemContent className="gap-0">
+                <ItemTitle className="font-semibold">{candidate.label}</ItemTitle>
                 <ItemDescription>{candidate.description}</ItemDescription>
               </ItemContent>
               <ItemActions>
