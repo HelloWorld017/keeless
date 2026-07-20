@@ -284,7 +284,7 @@ const OpenFragmentContents = () => {
 export const OpenFragment = () => (
   <div
     className="flex h-dvh items-center"
-    style={{ '--primary': '#ffffff', '--primary-foreground': '#000000' }}
+    style={{ '--primary': 'var(--foreground)', '--primary-foreground': 'var(--background)' }}
   >
     <div className="flex-[0_0_auto] max-w-200 w-full">
       <OpenFragmentContents />

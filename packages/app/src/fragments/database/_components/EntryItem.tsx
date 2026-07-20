@@ -29,7 +29,7 @@ export const EntryItem = ({
       className={cn('h-16 flex-nowrap', selected && 'bg-primary', className)}
       {...props}
     >
-      <ItemMedia variant="icon">
+      <ItemMedia variant="icon" className={cx(selected && 'text-primary-foreground')}>
         <ItemIcon icon={entry.icon} fallback="entry" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
