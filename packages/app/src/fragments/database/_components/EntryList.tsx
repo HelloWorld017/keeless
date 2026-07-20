@@ -20,7 +20,7 @@ import {
   type EntryDragData,
   type EntryDragSource,
 } from '../_utils/dragAndDrop';
-import { EntryDetail } from './EntryDetail';
+import { EntryDetailFragment } from '../entryDetail/EntryDetailFragment';
 import { EntryItem, getEntryTitle } from './EntryItem';
 import { ItemIcon } from './ItemIcon';
 import type { OperationArgs, OperationName } from '@/utils/request';
@@ -395,10 +395,11 @@ const EntryQuery = <TName extends EntryOperationName>({
           />
         )}
       </section>
-      <EntryDetail
+      <EntryDetailFragment
         entry={selectedEntrySummary}
         selected={selectedEntry !== null}
         listPending={entries.isPending}
+        inTrash={source.type === 'trash'}
         onClose={closeEntry}
       />
     </>

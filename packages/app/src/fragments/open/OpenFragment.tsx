@@ -23,7 +23,7 @@ import type { DatabaseStatus } from '@keeless/schema';
 import type { SubmitEvent } from 'react';
 
 type SetupStep = 'select' | 'storage' | 'create' | 'unlock' | 'checking';
-type SetupPasswordInputMode = Exclude<PasswordInputMode, 'reveal'>;
+type SetupPasswordInputMode = Exclude<PasswordInputMode, 'reveal' | 'save'>;
 
 const errorMessage = (error: unknown) => {
   if (error instanceof CoreRequestError) {

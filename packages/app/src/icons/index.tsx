@@ -22,6 +22,7 @@ import {
   DatabaseIcon,
   DatabaseZapIcon,
   Disc3Icon,
+  EllipsisVerticalIcon,
   EyeIcon,
   EyeOffIcon,
   FeatherIcon,
@@ -122,6 +123,7 @@ export const IconContact = wrapLucideComponent(ContactIcon);
 export const IconDatabase = wrapLucideComponent(DatabaseIcon);
 export const IconDatabaseZap = wrapLucideComponent(DatabaseZapIcon);
 export const IconDisc3 = wrapLucideComponent(Disc3Icon);
+export const IconEllipsisVertical = wrapLucideComponent(EllipsisVerticalIcon);
 export const IconEye = wrapLucideComponent(EyeIcon);
 export const IconEyeOff = wrapLucideComponent(EyeOffIcon);
 export const IconFeather = wrapLucideComponent(FeatherIcon);

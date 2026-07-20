@@ -1,6 +1,8 @@
+import { ToastList } from '@/fragments/_components/ToastList';
 import { HostProvider } from '@/fragments/_providers/HostProvider';
 import { QueryProvider } from '@/fragments/_providers/QueryProvider';
 import { RouterProvider } from '@/fragments/_providers/RouterProvider';
+import { ToastProvider } from '@/fragments/_providers/ToastProvider';
 import { DatabaseFragment } from '@/fragments/database';
 import { OpenFragment } from '@/fragments/open';
 import { getRoute } from '@/utils/route';
@@ -30,7 +32,10 @@ export const AppFrame = ({
   <StrictMode>
     <HostProvider integration={integration}>
       <QueryProvider>
-        <RouterProvider fallback="open">{children}</RouterProvider>
+        <ToastProvider>
+          <RouterProvider fallback="open">{children}</RouterProvider>
+          <ToastList />
+        </ToastProvider>
       </QueryProvider>
     </HostProvider>
   </StrictMode>
