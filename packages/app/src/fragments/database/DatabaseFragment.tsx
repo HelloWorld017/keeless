@@ -135,7 +135,8 @@ const DatabaseFragmentContents = () => {
       return;
     }
 
-    const isOverGroup = overData?.type === 'group' || overData?.type === 'trash';
+    const isOverGroup =
+      overData?.type === 'group' || overData?.type === 'root' || overData?.type === 'trash';
     setEntryOverGroup(current => (current === isOverGroup ? current : isOverGroup));
   };
 
@@ -145,7 +146,7 @@ const DatabaseFragmentContents = () => {
 
     if (
       activeData?.type !== 'entry' ||
-      (overData?.type !== 'group' && overData?.type !== 'trash')
+      (overData?.type !== 'group' && overData?.type !== 'root' && overData?.type !== 'trash')
     ) {
       validEntryDrop.current = false;
       clearDrag();
@@ -154,7 +155,7 @@ const DatabaseFragmentContents = () => {
 
     const sameDestination =
       (activeData.source.type === 'group' &&
-        overData.type === 'group' &&
+        (overData.type === 'group' || overData.type === 'root') &&
         databaseNodeKey(activeData.source.groupId) === databaseNodeKey(overData.groupId)) ||
       (activeData.source.type === 'trash' && overData.type === 'trash');
 
@@ -167,7 +168,8 @@ const DatabaseFragmentContents = () => {
     validEntryDrop.current = true;
     const leavesCurrentList =
       activeData.source.type === 'group' ||
-      (activeData.source.type === 'trash' && overData.type === 'group') ||
+      (activeData.source.type === 'trash' &&
+        (overData.type === 'group' || overData.type === 'root')) ||
       ((activeData.source.type === 'all' || activeData.source.type === 'tag') &&
         overData.type === 'trash');
 

@@ -28,10 +28,16 @@ export type GroupDragData = {
   icon: IconReference;
 };
 
+export type RootDropData = {
+  type: 'root';
+  groupId: DatabaseNodeId;
+  title: 'All Entries';
+};
+
 export type TrashDropData = {
   type: 'trash';
   groupId: DatabaseNodeId;
   title: 'Trash';
 };
 
-export type DragDropData = EntryDragData | GroupDragData | TrashDropData;
+export type DragDropData = EntryDragData | GroupDragData | RootDropData | TrashDropData;

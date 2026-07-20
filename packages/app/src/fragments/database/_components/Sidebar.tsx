@@ -25,7 +25,7 @@ import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
-import { databaseNodeKey, type TrashDropData } from '../_utils/dragAndDrop';
+import { databaseNodeKey, type RootDropData, type TrashDropData } from '../_utils/dragAndDrop';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import type {
   AddGroupArgs,
@@ -45,6 +45,42 @@ const groupDeletionQueryNames = [
   'getTags',
   'getEntryDetail',
 ] as const;
+
+const AllEntriesMenuItem = ({
+  rootGroupId,
+  location,
+  onNavigate,
+}: {
+  rootGroupId: DatabaseNodeId | undefined;
+  location: string;
+  onNavigate: () => void;
+}) => {
+  const hasRootGroup = rootGroupId !== undefined;
+  const { active } = useDndContext();
+  const data: RootDropData | undefined = hasRootGroup
+    ? { type: 'root', groupId: rootGroupId, title: 'All Entries' }
+    : undefined;
+  const { isOver, setNodeRef } = useDroppable({
+    id: hasRootGroup ? `root:${databaseNodeKey(rootGroupId)}` : 'root:unavailable',
+    data,
+    disabled: !hasRootGroup || active?.data.current?.type === 'group',
+  });
+  const isEntryOver = isOver && active?.data.current?.type === 'entry';
+
+  return (
+    <SidebarMenuItem ref={setNodeRef}>
+      <SidebarMenuButton
+        render={<Link href={buildRoute('database')} />}
+        isActive={location === buildRoute('database') || isEntryOver}
+        className={cx('border-2 border-transparent', isEntryOver && 'border-sidebar-ring')}
+        onClick={onNavigate}
+      >
+        <IconList />
+        <span>All Entries</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+};
 
 const TrashMenuItem = ({
   recycleBinId,
@@ -222,16 +258,11 @@ const DatabaseSidebar = () => {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  render={<Link href={buildRoute('database')} />}
-                  isActive={location === buildRoute('database')}
-                  onClick={closeMobile}
-                >
-                  <IconList />
-                  <span>All Entries</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              <AllEntriesMenuItem
+                rootGroupId={hierarchy.data?.rootGroupId}
+                location={location}
+                onNavigate={closeMobile}
+              />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
