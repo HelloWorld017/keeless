@@ -24,7 +24,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link, useLocation } from 'wouter';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
-import { databaseNodeKey, type TrashDropData } from './dnd';
+import { databaseNodeKey, type TrashDropData } from '../_utils/dragAndDrop';
 import type { DatabaseNodeId, GroupHierarchyResult, MoveGroupArgs } from '@keeless/schema';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
@@ -116,8 +116,8 @@ const DatabaseSidebar = () => {
                 <div className="aspect-square size-8">
                   <img src={Logo} alt="" />
                 </div>
-                <div className="flex flex-col">
-                  <span className="font-semibold">{databaseName ?? 'Loading database'}</span>
+                <div className="flex flex-[1_1_0] min-w-0 flex-col">
+                  <span className="font-semibold truncate">{databaseName ?? 'Loading database'}</span>
                   <span>{storageName}</span>
                 </div>
               </div>

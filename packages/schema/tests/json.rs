@@ -248,6 +248,70 @@ fn get_entries_excludes_trash_by_default_and_accepts_explicit_false() {
 }
 
 #[test]
+fn entry_summaries_include_usernames_and_tags_without_exposing_protected_values() {
+    assert_roundtrip(
+        EntriesResult {
+            entries: vec![
+                EntrySummary {
+                    id: DatabaseNodeId::Int(1),
+                    name: Some("Email".into()),
+                    name_is_protected: false,
+                    username: Some("alice".into()),
+                    username_is_protected: false,
+                    url: Some("https://example.test".into()),
+                    url_is_protected: false,
+                    icon: IconReference {
+                        standard_id: 0,
+                        custom_uuid: None,
+                    },
+                    tags: vec!["personal".into(), "email".into()],
+                },
+                EntrySummary {
+                    id: DatabaseNodeId::Int(2),
+                    name: None,
+                    name_is_protected: true,
+                    username: None,
+                    username_is_protected: true,
+                    url: None,
+                    url_is_protected: true,
+                    icon: IconReference {
+                        standard_id: 1,
+                        custom_uuid: None,
+                    },
+                    tags: Vec::new(),
+                },
+            ],
+        },
+        json!({
+            "entries": [
+                {
+                    "id": 1,
+                    "name": "Email",
+                    "nameIsProtected": false,
+                    "username": "alice",
+                    "usernameIsProtected": false,
+                    "url": "https://example.test",
+                    "urlIsProtected": false,
+                    "icon": { "standardId": 0, "customUuid": null },
+                    "tags": ["personal", "email"]
+                },
+                {
+                    "id": 2,
+                    "name": null,
+                    "nameIsProtected": true,
+                    "username": null,
+                    "usernameIsProtected": true,
+                    "url": null,
+                    "urlIsProtected": true,
+                    "icon": { "standardId": 1, "customUuid": null },
+                    "tags": []
+                }
+            ]
+        }),
+    );
+}
+
+#[test]
 fn entry_detail_keeps_protected_fields_but_omits_their_values() {
     assert_roundtrip(
         OperationResponse {

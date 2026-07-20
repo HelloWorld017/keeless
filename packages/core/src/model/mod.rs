@@ -55,6 +55,8 @@ pub(super) fn entry_summary(entry: &Entry) -> EntrySummary {
         id: node_id(entry.id),
         name: (!entry.title_is_protected).then(|| entry.title.clone()),
         name_is_protected: entry.title_is_protected,
+        username: (!entry.username.is_protected()).then(|| entry.username.as_str().to_owned()),
+        username_is_protected: entry.username.is_protected(),
         url: (!entry.url_is_protected).then(|| entry.url.clone()),
         url_is_protected: entry.url_is_protected,
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),

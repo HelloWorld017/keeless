@@ -263,6 +263,7 @@ fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
     let mut child_entry = Entry::new(child_entry_id);
     child_entry.title = "protected-title-secret".into();
     child_entry.title_is_protected = true;
+    child_entry.username = ProtectedString::new_protected("protected-username-secret");
     child_entry.url = "protected-url-secret".into();
     child_entry.url_is_protected = true;
     child_entry.tags = vec!["shared".into()];
@@ -766,6 +767,8 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
         .unwrap();
     assert_eq!(protected.name, None);
     assert!(protected.name_is_protected);
+    assert_eq!(protected.username, None);
+    assert!(protected.username_is_protected);
     assert_eq!(protected.url, None);
     assert!(protected.url_is_protected);
     assert_eq!(
@@ -778,6 +781,9 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
         .unwrap();
     assert_eq!(root_entry.url.as_deref(), Some("https://example.test"));
     assert!(!root_entry.url_is_protected);
+    assert_eq!(root_entry.username.as_deref(), Some("alice"));
+    assert!(!root_entry.username_is_protected);
+    assert_eq!(root_entry.tags, vec!["shared", "work", "shared"]);
 
     let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
     assert_eq!(hierarchy.database_name, "Test Database");
@@ -818,6 +824,9 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
     .unwrap();
     assert_eq!(group_entries.entries.len(), 1);
     assert_eq!(group_entries.entries[0].id, schema_id(ids.child_entry));
+    assert_eq!(group_entries.entries[0].username, None);
+    assert!(group_entries.entries[0].username_is_protected);
+    assert_eq!(group_entries.entries[0].tags, vec!["shared"]);
 
     let tags = operations::get_tags::run(&mut core).unwrap();
     assert_eq!(
@@ -856,6 +865,7 @@ async fn trash_and_tag_queries_filter_recursively_and_preserve_order() {
         let recycle_bin_id = database.create_recycle_bin();
         let mut trash_entry = Entry::new(trash_entry_id);
         trash_entry.title = "Trash".into();
+        trash_entry.username = ProtectedString::new_plain("trashed-user");
         trash_entry.tags = vec![" work ".into(), "TrashOnly".into(), "".into()];
         assert!(database.add_entry(trash_entry, &recycle_bin_id));
         assert!(database.add_group(Group::new(trash_group_id), &recycle_bin_id));
@@ -905,18 +915,29 @@ async fn trash_and_tag_queries_filter_recursively_and_preserve_order() {
             schema_id(Uuid::from_u128(22)),
         ]
     );
+    let trash_entries = operations::get_trash_entries::run(&mut core)
+        .unwrap()
+        .entries;
     assert_eq!(
-        operations::get_trash_entries::run(&mut core)
-            .unwrap()
-            .entries
-            .into_iter()
-            .map(|entry| entry.id)
+        trash_entries
+            .iter()
+            .map(|entry| entry.id.clone())
             .collect::<Vec<_>>(),
         vec![
             schema_id(Uuid::from_u128(20)),
             schema_id(Uuid::from_u128(22)),
         ]
     );
+    assert_eq!(trash_entries[0].username.as_deref(), Some("trashed-user"));
+    assert_eq!(trash_entries[0].tags, vec![" work ", "TrashOnly", ""]);
+
+    let work_entries =
+        operations::get_tag_entries::run(&mut core, GetTagEntriesArgs { tag: "work".into() })
+            .unwrap()
+            .entries;
+    assert_eq!(work_entries.len(), 1);
+    assert_eq!(work_entries[0].username.as_deref(), Some("alice"));
+    assert_eq!(work_entries[0].tags, vec!["shared", "work", "shared"]);
 
     let tagged = |core: &mut KeelessCore, tag: &str| {
         operations::get_tag_entries::run(core, GetTagEntriesArgs { tag: tag.into() })

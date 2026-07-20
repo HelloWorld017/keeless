@@ -14,7 +14,7 @@ export type DatabaseNodeId = string | number
 
 export type IconReference = { standardId: number; customUuid: string | null }
 
-export type EntrySummary = { id: DatabaseNodeId; name: string | null; nameIsProtected: boolean; url: string | null; urlIsProtected: boolean; icon: IconReference; tags: string[] }
+export type EntrySummary = { id: DatabaseNodeId; name: string | null; nameIsProtected: boolean; username: string | null; usernameIsProtected: boolean; url: string | null; urlIsProtected: boolean; icon: IconReference; tags: string[] }
 
 export type CustomIcon = { uuid: string; dataBase64: string; name: string; lastModificationTimeMs: number }
 

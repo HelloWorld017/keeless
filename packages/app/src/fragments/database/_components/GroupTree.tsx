@@ -23,7 +23,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { groupDndId, type GroupDragData } from './dnd';
+import { groupDndId, type GroupDragData } from '../_utils/dragAndDrop';
 import type {
   DatabaseNodeId,
   GroupHierarchyItem,

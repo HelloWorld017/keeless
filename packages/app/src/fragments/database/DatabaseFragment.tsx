@@ -1,7 +1,5 @@
-import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/sidebar';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { IconFile } from '@/icons';
 import {
   DndContext,
   DragOverlay,
@@ -17,9 +15,10 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
 import { Sidebar } from './_components/Sidebar';
-import type { EntryDragData } from './_components/dnd';
+import type { EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
 
 const keyboardDirections = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'] as const;
@@ -138,7 +137,7 @@ export const DatabaseFragment = () => {
         type: 'entry',
         entryId: data.entryId,
         title: data.title,
-        description: data.description,
+        entry: data.entry,
       });
     }
   };
@@ -166,7 +165,7 @@ export const DatabaseFragment = () => {
     >
       <SidebarProvider>
         <Sidebar />
-        <SidebarInset className="min-h-0 overflow-hidden">
+        <SidebarInset className="h-svh overflow-hidden">
           <header className="flex h-12 shrink-0 items-center border-b px-3">
             <SidebarTrigger />
           </header>
@@ -177,19 +176,11 @@ export const DatabaseFragment = () => {
       </SidebarProvider>
       <DragOverlay>
         {activeEntry && (
-          <Item variant="outline" className="w-80 bg-background">
-            <ItemMedia variant="icon">
-              <IconFile />
-            </ItemMedia>
-            <ItemContent className="min-w-0 gap-0.5">
-              <ItemTitle>{activeEntry.title}</ItemTitle>
-              {activeEntry.description && (
-                <ItemDescription className="line-clamp-1">
-                  {activeEntry.description}
-                </ItemDescription>
-              )}
-            </ItemContent>
-          </Item>
+          <EntryItem
+            entry={activeEntry.entry}
+            variant="outline"
+            className="w-80 bg-background shadow-lg"
+          />
         )}
       </DragOverlay>
     </DndContext>

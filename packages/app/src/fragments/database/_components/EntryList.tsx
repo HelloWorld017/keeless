@@ -1,19 +1,16 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
-import {
-  Item,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemTitle,
-} from '@/components/item';
 import { Skeleton } from '@/components/skeleton';
 import { useRequest } from '@/fragments/_providers/QueryProvider';
-import { IconAlertCircle, IconFile } from '@/icons';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { IconAlertCircle } from '@/icons';
+import { cn } from '@/utils/css';
 import { getRoute } from '@/utils/route';
 import { useDraggable } from '@dnd-kit/core';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useRef } from 'react';
 import { useRoute, useSearchParams } from 'wouter';
-import { entryDndId, type EntryDragData } from './dnd';
+import { entryDndId, type EntryDragData } from '../_utils/dragAndDrop';
+import { EntryItem, getEntryTitle } from './EntryItem';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type { EntriesResult, EntrySummary } from '@keeless/schema';
 
@@ -30,20 +27,16 @@ const decodeRouteParam = (value: string) => {
   }
 };
 
-const EntryRow = ({
-  entry,
-  selected,
-  disabled,
-  onSelect,
-}: {
+type EntryRowProps = {
   entry: EntrySummary;
-  selected: boolean;
+  selectedEntry: string | null;
   disabled: boolean;
-  onSelect: () => void;
-}) => {
-  const title = entry.name || (entry.nameIsProtected ? 'Protected entry' : 'Untitled entry');
-  const description = entry.url || (entry.urlIsProtected ? 'Protected URL' : undefined);
-  const data: EntryDragData = { type: 'entry', entryId: entry.id, title, description };
+  onSelect: (entry: EntrySummary) => void;
+};
+
+const VirtualEntryRow = ({ entry, selectedEntry, disabled, onSelect }: EntryRowProps) => {
+  const title = getEntryTitle(entry);
+  const data: EntryDragData = { type: 'entry', entryId: entry.id, title, entry };
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: entryDndId(entry.id),
     data,
@@ -51,40 +44,93 @@ const EntryRow = ({
   });
 
   return (
-    <Item
+    <EntryItem
       ref={setNodeRef}
+      entry={entry}
+      selected={selectedEntry === String(entry.id)}
       render={<button type="button" aria-label={title} />}
-      variant={selected ? 'muted' : 'default'}
-      className={isDragging ? 'z-10 cursor-grabbing opacity-60' : 'cursor-grab'}
-      onClick={onSelect}
+      className={isDragging ? 'z-10 cursor-grabbing opacity-60' : 'cursor-pointer'}
+      onClick={() => onSelect(entry)}
       {...attributes}
       {...listeners}
-      aria-pressed={selected}
-    >
-      <ItemMedia variant="icon">
-        <IconFile />
-      </ItemMedia>
-      <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle>{title}</ItemTitle>
-        {description && <ItemDescription className="line-clamp-1">{description}</ItemDescription>}
-      </ItemContent>
-    </Item>
+      aria-pressed={selectedEntry === String(entry.id)}
+    />
   );
 };
 
-const EntryListSkeleton = () => (
-  <div className="space-y-2 p-3" aria-label="Loading entries">
-    {Array.from({ length: 6 }, (_, index) => (
-      <div key={index} className="flex items-center gap-3 px-3 py-2.5">
-        <Skeleton className="size-4 shrink-0" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-2/5" />
-          <Skeleton className="h-3 w-3/5" />
+const VirtualEntryList = ({
+  entries,
+  selectedEntry,
+  disabled,
+  onSelect,
+}: Omit<EntryRowProps, 'entry'> & { entries: EntrySummary[] }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 68,
+    getItemKey: index => entryDndId(entries[index].id),
+    overscan: 4,
+  });
+
+  return (
+    <div ref={scrollRef} className="min-h-0 w-full flex-1 overflow-auto py-2">
+      <ul className="relative w-full list-none" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map(virtualRow => {
+          const entry = entries[virtualRow.index];
+
+          return (
+            <li
+              key={virtualRow.key}
+              className="absolute left-0 top-0 w-full px-3 py-0.5"
+              style={{
+                height: virtualRow.size,
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+              aria-posinset={virtualRow.index + 1}
+              aria-setsize={entries.length}
+            >
+              <VirtualEntryRow
+                entry={entry}
+                selectedEntry={selectedEntry}
+                disabled={disabled}
+                onSelect={onSelect}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
+const EntryListSkeleton = ({ pending }: { pending: boolean }) => {
+  const visible = useDebouncedValue(pending, 150, false);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        'animate-in space-y-2 p-3 duration-200 fade-in',
+        !pending && 'animate-out opacity-0 fade-out',
+      )}
+      aria-label="Loading entries"
+    >
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 px-3 py-2.5">
+          <Skeleton className="size-4 shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-3 w-3/5" />
+          </div>
         </div>
-      </div>
-    ))}
-  </div>
-);
+      ))}
+    </div>
+  );
+};
 
 const EntryQuery = <TName extends EntryOperationName>({
   name,
@@ -123,7 +169,7 @@ const EntryQuery = <TName extends EntryOperationName>({
         </Alert>
       )}
 
-      {entries.isPending && <EntryListSkeleton />}
+      <EntryListSkeleton pending={entries.isPending} />
       {entries.isError && (
         <Alert variant="destructive" className="m-3 w-auto">
           <IconAlertCircle />
@@ -135,19 +181,12 @@ const EntryQuery = <TName extends EntryOperationName>({
         <p className="p-6 text-center text-sm text-muted-foreground">No entries</p>
       )}
       {result && result.entries.length > 0 && (
-        <div className="min-h-0 overflow-y-auto p-3">
-          <ItemGroup className="gap-1">
-            {result.entries.map(entry => (
-              <EntryRow
-                key={entryDndId(entry.id)}
-                entry={entry}
-                selected={selectedEntry === String(entry.id)}
-                disabled={movePending}
-                onSelect={() => setSearchParams({ entry: String(entry.id) }, { replace: true })}
-              />
-            ))}
-          </ItemGroup>
-        </div>
+        <VirtualEntryList
+          entries={result.entries}
+          selectedEntry={selectedEntry}
+          disabled={movePending}
+          onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: true })}
+        />
       )}
     </section>
   );
@@ -167,7 +206,7 @@ const GroupEntries = ({
   if (hierarchy.isPending) {
     return (
       <section className="flex min-h-0 w-full flex-1 flex-col border-r md:max-w-md">
-        <EntryListSkeleton />
+        <EntryListSkeleton pending />
       </section>
     );
   }

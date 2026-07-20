@@ -1,4 +1,4 @@
-import type { DatabaseNodeId } from '@keeless/schema';
+import type { DatabaseNodeId, EntrySummary } from '@keeless/schema';
 
 export const databaseNodeKey = (id: DatabaseNodeId) =>
   `${typeof id === 'number' ? 'int' : 'uuid'}:${id}`;
@@ -11,7 +11,7 @@ export type EntryDragData = {
   type: 'entry';
   entryId: DatabaseNodeId;
   title: string;
-  description?: string;
+  entry: EntrySummary;
 };
 
 export type GroupDragData = {

@@ -75,6 +75,9 @@ pub struct EntrySummary {
     pub name: Option<String>,
     pub name_is_protected: bool,
     #[serde(deserialize_with = "deserialize_nullable")]
+    pub username: Option<String>,
+    pub username_is_protected: bool,
+    #[serde(deserialize_with = "deserialize_nullable")]
     pub url: Option<String>,
     pub url_is_protected: bool,
     pub icon: IconReference,
