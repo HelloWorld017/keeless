@@ -29,6 +29,7 @@ import { GroupDragOverlay } from './_components/GroupTree';
 import { Sidebar } from './_components/Sidebar';
 import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
+import {useSearchParams} from 'wouter';
 
 const keyboardDirections = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'] as const;
 
@@ -150,7 +151,7 @@ export const DatabaseFragment = () => {
       }
       return validEntryDrop.current
         ? [initial, { ...initial, opacity: 0 }]
-        : [initial, { transform: CSS.Transform.toString(transform.final) }];
+        : [initial, { transform: CSS.Transform.toString(transform.final), opacity: 0 }];
     },
   };
   const sensors = useSensors(
@@ -240,6 +241,9 @@ export const DatabaseFragment = () => {
     moveEntry.mutate({ entryId: activeData.entryId, parentGroupId: overData.groupId });
   };
 
+  const [searchParams] = useSearchParams();
+  const selectedEntry = searchParams.get('entry');
+
   return (
     <DndContext
       sensors={sensors}
@@ -253,7 +257,7 @@ export const DatabaseFragment = () => {
       }}
       onDragEnd={handleDragEnd}
     >
-      <SidebarProvider>
+      <SidebarProvider className='[--sidebar-width:16rem]! xl:[--sidebar-width:18rem]!'>
         <Sidebar />
         <SidebarInset className="h-svh overflow-hidden">
           <div className="flex min-h-0 flex-1">
@@ -273,9 +277,9 @@ export const DatabaseFragment = () => {
         {activeEntry ? (
           <EntryItem
             entry={activeEntry.entry}
-            variant="outline"
+            selected={selectedEntry === String(activeEntry.entry.id)}
             className={cx(
-              'w-full opacity-75 bg-background transition-opacity transition-transform',
+              'w-full opacity-75 transition-opacity transition-transform',
               entryOverGroup && 'scale-75',
             )}
           />

@@ -1,6 +1,6 @@
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
 import { IconFile } from '@/icons';
-import { cn } from '@/utils/css';
+import { cn, cx } from '@/utils/css';
 import type { EntrySummary } from '@keeless/schema';
 import type { ComponentProps } from 'react';
 
@@ -26,15 +26,15 @@ export const EntryItem = ({
   return (
     <Item
       variant={variant ?? (selected ? 'muted' : 'default')}
-      className={cn('h-16 flex-nowrap', className)}
+      className={cn('h-16 flex-nowrap', selected && 'bg-primary', className)}
       {...props}
     >
       <ItemMedia variant="icon">
         <IconFile />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle>{title}</ItemTitle>
-        <ItemDescription className="min-h-5 line-clamp-1">{description}</ItemDescription>
+        <ItemTitle className={cx(selected && 'text-primary-foreground')}>{title}</ItemTitle>
+        <ItemDescription className={cx('min-h-5 line-clamp-1', selected && 'text-primary-foreground/75')}>{description}</ItemDescription>
       </ItemContent>
     </Item>
   );

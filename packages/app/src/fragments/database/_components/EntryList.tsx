@@ -1,10 +1,11 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
-import { Separator } from '@/components/separator';
 import { Skeleton } from '@/components/skeleton';
 import { useRequest } from '@/fragments/_providers/QueryProvider';
+import { useHistoryBack } from '@/fragments/_providers/RouterProvider';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { IconAlertCircle } from '@/icons';
-import { cn } from '@/utils/css';
+import { cn, cx } from '@/utils/css';
 import { getRoute } from '@/utils/route';
 import { useDraggable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -16,6 +17,7 @@ import {
   type EntryDragData,
   type EntryDragSource,
 } from '../_utils/dragAndDrop';
+import { EntryDetail } from './EntryDetail';
 import { EntryItem, getEntryTitle } from './EntryItem';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type { DatabaseNodeId, EntriesResult, EntrySummary } from '@keeless/schema';
@@ -72,10 +74,11 @@ const VirtualEntryRow = ({
       selected={selectedEntry === String(entry.id)}
       render={<button type="button" aria-label={title} />}
       className={cn(
+        'transition-opacity',
         isDragging ? 'z-10 cursor-grabbing opacity-60' : 'cursor-pointer',
         hiddenEntryId !== undefined &&
           databaseNodeKey(hiddenEntryId) === databaseNodeKey(entry.id) &&
-          'invisible',
+          'opacity-0',
       )}
       onClick={() => onSelect(entry)}
       {...attributes}
@@ -86,13 +89,14 @@ const VirtualEntryRow = ({
 };
 
 const VirtualEntryList = ({
+  className,
   entries,
   source,
   selectedEntry,
   disabled,
   hiddenEntryId,
   onSelect,
-}: Omit<EntryRowProps, 'entry'> & { entries: EntrySummary[] }) => {
+}: Omit<EntryRowProps, 'entry'> & { entries: EntrySummary[]; className?: string }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: entries.length,
@@ -103,7 +107,7 @@ const VirtualEntryList = ({
   });
 
   return (
-    <div ref={scrollRef} className="min-h-0 w-full flex-1 overflow-auto py-2">
+    <div ref={scrollRef} className={cx('min-h-0 w-full flex-1 overflow-auto py-2', className)}>
       <ul className="relative w-full list-none" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map(virtualRow => {
           const entry = entries[virtualRow.index];
@@ -182,6 +186,8 @@ const EntryQuery = <TName extends EntryOperationName>({
 }) => {
   const entries = useRequest(name, args);
   const [searchParams, setSearchParams] = useSearchParams();
+  const isMobile = useIsMobile();
+  const historyBack = useHistoryBack();
   const selectedEntry = searchParams.get('entry');
   const result = entries.data as EntriesResult | undefined;
   const resultSorted = useMemo(
@@ -199,53 +205,78 @@ const EntryQuery = <TName extends EntryOperationName>({
       }) ?? [],
     [result?.entries],
   );
+  const selectedEntrySummary = resultSorted.find(entry => String(entry.id) === selectedEntry);
+  const closeEntry = () => {
+    if (isMobile) {
+      historyBack();
+      return;
+    }
+
+    setSearchParams({}, { replace: true });
+  };
 
   return (
-    <section className="flex min-h-0 w-full flex-1 flex-col border-r md:max-w-md">
-      <header className="flex min-h-16 items-center justify-between gap-4 px-4 py-3">
-        <h1 className="truncate text-base font-semibold">{title}</h1>
-        {result && (
-          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-            {result.entries.length}
-          </span>
+    <>
+      <section
+        className={cn(
+          'min-h-0 w-full flex-2 flex-col border-r md:flex md:max-w-sm xl:max-w-md',
+          selectedEntry ? 'hidden' : 'flex',
         )}
-      </header>
-      <Separator />
+      >
+        <div className='flex flex-col xl:px-6'>
+          <header className="flex flex-col min-h-16 items-start justify-between px-6 py-3 xl:py-6 xl:pb-4">
+            <h1 className="truncate text-xl font-semibold">{title}</h1>
+            {result && (
+              <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                {result.entries.length} {result.entries.length === 1 ? 'Entry' : 'Entries'}
+              </span>
+            )}
+          </header>
 
-      {moveError && (
-        <Alert variant="destructive" className="m-3 mb-0 w-auto">
-          <IconAlertCircle />
-          <AlertTitle>Entry could not be moved</AlertTitle>
-          <AlertDescription>Try moving the entry again.</AlertDescription>
-        </Alert>
-      )}
+          {moveError && (
+            <Alert variant="destructive" className="m-3 mb-0 w-auto">
+              <IconAlertCircle />
+              <AlertTitle>Entry could not be moved</AlertTitle>
+              <AlertDescription>Try moving the entry again.</AlertDescription>
+            </Alert>
+          )}
 
-      <EntryListSkeleton pending={entries.isPending} />
-      {entries.isError && (
-        <Alert variant="destructive" className="m-3 w-auto">
-          <IconAlertCircle />
-          <AlertTitle>Entries could not be loaded</AlertTitle>
-          <AlertDescription>Try opening this section again.</AlertDescription>
-        </Alert>
-      )}
-      {result && result.entries.length === 0 && (
-        <p className="p-6 text-center text-sm text-muted-foreground">No entries</p>
-      )}
-      {result && result.entries.length > 0 && (
-        <VirtualEntryList
-          entries={resultSorted}
-          source={source}
-          selectedEntry={selectedEntry}
-          disabled={movePending}
-          hiddenEntryId={
-            hiddenEntry && isSameSource(source, hiddenEntry.source)
-              ? hiddenEntry.entryId
-              : undefined
-          }
-          onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: true })}
-        />
-      )}
-    </section>
+          <EntryListSkeleton pending={entries.isPending} />
+          {entries.isError && (
+            <Alert variant="destructive" className="m-3 w-auto">
+              <IconAlertCircle />
+              <AlertTitle>Entries could not be loaded</AlertTitle>
+              <AlertDescription>Try opening this section again.</AlertDescription>
+            </Alert>
+          )}
+          {result && result.entries.length === 0 && (
+            <p className="p-6 text-center text-sm text-muted-foreground">No entries</p>
+          )}
+        </div>
+
+        {result && result.entries.length > 0 && (
+          <VirtualEntryList
+            className='xl:px-6'
+            entries={resultSorted}
+            source={source}
+            selectedEntry={selectedEntry}
+            disabled={movePending}
+            hiddenEntryId={
+              hiddenEntry && isSameSource(source, hiddenEntry.source)
+                ? hiddenEntry.entryId
+                : undefined
+            }
+            onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: !isMobile })}
+          />
+        )}
+      </section>
+      <EntryDetail
+        entry={selectedEntrySummary}
+        selected={selectedEntry !== null}
+        listPending={entries.isPending}
+        onClose={closeEntry}
+      />
+    </>
   );
 };
 
@@ -264,7 +295,7 @@ const GroupEntries = ({
 
   if (hierarchy.isPending) {
     return (
-      <section className="flex min-h-0 w-full flex-1 flex-col border-r md:max-w-md">
+      <section className="flex min-h-0 w-full flex-2 flex-col border-r md:max-w-md">
         <EntryListSkeleton pending />
       </section>
     );

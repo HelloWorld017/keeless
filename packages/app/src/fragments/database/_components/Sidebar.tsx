@@ -110,7 +110,7 @@ const DatabaseSidebar = () => {
   }, [requestClient.data, storage.data]);
 
   return (
-    <Sidebar>
+    <Sidebar className='p-2 xl:p-4'>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
