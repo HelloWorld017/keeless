@@ -5,5 +5,4 @@ export type FieldDraft = {
   value: string | null;
   isProtected: boolean;
   valueChanged: boolean;
-  revealedValue?: string;
 };

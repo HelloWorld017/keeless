@@ -1,8 +1,11 @@
 import { Input } from '@/components/input';
-import { FieldPassword } from './FieldPassword';
 import type { DatabaseNodeId } from '@keeless/schema';
+import {useProtectedReveal} from '../_hooks/useProtectedReveal';
+import {Button} from '@/components/button';
+import {IconEye, IconEyeOff, IconLoaderCircle} from '@/icons';
 
 export const FieldPasswordEditor = ({
+  id,
   entryId,
   fieldIndex,
   name,
@@ -10,8 +13,8 @@ export const FieldPasswordEditor = ({
   existing,
   disabled,
   onChange,
-  onReveal,
 }: {
+  id?: string;
   entryId: DatabaseNodeId;
   fieldIndex: number | null;
   name: string;
@@ -19,26 +22,54 @@ export const FieldPasswordEditor = ({
   existing: boolean;
   disabled: boolean;
   onChange: (value: string) => void;
-  onReveal: (value: string) => void;
-}) => (
-  <div className="space-y-2">
-    <Input
-      type="password"
-      value={value}
-      placeholder={existing ? 'Protected value unchanged' : undefined}
-      autoComplete="new-password"
-      aria-label={`${name} value`}
-      disabled={disabled}
-      onChange={event => onChange(event.target.value)}
-    />
-    {existing && fieldIndex !== null && !value && (
-      <FieldPassword
-        entryId={entryId}
-        fieldIndex={fieldIndex}
-        name={name}
-        onReveal={onReveal}
-        compact
-      />
-    )}
-  </div>
-);
+}) => {
+  const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
+    entryId,
+    fieldIndex,
+    onReveal: nextValue => {
+      if (existing && !value && nextValue) {
+        onChange(nextValue);
+      }
+    },
+  });
+
+  return (
+    <>
+      <div className="flex items-start gap-2">
+        <Input
+          id={id}
+          type={existing || revealed ? 'text' : 'password'}
+          value={value}
+          placeholder={existing ? '(unchanged)' : undefined}
+          autoComplete="new-password"
+          aria-label={`${name} value`}
+          disabled={disabled}
+          onChange={event => onChange(event.target.value)}
+        />
+        <Button
+          type="button"
+          variant='outline'
+          size='icon'
+          aria-label={revealed ? `Hide ${name}` : `Reveal ${name}`}
+          aria-pressed={revealed}
+          disabled={disabled || pending}
+          onClick={toggleReveal}
+        >
+          {pending ? (
+            <IconLoaderCircle className="animate-spin" />
+          ) : revealed ? (
+            <IconEyeOff />
+          ) : (
+            <IconEye />
+          )}
+        </Button>
+      </div>
+      {prompt}
+      {error && !promptOpen && (
+        <p className="text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+};

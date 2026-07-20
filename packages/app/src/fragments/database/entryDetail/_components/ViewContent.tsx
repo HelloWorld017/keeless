@@ -1,9 +1,27 @@
 import { ReactNode } from 'react';
 import { formatBytes, formatDate } from '../_utils/format';
-import { DetailSection } from './DetailSection';
 import { FieldPassword } from './FieldPassword';
 import { FieldPlain } from './FieldPlain';
 import type { EntryAttachmentInformation, EntryDetailResult } from '@keeless/schema';
+import {getFieldName} from '../_utils/getFieldName';
+
+const DetailSection = ({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) => (
+  <section className="space-y-3">
+    <div className="flex items-center justify-between gap-3">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      {action}
+    </div>
+    {children}
+  </section>
+);
 
 const Attachment = ({ attachment }: { attachment: EntryAttachmentInformation }) => (
   <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
@@ -37,12 +55,12 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
                 key={`${detail.id}:${field.fieldIndex}:${index}`}
                 entryId={detail.id}
                 fieldIndex={field.fieldIndex}
-                name={field.name}
+                name={getFieldName(field.name)}
               />
             ) : (
               <FieldPlain
                 key={`${detail.id}:${field.fieldIndex}:${index}`}
-                name={field.name}
+                name={getFieldName(field.name)}
                 value={field.value}
               />
             ),
