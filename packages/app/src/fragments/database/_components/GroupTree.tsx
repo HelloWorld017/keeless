@@ -6,6 +6,7 @@ import {
   SidebarMenuItem,
 } from '@/components/sidebar';
 import { IconFolder, IconGripVertical } from '@/icons';
+import { cx } from '@/utils/css';
 import { buildRoute } from '@/utils/route';
 import {
   useDndMonitor,
@@ -17,8 +18,10 @@ import {
 import {
   SortableContext,
   arrayMove,
+  defaultAnimateLayoutChanges,
   useSortable,
   verticalListSortingStrategy,
+  type AnimateLayoutChanges,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
@@ -32,6 +35,9 @@ import type {
 } from '@keeless/schema';
 
 const INDENTATION_WIDTH = 16;
+
+const animateLayoutChanges: AnimateLayoutChanges = args =>
+  args.active?.data.current?.type === 'group' ? args.isSorting : defaultAnimateLayoutChanges(args);
 
 const nodeKey = groupDndId;
 
@@ -154,6 +160,13 @@ export const moveGroupInHierarchy = (
   };
 };
 
+export const GroupDragOverlay = ({ title }: { title: string }) => (
+  <div className="flex h-8 w-full items-center gap-2 overflow-hidden rounded-md border border-sidebar-border bg-sidebar px-2 text-sm text-sidebar-foreground shadow-lg">
+    <IconFolder className="size-4 shrink-0" />
+    <span className="truncate">{title}</span>
+  </div>
+);
+
 const SortableGroup = ({
   item,
   depth,
@@ -176,17 +189,18 @@ const SortableGroup = ({
     active: draggedItem,
     attributes,
     listeners,
+    setActivatorNodeRef,
     setNodeRef,
     transform,
     transition,
     isDragging,
     isOver,
-  } = useSortable({ id: item.key, data, disabled });
+  } = useSortable({ id: item.key, data, disabled, animateLayoutChanges });
   const isEntryOver = isOver && draggedItem?.data.current?.type === 'entry';
   return (
     <SidebarMenuItem
       ref={setNodeRef}
-      className={isDragging ? 'z-10 opacity-60' : undefined}
+      className={isDragging ? 'z-10 opacity-0' : undefined}
       style={{
         paddingLeft: depth * INDENTATION_WIDTH,
         transform: CSS.Transform.toString(transform),
@@ -194,19 +208,25 @@ const SortableGroup = ({
       }}
     >
       <SidebarMenuButton
-        render={<Link href={buildRoute('group', { group: String(item.id) })} replace />}
-        isActive={active || isEntryOver}
-        className="pr-8"
+        render={
+          <Link href={buildRoute('group', { group: String(item.id) })} replace draggable={false} />
+        }
+        isActive={active}
+        className={cx('border border-transparent pr-8', isEntryOver && 'border-sidebar-ring')}
         onClick={onNavigate}
       >
         <IconFolder />
         <span>{item.group.name || 'Untitled group'}</span>
       </SidebarMenuButton>
       <Button
+        ref={setActivatorNodeRef}
         type="button"
         variant="ghost"
         size="icon-xs"
-        className="absolute top-1 right-1 text-sidebar-foreground/60 hover:bg-sidebar-accent"
+        className={cx(
+          'absolute top-1 right-1 cursor-grab touch-none text-sidebar-foreground/60 hover:bg-sidebar-accent active:translate-y-0',
+          isDragging && 'cursor-grabbing',
+        )}
         aria-label={`Move ${item.group.name || 'untitled group'}`}
         {...attributes}
         {...listeners}

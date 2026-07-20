@@ -23,8 +23,8 @@ import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link, useLocation } from 'wouter';
-import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import { databaseNodeKey, type TrashDropData } from '../_utils/dragAndDrop';
+import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import type { DatabaseNodeId, GroupHierarchyResult, MoveGroupArgs } from '@keeless/schema';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
@@ -79,11 +79,12 @@ const DatabaseSidebar = () => {
   const moveGroup = useMutation({
     mutationFn: (args: MoveGroupArgs) => requestClient.data!.request('moveGroup', args),
     onMutate: async args => {
-      await queryClient.cancelQueries({ queryKey: hierarchyQueryKey });
+      const cancellation = queryClient.cancelQueries({ queryKey: hierarchyQueryKey });
       const previous = queryClient.getQueryData<GroupHierarchyResult>(hierarchyQueryKey);
       queryClient.setQueryData<GroupHierarchyResult>(hierarchyQueryKey, current =>
         current ? moveGroupInHierarchy(current, args) : current,
       );
+      await cancellation;
       return { previous };
     },
     onError: (_error, _args, context) => {
@@ -117,7 +118,9 @@ const DatabaseSidebar = () => {
                   <img src={Logo} alt="" />
                 </div>
                 <div className="flex flex-[1_1_0] min-w-0 flex-col">
-                  <span className="font-semibold truncate">{databaseName ?? 'Loading database'}</span>
+                  <span className="font-semibold truncate">
+                    {databaseName ?? 'Loading database'}
+                  </span>
                   <span>{storageName}</span>
                 </div>
               </div>

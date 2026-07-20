@@ -1,8 +1,8 @@
 import { SidebarInset, SidebarProvider } from '@/components/sidebar';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { cx } from '@/utils/css';
 import {
   DndContext,
-  DragOverEvent,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
@@ -11,19 +11,24 @@ import {
   useSensor,
   useSensors,
   type CollisionDetection,
+  type DropAnimation,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
   type KeyboardCoordinateGetter,
+  type Modifier,
 } from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
+import { GroupDragOverlay } from './_components/GroupTree';
 import { Sidebar } from './_components/Sidebar';
 import type { DragDropData, EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
-import {cx} from '@/utils/css';
 
 const keyboardDirections = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'] as const;
 
@@ -31,6 +36,20 @@ const collisionDetection: CollisionDetection = args =>
   args.active.data.current?.type === 'entry' && args.pointerCoordinates
     ? pointerWithin(args)
     : closestCenter(args);
+
+const snapEntryCenterToCursor: Modifier = args =>
+  args.active?.data.current?.type === 'entry' ? snapCenterToCursor(args) : args.transform;
+
+const entryOverlayModifiers = [snapEntryCenterToCursor];
+
+const dropAnimation: DropAnimation = {
+  keyframes: ({ active, transform }) => {
+    const initial = { transform: CSS.Transform.toString(transform.initial) };
+    return active.data.current?.type === 'group'
+      ? [initial, initial]
+      : [initial, { transform: CSS.Transform.toString(transform.final) }];
+  },
+};
 
 const isKeyboardDirection = (code: string): code is (typeof keyboardDirections)[number] =>
   keyboardDirections.includes(code as (typeof keyboardDirections)[number]);
@@ -127,8 +146,9 @@ const entryQueryNames = [
 export const DatabaseFragment = () => {
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
-  const [activeEntry, setActiveEntry] = useState<EntryDragData | null>(null);
-  const [activeOver, setActiveOver] = useState<DragDropData | null>();
+  const [activeDrag, setActiveDrag] = useState<DragDropData | null>(null);
+  const [entryOverGroup, setEntryOverGroup] = useState(false);
+  const activeEntry: EntryDragData | null = activeDrag?.type === 'entry' ? activeDrag : null;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
@@ -142,23 +162,29 @@ export const DatabaseFragment = () => {
   });
 
   const clearDrag = () => {
-    setActiveOver(null);
-    setActiveEntry(null);
+    setEntryOverGroup(false);
+    setActiveDrag(null);
   };
 
   const handleDragStart = ({ active }: DragStartEvent) => {
     const data = active.data.current as DragDropData | undefined;
     if (data?.type === 'entry') {
-      setActiveEntry({
+      setActiveDrag({
         type: 'entry',
         entryId: data.entryId,
         title: data.title,
         entry: data.entry,
       });
+      return;
     }
+    setActiveDrag(data ?? null);
   };
-  const handleDragOver = ({ over }: DragOverEvent) => {
-    setActiveOver((over?.data.current as DragDropData | undefined) ?? null);
+  const handleDragOver = ({ active, over }: DragOverEvent) => {
+    if (active.data.current?.type !== 'entry') {
+      return;
+    }
+    const isOverGroup = over?.data.current?.type === 'group';
+    setEntryOverGroup(current => (current === isOverGroup ? current : isOverGroup));
   };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
@@ -193,14 +219,23 @@ export const DatabaseFragment = () => {
           </div>
         </SidebarInset>
       </SidebarProvider>
-      <DragOverlay>
-        {activeEntry && (
+      <DragOverlay
+        modifiers={activeEntry ? entryOverlayModifiers : undefined}
+        dropAnimation={dropAnimation}
+        style={activeEntry ? { width: 320, height: 64 } : undefined}
+      >
+        {activeEntry ? (
           <EntryItem
             entry={activeEntry.entry}
             variant="outline"
-            className={cx(`w-80 bg-background shadow-lg opacity-75 transition-opacity transition-transform`, activeOver && activeOver.type === 'group' && 'scale-50')}
+            className={cx(
+              'w-full opacity-75 transition-opacity transition-transform',
+              entryOverGroup && 'scale-50',
+            )}
           />
-        )}
+        ) : activeDrag?.type === 'group' ? (
+          <GroupDragOverlay title={activeDrag.title} />
+        ) : null}
       </DragOverlay>
     </DndContext>
   );
