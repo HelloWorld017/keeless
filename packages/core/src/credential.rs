@@ -47,7 +47,7 @@ impl CredentialVault {
         Ok(handle.sync(&key).await?)
     }
 
-    fn restore_key(&self) -> Result<CompositeKey> {
+    pub(crate) fn restore_key(&self) -> Result<CompositeKey> {
         let plaintext = self
             .wrapping_key
             .unlock(|key| {

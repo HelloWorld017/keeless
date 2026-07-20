@@ -7,12 +7,15 @@ import {
   DatabaseIcon,
   DatabaseZapIcon,
   EyeIcon,
+  EyeOffIcon,
   FileIcon,
   FolderIcon,
   GripVerticalIcon,
   ListIcon,
   LoaderCircleIcon,
   PanelLeftIcon,
+  PencilIcon,
+  PlusIcon,
   TagIcon,
   Trash2Icon,
   XIcon,
@@ -38,12 +41,15 @@ export const IconCloud = wrapLucideComponent(CloudIcon);
 export const IconDatabase = wrapLucideComponent(DatabaseIcon);
 export const IconDatabaseZap = wrapLucideComponent(DatabaseZapIcon);
 export const IconEye = wrapLucideComponent(EyeIcon);
+export const IconEyeOff = wrapLucideComponent(EyeOffIcon);
 export const IconFile = wrapLucideComponent(FileIcon);
 export const IconFolder = wrapLucideComponent(FolderIcon);
 export const IconGripVertical = wrapLucideComponent(GripVerticalIcon);
 export const IconList = wrapLucideComponent(ListIcon);
 export const IconLoaderCircle = wrapLucideComponent(LoaderCircleIcon);
 export const IconPanelLeft = wrapLucideComponent(PanelLeftIcon);
+export const IconPencil = wrapLucideComponent(PencilIcon);
+export const IconPlus = wrapLucideComponent(PlusIcon);
 export const IconTag = wrapLucideComponent(TagIcon);
 export const IconTrash = wrapLucideComponent(Trash2Icon);
 export const IconX = wrapLucideComponent(XIcon);

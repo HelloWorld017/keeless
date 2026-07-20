@@ -18,7 +18,7 @@ pub(super) fn parse_node_id(id: DatabaseNodeId) -> Result<NodeId> {
     }
 }
 
-fn node_id(id: NodeId) -> DatabaseNodeId {
+pub(super) fn node_id(id: NodeId) -> DatabaseNodeId {
     match id {
         NodeId::Uuid(value) => DatabaseNodeId::Uuid(value.hyphenated().to_string()),
         NodeId::Int(value) => DatabaseNodeId::Int(value),
@@ -204,6 +204,7 @@ pub(super) fn group_hierarchy(database: &Database) -> Result<GroupHierarchyResul
 
 fn standard_field(
     entry: &Entry,
+    field_index: u64,
     name: &str,
     selector: EntryFieldSelector,
     is_protected: bool,
@@ -214,6 +215,7 @@ fn standard_field(
         entry.with_unsealed_field(&selector, str::to_owned)
     };
     EntryFieldInformation {
+        field_index,
         name: name.to_string(),
         value,
         is_protected,
@@ -224,43 +226,55 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
     let mut fields = vec![
         standard_field(
             entry,
+            0,
             "Title",
             EntryFieldSelector::Title,
             entry.title_is_protected,
         ),
         standard_field(
             entry,
+            1,
             "UserName",
             EntryFieldSelector::UserName,
             entry.username.is_protected(),
         ),
         standard_field(
             entry,
+            2,
             "Password",
             EntryFieldSelector::Password,
             entry.password.is_protected(),
         ),
         standard_field(
             entry,
+            3,
             "URL",
             EntryFieldSelector::Url,
             entry.url_is_protected,
         ),
         standard_field(
             entry,
+            4,
             "Notes",
             EntryFieldSelector::Notes,
             entry.notes.is_protected(),
         ),
     ];
-    fields.extend(entry.custom_fields.iter().map(|field| {
-        let is_protected = field.is_protected || field.value.is_protected();
-        EntryFieldInformation {
-            name: field.name.clone(),
-            value: (!is_protected).then(|| field.value.as_str().to_string()),
-            is_protected,
-        }
-    }));
+    fields.extend(
+        entry
+            .custom_fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let is_protected = field.is_protected || field.value.is_protected();
+                EntryFieldInformation {
+                    field_index: 5 + index as u64,
+                    name: field.name.clone(),
+                    value: (!is_protected).then(|| field.value.as_str().to_string()),
+                    is_protected,
+                }
+            }),
+    );
 
     EntryDetailResult {
         id: node_id(entry.id),

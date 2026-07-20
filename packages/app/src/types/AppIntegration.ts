@@ -1,6 +1,6 @@
 import type { Host } from './Host';
 
-export type PasswordInputMode = 'create' | 'unlock';
+export type PasswordInputMode = 'create' | 'unlock' | 'reveal';
 
 export type AppIntegration = {
   hostOverride?: Host;

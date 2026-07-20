@@ -23,13 +23,13 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { useSearchParams } from 'wouter';
 import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
 import { GroupDragOverlay } from './_components/GroupTree';
 import { Sidebar } from './_components/Sidebar';
 import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
-import {useSearchParams} from 'wouter';
 
 const keyboardDirections = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'] as const;
 
@@ -257,7 +257,7 @@ export const DatabaseFragment = () => {
       }}
       onDragEnd={handleDragEnd}
     >
-      <SidebarProvider className='[--sidebar-width:16rem]! xl:[--sidebar-width:18rem]!'>
+      <SidebarProvider className="[--sidebar-width:16rem]! xl:[--sidebar-width:18rem]!">
         <Sidebar />
         <SidebarInset className="h-svh overflow-hidden">
           <div className="flex min-h-0 flex-1">
@@ -284,7 +284,7 @@ export const DatabaseFragment = () => {
             )}
           />
         ) : activeDrag?.type === 'group' ? (
-          <GroupDragOverlay title={activeDrag.title} />
+          <GroupDragOverlay title={activeDrag.title} icon={activeDrag.icon} />
         ) : null}
       </DragOverlay>
     </DndContext>

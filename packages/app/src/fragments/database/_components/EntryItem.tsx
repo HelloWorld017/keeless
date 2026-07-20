@@ -1,6 +1,6 @@
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
-import { IconFile } from '@/icons';
 import { cn, cx } from '@/utils/css';
+import { ItemIcon } from './ItemIcon';
 import type { EntrySummary } from '@keeless/schema';
 import type { ComponentProps } from 'react';
 
@@ -30,11 +30,15 @@ export const EntryItem = ({
       {...props}
     >
       <ItemMedia variant="icon">
-        <IconFile />
+        <ItemIcon icon={entry.icon} fallback="entry" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className={cx(selected && 'text-primary-foreground')}>{title}</ItemTitle>
-        <ItemDescription className={cx('min-h-5 line-clamp-1', selected && 'text-primary-foreground/75')}>{description}</ItemDescription>
+        <ItemDescription
+          className={cx('min-h-5 line-clamp-1', selected && 'text-primary-foreground/75')}
+        >
+          {description}
+        </ItemDescription>
       </ItemContent>
     </Item>
   );

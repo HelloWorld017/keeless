@@ -216,6 +216,25 @@ fn test_add_group() {
 }
 
 #[test]
+fn test_rename_group_updates_name_timestamp_and_modified_state() {
+    let mut db = make_test_db();
+    let root_id = db.root_group_id.unwrap();
+    db.get_group_mut(&root_id).unwrap().last_modification_time = DateInstant::EpochMillis(0);
+    db.data_modified = false;
+
+    assert!(!db.rename_group(&NodeId::new_uuid(), "Missing".into()));
+    assert!(!db.data_modified);
+    assert!(db.rename_group(&root_id, "Renamed".into()));
+    let group = db.get_group(&root_id).unwrap();
+    assert_eq!(group.title, "Renamed");
+    assert!(group
+        .last_modification_time
+        .as_millis()
+        .is_some_and(|time| time > 0));
+    assert!(db.data_modified);
+}
+
+#[test]
 fn test_reposition_group_changes_parent_and_order() {
     let mut db = make_test_db();
     let root_id = db.root_group_id.unwrap();

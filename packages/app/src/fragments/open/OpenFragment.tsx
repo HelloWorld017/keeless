@@ -23,6 +23,7 @@ import type { DatabaseStatus } from '@keeless/schema';
 import type { SubmitEvent } from 'react';
 
 type SetupStep = 'select' | 'storage' | 'create' | 'unlock' | 'checking';
+type SetupPasswordInputMode = Exclude<PasswordInputMode, 'reveal'>;
 
 const errorMessage = (error: unknown) => {
   if (error instanceof CoreRequestError) {
@@ -131,7 +132,7 @@ const OpenFragmentContents = () => {
   };
 
   const requestPassword = async (
-    mode: PasswordInputMode,
+    mode: SetupPasswordInputMode,
     form?: HTMLFormElement,
   ): Promise<string | null> => {
     if (onPasswordInput) {
@@ -148,7 +149,10 @@ const OpenFragmentContents = () => {
     return password;
   };
 
-  const submitPassword = async (mode: PasswordInputMode, event: SubmitEvent<HTMLFormElement>) => {
+  const submitPassword = async (
+    mode: SetupPasswordInputMode,
+    event: SubmitEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     if (!requestClient.data || operationPendingRef.current) {
       return;

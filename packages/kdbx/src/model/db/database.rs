@@ -224,6 +224,31 @@ impl Database {
         })
     }
 
+    /// Temporarily expose one custom field selected by its vector index.
+    pub fn with_entry_custom_field<T>(
+        &self,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+        field_index: usize,
+        use_value: impl FnOnce(&str) -> T,
+    ) -> DatabaseResult<T> {
+        let entry = self
+            .entries
+            .get(entry_id)
+            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?;
+        let field = entry
+            .custom_fields
+            .get(field_index)
+            .ok_or_else(|| DatabaseError::InvalidFormat("unknown field index".into()))?;
+        let memory_field = MemoryField::Custom(field.name.clone());
+        let mut unlock = MemoryUnlockSession::new(composite_key);
+        field
+            .value
+            .with_plaintext(&mut unlock, entry.id, &memory_field, |value| {
+                Ok(use_value(value))
+            })
+    }
+
     /// Replace an entry field and immediately memory-protect it when requested.
     pub fn set_entry_field(
         &mut self,
@@ -422,6 +447,17 @@ impl Database {
             // First group becomes root
             self.root_group_id = Some(group_id);
         }
+        self.mark_modified();
+        true
+    }
+
+    /// Rename a group and update its modification metadata.
+    pub fn rename_group(&mut self, group_id: &NodeId, name: String) -> bool {
+        let Some(group) = self.groups.get_mut(group_id) else {
+            return false;
+        };
+        group.title = name;
+        group.last_modification_time = DateInstant::now();
         self.mark_modified();
         true
     }

@@ -325,6 +325,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                     },
                     tags: vec!["work".into()],
                     fields: vec![EntryFieldInformation {
+                        field_index: 2,
                         name: "Password".into(),
                         value: None,
                         is_protected: true,
@@ -355,7 +356,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                 "id": 7,
                 "icon": { "standardId": 1, "customUuid": null },
                 "tags": ["work"],
-                "fields": [{ "name": "Password", "value": null, "isProtected": true }],
+                "fields": [{ "fieldIndex": 2, "name": "Password", "value": null, "isProtected": true }],
                 "backgroundColor": "#000000",
                 "foregroundColor": "#ffffff",
                 "overrideUrl": "",
@@ -370,6 +371,89 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
             }
         }),
     );
+}
+
+#[test]
+fn database_editing_operations_have_stable_shapes() {
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "add-entry-1".into(),
+            operation: Operation::AddEntry(AddEntryArgs {
+                parent_group_id: DatabaseNodeId::Int(7),
+            }),
+        },
+        json!({ "requestId": "add-entry-1", "op": "addEntry", "args": { "parentGroupId": 7 } }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "add-entry-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::AddEntry(AddEntryResult {
+                    id: DatabaseNodeId::Int(8),
+                }),
+            },
+        },
+        json!({ "requestId": "add-entry-1", "status": "success", "op": "addEntry", "result": { "id": 8 } }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "add-group-1".into(),
+            operation: Operation::AddGroup(AddGroupArgs {
+                parent_group_id: DatabaseNodeId::Int(7),
+            }),
+        },
+        json!({ "requestId": "add-group-1", "op": "addGroup", "args": { "parentGroupId": 7 } }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "add-group-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::AddGroup(AddGroupResult {
+                    id: DatabaseNodeId::Int(9),
+                }),
+            },
+        },
+        json!({ "requestId": "add-group-1", "status": "success", "op": "addGroup", "result": { "id": 9 } }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "rename-1".into(),
+            operation: Operation::RenameGroup(RenameGroupArgs {
+                group_id: DatabaseNodeId::Int(9),
+                name: "Personal".into(),
+            }),
+        },
+        json!({ "requestId": "rename-1", "op": "renameGroup", "args": { "groupId": 9, "name": "Personal" } }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "reveal-1".into(),
+            operation: Operation::RevealEntryField(RevealEntryFieldArgs {
+                entry_id: DatabaseNodeId::Int(8),
+                field_index: 2,
+                password: None,
+            }),
+        },
+        json!({ "requestId": "reveal-1", "op": "revealEntryField", "args": { "entryId": 8, "fieldIndex": 2, "password": null } }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "reveal-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::RevealEntryField(RevealEntryFieldResult {
+                    value: "secret".into(),
+                }),
+            },
+        },
+        json!({ "requestId": "reveal-1", "status": "success", "op": "revealEntryField", "result": { "value": "secret" } }),
+    );
+
+    let omitted: RevealEntryFieldArgs = serde_json::from_value(json!({
+        "entryId": 8,
+        "fieldIndex": 2
+    }))
+    .unwrap();
+    assert_eq!(omitted.password, None);
 }
 
 #[test]
@@ -487,6 +571,7 @@ fn all_request_and_success_variants_have_explicit_empty_objects() {
         "setConfig",
         "moveGroup",
         "moveEntry",
+        "renameGroup",
     ] {
         let value = json!({ "requestId": "5", "status": "success", "op": operation, "result": {} });
         let parsed: OperationResponse = serde_json::from_value(value.clone()).unwrap();

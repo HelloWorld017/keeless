@@ -1,4 +1,4 @@
-import type { DatabaseNodeId, EntrySummary } from '@keeless/schema';
+import type { DatabaseNodeId, EntrySummary, IconReference } from '@keeless/schema';
 
 export const databaseNodeKey = (id: DatabaseNodeId) =>
   `${typeof id === 'number' ? 'int' : 'uuid'}:${id}`;
@@ -25,6 +25,7 @@ export type GroupDragData = {
   type: 'group';
   groupId: DatabaseNodeId;
   title: string;
+  icon: IconReference;
 };
 
 export type TrashDropData = {

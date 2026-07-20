@@ -1,4 +1,5 @@
 import Logo from '@/assets/images/logo.png';
+import { Button } from '@/components/button';
 import {
   Sidebar,
   SidebarContent,
@@ -17,16 +18,22 @@ import {
   useSidebar,
 } from '@/components/sidebar';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { IconList, IconTag, IconTrash } from '@/icons';
-import { buildRoute } from '@/utils/route';
+import { IconList, IconPlus, IconTag, IconTrash } from '@/icons';
+import { cx } from '@/utils/css';
+import { buildRoute, getRoute } from '@/utils/route';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link, useLocation, useRoute } from 'wouter';
 import { databaseNodeKey, type TrashDropData } from '../_utils/dragAndDrop';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
-import type { DatabaseNodeId, GroupHierarchyResult, MoveGroupArgs } from '@keeless/schema';
-import {cx} from '@/utils/css';
+import type {
+  AddGroupArgs,
+  DatabaseNodeId,
+  GroupHierarchyResult,
+  MoveGroupArgs,
+  RenameGroupArgs,
+} from '@keeless/schema';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
 
@@ -56,7 +63,10 @@ const TrashMenuItem = ({
       <SidebarMenuButton
         render={<Link href={buildRoute('trash')} replace />}
         isActive={location === buildRoute('trash') || isEntryOver}
-        className={cx('border-2 border-transparent', isEntryOver && 'border-destructive/50 bg-destructive/25!')}
+        className={cx(
+          'border-2 border-transparent',
+          isEntryOver && 'border-destructive/50 bg-destructive/25!',
+        )}
         onClick={onNavigate}
       >
         <IconTrash className={cx(isEntryOver && 'text-destructive')} />
@@ -67,7 +77,8 @@ const TrashMenuItem = ({
 };
 
 const DatabaseSidebar = () => {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const [groupMatch, groupParams] = useRoute<{ group: string }>(getRoute('group'));
   const hierarchy = useRequest('getGroupHierarchy', {});
   const tags = useRequest('getTags', {});
   const requestClient = useRequestClient();
@@ -96,6 +107,18 @@ const DatabaseSidebar = () => {
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
   });
+  const addGroup = useMutation({
+    mutationFn: (args: AddGroupArgs) => requestClient.data!.request('addGroup', args),
+    onSuccess: async result => {
+      await queryClient.invalidateQueries({ queryKey: hierarchyQueryKey });
+      setLocation(buildRoute('group', { group: String(result.id) }));
+      closeMobile();
+    },
+  });
+  const renameGroup = useMutation({
+    mutationFn: (args: RenameGroupArgs) => requestClient.data!.request('renameGroup', args),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
+  });
   const databaseName = hierarchy.data
     ? hierarchy.data.databaseName ||
       hierarchy.data.groups.find(group => group.id === hierarchy.data.rootGroupId)?.name ||
@@ -108,9 +131,15 @@ const DatabaseSidebar = () => {
     const storages = requestClient.data?.host.storages;
     return storages?.find(candidate => candidate.kind === provider)?.label;
   }, [requestClient.data, storage.data]);
+  const activeGroup =
+    groupMatch && hierarchy.data
+      ? hierarchy.data.groups.find(group => String(group.id) === groupParams.group)
+      : undefined;
+  const groupParentId = activeGroup?.id ?? hierarchy.data?.rootGroupId;
+  const groupsPending = moveGroup.isPending || addGroup.isPending || renameGroup.isPending;
 
   return (
-    <Sidebar className='p-2 xl:p-4'>
+    <Sidebar className="p-2 xl:p-4">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -130,7 +159,7 @@ const DatabaseSidebar = () => {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent className='mt-4'>
+      <SidebarContent className="mt-4">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -148,7 +177,19 @@ const DatabaseSidebar = () => {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>Groups</SidebarGroupLabel>
+          <SidebarGroupLabel className="justify-between">
+            <span>Groups</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Add group"
+              disabled={!groupParentId || groupsPending}
+              onClick={() => groupParentId && addGroup.mutate({ parentGroupId: groupParentId })}
+            >
+              <IconPlus />
+            </Button>
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             {hierarchy.isPending && <SidebarMenuSkeleton />}
             {hierarchy.isError && <SidebarEmpty>Groups could not be loaded.</SidebarEmpty>}
@@ -156,14 +197,27 @@ const DatabaseSidebar = () => {
               <GroupTree
                 hierarchy={hierarchy.data}
                 location={location}
-                disabled={moveGroup.isPending}
+                disabled={groupsPending}
                 onMove={args => moveGroup.mutate(args)}
+                onRename={async args => {
+                  await renameGroup.mutateAsync(args);
+                }}
                 onNavigate={closeMobile}
               />
             )}
             {moveGroup.isError && (
               <p className="px-2 pt-2 text-xs text-destructive" role="alert">
                 The group could not be moved.
+              </p>
+            )}
+            {addGroup.isError && (
+              <p className="px-2 pt-2 text-xs text-destructive" role="alert">
+                The group could not be added.
+              </p>
+            )}
+            {renameGroup.isError && (
+              <p className="px-2 pt-2 text-xs text-destructive" role="alert">
+                The group could not be renamed.
               </p>
             )}
           </SidebarGroupContent>

@@ -10,9 +10,10 @@ use keeless_kdbx::{
     IconImageStandard, NodeId, ProtectedString, save_database,
 };
 use keeless_schema::{
-    DatabaseNodeId, DatabaseStatusResult, GetDatabaseStatusArgs, GetEntriesArgs,
-    GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs,
-    Operation, OperationOutcome, OperationRequest, OperationResponse, OperationSuccess,
+    AddEntryArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult, GetDatabaseStatusArgs,
+    GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, MoveEntryArgs,
+    MoveGroupArgs, Operation, OperationOutcome, OperationRequest, OperationResponse,
+    OperationSuccess, RenameGroupArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -310,6 +311,25 @@ async fn query_core() -> (KeelessCore, QueryIds) {
     operations::unlock::run(&mut core, b"correct")
         .await
         .unwrap();
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let database = core.handle.as_mut().unwrap().database_mut();
+    database
+        .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
+        .unwrap()
+        .custom_fields
+        .extend([
+            EntryField {
+                name: "Duplicate".into(),
+                value: ProtectedString::new_protected("duplicate-first"),
+                is_protected: true,
+            },
+            EntryField {
+                name: "Duplicate".into(),
+                value: ProtectedString::new_protected("duplicate-second"),
+                is_protected: true,
+            },
+        ]);
+    database.protect_entry_strings(&key).unwrap();
     (core, ids)
 }
 
@@ -1120,6 +1140,15 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
             .unwrap()
     };
     assert_eq!(field("Title").value.as_deref(), Some("Root Entry"));
+    assert_eq!(result.fields[0].field_index, 0);
+    assert_eq!(result.fields[1].field_index, 1);
+    assert_eq!(result.fields[2].field_index, 2);
+    assert_eq!(result.fields[3].field_index, 3);
+    assert_eq!(result.fields[4].field_index, 4);
+    assert_eq!(result.fields[5].field_index, 5);
+    assert_eq!(result.fields[6].field_index, 6);
+    assert_eq!(result.fields[7].field_index, 7);
+    assert_eq!(result.fields[8].field_index, 8);
     assert_eq!(field("UserName").value.as_deref(), Some("alice"));
     assert_eq!(field("URL").value.as_deref(), Some("https://example.test"));
     assert_eq!(field("Public").value.as_deref(), Some("public-value"));
@@ -1141,6 +1170,8 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
         "password-secret",
         "notes-secret",
         "custom-secret",
+        "duplicate-first",
+        "duplicate-second",
         "attachment-secret",
     ] {
         assert!(!serialized.contains(secret));
@@ -1165,6 +1196,169 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
             .unwrap()
             .contains("protected-title-secret")
     );
+}
+
+#[tokio::test]
+async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
+    let (mut core, ids) = query_core().await;
+    let entry_count = core.handle.as_ref().unwrap().database().entry_count();
+    let group_count = core.handle.as_ref().unwrap().database().group_count();
+    let missing = schema_id(Uuid::from_u128(999));
+
+    assert!(matches!(
+        operations::add_entry::run(
+            &mut core,
+            AddEntryArgs {
+                parent_group_id: missing.clone(),
+            },
+        ),
+        Err(CoreError::GroupNotFound)
+    ));
+    assert!(matches!(
+        operations::add_group::run(
+            &mut core,
+            AddGroupArgs {
+                parent_group_id: missing,
+            },
+        ),
+        Err(CoreError::GroupNotFound)
+    ));
+    assert_eq!(
+        core.handle.as_ref().unwrap().database().entry_count(),
+        entry_count
+    );
+    assert_eq!(
+        core.handle.as_ref().unwrap().database().group_count(),
+        group_count
+    );
+
+    let entry = operations::add_entry::run(
+        &mut core,
+        AddEntryArgs {
+            parent_group_id: schema_id(ids.child_group),
+        },
+    )
+    .unwrap();
+    let detail =
+        operations::get_entry_detail::run(&mut core, GetEntryDetailArgs { entry_id: entry.id })
+            .unwrap();
+    assert_eq!(detail.fields[0].value.as_deref(), Some("Untitled Entry"));
+
+    let group = operations::add_group::run(
+        &mut core,
+        AddGroupArgs {
+            parent_group_id: schema_id(ids.child_group),
+        },
+    )
+    .unwrap();
+    operations::rename_group::run(
+        &mut core,
+        RenameGroupArgs {
+            group_id: group.id.clone(),
+            name: "  Renamed Group  ".into(),
+        },
+    )
+    .unwrap();
+    let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
+    assert_eq!(
+        hierarchy
+            .groups
+            .iter()
+            .find(|candidate| candidate.id == group.id)
+            .unwrap()
+            .name,
+        "Renamed Group"
+    );
+    assert!(matches!(
+        operations::rename_group::run(
+            &mut core,
+            RenameGroupArgs {
+                group_id: schema_id(ids.child_group),
+                name: "  ".into(),
+            },
+        ),
+        Err(CoreError::InvalidGroupName)
+    ));
+    assert_eq!(
+        keeless_schema::OperationError::from(&CoreError::InvalidGroupName).code,
+        "invalid_group_name"
+    );
+}
+
+#[tokio::test]
+async fn reveal_entry_field_handles_indices_duplicates_and_credentials() {
+    let (mut core, ids) = query_core().await;
+    let entry_id = schema_id(ids.root_entry);
+
+    assert_eq!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 2, None)
+            .unwrap()
+            .value,
+        "password-secret"
+    );
+    assert_eq!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 7, None)
+            .unwrap()
+            .value,
+        "duplicate-first"
+    );
+    assert_eq!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 8, None)
+            .unwrap()
+            .value,
+        "duplicate-second"
+    );
+    assert!(matches!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 5, None),
+        Err(CoreError::InvalidEntryField)
+    ));
+    assert!(matches!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 99, None),
+        Err(CoreError::InvalidEntryField)
+    ));
+    assert_eq!(
+        keeless_schema::OperationError::from(&CoreError::InvalidEntryField).code,
+        "invalid_entry_field"
+    );
+    assert!(matches!(
+        operations::reveal_entry_field::run(&mut core, schema_id(Uuid::from_u128(999)), 2, None,),
+        Err(CoreError::EntryNotFound)
+    ));
+
+    operations::set_config::run(
+        &mut core,
+        KeelessConfigPatch {
+            auto_lock_timeout_ms: None,
+            paranoia_mode: Some(true),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 2, None),
+        Err(CoreError::PasswordRequired)
+    ));
+    assert!(matches!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 2, Some(b"wrong")),
+        Err(CoreError::InvalidCredentials)
+    ));
+    assert_eq!(
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 4, Some(b"correct"))
+            .unwrap()
+            .value,
+        "notes-secret"
+    );
+
+    operations::lock::run(&mut core);
+    assert!(matches!(
+        operations::reveal_entry_field::run(
+            &mut core,
+            DatabaseNodeId::Uuid("invalid".into()),
+            2,
+            Some(b"correct"),
+        ),
+        Err(CoreError::DatabaseLocked)
+    ));
 }
 
 #[tokio::test]

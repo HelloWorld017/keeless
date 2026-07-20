@@ -49,6 +49,10 @@ fn generate() -> String {
     export_empty("GetCustomIconsArgs", &mut output);
     export::<MoveGroupArgs>(&mut output);
     export::<MoveEntryArgs>(&mut output);
+    export::<AddEntryArgs>(&mut output);
+    export::<AddGroupArgs>(&mut output);
+    export::<RenameGroupArgs>(&mut output);
+    export::<RevealEntryFieldArgs>(&mut output);
     export::<Operation>(&mut output);
     export::<OperationRequest>(&mut output);
     export_empty("EmptyResult", &mut output);
@@ -60,6 +64,9 @@ fn generate() -> String {
     export::<TagsResult>(&mut output);
     export::<EntryDetailResult>(&mut output);
     export::<CustomIconsResult>(&mut output);
+    export::<AddEntryResult>(&mut output);
+    export::<AddGroupResult>(&mut output);
+    export::<RevealEntryFieldResult>(&mut output);
     export::<OperationSuccess>(&mut output);
     export::<OperationError>(&mut output);
     output.push_str(

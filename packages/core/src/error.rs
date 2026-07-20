@@ -31,6 +31,10 @@ pub enum CoreError {
     InvalidGroupMove,
     #[error("entry cannot be moved to the requested location")]
     InvalidEntryMove,
+    #[error("group name cannot be empty")]
+    InvalidGroupName,
+    #[error("entry field is invalid or is not protected")]
+    InvalidEntryField,
     #[error("cryptographic operation failed")]
     Crypto,
     #[error("serialization failed: {0}")]
@@ -101,6 +105,11 @@ impl From<&CoreError> for OperationError {
             CoreError::InvalidEntryMove => (
                 "invalid_entry_move",
                 "Entry cannot be moved to the requested location",
+            ),
+            CoreError::InvalidGroupName => ("invalid_group_name", "Group name cannot be empty"),
+            CoreError::InvalidEntryField => (
+                "invalid_entry_field",
+                "Entry field is invalid or is not protected",
             ),
             CoreError::Storage(_) | CoreError::Sync(_) => {
                 ("storage_error", "Storage operation failed")

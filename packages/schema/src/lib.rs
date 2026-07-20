@@ -112,6 +112,7 @@ pub struct TagSummary {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EntryFieldInformation {
+    pub field_index: u64,
     pub name: String,
     #[serde(deserialize_with = "deserialize_nullable")]
     pub value: Option<String>,
@@ -251,6 +252,35 @@ pub struct MoveEntryArgs {
     pub parent_group_id: DatabaseNodeId,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AddEntryArgs {
+    pub parent_group_id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AddGroupArgs {
+    pub parent_group_id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenameGroupArgs {
+    pub group_id: DatabaseNodeId,
+    pub name: String,
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevealEntryFieldArgs {
+    pub entry_id: DatabaseNodeId,
+    pub field_index: u64,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub password: Option<String>,
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "args", rename_all = "camelCase")]
 pub enum Operation {
@@ -272,6 +302,10 @@ pub enum Operation {
     GetCustomIcons(GetCustomIconsArgs),
     MoveGroup(MoveGroupArgs),
     MoveEntry(MoveEntryArgs),
+    AddEntry(AddEntryArgs),
+    AddGroup(AddGroupArgs),
+    RenameGroup(RenameGroupArgs),
+    RevealEntryField(RevealEntryFieldArgs),
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -359,6 +393,24 @@ pub struct CustomIconsResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AddEntryResult {
+    pub id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AddGroupResult {
+    pub id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RevealEntryFieldResult {
+    pub value: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "result", rename_all = "camelCase")]
 pub enum OperationSuccess {
     Open(EmptyResult),
@@ -379,6 +431,10 @@ pub enum OperationSuccess {
     GetCustomIcons(CustomIconsResult),
     MoveGroup(EmptyResult),
     MoveEntry(EmptyResult),
+    AddEntry(AddEntryResult),
+    AddGroup(AddGroupResult),
+    RenameGroup(EmptyResult),
+    RevealEntryField(RevealEntryFieldResult),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

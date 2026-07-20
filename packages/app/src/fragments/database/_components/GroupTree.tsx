@@ -1,11 +1,12 @@
 import { Button } from '@/components/button';
+import { Input } from '@/components/input';
 import {
   SidebarEmpty,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/sidebar';
-import { IconFolder, IconGripVertical } from '@/icons';
+import { IconGripVertical, IconPencil } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute } from '@/utils/route';
 import {
@@ -24,14 +25,16 @@ import {
   type AnimateLayoutChanges,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { groupDndId, type GroupDragData } from '../_utils/dragAndDrop';
+import { ItemIcon } from './ItemIcon';
 import type {
   DatabaseNodeId,
   GroupHierarchyItem,
   GroupHierarchyResult,
   MoveGroupArgs,
+  RenameGroupArgs,
 } from '@keeless/schema';
 
 const INDENTATION_WIDTH = 16;
@@ -165,9 +168,9 @@ export const moveGroupInHierarchy = (
   };
 };
 
-export const GroupDragOverlay = ({ title }: { title: string }) => (
+export const GroupDragOverlay = ({ title, icon }: Pick<GroupDragData, 'title' | 'icon'>) => (
   <div className="flex h-8 w-full items-center gap-2 overflow-hidden rounded-md border border-sidebar-border bg-sidebar px-2 text-sm text-sidebar-foreground shadow-lg opacity-50">
-    <IconFolder className="size-4 shrink-0" />
+    <ItemIcon icon={icon} fallback="group" className="size-4 shrink-0" />
     <span className="truncate">{title}</span>
   </div>
 );
@@ -179,6 +182,7 @@ const SortableGroup = ({
   disabled,
   indicator,
   onNavigate,
+  onRename,
 }: {
   item: FlatGroup;
   depth: number;
@@ -186,11 +190,19 @@ const SortableGroup = ({
   disabled: boolean;
   indicator?: DropIndicator;
   onNavigate: () => void;
+  onRename: (args: RenameGroupArgs) => Promise<void>;
 }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.group.name);
+  const [renamePending, setRenamePending] = useState(false);
+  const [renameError, setRenameError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cancelRenameRef = useRef(false);
   const data: GroupDragData = {
     type: 'group',
     groupId: item.id,
     title: item.group.name || 'Untitled group',
+    icon: item.group.icon,
   };
   const {
     active: draggedItem,
@@ -202,8 +214,45 @@ const SortableGroup = ({
     transition,
     isDragging,
     isOver,
-  } = useSortable({ id: item.key, data, disabled, animateLayoutChanges });
+  } = useSortable({ id: item.key, data, disabled: disabled || editing, animateLayoutChanges });
   const isEntryOver = isOver && draggedItem?.data.current?.type === 'entry';
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+  const commitRename = async () => {
+    if (renamePending) {
+      return;
+    }
+    const name = draft.trim();
+    if (!name) {
+      setRenameError(true);
+      return;
+    }
+    if (name === item.group.name) {
+      setEditing(false);
+      return;
+    }
+    setRenamePending(true);
+    setRenameError(false);
+    try {
+      await onRename({ groupId: item.id, name });
+      setEditing(false);
+    } catch {
+      setRenameError(true);
+    } finally {
+      setRenamePending(false);
+    }
+  };
+  const startEditing = () => {
+    cancelRenameRef.current = false;
+    setDraft(item.group.name);
+    setRenameError(false);
+    setEditing(true);
+  };
+
   return (
     <SidebarMenuItem
       ref={setNodeRef}
@@ -223,21 +272,70 @@ const SortableGroup = ({
           style={{ left: indicator.depth * INDENTATION_WIDTH + 8 }}
         ></div>
       )}
-      <SidebarMenuButton
-        render={
-          <Link href={buildRoute('group', { group: String(item.id) })} replace draggable={false} />
-        }
-        isActive={active}
-        className={cx(
-          'border-2 border-transparent pr-8',
-          isEntryOver && 'border-sidebar-ring',
-          isDragging && 'opacity-0',
-        )}
-        onClick={onNavigate}
-      >
-        <IconFolder />
-        <span>{item.group.name || 'Untitled group'}</span>
-      </SidebarMenuButton>
+      {editing ? (
+        <div className="flex h-8 items-center gap-2 px-2 pr-8">
+          <ItemIcon icon={item.group.icon} fallback="group" className="size-4 shrink-0" />
+          <Input
+            ref={inputRef}
+            value={draft}
+            className="h-7 px-1.5"
+            aria-label={`Rename ${item.group.name || 'untitled group'}`}
+            aria-invalid={renameError}
+            disabled={renamePending}
+            onChange={event => setDraft(event.target.value)}
+            onBlur={() => {
+              if (cancelRenameRef.current) {
+                cancelRenameRef.current = false;
+              } else {
+                void commitRename();
+              }
+            }}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                event.currentTarget.blur();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelRenameRef.current = true;
+                setEditing(false);
+              }
+            }}
+          />
+        </div>
+      ) : (
+        <SidebarMenuButton
+          render={
+            <Link
+              href={buildRoute('group', { group: String(item.id) })}
+              replace
+              draggable={false}
+            />
+          }
+          isActive={active}
+          className={cx(
+            'border-2 border-transparent pr-14',
+            isEntryOver && 'border-sidebar-ring',
+            isDragging && 'opacity-0',
+          )}
+          onClick={onNavigate}
+        >
+          <ItemIcon icon={item.group.icon} fallback="group" />
+          <span>{item.group.name || 'Untitled group'}</span>
+        </SidebarMenuButton>
+      )}
+      {!editing && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="absolute top-1 right-7 text-sidebar-foreground/60 hover:bg-sidebar-accent"
+          aria-label={`Rename ${item.group.name || 'untitled group'}`}
+          disabled={disabled}
+          onClick={startEditing}
+        >
+          <IconPencil />
+        </Button>
+      )}
       <Button
         ref={setActivatorNodeRef}
         type="button"
@@ -245,6 +343,7 @@ const SortableGroup = ({
         size="icon-xs"
         className={cx(
           'absolute top-1 right-1 cursor-grab touch-none text-sidebar-foreground/60 hover:bg-sidebar-accent active:translate-y-0',
+          editing && 'hidden',
           isDragging && 'cursor-grabbing opacity-0',
         )}
         aria-label={`Move ${item.group.name || 'untitled group'}`}
@@ -262,12 +361,14 @@ export const GroupTree = ({
   location,
   disabled,
   onMove,
+  onRename,
   onNavigate,
 }: {
   hierarchy: GroupHierarchyResult;
   location: string;
   disabled: boolean;
   onMove: (args: MoveGroupArgs) => void;
+  onRename: (args: RenameGroupArgs) => Promise<void>;
   onNavigate: () => void;
 }) => {
   const flattened = flattenHierarchy(hierarchy);
@@ -375,6 +476,7 @@ export const GroupTree = ({
             disabled={disabled}
             indicator={indicator?.key === item.key ? indicator : undefined}
             onNavigate={onNavigate}
+            onRename={onRename}
           />
         ))}
       </SidebarMenu>

@@ -1,13 +1,15 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
+import { Button } from '@/components/button';
 import { Skeleton } from '@/components/skeleton';
-import { useRequest } from '@/fragments/_providers/QueryProvider';
+import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useHistoryBack } from '@/fragments/_providers/RouterProvider';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { IconAlertCircle } from '@/icons';
+import { IconAlertCircle, IconLoaderCircle, IconPlus } from '@/icons';
 import { cn, cx } from '@/utils/css';
 import { getRoute } from '@/utils/route';
 import { useDraggable } from '@dnd-kit/core';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef } from 'react';
 import { useRoute, useSearchParams } from 'wouter';
@@ -20,7 +22,7 @@ import {
 import { EntryDetail } from './EntryDetail';
 import { EntryItem, getEntryTitle } from './EntryItem';
 import type { OperationArgs, OperationName } from '@/utils/request';
-import type { DatabaseNodeId, EntriesResult, EntrySummary } from '@keeless/schema';
+import type { AddEntryArgs, DatabaseNodeId, EntriesResult, EntrySummary } from '@keeless/schema';
 
 type EntryOperationName = Extract<
   OperationName,
@@ -175,6 +177,7 @@ const EntryQuery = <TName extends EntryOperationName>({
   movePending,
   moveError,
   hiddenEntry,
+  creationParentId,
 }: {
   name: TName;
   args: OperationArgs<TName>;
@@ -183,16 +186,29 @@ const EntryQuery = <TName extends EntryOperationName>({
   movePending: boolean;
   moveError: boolean;
   hiddenEntry?: HiddenEntry;
+  creationParentId?: DatabaseNodeId;
 }) => {
   const entries = useRequest(name, args);
+  const requestClient = useRequestClient();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const historyBack = useHistoryBack();
   const selectedEntry = searchParams.get('entry');
+  const addEntry = useMutation({
+    mutationFn: (addArgs: AddEntryArgs) => requestClient.data!.request('addEntry', addArgs),
+    onSuccess: async result => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
+      ]);
+      setSearchParams({ entry: String(result.id) }, { replace: !isMobile });
+    },
+  });
   const result = entries.data as EntriesResult | undefined;
   const resultSorted = useMemo(
     () =>
-      result?.entries.slice().sort((a, b) => {
+      result?.entries.toSorted((a, b) => {
         if (!a.name) {
           return -1;
         }
@@ -223,13 +239,27 @@ const EntryQuery = <TName extends EntryOperationName>({
           selectedEntry ? 'hidden' : 'flex',
         )}
       >
-        <div className='flex flex-col xl:px-6'>
-          <header className="flex flex-col min-h-16 items-start justify-between px-6 py-3 xl:py-6 xl:pb-4">
-            <h1 className="truncate text-xl font-semibold">{title}</h1>
-            {result && (
-              <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                {result.entries.length} {result.entries.length === 1 ? 'Entry' : 'Entries'}
-              </span>
+        <div className="flex flex-col xl:px-6">
+          <header className="flex min-h-16 items-start justify-between gap-3 px-6 py-3 xl:py-6 xl:pb-4">
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold">{title}</h1>
+              {result && (
+                <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                  {result.entries.length} {result.entries.length === 1 ? 'Entry' : 'Entries'}
+                </span>
+              )}
+            </div>
+            {creationParentId !== undefined && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Add entry"
+                disabled={movePending || addEntry.isPending}
+                onClick={() => addEntry.mutate({ parentGroupId: creationParentId })}
+              >
+                {addEntry.isPending ? <IconLoaderCircle className="animate-spin" /> : <IconPlus />}
+              </Button>
             )}
           </header>
 
@@ -238,6 +268,13 @@ const EntryQuery = <TName extends EntryOperationName>({
               <IconAlertCircle />
               <AlertTitle>Entry could not be moved</AlertTitle>
               <AlertDescription>Try moving the entry again.</AlertDescription>
+            </Alert>
+          )}
+          {addEntry.isError && (
+            <Alert variant="destructive" className="m-3 mb-0 w-auto">
+              <IconAlertCircle />
+              <AlertTitle>Entry could not be added</AlertTitle>
+              <AlertDescription>Try adding the entry again.</AlertDescription>
             </Alert>
           )}
 
@@ -256,7 +293,7 @@ const EntryQuery = <TName extends EntryOperationName>({
 
         {result && result.entries.length > 0 && (
           <VirtualEntryList
-            className='xl:px-6'
+            className="xl:px-6"
             entries={resultSorted}
             source={source}
             selectedEntry={selectedEntry}
@@ -329,6 +366,7 @@ const GroupEntries = ({
       movePending={movePending}
       moveError={moveError}
       hiddenEntry={hiddenEntry}
+      creationParentId={group.id}
     />
   );
 };
@@ -342,6 +380,7 @@ export const EntryList = ({
   moveError: boolean;
   hiddenEntry?: HiddenEntry;
 }) => {
+  const hierarchy = useRequest('getGroupHierarchy', {});
   const [groupMatch, groupParams] = useRoute<{ group: string }>(getRoute('group'));
   const [tagMatch, tagParams] = useRoute<{ tag: string }>(getRoute('tag'));
   const [trashMatch] = useRoute(getRoute('trash'));
@@ -392,6 +431,7 @@ export const EntryList = ({
       movePending={movePending}
       moveError={moveError}
       hiddenEntry={hiddenEntry}
+      creationParentId={hierarchy.data?.rootGroupId}
     />
   );
 };

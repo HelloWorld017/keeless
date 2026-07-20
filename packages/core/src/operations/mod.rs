@@ -1,3 +1,5 @@
+pub(crate) mod add_entry;
+pub(crate) mod add_group;
 pub(crate) mod create;
 pub(crate) mod get_config;
 pub(crate) mod get_custom_icons;
@@ -14,6 +16,8 @@ pub(crate) mod lock;
 pub(crate) mod move_entry;
 pub(crate) mod move_group;
 pub(crate) mod open;
+pub(crate) mod rename_group;
+pub(crate) mod reveal_entry_field;
 pub(crate) mod set_config;
 pub(crate) mod unlock;
 
@@ -44,5 +48,9 @@ pub(crate) async fn execute(
         Operation::GetCustomIcons(args) => get_custom_icons::execute(core, args),
         Operation::MoveGroup(args) => move_group::execute(core, args),
         Operation::MoveEntry(args) => move_entry::execute(core, args),
+        Operation::AddEntry(args) => add_entry::execute(core, args),
+        Operation::AddGroup(args) => add_group::execute(core, args),
+        Operation::RenameGroup(args) => rename_group::execute(core, args),
+        Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args),
     }
 }
