@@ -13,6 +13,7 @@ import { entryDndId, type EntryDragData } from '../_utils/dragAndDrop';
 import { EntryItem, getEntryTitle } from './EntryItem';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type { EntriesResult, EntrySummary } from '@keeless/schema';
+import {Separator} from '@/components/separator';
 
 type EntryOperationName = Extract<
   OperationName,
@@ -152,7 +153,7 @@ const EntryQuery = <TName extends EntryOperationName>({
 
   return (
     <section className="flex min-h-0 w-full flex-1 flex-col border-r md:max-w-md">
-      <header className="flex min-h-14 items-center justify-between gap-4 border-b px-4 py-3">
+      <header className="flex min-h-16 items-center justify-between gap-4 px-4 py-3">
         <h1 className="truncate text-base font-semibold">{title}</h1>
         {result && (
           <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
@@ -160,6 +161,7 @@ const EntryQuery = <TName extends EntryOperationName>({
           </span>
         )}
       </header>
+      <Separator />
 
       {moveError && (
         <Alert variant="destructive" className="m-3 mb-0 w-auto">

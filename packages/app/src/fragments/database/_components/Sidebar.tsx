@@ -112,7 +112,7 @@ const DatabaseSidebar = () => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" disabled={!databaseName}>
-              <div className="flex gap-4 items-center">
+              <div className="flex gap-4 items-center w-full">
                 <div className="aspect-square size-8">
                   <img src={Logo} alt="" />
                 </div>
