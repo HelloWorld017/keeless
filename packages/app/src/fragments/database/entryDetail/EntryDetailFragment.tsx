@@ -21,6 +21,7 @@ import {
   IconChevronLeft,
   IconEllipsisVertical,
   IconLoaderCircle,
+  IconPencil,
   IconPlus,
   IconSlidersHorizontal,
   IconTrash,
@@ -562,18 +563,49 @@ const EntryDetailQuery = ({
   };
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-180 flex-1 flex-col">
-      <header className="flex items-center px-4 pb-2 md:px-6 md:pb-6">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex items-center gap-2 xl:flex-col xl:items-stretch px-4 pb-2 pt-4 md:px-6 md:pb-6 xl:pt-0">
         <Button
           variant="ghost"
           size="icon-lg"
-          className="mr-4 md:hidden"
+          className="md:hidden"
           aria-label="Back to entries"
           disabled={pending || editing}
           onClick={onClose}
         >
           <IconChevronLeft />
         </Button>
+        <div className="order-2 xl:pt-4 xl:order-none">
+          {editing && (
+            <div className="flex gap-1 justify-end">
+              <Button type="button" variant="outline" disabled={pending} onClick={clearEditing}>
+                Cancel
+              </Button>
+              <Button type="button" disabled={pending} onClick={() => void submit()}>
+                {pending && <IconLoaderCircle className="animate-spin" />}Done
+              </Button>
+            </div>
+          )}
+          {!editing && detail.data && (
+            <div className="flex gap-1 justify-end">
+              <Button
+                className="cursor-default rounded-md px-2 py-1.5 text-sm outline-none data-highlighted:bg-foreground/10"
+                variant="ghost"
+                onClick={startEditing}
+              >
+                <IconPencil />
+                Edit
+              </Button>
+              <Button
+                className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive outline-none data-highlighted:bg-destructive/10"
+                variant="ghost"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <IconTrash />
+              </Button>
+            </div>
+          )}
+        </div>
         <div className="flex min-w-0 flex-1 items-center gap-3 text-xl md:text-2xl 2xl:justify-center lg:text-3xl">
           <ItemIcon
             icon={entry.icon}
@@ -583,61 +615,9 @@ const EntryDetailQuery = ({
           <h1 id="entry-detail-title" className="min-w-0 truncate font-semibold">
             {getEntryTitle(entry)}
           </h1>
-          {!editing && detail.data && (
-            <Menu.Root>
-              <Menu.Trigger
-                render={
-                  <Button type="button" variant="ghost" size="icon-lg" aria-label="Entry options" />
-                }
-                disabled={pending}
-              >
-                <IconEllipsisVertical />
-              </Menu.Trigger>
-              <Menu.Portal>
-                <Menu.Positioner align="end" sideOffset={4} className="isolate z-50">
-                  <Menu.Popup className="min-w-48 origin-(--transform-origin) rounded-lg bg-popover/90 p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 backdrop-blur-xl data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95">
-                    <Menu.Item
-                      className="cursor-default rounded-md px-2 py-1.5 text-sm outline-none data-highlighted:bg-foreground/10"
-                      onClick={startEditing}
-                    >
-                      Edit
-                    </Menu.Item>
-                    <Menu.Item
-                      className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive outline-none data-highlighted:bg-destructive/10"
-                      onClick={() => setDeleteOpen(true)}
-                    >
-                      <IconTrash />
-                      {inTrash ? 'Delete permanently' : 'Move to Trash'}
-                    </Menu.Item>
-                  </Menu.Popup>
-                </Menu.Positioner>
-              </Menu.Portal>
-            </Menu.Root>
-          )}
         </div>
-        {editing && (
-          <div className="flex gap-1">
-            <Button type="button" variant="ghost" disabled={pending} onClick={clearEditing}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={pending} onClick={() => void submit()}>
-              {pending && <IconLoaderCircle className="animate-spin" />}Done
-            </Button>
-          </div>
-        )}
-        {!editing && (
-          <Button
-            variant="ghost"
-            size="icon-lg"
-            className="absolute right-7 sm:right-8 hidden md:inline-flex"
-            aria-label="Close entry details"
-            onClick={onClose}
-          >
-            <IconX />
-          </Button>
-        )}
       </header>
-      <div className="min-h-0 overflow-auto">
+      <div className="mx-auto w-full max-w-180 min-h-0 overflow-auto">
         {detail.isPending ? (
           <EntryDetailSkeleton pending />
         ) : detail.isError ? (
@@ -773,7 +753,7 @@ export const EntryDetailFragment = ({
 }) => (
   <section
     className={cn(
-      'min-h-0 min-w-0 flex-3 flex-col p-4 xl:p-6 xl:py-8',
+      'min-h-0 min-w-0 flex-3 flex-col p-4 md:pt-2 xl:p-6 xl:pt-2 xl:pb-8',
       selected ? 'flex' : 'hidden md:flex',
     )}
     aria-labelledby={selected ? 'entry-detail-title' : undefined}
