@@ -26,6 +26,7 @@ import { Link, useLocation } from 'wouter';
 import { databaseNodeKey, type TrashDropData } from '../_utils/dragAndDrop';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import type { DatabaseNodeId, GroupHierarchyResult, MoveGroupArgs } from '@keeless/schema';
+import {cx} from '@/utils/css';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
 
@@ -55,10 +56,11 @@ const TrashMenuItem = ({
       <SidebarMenuButton
         render={<Link href={buildRoute('trash')} replace />}
         isActive={location === buildRoute('trash') || isEntryOver}
+        className={cx('border-2 border-transparent', isEntryOver && 'border-destructive/50 bg-destructive/25!')}
         onClick={onNavigate}
       >
-        <IconTrash />
-        <span>Trash</span>
+        <IconTrash className={cx(isEntryOver && 'text-destructive')} />
+        <span className={cx(isEntryOver && 'text-destructive')}>Trash</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -113,7 +115,7 @@ const DatabaseSidebar = () => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" disabled={!databaseName}>
-              <div className="flex gap-4 items-center w-full">
+              <div className="flex gap-3 items-center w-full">
                 <div className="aspect-square size-8">
                   <img src={Logo} alt="" />
                 </div>
@@ -128,8 +130,7 @@ const DatabaseSidebar = () => {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarSeparator />
-      <SidebarContent>
+      <SidebarContent className='mt-4'>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>

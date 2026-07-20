@@ -7,11 +7,18 @@ export const groupDndId = (id: DatabaseNodeId) => `group:${databaseNodeKey(id)}`
 
 export const entryDndId = (id: DatabaseNodeId) => `entry:${databaseNodeKey(id)}`;
 
+export type EntryDragSource =
+  | { type: 'all' }
+  | { type: 'group'; groupId: DatabaseNodeId }
+  | { type: 'tag' }
+  | { type: 'trash' };
+
 export type EntryDragData = {
   type: 'entry';
   entryId: DatabaseNodeId;
   title: string;
   entry: EntrySummary;
+  source: EntryDragSource;
 };
 
 export type GroupDragData = {

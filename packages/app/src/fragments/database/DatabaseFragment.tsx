@@ -22,12 +22,12 @@ import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
 import { GroupDragOverlay } from './_components/GroupTree';
 import { Sidebar } from './_components/Sidebar';
-import type { DragDropData, EntryDragData } from './_utils/dragAndDrop';
+import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
 
 const keyboardDirections = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'] as const;
@@ -41,15 +41,6 @@ const snapEntryCenterToCursor: Modifier = args =>
   args.active?.data.current?.type === 'entry' ? snapCenterToCursor(args) : args.transform;
 
 const entryOverlayModifiers = [snapEntryCenterToCursor];
-
-const dropAnimation: DropAnimation = {
-  keyframes: ({ active, transform }) => {
-    const initial = { transform: CSS.Transform.toString(transform.initial) };
-    return active.data.current?.type === 'group'
-      ? [initial, initial]
-      : [initial, { transform: CSS.Transform.toString(transform.final) }];
-  },
-};
 
 const isKeyboardDirection = (code: string): code is (typeof keyboardDirections)[number] =>
   keyboardDirections.includes(code as (typeof keyboardDirections)[number]);
@@ -148,17 +139,37 @@ export const DatabaseFragment = () => {
   const queryClient = useQueryClient();
   const [activeDrag, setActiveDrag] = useState<DragDropData | null>(null);
   const [entryOverGroup, setEntryOverGroup] = useState(false);
+  const [movingEntry, setMovingEntry] = useState<Pick<EntryDragData, 'entryId' | 'source'>>();
+  const validEntryDrop = useRef(false);
   const activeEntry: EntryDragData | null = activeDrag?.type === 'entry' ? activeDrag : null;
+  const dropAnimation: DropAnimation = {
+    keyframes: ({ active, transform }) => {
+      const initial = { transform: CSS.Transform.toString(transform.initial) };
+      if (active.data.current?.type === 'group') {
+        return [initial, initial];
+      }
+      return validEntryDrop.current
+        ? [initial, { ...initial, opacity: 0 }]
+        : [initial, { transform: CSS.Transform.toString(transform.final) }];
+    },
+  };
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
   );
   const moveEntry = useMutation({
     mutationFn: (args: MoveEntryArgs) => requestClient.data!.request('moveEntry', args),
-    onSettled: () =>
-      Promise.all(
-        entryQueryNames.map(name => queryClient.invalidateQueries({ queryKey: ['request', name] })),
-      ),
+    onSettled: async () => {
+      try {
+        await Promise.all(
+          entryQueryNames.map(name =>
+            queryClient.invalidateQueries({ queryKey: ['request', name] }),
+          ),
+        );
+      } finally {
+        setMovingEntry(undefined);
+      }
+    },
   });
 
   const clearDrag = () => {
@@ -167,6 +178,7 @@ export const DatabaseFragment = () => {
   };
 
   const handleDragStart = ({ active }: DragStartEvent) => {
+    validEntryDrop.current = false;
     const data = active.data.current as DragDropData | undefined;
     if (data?.type === 'entry') {
       setActiveDrag({
@@ -174,21 +186,24 @@ export const DatabaseFragment = () => {
         entryId: data.entryId,
         title: data.title,
         entry: data.entry,
+        source: data.source,
       });
       return;
     }
     setActiveDrag(data ?? null);
   };
   const handleDragOver = ({ active, over }: DragOverEvent) => {
-    if (active.data.current?.type !== 'entry') {
+    const activeData = active.data.current as DragDropData | undefined;
+    const overData = over?.data.current as DragDropData | undefined;
+    if (activeData?.type !== 'entry') {
       return;
     }
-    const isOverGroup = over?.data.current?.type === 'group';
+
+    const isOverGroup = overData?.type === 'group' || overData?.type === 'trash';
     setEntryOverGroup(current => (current === isOverGroup ? current : isOverGroup));
   };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    clearDrag();
     const activeData = active.data.current as DragDropData | undefined;
     const overData = over?.data.current as DragDropData | undefined;
 
@@ -196,8 +211,32 @@ export const DatabaseFragment = () => {
       activeData?.type !== 'entry' ||
       (overData?.type !== 'group' && overData?.type !== 'trash')
     ) {
+      validEntryDrop.current = false;
+      clearDrag();
       return;
     }
+
+    const sameDestination =
+      (activeData.source.type === 'group' &&
+        overData.type === 'group' &&
+        databaseNodeKey(activeData.source.groupId) === databaseNodeKey(overData.groupId)) ||
+      (activeData.source.type === 'trash' && overData.type === 'trash');
+    if (sameDestination) {
+      validEntryDrop.current = false;
+      clearDrag();
+      return;
+    }
+
+    validEntryDrop.current = true;
+    const leavesCurrentList =
+      activeData.source.type === 'group' ||
+      (activeData.source.type === 'trash' && overData.type === 'group') ||
+      ((activeData.source.type === 'all' || activeData.source.type === 'tag') &&
+        overData.type === 'trash');
+    if (leavesCurrentList) {
+      setMovingEntry({ entryId: activeData.entryId, source: activeData.source });
+    }
+    clearDrag();
     moveEntry.mutate({ entryId: activeData.entryId, parentGroupId: overData.groupId });
   };
 
@@ -208,14 +247,21 @@ export const DatabaseFragment = () => {
       accessibility={{ announcements }}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
-      onDragCancel={() => clearDrag()}
+      onDragCancel={() => {
+        validEntryDrop.current = false;
+        clearDrag();
+      }}
       onDragEnd={handleDragEnd}
     >
       <SidebarProvider>
         <Sidebar />
         <SidebarInset className="h-svh overflow-hidden">
           <div className="flex min-h-0 flex-1">
-            <EntryList movePending={moveEntry.isPending} moveError={moveEntry.isError} />
+            <EntryList
+              movePending={moveEntry.isPending}
+              moveError={moveEntry.isError}
+              hiddenEntry={movingEntry}
+            />
           </div>
         </SidebarInset>
       </SidebarProvider>

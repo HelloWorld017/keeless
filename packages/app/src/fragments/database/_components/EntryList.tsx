@@ -1,4 +1,5 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
+import { Separator } from '@/components/separator';
 import { Skeleton } from '@/components/skeleton';
 import { useRequest } from '@/fragments/_providers/QueryProvider';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -9,16 +10,27 @@ import { useDraggable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef } from 'react';
 import { useRoute, useSearchParams } from 'wouter';
-import { entryDndId, type EntryDragData } from '../_utils/dragAndDrop';
+import {
+  databaseNodeKey,
+  entryDndId,
+  type EntryDragData,
+  type EntryDragSource,
+} from '../_utils/dragAndDrop';
 import { EntryItem, getEntryTitle } from './EntryItem';
 import type { OperationArgs, OperationName } from '@/utils/request';
-import type { EntriesResult, EntrySummary } from '@keeless/schema';
-import {Separator} from '@/components/separator';
+import type { DatabaseNodeId, EntriesResult, EntrySummary } from '@keeless/schema';
 
 type EntryOperationName = Extract<
   OperationName,
   'getEntries' | 'getGroupEntries' | 'getTagEntries' | 'getTrashEntries'
 >;
+
+type HiddenEntry = Pick<EntryDragData, 'entryId' | 'source'>;
+
+const isSameSource = (left: EntryDragSource, right: EntryDragSource) =>
+  left.type === right.type &&
+  (left.type !== 'group' ||
+    (right.type === 'group' && databaseNodeKey(left.groupId) === databaseNodeKey(right.groupId)));
 
 const decodeRouteParam = (value: string) => {
   try {
@@ -30,14 +42,23 @@ const decodeRouteParam = (value: string) => {
 
 type EntryRowProps = {
   entry: EntrySummary;
+  source: EntryDragSource;
   selectedEntry: string | null;
   disabled: boolean;
+  hiddenEntryId?: DatabaseNodeId;
   onSelect: (entry: EntrySummary) => void;
 };
 
-const VirtualEntryRow = ({ entry, selectedEntry, disabled, onSelect }: EntryRowProps) => {
+const VirtualEntryRow = ({
+  entry,
+  source,
+  selectedEntry,
+  disabled,
+  hiddenEntryId,
+  onSelect,
+}: EntryRowProps) => {
   const title = getEntryTitle(entry);
-  const data: EntryDragData = { type: 'entry', entryId: entry.id, title, entry };
+  const data: EntryDragData = { type: 'entry', entryId: entry.id, title, entry, source };
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: entryDndId(entry.id),
     data,
@@ -50,7 +71,12 @@ const VirtualEntryRow = ({ entry, selectedEntry, disabled, onSelect }: EntryRowP
       entry={entry}
       selected={selectedEntry === String(entry.id)}
       render={<button type="button" aria-label={title} />}
-      className={isDragging ? 'z-10 cursor-grabbing opacity-60' : 'cursor-pointer'}
+      className={cn(
+        isDragging ? 'z-10 cursor-grabbing opacity-60' : 'cursor-pointer',
+        hiddenEntryId !== undefined &&
+          databaseNodeKey(hiddenEntryId) === databaseNodeKey(entry.id) &&
+          'invisible',
+      )}
       onClick={() => onSelect(entry)}
       {...attributes}
       {...listeners}
@@ -61,8 +87,10 @@ const VirtualEntryRow = ({ entry, selectedEntry, disabled, onSelect }: EntryRowP
 
 const VirtualEntryList = ({
   entries,
+  source,
   selectedEntry,
   disabled,
+  hiddenEntryId,
   onSelect,
 }: Omit<EntryRowProps, 'entry'> & { entries: EntrySummary[] }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -93,8 +121,10 @@ const VirtualEntryList = ({
             >
               <VirtualEntryRow
                 entry={entry}
+                source={source}
                 selectedEntry={selectedEntry}
                 disabled={disabled}
+                hiddenEntryId={hiddenEntryId}
                 onSelect={onSelect}
               />
             </li>
@@ -136,31 +166,39 @@ const EntryListSkeleton = ({ pending }: { pending: boolean }) => {
 const EntryQuery = <TName extends EntryOperationName>({
   name,
   args,
+  source,
   title,
   movePending,
   moveError,
+  hiddenEntry,
 }: {
   name: TName;
   args: OperationArgs<TName>;
+  source: EntryDragSource;
   title: string;
   movePending: boolean;
   moveError: boolean;
+  hiddenEntry?: HiddenEntry;
 }) => {
   const entries = useRequest(name, args);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedEntry = searchParams.get('entry');
   const result = entries.data as EntriesResult | undefined;
-  const resultSorted = useMemo(() => result?.entries.slice().sort((a, b) => {
-    if (!a.name) {
-      return -1;
-    }
+  const resultSorted = useMemo(
+    () =>
+      result?.entries.slice().sort((a, b) => {
+        if (!a.name) {
+          return -1;
+        }
 
-    if (!b.name) {
-      return -1;
-    }
+        if (!b.name) {
+          return -1;
+        }
 
-    return a.name?.localeCompare(b.name);
-  }), [result?.entries]);
+        return a.name.localeCompare(b.name);
+      }) ?? [],
+    [result?.entries],
+  );
 
   return (
     <section className="flex min-h-0 w-full flex-1 flex-col border-r md:max-w-md">
@@ -196,8 +234,14 @@ const EntryQuery = <TName extends EntryOperationName>({
       {result && result.entries.length > 0 && (
         <VirtualEntryList
           entries={resultSorted}
+          source={source}
           selectedEntry={selectedEntry}
           disabled={movePending}
+          hiddenEntryId={
+            hiddenEntry && isSameSource(source, hiddenEntry.source)
+              ? hiddenEntry.entryId
+              : undefined
+          }
           onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: true })}
         />
       )}
@@ -209,10 +253,12 @@ const GroupEntries = ({
   groupParam,
   movePending,
   moveError,
+  hiddenEntry,
 }: {
   groupParam: string;
   movePending: boolean;
   moveError: boolean;
+  hiddenEntry?: HiddenEntry;
 }) => {
   const hierarchy = useRequest('getGroupHierarchy', {});
 
@@ -247,9 +293,11 @@ const GroupEntries = ({
     <EntryQuery
       name="getGroupEntries"
       args={{ groupId: group.id }}
+      source={{ type: 'group', groupId: group.id }}
       title={group.name || 'Untitled group'}
       movePending={movePending}
       moveError={moveError}
+      hiddenEntry={hiddenEntry}
     />
   );
 };
@@ -257,9 +305,11 @@ const GroupEntries = ({
 export const EntryList = ({
   movePending,
   moveError,
+  hiddenEntry,
 }: {
   movePending: boolean;
   moveError: boolean;
+  hiddenEntry?: HiddenEntry;
 }) => {
   const [groupMatch, groupParams] = useRoute<{ group: string }>(getRoute('group'));
   const [tagMatch, tagParams] = useRoute<{ tag: string }>(getRoute('tag'));
@@ -271,6 +321,7 @@ export const EntryList = ({
         groupParam={groupParams.group}
         movePending={movePending}
         moveError={moveError}
+        hiddenEntry={hiddenEntry}
       />
     );
   }
@@ -280,9 +331,11 @@ export const EntryList = ({
       <EntryQuery
         name="getTagEntries"
         args={{ tag }}
+        source={{ type: 'tag' }}
         title={tag}
         movePending={movePending}
         moveError={moveError}
+        hiddenEntry={hiddenEntry}
       />
     );
   }
@@ -291,9 +344,11 @@ export const EntryList = ({
       <EntryQuery
         name="getTrashEntries"
         args={{}}
+        source={{ type: 'trash' }}
         title="Trash"
         movePending={movePending}
         moveError={moveError}
+        hiddenEntry={hiddenEntry}
       />
     );
   }
@@ -301,9 +356,11 @@ export const EntryList = ({
     <EntryQuery
       name="getEntries"
       args={{ excludeTrash: true }}
+      source={{ type: 'all' }}
       title="All Entries"
       movePending={movePending}
       moveError={moveError}
+      hiddenEntry={hiddenEntry}
     />
   );
 };
