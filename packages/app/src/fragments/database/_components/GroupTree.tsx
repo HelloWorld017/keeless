@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/alert-dialog';
 import { Button } from '@/components/button';
 import { Input } from '@/components/input';
 import {
@@ -6,7 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/sidebar';
-import { IconGripVertical, IconPencil } from '@/icons';
+import { IconGripVertical, IconPencil, IconTrash } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute } from '@/utils/route';
 import {
@@ -183,6 +194,7 @@ const SortableGroup = ({
   indicator,
   onNavigate,
   onRename,
+  onDelete,
 }: {
   item: FlatGroup;
   depth: number;
@@ -191,11 +203,13 @@ const SortableGroup = ({
   indicator?: DropIndicator;
   onNavigate: () => void;
   onRename: (args: RenameGroupArgs) => Promise<void>;
+  onDelete: () => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.group.name);
   const [renamePending, setRenamePending] = useState(false);
   const [renameError, setRenameError] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
   const data: GroupDragData = {
@@ -314,7 +328,8 @@ const SortableGroup = ({
           }
           isActive={active}
           className={cx(
-            'border-2 border-transparent pr-14 group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground select-none',
+            'border-2 border-transparent group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground select-none',
+            active ? 'pr-20' : 'pr-14',
             isEntryOver && 'border-sidebar-ring',
             isDragging && 'opacity-0',
           )}
@@ -326,20 +341,61 @@ const SortableGroup = ({
       )}
 
       {!editing && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 right-7 text-sidebar-foreground/60 hover:bg-sidebar-accent"
-          aria-label={`Rename ${item.group.name || 'untitled group'}`}
-          disabled={disabled}
-          onClick={startEditing}
-        >
-          <IconPencil />
-        </Button>
+        <>
+          {active && (
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+              <AlertDialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="absolute top-1 right-13 text-destructive opacity-0 transition-opacity group-hover:opacity-100 hover:bg-sidebar-accent"
+                    aria-label={`Move ${item.group.name || 'untitled group'} to Trash`}
+                    disabled={disabled}
+                  />
+                }
+              >
+                <IconTrash />
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Move group to Trash?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    "{item.group.name || 'Untitled group'}" and all of its contents will be moved to
+                    Trash.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={disabled}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    disabled={disabled}
+                    onClick={() => {
+                      setDeleteDialogOpen(false);
+                      onDelete();
+                    }}
+                  >
+                    Move to Trash
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 right-7 text-sidebar-foreground/60 hover:bg-sidebar-accent"
+            aria-label={`Rename ${item.group.name || 'untitled group'}`}
+            disabled={disabled}
+            onClick={startEditing}
+          >
+            <IconPencil />
+          </Button>
+        </>
       )}
       <Button
-
         ref={setActivatorNodeRef}
         type="button"
         variant="ghost"
@@ -365,6 +421,7 @@ export const GroupTree = ({
   disabled,
   onMove,
   onRename,
+  onDelete,
   onNavigate,
 }: {
   hierarchy: GroupHierarchyResult;
@@ -372,6 +429,7 @@ export const GroupTree = ({
   disabled: boolean;
   onMove: (args: MoveGroupArgs) => void;
   onRename: (args: RenameGroupArgs) => Promise<void>;
+  onDelete: () => void;
   onNavigate: () => void;
 }) => {
   const flattened = flattenHierarchy(hierarchy);
@@ -480,6 +538,7 @@ export const GroupTree = ({
             indicator={indicator?.key === item.key ? indicator : undefined}
             onNavigate={onNavigate}
             onRename={onRename}
+            onDelete={onDelete}
           />
         ))}
       </SidebarMenu>

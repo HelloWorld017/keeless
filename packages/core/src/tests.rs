@@ -11,9 +11,9 @@ use keeless_kdbx::{
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
-    GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
-    GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
-    OperationResponse, OperationSuccess, RenameGroupArgs,
+    DeleteGroupArgs, GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs,
+    GetGroupEntriesArgs, GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation,
+    OperationOutcome, OperationRequest, OperationResponse, OperationSuccess, RenameGroupArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -1331,6 +1331,62 @@ async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
             },
         ),
         Err(CoreError::InvalidGroupMove)
+    ));
+}
+
+#[tokio::test]
+async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_groups() {
+    let (mut core, ids) = query_core().await;
+    let missing = schema_id(Uuid::from_u128(999));
+
+    assert!(matches!(
+        operations::delete_group::run(&mut core, DeleteGroupArgs { group_id: missing },),
+        Err(CoreError::GroupNotFound)
+    ));
+    assert!(matches!(
+        operations::delete_group::run(
+            &mut core,
+            DeleteGroupArgs {
+                group_id: schema_id(ids.root_group),
+            },
+        ),
+        Err(CoreError::InvalidGroupDelete)
+    ));
+
+    operations::delete_group::run(
+        &mut core,
+        DeleteGroupArgs {
+            group_id: schema_id(ids.child_group),
+        },
+    )
+    .unwrap();
+
+    let database = core.handle.as_ref().unwrap().database();
+    let recycle_bin_id = NodeId::from_uuid(database.recycle_bin_uuid.unwrap());
+    assert_eq!(
+        database.get_group(&recycle_bin_id).unwrap().child_group_ids,
+        vec![NodeId::from_uuid(ids.child_group)]
+    );
+    assert_eq!(
+        operations::get_trash_entries::run(&mut core)
+            .unwrap()
+            .entries
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>(),
+        vec![schema_id(ids.child_entry), schema_id(ids.nested_entry)]
+    );
+    assert!(matches!(
+        operations::delete_group::run(
+            &mut core,
+            DeleteGroupArgs {
+                group_id: schema_id(match recycle_bin_id {
+                    NodeId::Uuid(id) => id,
+                    NodeId::Int(_) => unreachable!(),
+                }),
+            },
+        ),
+        Err(CoreError::InvalidGroupDelete)
     ));
 }
 

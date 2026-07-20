@@ -2,6 +2,7 @@ pub(crate) mod add_entry;
 pub(crate) mod add_entry_from_template;
 pub(crate) mod add_group;
 pub(crate) mod create;
+pub(crate) mod delete_group;
 pub(crate) mod get_config;
 pub(crate) mod get_custom_icons;
 pub(crate) mod get_database_status;
@@ -54,6 +55,7 @@ pub(crate) async fn execute(
         Operation::AddEntry(args) => add_entry::execute(core, args),
         Operation::AddEntryFromTemplate(args) => add_entry_from_template::execute(core, args),
         Operation::AddGroup(args) => add_group::execute(core, args),
+        Operation::DeleteGroup(args) => delete_group::execute(core, args),
         Operation::RenameGroup(args) => rename_group::execute(core, args),
         Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args),
     }

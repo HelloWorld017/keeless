@@ -30,12 +30,21 @@ import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import type {
   AddGroupArgs,
   DatabaseNodeId,
+  DeleteGroupArgs,
   GroupHierarchyResult,
   MoveGroupArgs,
   RenameGroupArgs,
 } from '@keeless/schema';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
+const groupDeletionQueryNames = [
+  'getEntries',
+  'getGroupEntries',
+  'getTagEntries',
+  'getTrashEntries',
+  'getTags',
+  'getEntryDetail',
+] as const;
 
 const TrashMenuItem = ({
   recycleBinId,
@@ -159,8 +168,34 @@ const DatabaseSidebar = () => {
     groupMatch && hierarchy.data
       ? hierarchy.data.groups.find(group => String(group.id) === groupParams.group)
       : undefined;
+  const activeGroupParent =
+    activeGroup && hierarchy.data
+      ? hierarchy.data.groups.find(group =>
+          group.childGroupIds.some(id => databaseNodeKey(id) === databaseNodeKey(activeGroup.id)),
+        )
+      : undefined;
+  const deleteGroup = useMutation({
+    mutationFn: (args: DeleteGroupArgs) => requestClient.data!.request('deleteGroup', args),
+    onSuccess: async () => {
+      const destination =
+        activeGroupParent &&
+        hierarchy.data &&
+        databaseNodeKey(activeGroupParent.id) !== databaseNodeKey(hierarchy.data.rootGroupId)
+          ? buildRoute('group', { group: String(activeGroupParent.id) })
+          : buildRoute('database');
+      setLocation(destination, { replace: true });
+      closeMobile();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
+        ...groupDeletionQueryNames.map(name =>
+          queryClient.invalidateQueries({ queryKey: ['request', name] }),
+        ),
+      ]);
+    },
+  });
   const groupParentId = activeGroup?.id ?? hierarchy.data?.rootGroupId;
-  const groupsPending = moveGroup.isPending || addGroup.isPending || renameGroup.isPending;
+  const groupsPending =
+    moveGroup.isPending || addGroup.isPending || renameGroup.isPending || deleteGroup.isPending;
 
   return (
     <Sidebar className="p-2 xl:p-4">
@@ -226,6 +261,11 @@ const DatabaseSidebar = () => {
                 onRename={async args => {
                   await renameGroup.mutateAsync(args);
                 }}
+                onDelete={() => {
+                  if (activeGroup) {
+                    deleteGroup.mutate({ groupId: activeGroup.id });
+                  }
+                }}
                 onNavigate={closeMobile}
               />
             )}
@@ -242,6 +282,11 @@ const DatabaseSidebar = () => {
             {renameGroup.isError && (
               <p className="px-2 pt-2 text-xs text-destructive" role="alert">
                 The group could not be renamed.
+              </p>
+            )}
+            {deleteGroup.isError && (
+              <p className="px-2 pt-2 text-xs text-destructive" role="alert">
+                The group could not be moved to Trash.
               </p>
             )}
           </SidebarGroupContent>

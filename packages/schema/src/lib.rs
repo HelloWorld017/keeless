@@ -277,6 +277,12 @@ pub struct AddGroupArgs {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteGroupArgs {
+    pub group_id: DatabaseNodeId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RenameGroupArgs {
     pub group_id: DatabaseNodeId,
     pub name: String,
@@ -317,6 +323,7 @@ pub enum Operation {
     AddEntry(AddEntryArgs),
     AddEntryFromTemplate(AddEntryFromTemplateArgs),
     AddGroup(AddGroupArgs),
+    DeleteGroup(DeleteGroupArgs),
     RenameGroup(RenameGroupArgs),
     RevealEntryField(RevealEntryFieldArgs),
 }
@@ -448,6 +455,7 @@ pub enum OperationSuccess {
     AddEntry(AddEntryResult),
     AddEntryFromTemplate(AddEntryResult),
     AddGroup(AddGroupResult),
+    DeleteGroup(EmptyResult),
     RenameGroup(EmptyResult),
     RevealEntryField(RevealEntryFieldResult),
 }

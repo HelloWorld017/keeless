@@ -454,6 +454,24 @@ fn database_editing_operations_have_stable_shapes() {
     );
     assert_roundtrip(
         OperationRequest {
+            request_id: "delete-group-1".into(),
+            operation: Operation::DeleteGroup(DeleteGroupArgs {
+                group_id: DatabaseNodeId::Int(9),
+            }),
+        },
+        json!({ "requestId": "delete-group-1", "op": "deleteGroup", "args": { "groupId": 9 } }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "delete-group-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::DeleteGroup(EmptyResult {}),
+            },
+        },
+        json!({ "requestId": "delete-group-1", "status": "success", "op": "deleteGroup", "result": {} }),
+    );
+    assert_roundtrip(
+        OperationRequest {
             request_id: "rename-1".into(),
             operation: Operation::RenameGroup(RenameGroupArgs {
                 group_id: DatabaseNodeId::Int(9),

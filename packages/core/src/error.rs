@@ -29,6 +29,8 @@ pub enum CoreError {
     InvalidNodeId,
     #[error("group cannot be moved to the requested location")]
     InvalidGroupMove,
+    #[error("group cannot be deleted")]
+    InvalidGroupDelete,
     #[error("entry cannot be moved to the requested location")]
     InvalidEntryMove,
     #[error("group name cannot be empty")]
@@ -102,6 +104,7 @@ impl From<&CoreError> for OperationError {
                 "invalid_group_move",
                 "Group cannot be moved to the requested location",
             ),
+            CoreError::InvalidGroupDelete => ("invalid_group_delete", "Group cannot be deleted"),
             CoreError::InvalidEntryMove => (
                 "invalid_entry_move",
                 "Entry cannot be moved to the requested location",

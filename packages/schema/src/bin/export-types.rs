@@ -53,6 +53,7 @@ fn generate() -> String {
     export::<AddEntryArgs>(&mut output);
     export::<AddEntryFromTemplateArgs>(&mut output);
     export::<AddGroupArgs>(&mut output);
+    export::<DeleteGroupArgs>(&mut output);
     export::<RenameGroupArgs>(&mut output);
     export::<RevealEntryFieldArgs>(&mut output);
     export::<Operation>(&mut output);
