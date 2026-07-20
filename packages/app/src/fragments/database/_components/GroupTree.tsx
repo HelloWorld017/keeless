@@ -51,6 +51,11 @@ type FlatGroup = {
   group: GroupHierarchyItem;
 };
 
+type DropIndicator = {
+  depth: number;
+  edge: 'before' | 'after';
+};
+
 const flattenHierarchy = (hierarchy: GroupHierarchyResult) => {
   const groups = new Map(hierarchy.groups.map(group => [nodeKey(group.id), group]));
   const hidden = new Set<string>();
@@ -161,7 +166,7 @@ export const moveGroupInHierarchy = (
 };
 
 export const GroupDragOverlay = ({ title }: { title: string }) => (
-  <div className="flex h-8 w-full items-center gap-2 overflow-hidden rounded-md border border-sidebar-border bg-sidebar px-2 text-sm text-sidebar-foreground shadow-lg">
+  <div className="flex h-8 w-full items-center gap-2 overflow-hidden rounded-md border border-sidebar-border bg-sidebar px-2 text-sm text-sidebar-foreground shadow-lg opacity-50">
     <IconFolder className="size-4 shrink-0" />
     <span className="truncate">{title}</span>
   </div>
@@ -172,12 +177,14 @@ const SortableGroup = ({
   depth,
   active,
   disabled,
+  indicator,
   onNavigate,
 }: {
   item: FlatGroup;
   depth: number;
   active: boolean;
   disabled: boolean;
+  indicator?: DropIndicator;
   onNavigate: () => void;
 }) => {
   const data: GroupDragData = {
@@ -200,19 +207,32 @@ const SortableGroup = ({
   return (
     <SidebarMenuItem
       ref={setNodeRef}
-      className={isDragging ? 'z-10 opacity-0' : undefined}
+      className={isDragging ? 'z-10' : undefined}
       style={{
         paddingLeft: depth * INDENTATION_WIDTH,
         transform: CSS.Transform.toString(transform),
         transition,
       }}
     >
+      {indicator && (
+        <div
+          className={cx(
+            'pointer-events-none absolute right-1 z-20 h-0.5 bg-primary',
+            indicator.edge === 'before' ? '-top-px' : '-bottom-px',
+          )}
+          style={{ left: indicator.depth * INDENTATION_WIDTH + 8 }}
+        ></div>
+      )}
       <SidebarMenuButton
         render={
           <Link href={buildRoute('group', { group: String(item.id) })} replace draggable={false} />
         }
         isActive={active}
-        className={cx('border border-transparent pr-8', isEntryOver && 'border-sidebar-ring')}
+        className={cx(
+          'border-2 border-transparent pr-8',
+          isEntryOver && 'border-sidebar-ring',
+          isDragging && 'opacity-0',
+        )}
         onClick={onNavigate}
       >
         <IconFolder />
@@ -225,7 +245,7 @@ const SortableGroup = ({
         size="icon-xs"
         className={cx(
           'absolute top-1 right-1 cursor-grab touch-none text-sidebar-foreground/60 hover:bg-sidebar-accent active:translate-y-0',
-          isDragging && 'cursor-grabbing',
+          isDragging && 'cursor-grabbing opacity-0',
         )}
         aria-label={`Move ${item.group.name || 'untitled group'}`}
         {...attributes}
@@ -260,6 +280,15 @@ export const GroupTree = ({
   const projection =
     activeKey && overKey
       ? getProjection(items, activeKey, overKey, dragOffset, hierarchy.rootGroupId)
+      : undefined;
+  const previousItem = projection?.reordered[projection.index - 1];
+  const indicator: (DropIndicator & { key: string }) | undefined =
+    projection && overKey
+      ? {
+          key: previousItem?.key ?? overKey,
+          depth: projection.depth,
+          edge: previousItem ? 'after' : 'before',
+        }
       : undefined;
 
   const reset = () => {
@@ -344,6 +373,7 @@ export const GroupTree = ({
             depth={item.key === activeKey && projection ? projection.depth : item.depth}
             active={location === buildRoute('group', { group: String(item.id) })}
             disabled={disabled}
+            indicator={indicator?.key === item.key ? indicator : undefined}
             onNavigate={onNavigate}
           />
         ))}

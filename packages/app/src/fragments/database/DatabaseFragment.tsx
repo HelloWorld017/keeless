@@ -229,8 +229,8 @@ export const DatabaseFragment = () => {
             entry={activeEntry.entry}
             variant="outline"
             className={cx(
-              'w-full opacity-75 transition-opacity transition-transform',
-              entryOverGroup && 'scale-50',
+              'w-full opacity-75 bg-background transition-opacity transition-transform',
+              entryOverGroup && 'scale-75',
             )}
           />
         ) : activeDrag?.type === 'group' ? (
