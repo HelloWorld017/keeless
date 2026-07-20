@@ -358,27 +358,28 @@ const EntryDetailQuery = ({
         <div className="order-2 xl:pt-4 xl:order-none">
           {editing && (
             <div className="flex gap-1 justify-end">
-              <Button type="button" variant="outline" disabled={pending} onClick={clearEditing}>
+              <Button type="button" size="lg" variant="outline" disabled={pending} onClick={clearEditing}>
                 Cancel
               </Button>
-              <Button type="button" disabled={pending} onClick={() => void submit()}>
-                {pending && <IconLoaderCircle className="animate-spin" />}Done
+              <Button type="button" size="lg" disabled={pending} onClick={() => void submit()}>
+                {pending ? <IconLoaderCircle className="animate-spin" /> : 'Done'}
               </Button>
             </div>
           )}
           {!editing && detail.data && (
             <div className="flex gap-1 justify-end">
               <Button
-                className="cursor-default rounded-md px-2 py-1.5 text-sm outline-none data-highlighted:bg-foreground/10"
                 variant="ghost"
+                size="lg"
                 onClick={startEditing}
               >
                 <IconPencil />
                 Edit
               </Button>
               <Button
-                className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive outline-none hover:text-destructive hover:bg-destructive/10"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
                 variant="ghost"
+                size="icon-lg"
                 onClick={() => setDeleteOpen(true)}
               >
                 <IconTrash />

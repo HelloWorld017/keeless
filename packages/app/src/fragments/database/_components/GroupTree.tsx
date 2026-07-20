@@ -350,7 +350,7 @@ const SortableGroup = ({
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    className="absolute top-1 right-13 text-destructive opacity-0 transition-opacity group-hover:opacity-100 hover:bg-sidebar-accent"
+                    className="absolute top-1 right-13 text-destructive opacity-0 transition-color transition-opacity group-hover:opacity-100"
                     aria-label={`Move ${item.group.name || 'untitled group'} to Trash`}
                     disabled={disabled}
                   />

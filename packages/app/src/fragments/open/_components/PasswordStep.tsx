@@ -52,8 +52,7 @@ export const PasswordStep = ({
               />
 
               <Button type="submit" className="w-10 h-10" size="icon-lg" disabled={isPending}>
-                {isPending && <IconLoaderCircle className="animate-spin" />}
-                <IconArrowRight />
+                {isPending ? <IconLoaderCircle className="animate-spin" /> : <IconArrowRight />}
               </Button>
             </Field>
           </div>
