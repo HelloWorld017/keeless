@@ -36,7 +36,7 @@ fn round_trip(mut database: Database) -> Database {
 
 fn entry_with_binary(id: NodeId, title: &str, data: &[u8], modified: i64) -> Entry {
     let mut entry = Entry::new(id);
-    entry.title = title.to_string();
+    entry.title = title.into();
     entry.last_modification_time = DateInstant::EpochMillis(modified);
     entry.binaries.push(EntryBinary {
         name: "document.bin".to_string(),
@@ -56,7 +56,7 @@ fn child_titles(database: &Database) -> (Vec<String>, Vec<String>) {
     let entries = root
         .child_entry_ids
         .iter()
-        .map(|id| database.entries[id].title.clone())
+        .map(|id| database.entries[id].title.as_str().to_string())
         .collect();
     (groups, entries)
 }
@@ -119,7 +119,7 @@ fn three_way_merge_preserves_updated_binary_and_custom_icon() {
 
     let mut source = database_with_root(root_id);
     let mut source_entry = base_entry;
-    source_entry.title = "Source".to_string();
+    source_entry.title = "Source".into();
     source_entry.last_modification_time = DateInstant::EpochMillis(200);
     source_entry.binaries[0].data = b"source attachment".to_vec();
     source_entry.custom_icon_uuid = Some(icon_id);
@@ -156,7 +156,7 @@ fn child_order_survives_round_trip_and_deletion() {
     for title in &entry_titles {
         let id = NodeId::new_uuid();
         let mut entry = Entry::new(id);
-        entry.title = title.clone();
+        entry.title = title.clone().into();
         assert!(database.add_entry(entry, &root_id));
         entry_ids.push(id);
     }

@@ -262,7 +262,6 @@ fn stores_protected_kpex_fields_and_roundtrips_xml() {
             .iter()
             .find(|field| field.name == name)
             .unwrap();
-        assert!(field.is_protected);
         assert!(field.value.is_protected());
     }
     assert_eq!(
@@ -311,12 +310,10 @@ fn reads_compatibility_fields_and_rejects_malformed_entries() {
     entry.custom_fields.push(EntryField {
         name: FIELD_GENERATED_USER_ID.to_string(),
         value: ProtectedString::new_protected(&credential_id),
-        is_protected: true,
     });
     entry.custom_fields.push(EntryField {
         name: FIELD_COMPATIBLE_USERNAME.to_string(),
         value: ProtectedString::new_plain("compatible-alice"),
-        is_protected: false,
     });
 
     let parsed = PasskeyCredential::from_entry(&entry).unwrap().unwrap();
@@ -326,7 +323,6 @@ fn reads_compatibility_fields_and_rejects_malformed_entries() {
     entry.custom_fields.push(EntryField {
         name: FIELD_USER_HANDLE.to_string(),
         value: ProtectedString::new_protected("AQID"),
-        is_protected: true,
     });
     let duplicate_error = PasskeyCredential::from_entry(&entry)
         .err()

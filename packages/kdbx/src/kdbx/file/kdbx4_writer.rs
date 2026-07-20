@@ -275,7 +275,7 @@ mod tests {
 
         let entry_id = NodeId::from_uuid(Uuid::new_v4());
         let mut entry = Entry::new(entry_id);
-        entry.title = "KDBX4 Test".to_string();
+        entry.title = "KDBX4 Test".into();
         entry.password = ProtectedString::new_protected("p@ssw0rd");
         entry.binaries.push(EntryBinary {
             name: "protected.bin".to_string(),

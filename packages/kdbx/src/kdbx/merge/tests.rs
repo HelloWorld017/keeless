@@ -13,13 +13,13 @@ fn database_with_root(root_id: NodeId) -> Database {
 
 fn make_entry_with_title(id: NodeId, title: &str) -> Entry {
     let mut entry = Entry::new(id);
-    entry.title = title.to_string();
+    entry.title = title.into();
     entry
 }
 
 fn make_entry_newer(id: NodeId, title: &str) -> Entry {
     let mut entry = Entry::new(id);
-    entry.title = title.to_string();
+    entry.title = title.into();
     entry.last_modification_time =
         DateInstant::EpochMillis(entry.last_modification_time.as_millis().unwrap_or(0) + 100_000);
     entry
@@ -27,7 +27,7 @@ fn make_entry_newer(id: NodeId, title: &str) -> Entry {
 
 fn entry_version(seed: &Entry, title: &str, modified: i64) -> Entry {
     let mut entry = seed.clone();
-    entry.title = title.to_string();
+    entry.title = title.into();
     entry.last_modification_time = DateInstant::EpochMillis(modified);
     entry.history.clear();
     entry

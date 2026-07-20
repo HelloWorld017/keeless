@@ -160,10 +160,10 @@ fn resolve_single_reference(
 
         if matches {
             return match field_ref.target_field {
-                RefTarget::Title => entry.title.clone(),
+                RefTarget::Title => entry.title.as_str().to_string(),
                 RefTarget::UserName => entry.username.as_str().to_string(),
                 RefTarget::Password => entry.password.as_str().to_string(),
-                RefTarget::Url => entry.url.clone(),
+                RefTarget::Url => entry.url.as_str().to_string(),
                 RefTarget::Notes => entry.notes.as_str().to_string(),
                 RefTarget::CustomField => String::new(),
             };

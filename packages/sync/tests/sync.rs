@@ -157,7 +157,7 @@ fn database_with_entry(title: &str) -> (Database, NodeId) {
 
     let entry_id = NodeId::new_uuid();
     let mut entry = Entry::new(entry_id);
-    entry.title = title.to_string();
+    entry.title = title.into();
     entry.last_modification_time = DateInstant::EpochMillis(1);
     assert!(database.add_entry(entry, &root_id));
     (database, entry_id)
@@ -185,7 +185,7 @@ async fn open_syncs_local_changes_with_cas() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "local".to_string();
+        .title = "local".into();
 
     let report = handle.sync(&key).await.unwrap();
     assert!(report.uploaded);
@@ -204,7 +204,7 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
     let root_id = database.root_group_id.unwrap();
     let second_id = NodeId::new_uuid();
     let mut second = Entry::new(second_id);
-    second.title = "second".to_string();
+    second.title = "second".into();
     second.last_modification_time = DateInstant::EpochMillis(1);
     assert!(database.add_entry(second, &root_id));
     storage.put("vault.kdbx", encode(&database, &key));
@@ -214,13 +214,13 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
         .await
         .unwrap();
     let local = handle.database_mut().entries.get_mut(&first_id).unwrap();
-    local.title = "local first".to_string();
+    local.title = "local first".into();
     local.last_modification_time = DateInstant::EpochMillis(10);
 
     let remote_bytes = storage.bytes("vault.kdbx");
     let mut remote = open_database(remote_bytes.as_slice(), &key).unwrap();
     let remote_entry = remote.entries.get_mut(&second_id).unwrap();
-    remote_entry.title = "remote second".to_string();
+    remote_entry.title = "remote second".into();
     remote_entry.last_modification_time = DateInstant::EpochMillis(20);
     storage.put("vault.kdbx", encode(&remote, &key));
 
@@ -246,7 +246,7 @@ async fn sync_retries_from_the_original_local_snapshot() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "local".to_string();
+        .title = "local".into();
     storage.force_conflicts(1);
 
     let report = handle.sync(&key).await.unwrap();
@@ -267,7 +267,7 @@ async fn sync_pulls_remote_changes_without_rewriting_an_unmodified_local_file() 
         .unwrap();
 
     let mut remote = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
-    remote.entries.get_mut(&entry_id).unwrap().title = "remote".to_string();
+    remote.entries.get_mut(&entry_id).unwrap().title = "remote".into();
     storage.put("vault.kdbx", encode(&remote, &key));
 
     let report = handle.sync(&key).await.unwrap();
@@ -300,7 +300,7 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "local entry".to_string();
+        .title = "local entry".into();
     handle.database_mut().custom_data.set("local", "value");
     let mut remote = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     remote.name = "remote name".to_string();
@@ -354,7 +354,7 @@ async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "unsaved".to_string();
+        .title = "unsaved".into();
     storage.force_conflicts(2);
 
     let error = handle.sync(&key).await.unwrap_err();

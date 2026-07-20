@@ -53,12 +53,12 @@ fn icon_reference(icon: &IconImage, custom_icon_uuid: Option<Uuid>) -> IconRefer
 pub(super) fn entry_summary(entry: &Entry) -> EntrySummary {
     EntrySummary {
         id: node_id(entry.id),
-        name: (!entry.title_is_protected).then(|| entry.title.clone()),
-        name_is_protected: entry.title_is_protected,
+        name: (!entry.title.is_protected()).then(|| entry.title.as_str().to_owned()),
+        name_is_protected: entry.title.is_protected(),
         username: (!entry.username.is_protected()).then(|| entry.username.as_str().to_owned()),
         username_is_protected: entry.username.is_protected(),
-        url: (!entry.url_is_protected).then(|| entry.url.clone()),
-        url_is_protected: entry.url_is_protected,
+        url: (!entry.url.is_protected()).then(|| entry.url.as_str().to_owned()),
+        url_is_protected: entry.url.is_protected(),
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),
         tags: entry.tags.clone(),
     }
@@ -233,7 +233,7 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
             0,
             "Title",
             EntryFieldSelector::Title,
-            entry.title_is_protected,
+            entry.title.is_protected(),
         ),
         standard_field(
             entry,
@@ -254,7 +254,7 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
             3,
             "URL",
             EntryFieldSelector::Url,
-            entry.url_is_protected,
+            entry.url.is_protected(),
         ),
         standard_field(
             entry,
@@ -270,7 +270,7 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
             .iter()
             .enumerate()
             .map(|(index, field)| {
-                let is_protected = field.is_protected || field.value.is_protected();
+                let is_protected = field.value.is_protected();
                 EntryFieldInformation {
                     field_index: 5 + index as u64,
                     name: field.name.clone(),

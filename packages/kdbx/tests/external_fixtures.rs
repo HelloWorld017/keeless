@@ -296,11 +296,14 @@ fn opens_and_preserves_keepassxc_protected_strings() {
             .unwrap(),
         "ProtectedPassword"
     );
+    assert!(entry
+        .custom_fields
+        .iter()
+        .any(|field| { field.name == "TestProtected" && field.value.is_memory_protected() }));
     assert!(entry.custom_fields.iter().any(|field| {
-        field.name == "TestProtected" && field.is_protected && field.value.is_memory_protected()
-    }));
-    assert!(entry.custom_fields.iter().any(|field| {
-        field.name == "TestUnprotected" && !field.is_protected && field.value.as_str() == "DEF"
+        field.name == "TestUnprotected"
+            && !field.value.is_protected()
+            && field.value.as_str() == "DEF"
     }));
     assert_eq!(
         database

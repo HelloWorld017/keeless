@@ -73,7 +73,7 @@ impl Template {
 
     pub fn into_entry(self) -> Entry {
         let mut entry = Entry::new(NodeId::from_uuid(self.uuid));
-        entry.title = self.title;
+        entry.title = ProtectedString::new_plain(&self.title);
         entry.icon = IconImage::Standard(IconImageStandard::new(self.icon_id));
         entry.is_template = true;
 
@@ -86,15 +86,21 @@ impl Template {
                 }
             };
             match field.name.as_str() {
-                "Title" => entry.title_is_protected = field.is_protected,
+                "Title" => {
+                    let title = entry.title.as_str().to_string();
+                    entry.title = if field.is_protected {
+                        ProtectedString::new_protected(&title)
+                    } else {
+                        ProtectedString::new_plain(&title)
+                    };
+                }
                 "UserName" => entry.username = value(),
                 "Password" => entry.password = value(),
-                "URL" => entry.url_is_protected = field.is_protected,
+                "URL" => entry.url = value(),
                 "Notes" => entry.notes = value(),
                 _ => entry.custom_fields.push(EntryField {
                     name: field.name,
                     value: value(),
-                    is_protected: field.is_protected,
                 }),
             }
         }
@@ -391,14 +397,13 @@ mod tests {
         assert_eq!(entry.title, "Credit Card");
         assert!(entry.is_template);
         assert_eq!(entry.custom_fields.len(), 5);
-        assert!(
-            entry
-                .custom_fields
-                .iter()
-                .find(|field| field.name == "Card Number")
-                .unwrap()
-                .is_protected
-        );
+        assert!(entry
+            .custom_fields
+            .iter()
+            .find(|field| field.name == "Card Number")
+            .unwrap()
+            .value
+            .is_protected());
         assert!(matches!(
             entry.icon,
             IconImage::Standard(IconImageStandard { icon_id: 37 })

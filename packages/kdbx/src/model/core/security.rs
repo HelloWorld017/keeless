@@ -69,17 +69,23 @@ impl ProtectedString {
         matches!(self.state, ProtectedStringState::Sealed(_))
     }
 
+    /// Borrow plaintext only when the value is not sealed in memory.
+    pub fn as_unsealed_str(&self) -> Option<&str> {
+        match &self.state {
+            ProtectedStringState::Plain(value) | ProtectedStringState::Unsealed(value) => {
+                Some(value)
+            }
+            ProtectedStringState::Sealed(_) => None,
+        }
+    }
+
     /// Access plaintext that has not yet been memory-protected.
     ///
     /// Sealed values deliberately cannot return an escaping `&str`; use the
     /// credential-scoped database APIs for values returned by `open_database`.
     pub fn as_str(&self) -> &str {
-        match &self.state {
-            ProtectedStringState::Plain(value) | ProtectedStringState::Unsealed(value) => value,
-            ProtectedStringState::Sealed(_) => {
-                panic!("memory-protected value requires credential-scoped access")
-            }
-        }
+        self.as_unsealed_str()
+            .expect("memory-protected value requires credential-scoped access")
     }
 
     pub fn is_empty(&self) -> bool {
@@ -112,21 +118,6 @@ impl ProtectedString {
         Ok(())
     }
 
-    pub(crate) fn seal_as_protected(
-        &mut self,
-        context: Arc<MemoryProtectionContext>,
-        root: &[u8; 32],
-        entry_id: NodeId,
-        field: &MemoryField,
-    ) -> DatabaseResult<()> {
-        if let ProtectedStringState::Plain(value) = &mut self.state {
-            let mut plaintext = String::new();
-            std::mem::swap(value, &mut plaintext);
-            self.state = ProtectedStringState::Unsealed(plaintext);
-        }
-        self.seal(context, root, entry_id, field)
-    }
-
     pub(crate) fn replace_sealed(
         &mut self,
         context: Arc<MemoryProtectionContext>,
@@ -135,22 +126,17 @@ impl ProtectedString {
         field: &MemoryField,
         value: &str,
     ) -> DatabaseResult<()> {
-        self.state = ProtectedStringState::Sealed(EncryptedValue::encrypt(
-            context,
-            root,
-            entry_id,
-            field,
-            value.as_bytes(),
-        )?);
+        let encrypted = EncryptedValue::encrypt(context, root, entry_id, field, value.as_bytes())?;
+        self.replace_state(ProtectedStringState::Sealed(encrypted));
         Ok(())
     }
 
     pub(crate) fn replace_plain(&mut self, value: &str) {
-        self.state = ProtectedStringState::Plain(value.to_string());
+        self.replace_state(ProtectedStringState::Plain(value.to_string()));
     }
 
     pub(crate) fn replace_unsealed(&mut self, value: &str) {
-        self.state = ProtectedStringState::Unsealed(value.to_string());
+        self.replace_state(ProtectedStringState::Unsealed(value.to_string()));
     }
 
     pub(crate) fn with_plaintext<T>(
@@ -200,11 +186,52 @@ impl ProtectedString {
         self.state = ProtectedStringState::Sealed(encrypted);
         Ok(())
     }
+
+    fn replace_state(&mut self, state: ProtectedStringState) {
+        let mut previous = std::mem::replace(&mut self.state, state);
+        if let ProtectedStringState::Plain(value) | ProtectedStringState::Unsealed(value) =
+            &mut previous
+        {
+            value.zeroize();
+        }
+    }
 }
 
 impl Default for ProtectedString {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl From<&str> for ProtectedString {
+    fn from(value: &str) -> Self {
+        Self::new_plain(value)
+    }
+}
+
+impl From<String> for ProtectedString {
+    fn from(value: String) -> Self {
+        Self {
+            state: ProtectedStringState::Plain(value),
+        }
+    }
+}
+
+impl PartialEq<str> for ProtectedString {
+    fn eq(&self, other: &str) -> bool {
+        self.as_unsealed_str() == Some(other)
+    }
+}
+
+impl PartialEq<&str> for ProtectedString {
+    fn eq(&self, other: &&str) -> bool {
+        self == *other
+    }
+}
+
+impl PartialEq<String> for ProtectedString {
+    fn eq(&self, other: &String) -> bool {
+        self == other.as_str()
     }
 }
 

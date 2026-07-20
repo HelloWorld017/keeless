@@ -47,40 +47,40 @@ fn build_realistic_database() -> Database {
     // Entry 1: Gmail
     let e1_id = NodeId::new_uuid();
     let mut e1 = Entry::new(e1_id);
-    e1.title = "Gmail Account".to_string();
+    e1.title = "Gmail Account".into();
     e1.username = ProtectedString::new_protected("user@gmail.com");
     e1.password = ProtectedString::new_protected("super_secret_password");
-    e1.url = "https://mail.google.com".to_string();
+    e1.url = "https://mail.google.com".into();
     e1.notes = ProtectedString::new_protected("Personal email with 2FA enabled");
     general.add_child_entry(e1_id);
 
     // Entry 2: GitHub
     let e2_id = NodeId::new_uuid();
     let mut e2 = Entry::new(e2_id);
-    e2.title = "GitHub".to_string();
+    e2.title = "GitHub".into();
     e2.username = ProtectedString::new_protected("developer");
     e2.password = ProtectedString::new_protected("ghp_abc123def456");
-    e2.url = "https://github.com".to_string();
+    e2.url = "https://github.com".into();
     e2.tags = vec!["development".to_string(), "coding".to_string()];
     general.add_child_entry(e2_id);
 
     // Entry 3: AWS (with custom fields)
     let e3_id = NodeId::new_uuid();
     let mut e3 = Entry::new(e3_id);
-    e3.title = "AWS Console".to_string();
+    e3.title = "AWS Console".into();
     e3.username = ProtectedString::new_protected("admin@company.com");
     e3.password = ProtectedString::new_protected("aws_secret_key_123");
-    e3.url = "https://console.aws.amazon.com".to_string();
+    e3.url = "https://console.aws.amazon.com".into();
     e3.notes = ProtectedString::new_protected("Root account — use IAM for daily work");
     email.add_child_entry(e3_id);
 
     // Entry 4: Work VPN
     let e4_id = NodeId::new_uuid();
     let mut e4 = Entry::new(e4_id);
-    e4.title = "Work VPN".to_string();
+    e4.title = "Work VPN".into();
     e4.username = ProtectedString::new_protected("jdoe");
     e4.password = ProtectedString::new_protected("vpn_password");
-    e4.url = "vpn.company.com".to_string();
+    e4.url = "vpn.company.com".into();
     work.add_child_entry(e4_id);
 
     // Insert everything
@@ -121,12 +121,12 @@ fn verify_database(db: &Database) {
     let mut found_gmail = false;
     let mut found_github = false;
     for entry in db.entries.values() {
-        if entry.title.contains("Gmail") {
+        if entry.title.as_str().contains("Gmail") {
             found_gmail = true;
             assert!(!entry.username.as_str().is_empty());
             assert!(!entry.password.as_str().is_empty());
         }
-        if entry.title.contains("GitHub") {
+        if entry.title.as_str().contains("GitHub") {
             found_github = true;
             assert_eq!(entry.tags.len(), 2);
         }
@@ -308,10 +308,10 @@ fn test_e2e_kdbx31_unicode_content() {
 
     let entry_id = NodeId::new_uuid();
     let mut entry = Entry::new(entry_id);
-    entry.title = "日本語エントリ".to_string();
+    entry.title = "日本語エントリ".into();
     entry.username = ProtectedString::new_protected("用户名");
     entry.password = ProtectedString::new_protected("密码密码");
-    entry.url = "https://例え.jp".to_string();
+    entry.url = "https://例え.jp".into();
     entry.notes = ProtectedString::new_protected("备注信息 🔐");
     root.add_child_entry(entry_id);
 

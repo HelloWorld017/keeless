@@ -281,7 +281,7 @@ mod tests {
         root.title = "Root".to_string();
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "Test".to_string();
+        entry.title = "Test".into();
         root.add_child_entry(entry_id);
         db.groups.insert(root_id, root);
         db.entries.insert(entry_id, entry);
@@ -346,8 +346,7 @@ mod tests {
         root.title = "Root".into();
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "hidden title".into();
-        entry.title_is_protected = true;
+        entry.title = ProtectedString::new_protected("hidden title");
         entry.password = ProtectedString::new_protected("initial secret");
         root.add_child_entry(entry_id);
         database.groups.insert(root_id, root);
@@ -361,7 +360,7 @@ mod tests {
 
         let loaded_entry = &loaded.entries[&entry_id];
         assert!(loaded_entry.password.is_memory_protected());
-        assert!(loaded_entry.title.is_empty());
+        assert!(loaded_entry.title.is_memory_protected());
         assert_eq!(
             loaded
                 .with_entry_field(

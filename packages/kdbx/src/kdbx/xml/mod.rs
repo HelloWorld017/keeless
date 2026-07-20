@@ -39,10 +39,10 @@ mod tests {
         let entry_id =
             NodeId::from_uuid(Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap());
         let mut entry = Entry::new(entry_id);
-        entry.title = "Test Entry".to_string();
+        entry.title = "Test Entry".into();
         entry.username = ProtectedString::new_plain("user@test.com");
         entry.password = ProtectedString::new_protected("s3cret!");
-        entry.url = "https://example.com".to_string();
+        entry.url = "https://example.com".into();
 
         root.add_child_entry(entry_id);
         db.entries.insert(entry_id, entry);
@@ -353,7 +353,7 @@ mod tests {
         let entry_id =
             NodeId::from_uuid(Uuid::parse_str("99999999-8888-7777-6666-555555555555").unwrap());
         let mut entry = Entry::new(entry_id);
-        entry.title = r#"Title with <>&"special"#.to_string();
+        entry.title = r#"Title with <>&"special"#.into();
         entry.username = ProtectedString::new_plain("user");
         entry.password = ProtectedString::new_protected("pass");
 

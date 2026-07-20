@@ -88,7 +88,9 @@ impl MemoryWriteAccess<'_> {
         match self {
             Self::Unlocked(unlock) => entry.with_memory_field(unlock, field, use_value),
             Self::Unsealed => match field {
-                MemoryField::Title if entry.protected_title.is_none() => use_value(&entry.title),
+                MemoryField::Title if !entry.title.is_memory_protected() => {
+                    use_value(entry.title.as_str())
+                }
                 MemoryField::Title => Err(DatabaseError::InvalidCredentials),
                 MemoryField::UserName if !entry.username.is_memory_protected() => {
                     use_value(entry.username.as_str())
@@ -98,7 +100,9 @@ impl MemoryWriteAccess<'_> {
                     use_value(entry.password.as_str())
                 }
                 MemoryField::Password => Err(DatabaseError::InvalidCredentials),
-                MemoryField::Url if entry.protected_url.is_none() => use_value(&entry.url),
+                MemoryField::Url if !entry.url.is_memory_protected() => {
+                    use_value(entry.url.as_str())
+                }
                 MemoryField::Url => Err(DatabaseError::InvalidCredentials),
                 MemoryField::Notes if !entry.notes.is_memory_protected() => {
                     use_value(entry.notes.as_str())

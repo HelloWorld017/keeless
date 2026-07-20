@@ -76,7 +76,7 @@ fn write_fields(
         entry,
         "Title",
         &MemoryField::Title,
-        entry.title_is_protected,
+        entry.title.is_protected(),
         inner_stream,
         memory,
     )?;
@@ -103,7 +103,7 @@ fn write_fields(
         entry,
         "URL",
         &MemoryField::Url,
-        entry.url_is_protected,
+        entry.url.is_protected(),
         inner_stream,
         memory,
     )?;
@@ -122,7 +122,7 @@ fn write_fields(
             entry,
             &field.name,
             &MemoryField::Custom(field.name.clone()),
-            field.is_protected,
+            field.value.is_protected(),
             inner_stream,
             memory,
         )?;

@@ -480,7 +480,7 @@ mod tests {
 
     fn make_entry(id: u8, title: &str, username: &str) -> Entry {
         let mut e = Entry::new(NodeId::from_int(id as i32));
-        e.title = title.to_string();
+        e.title = title.into();
         e.username = ProtectedString::new_plain(username);
         e
     }
@@ -560,7 +560,7 @@ mod tests {
     #[test]
     fn test_search_password_field() {
         let mut e = Entry::new(NodeId::from_int(1));
-        e.title = "Test".to_string();
+        e.title = "Test".into();
         e.password = ProtectedString::new_protected("super_secret_password");
 
         let entries: Vec<&Entry> = vec![&e];
@@ -622,17 +622,14 @@ mod tests {
 
         let sealed_id = NodeId::new_uuid();
         let mut sealed = Entry::new(sealed_id);
-        sealed.title = "needle title".into();
-        sealed.title_is_protected = true;
+        sealed.title = ProtectedString::new_protected("needle title");
         sealed.username = ProtectedString::new_protected("needle username");
         sealed.password = ProtectedString::new_protected("needle password");
-        sealed.url = "https://needle.example".into();
-        sealed.url_is_protected = true;
+        sealed.url = ProtectedString::new_protected("https://needle.example");
         sealed.notes = ProtectedString::new_protected("needle notes");
         sealed.custom_fields.push(EntryField {
             name: "Secret".into(),
             value: ProtectedString::new_protected("needle custom"),
-            is_protected: true,
         });
         database.entries.insert(sealed_id, sealed);
 
@@ -643,17 +640,14 @@ mod tests {
 
         let unsealed_id = NodeId::new_uuid();
         let mut unsealed = Entry::new(unsealed_id);
-        unsealed.title = "needle title".into();
-        unsealed.title_is_protected = true;
+        unsealed.title = ProtectedString::new_protected("needle title");
         unsealed.username = ProtectedString::new_protected("needle username");
         unsealed.password = ProtectedString::new_protected("needle password");
-        unsealed.url = "https://needle.example".into();
-        unsealed.url_is_protected = true;
+        unsealed.url = ProtectedString::new_protected("https://needle.example");
         unsealed.notes = ProtectedString::new_protected("needle notes");
         unsealed.custom_fields.push(EntryField {
             name: "Secret".into(),
             value: ProtectedString::new_protected("needle custom"),
-            is_protected: true,
         });
         database.entries.insert(unsealed_id, unsealed);
 

@@ -528,7 +528,6 @@ fn plain_field(name: &str, value: &str) -> EntryField {
     EntryField {
         name: name.to_string(),
         value: ProtectedString::new_plain(value),
-        is_protected: false,
     }
 }
 
@@ -536,6 +535,5 @@ fn protected_field(name: &str, value: &str) -> EntryField {
     EntryField {
         name: name.to_string(),
         value: ProtectedString::new_protected(value),
-        is_protected: true,
     }
 }

@@ -91,7 +91,7 @@ fn test_add_entry() {
 
     let entry_id = NodeId::new_uuid();
     let mut entry = Entry::new(entry_id);
-    entry.title = "Test Entry".to_string();
+    entry.title = "Test Entry".into();
     entry.password = ProtectedString::new_protected("secret");
 
     assert!(db.add_entry(entry, &root_id));
@@ -394,20 +394,17 @@ fn duplicate_entry_rebinds_or_redacts_protected_content() {
     db.add_group(Group::new(destination_id), &root_id);
 
     let mut source = Entry::new(source_id);
-    source.title = "Protected title".into();
-    source.title_is_protected = true;
+    source.title = ProtectedString::new_protected("Protected title");
     source.username = ProtectedString::new_plain("public-user");
     source.password = ProtectedString::new_protected("secret-password");
     source.custom_fields = vec![
         EntryField {
             name: "Public".into(),
             value: ProtectedString::new_plain("public-value"),
-            is_protected: false,
         },
         EntryField {
             name: "Secret".into(),
             value: ProtectedString::new_protected("secret-value"),
-            is_protected: true,
         },
     ];
     source.binaries = vec![
@@ -477,7 +474,7 @@ fn duplicate_entry_rebinds_or_redacts_protected_content() {
     assert!(redacted.password.is_protected());
     assert_eq!(redacted.password.as_str(), "");
     assert_eq!(redacted.custom_fields[0].value.as_str(), "public-value");
-    assert!(redacted.custom_fields[1].is_protected);
+    assert!(redacted.custom_fields[1].value.is_protected());
     assert_eq!(redacted.custom_fields[1].value.as_str(), "");
     assert_eq!(redacted.binaries.len(), 1);
     assert_eq!(redacted.binaries[0].name, "public.txt");

@@ -18,9 +18,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::Zeroize;
 
-use crate::crypto::memory_protection::{
-    EncryptedValue, MemoryField, MemoryProtectionContext, MemoryUnlockSession,
-};
+use crate::crypto::memory_protection::{MemoryField, MemoryProtectionContext, MemoryUnlockSession};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
 pub use auto_type::{AutoType, AutoTypeAssociation};
@@ -32,17 +30,13 @@ pub struct Entry {
     /// Unique identifier
     pub id: NodeId,
     /// Entry title
-    pub title: String,
-    /// XML protection state for the title field.
-    pub title_is_protected: bool,
+    pub title: ProtectedString,
     /// User name
     pub username: ProtectedString,
     /// Password
     pub password: ProtectedString,
     /// URL
-    pub url: String,
-    /// XML protection state for the URL field.
-    pub url_is_protected: bool,
+    pub url: ProtectedString,
     /// Notes
     pub notes: ProtectedString,
     /// Icon
@@ -87,10 +81,6 @@ pub struct Entry {
     #[doc(hidden)]
     #[serde(skip)]
     pub xml_extensions: EntryXmlExtensions,
-    #[serde(skip)]
-    pub(crate) protected_title: Option<EncryptedValue>,
-    #[serde(skip)]
-    pub(crate) protected_url: Option<EncryptedValue>,
 }
 
 /// A custom field in an entry.
@@ -98,7 +88,6 @@ pub struct Entry {
 pub struct EntryField {
     pub name: String,
     pub value: ProtectedString,
-    pub is_protected: bool,
 }
 
 /// An entry attachment and its KDBX4 inner-header protection state.
@@ -107,17 +96,6 @@ pub struct EntryBinary {
     pub name: String,
     pub data: Vec<u8>,
     pub is_protected: bool,
-}
-
-impl Drop for Entry {
-    fn drop(&mut self) {
-        if self.title_is_protected {
-            self.title.zeroize();
-        }
-        if self.url_is_protected {
-            self.url.zeroize();
-        }
-    }
 }
 
 impl Drop for EntryBinary {
@@ -133,12 +111,10 @@ impl Entry {
         let now = DateInstant::now();
         Self {
             id,
-            title: String::new(),
-            title_is_protected: false,
+            title: ProtectedString::new_plain(""),
             username: ProtectedString::new_plain(""),
             password: ProtectedString::new(),
-            url: String::new(),
-            url_is_protected: false,
+            url: ProtectedString::new_plain(""),
             notes: ProtectedString::new_plain(""),
             icon: IconImage::default(),
             custom_icon_uuid: None,
@@ -160,8 +136,6 @@ impl Entry {
             custom_data: CustomData::default(),
             is_template: false,
             xml_extensions: EntryXmlExtensions::default(),
-            protected_title: None,
-            protected_url: None,
         }
     }
 
@@ -175,26 +149,17 @@ impl Entry {
         use_value: impl FnOnce(&str) -> T,
     ) -> Option<T> {
         match selector {
-            EntryFieldSelector::Title => self
-                .protected_title
-                .is_none()
-                .then(|| use_value(&self.title)),
-            EntryFieldSelector::UserName => {
-                (!self.username.is_memory_protected()).then(|| use_value(self.username.as_str()))
-            }
-            EntryFieldSelector::Password => {
-                (!self.password.is_memory_protected()).then(|| use_value(self.password.as_str()))
-            }
-            EntryFieldSelector::Url => self.protected_url.is_none().then(|| use_value(&self.url)),
-            EntryFieldSelector::Notes => {
-                (!self.notes.is_memory_protected()).then(|| use_value(self.notes.as_str()))
-            }
+            EntryFieldSelector::Title => self.title.as_unsealed_str().map(use_value),
+            EntryFieldSelector::UserName => self.username.as_unsealed_str().map(use_value),
+            EntryFieldSelector::Password => self.password.as_unsealed_str().map(use_value),
+            EntryFieldSelector::Url => self.url.as_unsealed_str().map(use_value),
+            EntryFieldSelector::Notes => self.notes.as_unsealed_str().map(use_value),
             EntryFieldSelector::Custom(name) => {
                 let field = self
                     .custom_fields
                     .iter()
                     .find(|candidate| candidate.name == *name)?;
-                (!field.value.is_memory_protected()).then(|| use_value(field.value.as_str()))
+                field.value.as_unsealed_str().map(use_value)
             }
         }
     }
@@ -202,10 +167,10 @@ impl Entry {
     /// Get the standard field value by name.
     pub fn get_field(&self, name: &str) -> Option<ProtectedString> {
         match name.to_lowercase().as_str() {
-            "title" => Some(ProtectedString::new_plain(&self.title)),
+            "title" => Some(self.title.clone()),
             "username" | "user name" => Some(self.username.clone()),
             "password" => Some(self.password.clone()),
-            "url" => Some(ProtectedString::new_plain(&self.url)),
+            "url" => Some(self.url.clone()),
             "notes" => Some(self.notes.clone()),
             _ => self
                 .custom_fields
@@ -220,43 +185,23 @@ impl Entry {
         context: std::sync::Arc<MemoryProtectionContext>,
         root: &[u8; 32],
     ) -> DatabaseResult<()> {
-        if self.title_is_protected && self.protected_title.is_none() {
-            self.protected_title = Some(EncryptedValue::encrypt(
-                context.clone(),
-                root,
-                self.id,
-                &MemoryField::Title,
-                self.title.as_bytes(),
-            )?);
-            self.title.zeroize();
-            self.title.clear();
-        }
+        self.title
+            .seal(context.clone(), root, self.id, &MemoryField::Title)?;
         self.username
             .seal(context.clone(), root, self.id, &MemoryField::UserName)?;
         self.password
             .seal(context.clone(), root, self.id, &MemoryField::Password)?;
-        if self.url_is_protected && self.protected_url.is_none() {
-            self.protected_url = Some(EncryptedValue::encrypt(
-                context.clone(),
-                root,
-                self.id,
-                &MemoryField::Url,
-                self.url.as_bytes(),
-            )?);
-            self.url.zeroize();
-            self.url.clear();
-        }
+        self.url
+            .seal(context.clone(), root, self.id, &MemoryField::Url)?;
         self.notes
             .seal(context.clone(), root, self.id, &MemoryField::Notes)?;
         for field in &mut self.custom_fields {
-            if field.is_protected {
-                field.value.seal_as_protected(
-                    context.clone(),
-                    root,
-                    self.id,
-                    &MemoryField::Custom(field.name.clone()),
-                )?;
-            }
+            field.value.seal(
+                context.clone(),
+                root,
+                self.id,
+                &MemoryField::Custom(field.name.clone()),
+            )?;
         }
         for history in &mut self.history {
             history.seal_protected_strings(context.clone(), root)?;
@@ -271,42 +216,14 @@ impl Entry {
         use_value: impl FnOnce(&str) -> DatabaseResult<T>,
     ) -> DatabaseResult<T> {
         match field {
-            MemoryField::Title => {
-                if let Some(value) = &self.protected_title {
-                    unlock.with_root(&value.context, |root| {
-                        let plaintext = value.decrypt(root, self.id, field)?;
-                        let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
-                            DatabaseError::DecryptionError(format!(
-                                "memory-protected title is not UTF-8: {err}"
-                            ))
-                        })?;
-                        use_value(text)
-                    })
-                } else {
-                    use_value(&self.title)
-                }
-            }
+            MemoryField::Title => self.title.with_plaintext(unlock, self.id, field, use_value),
             MemoryField::UserName => self
                 .username
                 .with_plaintext(unlock, self.id, field, use_value),
             MemoryField::Password => self
                 .password
                 .with_plaintext(unlock, self.id, field, use_value),
-            MemoryField::Url => {
-                if let Some(value) = &self.protected_url {
-                    unlock.with_root(&value.context, |root| {
-                        let plaintext = value.decrypt(root, self.id, field)?;
-                        let text = std::str::from_utf8(plaintext.as_slice()).map_err(|err| {
-                            DatabaseError::DecryptionError(format!(
-                                "memory-protected URL is not UTF-8: {err}"
-                            ))
-                        })?;
-                        use_value(text)
-                    })
-                } else {
-                    use_value(&self.url)
-                }
-            }
+            MemoryField::Url => self.url.with_plaintext(unlock, self.id, field, use_value),
             MemoryField::Notes => self.notes.with_plaintext(unlock, self.id, field, use_value),
             MemoryField::Custom(name) => {
                 let value = self
@@ -332,23 +249,15 @@ impl Entry {
         protected: bool,
     ) -> DatabaseResult<()> {
         match field {
-            MemoryField::Title => {
-                self.title_is_protected = protected;
-                if protected {
-                    self.protected_title = Some(EncryptedValue::encrypt(
-                        context,
-                        root,
-                        self.id,
-                        field,
-                        value.as_bytes(),
-                    )?);
-                    self.title.zeroize();
-                    self.title.clear();
-                } else {
-                    self.protected_title = None;
-                    self.title = value.to_string();
-                }
-            }
+            MemoryField::Title => replace_protected_string(
+                &mut self.title,
+                context,
+                root,
+                self.id,
+                field,
+                value,
+                protected,
+            )?,
             MemoryField::UserName => replace_protected_string(
                 &mut self.username,
                 context,
@@ -367,23 +276,15 @@ impl Entry {
                 value,
                 protected,
             )?,
-            MemoryField::Url => {
-                self.url_is_protected = protected;
-                if protected {
-                    self.protected_url = Some(EncryptedValue::encrypt(
-                        context,
-                        root,
-                        self.id,
-                        field,
-                        value.as_bytes(),
-                    )?);
-                    self.url.zeroize();
-                    self.url.clear();
-                } else {
-                    self.protected_url = None;
-                    self.url = value.to_string();
-                }
-            }
+            MemoryField::Url => replace_protected_string(
+                &mut self.url,
+                context,
+                root,
+                self.id,
+                field,
+                value,
+                protected,
+            )?,
             MemoryField::Notes => replace_protected_string(
                 &mut self.notes,
                 context,
@@ -401,7 +302,6 @@ impl Entry {
                     .ok_or_else(|| {
                         DatabaseError::InvalidFormat(format!("unknown field: {name}"))
                     })?;
-                target.is_protected = protected;
                 replace_protected_string(
                     &mut target.value,
                     context,
@@ -421,14 +321,11 @@ impl Entry {
         unlock: &mut MemoryUnlockSession<'_>,
     ) -> DatabaseResult<Self> {
         let mut clone = self.clone();
-        let title =
-            self.with_memory_field(unlock, &MemoryField::Title, |value| Ok(value.to_string()))?;
-        clone.title = title;
-        clone.protected_title = None;
-
         for (field, target) in [
+            (MemoryField::Title, &mut clone.title),
             (MemoryField::UserName, &mut clone.username),
             (MemoryField::Password, &mut clone.password),
+            (MemoryField::Url, &mut clone.url),
             (MemoryField::Notes, &mut clone.notes),
         ] {
             let value = self.with_memory_field(unlock, &field, |value| Ok(value.to_string()))?;
@@ -439,15 +336,10 @@ impl Entry {
             }
         }
 
-        let url =
-            self.with_memory_field(unlock, &MemoryField::Url, |value| Ok(value.to_string()))?;
-        clone.url = url;
-        clone.protected_url = None;
-
         for (source, target) in self.custom_fields.iter().zip(&mut clone.custom_fields) {
             let field = MemoryField::Custom(source.name.clone());
             let value = self.with_memory_field(unlock, &field, |value| Ok(value.to_string()))?;
-            if target.is_protected {
+            if target.value.is_protected() {
                 target.value.replace_unsealed(&value);
             } else {
                 target.value.replace_plain(&value);
@@ -468,36 +360,14 @@ impl Entry {
         new_entry_id: NodeId,
     ) -> DatabaseResult<()> {
         let old_entry_id = self.id;
-        if let Some(value) = self.protected_title.take() {
-            let context = value.context.clone();
-            self.protected_title = Some(unlock.with_root(&context, |root| {
-                let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Title)?;
-                EncryptedValue::encrypt(
-                    context.clone(),
-                    root,
-                    new_entry_id,
-                    &MemoryField::Title,
-                    plaintext.as_slice(),
-                )
-            })?);
-        }
+        self.title
+            .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Title)?;
         self.username
             .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::UserName)?;
         self.password
             .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Password)?;
-        if let Some(value) = self.protected_url.take() {
-            let context = value.context.clone();
-            self.protected_url = Some(unlock.with_root(&context, |root| {
-                let plaintext = value.decrypt(root, old_entry_id, &MemoryField::Url)?;
-                EncryptedValue::encrypt(
-                    context.clone(),
-                    root,
-                    new_entry_id,
-                    &MemoryField::Url,
-                    plaintext.as_slice(),
-                )
-            })?);
-        }
+        self.url
+            .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Url)?;
         self.notes
             .rebind(unlock, old_entry_id, new_entry_id, &MemoryField::Notes)?;
         for field in &mut self.custom_fields {
@@ -529,9 +399,8 @@ impl Entry {
         if let Some(unlock) = unlock {
             self.rebind_memory_protection(unlock, new_entry_id)?;
         } else {
-            if self.title_is_protected {
-                self.title.clear();
-                self.protected_title = None;
+            if self.title.is_protected() {
+                self.title = ProtectedString::new_protected("");
             }
             if self.username.is_protected() {
                 self.username = ProtectedString::new_protected("");
@@ -539,16 +408,14 @@ impl Entry {
             if self.password.is_protected() {
                 self.password = ProtectedString::new_protected("");
             }
-            if self.url_is_protected {
-                self.url.clear();
-                self.protected_url = None;
+            if self.url.is_protected() {
+                self.url = ProtectedString::new_protected("");
             }
             if self.notes.is_protected() {
                 self.notes = ProtectedString::new_protected("");
             }
             for field in &mut self.custom_fields {
-                if field.is_protected || field.value.is_protected() {
-                    field.is_protected = true;
+                if field.value.is_protected() {
                     field.value = ProtectedString::new_protected("");
                 }
             }
@@ -645,7 +512,7 @@ impl Node for Entry {
     }
 
     fn title(&self) -> &str {
-        &self.title
+        self.title.as_unsealed_str().unwrap_or("")
     }
 
     fn last_modified(&self) -> i64 {
@@ -668,7 +535,7 @@ mod tests {
     #[test]
     fn test_entry_get_field() {
         let mut entry = Entry::new(NodeId::new_uuid());
-        entry.title = "Test".to_string();
+        entry.title = "Test".into();
         entry.username = ProtectedString::new_plain("user123");
 
         assert_eq!(entry.get_field("Title").unwrap().as_str(), "Test");
@@ -678,10 +545,10 @@ mod tests {
     #[test]
     fn test_entry_push_history() {
         let mut entry = Entry::new(NodeId::new_uuid());
-        entry.title = "V1".to_string();
+        entry.title = "V1".into();
 
         entry.push_history();
-        entry.title = "V2".to_string();
+        entry.title = "V2".into();
 
         assert_eq!(entry.history_count(), 1);
         assert_eq!(entry.history[0].title, "V1");
@@ -692,10 +559,10 @@ mod tests {
     fn test_entry_restore_from_history() {
         let mut entry = Entry::new(NodeId::new_uuid());
         let id = entry.id;
-        entry.title = "Original".to_string();
+        entry.title = "Original".into();
 
         entry.push_history();
-        entry.title = "Modified".to_string();
+        entry.title = "Modified".into();
 
         assert_eq!(entry.title, "Modified");
         assert!(entry.restore_from_history(0));
@@ -708,7 +575,7 @@ mod tests {
         let mut entry = Entry::new(NodeId::new_uuid());
         for i in 0..15 {
             entry.push_history();
-            entry.title = format!("V{}", i);
+            entry.title = format!("V{}", i).into();
         }
         assert_eq!(entry.history_count(), 10); // Limited to 10
     }

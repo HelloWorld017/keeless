@@ -399,7 +399,7 @@ mod tests {
 
     fn entry(id: i32, url: &str) -> Entry {
         let mut entry = Entry::new(NodeId::from_int(id));
-        entry.url = url.to_string();
+        entry.url = url.into();
         entry
     }
 
@@ -407,7 +407,6 @@ mod tests {
         entry.custom_fields.push(EntryField {
             name: name.to_string(),
             value: ProtectedString::new_plain(url),
-            is_protected: false,
         });
     }
 
@@ -547,12 +546,10 @@ mod tests {
 
         let sealed_id = NodeId::new_uuid();
         let mut sealed = Entry::new(sealed_id);
-        sealed.url = "https://example.com/login".into();
-        sealed.url_is_protected = true;
+        sealed.url = ProtectedString::new_protected("https://example.com/login");
         sealed.custom_fields.push(EntryField {
             name: "KP2A_URL_1".into(),
             value: ProtectedString::new_protected("https://example.com/login"),
-            is_protected: true,
         });
         database.entries.insert(sealed_id, sealed);
 
@@ -561,12 +558,10 @@ mod tests {
 
         let unsealed_id = NodeId::new_uuid();
         let mut unsealed = Entry::new(unsealed_id);
-        unsealed.url = "https://example.com/login".into();
-        unsealed.url_is_protected = true;
+        unsealed.url = ProtectedString::new_protected("https://example.com/login");
         unsealed.custom_fields.push(EntryField {
             name: "KP2A_URL_1".into(),
             value: ProtectedString::new_protected("https://example.com/login"),
-            is_protected: true,
         });
         database.entries.insert(unsealed_id, unsealed);
 

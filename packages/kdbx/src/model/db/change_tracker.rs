@@ -287,9 +287,9 @@ impl ChangeTracker {
         use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        entry.title.hash(&mut hasher);
+        entry.title.as_str().hash(&mut hasher);
         entry.username.as_str().hash(&mut hasher);
-        entry.url.hash(&mut hasher);
+        entry.url.as_str().hash(&mut hasher);
         entry.notes.as_str().hash(&mut hasher);
         hasher.finish()
     }
@@ -478,7 +478,7 @@ mod tests {
         // Add a new entry
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "New Entry".to_string();
+        entry.title = "New Entry".into();
         db.entries.insert(entry_id, entry);
 
         let diff = tracker.diff_against_snapshot(&db);
@@ -496,13 +496,13 @@ mod tests {
 
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "Original".to_string();
+        entry.title = "Original".into();
         db.entries.insert(entry_id, entry);
 
         let mut tracker = ChangeTracker::from_snapshot(&db);
 
         // Modify entry
-        db.entries.get_mut(&entry_id).unwrap().title = "Modified".to_string();
+        db.entries.get_mut(&entry_id).unwrap().title = "Modified".into();
 
         let diff = tracker.diff_against_snapshot(&db);
         assert_eq!(diff.modified_entries.len(), 1);

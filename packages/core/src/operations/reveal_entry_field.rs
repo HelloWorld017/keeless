@@ -22,10 +22,10 @@ pub(crate) fn run(
         .get_entry(&entry_id)
         .ok_or(CoreError::EntryNotFound)?;
     let (selector, custom_index) = match field_index {
-        0 if entry.title_is_protected => (Some(EntryFieldSelector::Title), None),
+        0 if entry.title.is_protected() => (Some(EntryFieldSelector::Title), None),
         1 if entry.username.is_protected() => (Some(EntryFieldSelector::UserName), None),
         2 if entry.password.is_protected() => (Some(EntryFieldSelector::Password), None),
-        3 if entry.url_is_protected => (Some(EntryFieldSelector::Url), None),
+        3 if entry.url.is_protected() => (Some(EntryFieldSelector::Url), None),
         4 if entry.notes.is_protected() => (Some(EntryFieldSelector::Notes), None),
         index if index >= 5 => {
             let index: usize = (index - 5)
@@ -35,7 +35,7 @@ pub(crate) fn run(
                 .custom_fields
                 .get(index)
                 .ok_or(CoreError::InvalidEntryField)?;
-            if !field.is_protected && !field.value.is_protected() {
+            if !field.value.is_protected() {
                 return Err(CoreError::InvalidEntryField);
             }
             (None, Some(index))

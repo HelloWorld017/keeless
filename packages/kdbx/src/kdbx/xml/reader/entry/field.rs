@@ -119,20 +119,14 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
     entry.xml_extensions.strings.insert(key.clone(), extensions);
 
     match key.as_str() {
-        "Title" => {
-            entry.title = value.to_string();
-            entry.title_is_protected = protected;
-        }
+        "Title" => entry.title = protected_string(&value, protected),
         "UserName" => {
             entry.username = protected_string(&value, protected);
         }
         "Password" => {
             entry.password = protected_string(&value, protected);
         }
-        "URL" => {
-            entry.url = value.to_string();
-            entry.url_is_protected = protected;
-        }
+        "URL" => entry.url = protected_string(&value, protected),
         "Notes" => {
             entry.notes = protected_string(&value, protected);
         }
@@ -140,7 +134,6 @@ pub(super) fn read_entry_string<R: std::io::BufRead>(
             entry.custom_fields.push(EntryField {
                 name: key,
                 value: protected_string(&value, protected),
-                is_protected: protected,
             });
         }
     }

@@ -247,12 +247,10 @@ fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
         EntryField {
             name: "Public".into(),
             value: ProtectedString::new_plain("public-value"),
-            is_protected: false,
         },
         EntryField {
             name: "Secret".into(),
             value: ProtectedString::new_protected("custom-secret"),
-            is_protected: true,
         },
     ];
     root_entry.binaries.push(EntryBinary {
@@ -262,11 +260,9 @@ fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
     });
 
     let mut child_entry = Entry::new(child_entry_id);
-    child_entry.title = "protected-title-secret".into();
-    child_entry.title_is_protected = true;
+    child_entry.title = ProtectedString::new_protected("protected-title-secret");
     child_entry.username = ProtectedString::new_protected("protected-username-secret");
-    child_entry.url = "protected-url-secret".into();
-    child_entry.url_is_protected = true;
+    child_entry.url = ProtectedString::new_protected("protected-url-secret");
     child_entry.tags = vec!["shared".into()];
     child_entry.custom_icon_uuid = Some(custom_icon_uuid);
 
@@ -321,12 +317,10 @@ async fn query_core() -> (KeelessCore, QueryIds) {
             EntryField {
                 name: "Duplicate".into(),
                 value: ProtectedString::new_protected("duplicate-first"),
-                is_protected: true,
             },
             EntryField {
                 name: "Duplicate".into(),
                 value: ProtectedString::new_protected("duplicate-second"),
-                is_protected: true,
             },
         ]);
     database.protect_entry_strings(&key).unwrap();
@@ -976,14 +970,12 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
         let database = core.handle.as_mut().unwrap().database_mut();
         assert!(database.add_group(Group::new(templates_id), &NodeId::from_uuid(ids.root_group)));
         let mut template = Entry::new(template_id);
-        template.title = "Secret Template".into();
-        template.title_is_protected = true;
+        template.title = ProtectedString::new_protected("Secret Template");
         template.username = ProtectedString::new_plain("public-user");
         template.password = ProtectedString::new_protected("secret-password");
         template.custom_fields.push(EntryField {
             name: "Secret Field".into(),
             value: ProtectedString::new_protected("secret-value"),
-            is_protected: true,
         });
         template.binaries = vec![
             EntryBinary {
@@ -1463,7 +1455,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
     let detail =
         operations::get_entry_detail::run(&mut core, GetEntryDetailArgs { entry_id: entry.id })
             .unwrap();
-    assert_eq!(detail.fields[0].value.as_deref(), Some("Untitled Entry"));
+    assert_eq!(detail.fields[0].value.as_deref(), Some(""));
 
     let group = operations::add_group::run(
         &mut core,

@@ -37,7 +37,7 @@ impl EntryKDB {
     pub fn from_kdb_fields(id: NodeId, fields: &std::collections::HashMap<u16, Vec<u8>>) -> Entry {
         let mut e = Entry::new(id);
 
-        e.title = get_string(fields, kdb_field::TITLE);
+        e.title = ProtectedString::new_plain(&get_string(fields, kdb_field::TITLE));
         e.username = ProtectedString::new_plain(&get_string(fields, kdb_field::USER_NAME));
         e.password = ProtectedString::new_protected(&get_string(fields, kdb_field::PASSWORD));
         e.notes = ProtectedString::new_plain(&get_string(fields, kdb_field::NOTES));
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn test_kdb_entry_to_fields() {
         let mut entry = Entry::new(NodeId::new_uuid());
-        entry.title = "Test".to_string();
+        entry.title = "Test".into();
         entry.username = ProtectedString::new_plain("user");
         entry.password = ProtectedString::new_protected("pass");
 
@@ -283,7 +283,7 @@ mod tests {
     fn test_roundtrip_kdb() {
         let id = NodeId::new_uuid();
         let mut entry = Entry::new(id);
-        entry.title = "RoundTrip".to_string();
+        entry.title = "RoundTrip".into();
         entry.username = ProtectedString::new_plain("u");
         entry.password = ProtectedString::new_protected("p");
         entry.notes = ProtectedString::new_plain("n");
