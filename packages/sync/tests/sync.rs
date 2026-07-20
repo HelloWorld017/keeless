@@ -403,7 +403,7 @@ async fn unsupported_write_preserves_the_local_database_and_checkpoint() {
 }
 
 #[tokio::test]
-async fn transactional_noop_and_error_do_not_dirty_or_mutate() {
+async fn atomic_change_marks_dirty_only_when_changed() {
     let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (database, entry_id) = database_with_entry("base");
@@ -413,23 +413,22 @@ async fn transactional_noop_and_error_do_not_dirty_or_mutate() {
         .await
         .unwrap();
 
-    assert!(!handle
-        .transact::<()>(|database| {
-            database.entries.get_mut(&entry_id).unwrap().title = "discarded".into();
-            Ok(false)
-        })
-        .unwrap());
+    assert!(!handle.apply_update::<()>(|_| Ok(false)).unwrap());
     assert_eq!(handle.database().entries[&entry_id].title, "base");
     assert!(!handle.is_dirty());
-    let error = handle
-        .transact::<&str>(|database| {
-            database.entries.get_mut(&entry_id).unwrap().title = "discarded".into();
-            Err("failed")
-        })
-        .unwrap_err();
+    let error = handle.apply_update::<&str>(|_| Err("failed")).unwrap_err();
     assert_eq!(error, "failed");
     assert_eq!(handle.database().entries[&entry_id].title, "base");
     assert!(!handle.is_dirty());
+
+    assert!(handle
+        .apply_update::<()>(|database| {
+            database.entries.get_mut(&entry_id).unwrap().title = "changed".into();
+            Ok(true)
+        })
+        .unwrap());
+    assert_eq!(handle.database().entries[&entry_id].title, "changed");
+    assert!(handle.is_dirty());
 }
 
 #[tokio::test]

@@ -5,6 +5,48 @@ use crate::model::meta::DeletedObject;
 use super::Database;
 
 impl Database {
+    /// Delete an entry using recycle-bin semantics after validating the complete mutation.
+    /// Returns `false` without modifying the database when the requested mode is invalid.
+    pub fn delete_entry(&mut self, entry_id: &NodeId, permanent: bool) -> bool {
+        let Some(parent_id) = self.find_parent_group_of_entry(entry_id) else {
+            return false;
+        };
+        if !self.entries.contains_key(entry_id) {
+            return false;
+        }
+
+        let in_recycle_bin = self.is_entry_in_recycle_bin(entry_id);
+        if permanent != in_recycle_bin {
+            return false;
+        }
+
+        if permanent {
+            self.entries.remove(entry_id);
+            if let Some(parent) = self.groups.get_mut(&parent_id) {
+                parent.child_entry_ids.retain(|id| id != entry_id);
+            }
+            self.deleted_objects.push(DeletedObject::new(*entry_id));
+            self.mark_modified();
+            return true;
+        }
+
+        let has_recycle_bin = self
+            .recycle_bin_uuid
+            .map(NodeId::from_uuid)
+            .is_some_and(|id| self.groups.contains_key(&id));
+        if !has_recycle_bin
+            && !self
+                .root_group_id
+                .is_some_and(|id| self.groups.contains_key(&id))
+        {
+            return false;
+        }
+        let recycle_id = self.create_recycle_bin();
+        debug_assert!(self.groups.contains_key(&recycle_id));
+        debug_assert_ne!(parent_id, recycle_id);
+        self.reposition_entry(entry_id, &recycle_id)
+    }
+
     /// Create a recycle bin group if one doesn't exist.
     pub fn create_recycle_bin(&mut self) -> NodeId {
         if let Some(uuid) = self.recycle_bin_uuid {

@@ -25,15 +25,12 @@ pub(crate) fn run(core: &mut KeelessCore, args: DeleteEntryArgs) -> Result<Empty
         .handle
         .as_mut()
         .ok_or(CoreError::DatabaseLocked)?
-        .transact::<CoreError>(|database| {
-            if !args.permanent {
-                database.create_recycle_bin();
-            }
-            database
-                .remove_entry(&entry_id, !args.permanent)
-                .ok_or(CoreError::InvalidEntryDelete)?;
-            Ok(true)
+        .apply_update::<CoreError>(|database| {
+            Ok(database.delete_entry(&entry_id, args.permanent))
         })?;
+    if !changed {
+        return Err(CoreError::InvalidEntryDelete);
+    }
     if changed {
         core.touch_activity();
     }

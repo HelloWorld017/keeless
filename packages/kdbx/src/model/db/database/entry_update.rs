@@ -44,8 +44,7 @@ impl Database {
         let original = self
             .entries
             .get(entry_id)
-            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?
-            .clone();
+            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?;
         let source_count = 5 + original.custom_fields.len();
         let mut source_indices = HashSet::new();
         let mut standard_seen = [false; 5];
@@ -220,18 +219,21 @@ impl Database {
         if !changed {
             return Ok(false);
         }
-        let mut snapshot = original;
-        snapshot.history.clear();
-        snapshot.xml_extensions.history.clear();
-        updated.history.push(snapshot);
-        if updated.history.len() > 10 {
-            updated.history.remove(0);
-        }
         updated.last_modification_time = DateInstant::now();
         if self.memory_protection_context.is_none() {
             self.memory_protection_context = Some(context);
         }
-        self.entries.insert(*entry_id, updated);
+        let current = self
+            .entries
+            .get_mut(entry_id)
+            .expect("entry existence validated");
+        let mut snapshot = std::mem::replace(current, updated);
+        snapshot.history.clear();
+        snapshot.xml_extensions.history.clear();
+        current.history.push(snapshot);
+        if current.history.len() > 10 {
+            current.history.remove(0);
+        }
         self.mark_modified();
         Ok(true)
     }

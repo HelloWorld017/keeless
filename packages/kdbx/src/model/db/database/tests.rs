@@ -147,6 +147,31 @@ fn test_remove_entry_to_recycle_bin() {
 }
 
 #[test]
+fn delete_entry_validates_mode_before_mutating() {
+    let mut db = make_test_db();
+    let root_id = db.root_group_id.unwrap();
+    let entry_id = NodeId::new_uuid();
+    db.add_entry(Entry::new(entry_id), &root_id);
+    db.data_modified = false;
+
+    assert!(!db.delete_entry(&entry_id, true));
+    assert!(db.get_entry(&entry_id).is_some());
+    assert!(db.recycle_bin_uuid.is_none());
+    assert!(!db.data_modified);
+
+    assert!(db.delete_entry(&entry_id, false));
+    assert!(db.is_entry_in_recycle_bin(&entry_id));
+    db.data_modified = false;
+
+    assert!(!db.delete_entry(&entry_id, false));
+    assert!(db.get_entry(&entry_id).is_some());
+    assert!(!db.data_modified);
+
+    assert!(db.delete_entry(&entry_id, true));
+    assert!(db.get_entry(&entry_id).is_none());
+}
+
+#[test]
 fn test_reposition_entry_validates_before_moving_and_updates_metadata() {
     let mut db = make_test_db();
     let root_id = db.root_group_id.unwrap();

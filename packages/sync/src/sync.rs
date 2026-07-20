@@ -165,15 +165,15 @@ impl FileHandle {
         &mut self.database
     }
 
-    /// Applies a database mutation to a clone and commits it only on success and change.
-    pub fn transact<E>(
+    /// Applies a mutation that provides its own atomicity and marks the handle dirty on change.
+    ///
+    /// The mutation must leave the database unchanged when it returns an error or `false`.
+    pub fn apply_update<E>(
         &mut self,
         mutate: impl FnOnce(&mut Database) -> Result<bool, E>,
     ) -> Result<bool, E> {
-        let mut database = self.database.clone();
-        let changed = mutate(&mut database)?;
+        let changed = mutate(&mut self.database)?;
         if changed {
-            self.database = database;
             self.dirty = true;
         }
         Ok(changed)
@@ -227,6 +227,7 @@ impl FileHandle {
             }
 
             let revision = require_revision(&remote, &self.path)?;
+            // Stage remote merging so failed serialization or writes cannot alter dirty local data.
             let mut target = self.database.clone();
             let mut merge_result = MergeResult::default();
             let downloaded = remote.bytes != self.checkpoint.bytes;

@@ -55,7 +55,7 @@ pub(crate) fn run(
         .handle
         .as_mut()
         .ok_or(CoreError::DatabaseLocked)?
-        .transact(|database| database.update_entry_fields(&key, &entry_id, &converted))
+        .apply_update(|database| database.update_entry_fields(&key, &entry_id, &converted))
         .map_err(|error| match error {
             DatabaseError::InvalidFormat(_) => CoreError::InvalidEntryUpdate,
             error => CoreError::from(error),
