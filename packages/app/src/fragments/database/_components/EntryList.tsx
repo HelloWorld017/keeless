@@ -7,7 +7,7 @@ import { cn } from '@/utils/css';
 import { getRoute } from '@/utils/route';
 import { useDraggable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useRoute, useSearchParams } from 'wouter';
 import { entryDndId, type EntryDragData } from '../_utils/dragAndDrop';
 import { EntryItem, getEntryTitle } from './EntryItem';
@@ -150,6 +150,17 @@ const EntryQuery = <TName extends EntryOperationName>({
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedEntry = searchParams.get('entry');
   const result = entries.data as EntriesResult | undefined;
+  const resultSorted = useMemo(() => result?.entries.slice().sort((a, b) => {
+    if (!a.name) {
+      return -1;
+    }
+
+    if (!b.name) {
+      return -1;
+    }
+
+    return a.name?.localeCompare(b.name);
+  }), [result?.entries]);
 
   return (
     <section className="flex min-h-0 w-full flex-1 flex-col border-r md:max-w-md">
@@ -184,7 +195,7 @@ const EntryQuery = <TName extends EntryOperationName>({
       )}
       {result && result.entries.length > 0 && (
         <VirtualEntryList
-          entries={result.entries}
+          entries={resultSorted}
           selectedEntry={selectedEntry}
           disabled={movePending}
           onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: true })}

@@ -1,13 +1,16 @@
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/sidebar';
+import { SidebarInset, SidebarProvider } from '@/components/sidebar';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import {
   DndContext,
+  DragOverEvent,
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
   type KeyboardCoordinateGetter,
@@ -18,10 +21,16 @@ import { useState } from 'react';
 import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
 import { Sidebar } from './_components/Sidebar';
-import type { EntryDragData } from './_utils/dragAndDrop';
+import type { DragDropData, EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
+import {cx} from '@/utils/css';
 
 const keyboardDirections = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'] as const;
+
+const collisionDetection: CollisionDetection = args =>
+  args.active.data.current?.type === 'entry' && args.pointerCoordinates
+    ? pointerWithin(args)
+    : closestCenter(args);
 
 const isKeyboardDirection = (code: string): code is (typeof keyboardDirections)[number] =>
   keyboardDirections.includes(code as (typeof keyboardDirections)[number]);
@@ -118,7 +127,8 @@ const entryQueryNames = [
 export const DatabaseFragment = () => {
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
-  const [activeEntry, setActiveEntry] = useState<EntryDragData>();
+  const [activeEntry, setActiveEntry] = useState<EntryDragData | null>(null);
+  const [activeOver, setActiveOver] = useState<DragDropData | null>();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
@@ -130,8 +140,14 @@ export const DatabaseFragment = () => {
         entryQueryNames.map(name => queryClient.invalidateQueries({ queryKey: ['request', name] })),
       ),
   });
+
+  const clearDrag = () => {
+    setActiveOver(null);
+    setActiveEntry(null);
+  };
+
   const handleDragStart = ({ active }: DragStartEvent) => {
-    const data = active.data.current;
+    const data = active.data.current as DragDropData | undefined;
     if (data?.type === 'entry') {
       setActiveEntry({
         type: 'entry',
@@ -141,10 +157,15 @@ export const DatabaseFragment = () => {
       });
     }
   };
+  const handleDragOver = ({ over }: DragOverEvent) => {
+    setActiveOver((over?.data.current as DragDropData | undefined) ?? null);
+  };
+
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    setActiveEntry(undefined);
-    const activeData = active.data.current;
-    const overData = over?.data.current;
+    clearDrag();
+    const activeData = active.data.current as DragDropData | undefined;
+    const overData = over?.data.current as DragDropData | undefined;
+
     if (
       activeData?.type !== 'entry' ||
       (overData?.type !== 'group' && overData?.type !== 'trash')
@@ -157,10 +178,11 @@ export const DatabaseFragment = () => {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       accessibility={{ announcements }}
       onDragStart={handleDragStart}
-      onDragCancel={() => setActiveEntry(undefined)}
+      onDragOver={handleDragOver}
+      onDragCancel={() => clearDrag()}
       onDragEnd={handleDragEnd}
     >
       <SidebarProvider>
@@ -176,7 +198,7 @@ export const DatabaseFragment = () => {
           <EntryItem
             entry={activeEntry.entry}
             variant="outline"
-            className="w-80 bg-background shadow-lg"
+            className={cx(`w-80 bg-background shadow-lg opacity-75 transition-opacity transition-transform`, activeOver && activeOver.type === 'group' && 'scale-50')}
           />
         )}
       </DragOverlay>

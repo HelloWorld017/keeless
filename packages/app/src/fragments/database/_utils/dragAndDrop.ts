@@ -25,3 +25,5 @@ export type TrashDropData = {
   groupId: DatabaseNodeId;
   title: 'Trash';
 };
+
+export type DragDropData = EntryDragData | GroupDragData | TrashDropData;

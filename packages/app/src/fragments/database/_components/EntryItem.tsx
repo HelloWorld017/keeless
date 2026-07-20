@@ -5,7 +5,7 @@ import type { EntrySummary } from '@keeless/schema';
 import type { ComponentProps } from 'react';
 
 export const getEntryTitle = (entry: EntrySummary) =>
-  entry.name || (entry.nameIsProtected ? 'Protected entry' : 'Untitled entry');
+  entry.name || (entry.nameIsProtected ? '(Protected Entry)' : '(Untitled Entry)');
 
 export const EntryItem = ({
   entry,
@@ -21,7 +21,7 @@ export const EntryItem = ({
   const username = entry.username || (entry.usernameIsProtected ? 'Protected username' : undefined);
   const url = entry.url || (entry.urlIsProtected ? 'Protected URL' : undefined);
   const tags = entry.tags.map(tag => `#${tag}`).join(', ');
-  const description = [username, url, tags || undefined].filter(Boolean).join(' | ');
+  const description = [url, username, tags || undefined].filter(Boolean).join(' | ');
 
   return (
     <Item
