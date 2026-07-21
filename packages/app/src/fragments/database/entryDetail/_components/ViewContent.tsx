@@ -1,5 +1,6 @@
 import { formatBytes, formatDate } from '../_utils/format';
 import { getFieldName } from '../_utils/getFieldName';
+import { FieldNote } from './FieldNote';
 import { FieldPassword } from './FieldPassword';
 import { FieldPlain } from './FieldPlain';
 import type { EntryAttachmentInformation, EntryDetailResult } from '@keeless/schema';
@@ -50,17 +51,26 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
       <DetailSection title="Fields">
         <dl className="divide-y rounded-lg border">
           {detail.fields.map(field =>
-            field.isProtected ? (
+            field.kind === 'notes' ? (
+              <FieldNote
+                key={`${detail.id}:${field.fieldId}`}
+                entryId={detail.id}
+                fieldId={field.fieldId}
+                name={getFieldName(field.kind, field.name)}
+                value={field.value}
+                isProtected={field.isProtected}
+              />
+            ) : field.isProtected ? (
               <FieldPassword
                 key={`${detail.id}:${field.fieldId}`}
                 entryId={detail.id}
                 fieldId={field.fieldId}
-                name={getFieldName(field.name)}
+                name={getFieldName(field.kind, field.name)}
               />
             ) : (
               <FieldPlain
                 key={`${detail.id}:${field.fieldId}`}
-                name={getFieldName(field.name)}
+                name={getFieldName(field.kind, field.name)}
                 value={field.value}
               />
             ),

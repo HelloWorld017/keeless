@@ -8,6 +8,7 @@ import type { DatabaseNodeId } from '@keeless/schema';
 type UseProtectedRevealOptions = {
   entryId: DatabaseNodeId;
   fieldId: string | null;
+  autoReveal?: boolean;
   onReveal: (value: string | undefined) => void;
 };
 
@@ -16,12 +17,21 @@ const revealError = (error: unknown) =>
     ? 'The master password is incorrect.'
     : 'The protected value could not be revealed.';
 
-export const useProtectedReveal = ({ entryId, fieldId, onReveal }: UseProtectedRevealOptions) => {
+export const useProtectedReveal = ({
+  entryId,
+  fieldId,
+  autoReveal = false,
+  onReveal,
+}: UseProtectedRevealOptions) => {
   const [pending, setPending] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [revealed, setRevealed] = useState(false);
   const operationRef = useRef(0);
+  const onRevealRef = useRef(onReveal);
+  useEffect(() => {
+    onRevealRef.current = onReveal;
+  }, [onReveal]);
   useEffect(
     () => () => {
       operationRef.current += 1;
@@ -31,6 +41,36 @@ export const useProtectedReveal = ({ entryId, fieldId, onReveal }: UseProtectedR
 
   const requestClient = useRequestClient();
   const onPasswordInput = usePasswordInput();
+
+  useEffect(() => {
+    if (!autoReveal || fieldId === null || !requestClient.data) {
+      return undefined;
+    }
+
+    const operation = ++operationRef.current;
+    setPending(true);
+    setError(undefined);
+    void requestClient.data
+      .request('revealEntryField', { entryId, fieldId })
+      .then(result => {
+        if (operation === operationRef.current) {
+          onRevealRef.current(result.value);
+          setRevealed(true);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (operation === operationRef.current) {
+          setPending(false);
+        }
+      });
+
+    return () => {
+      if (operation === operationRef.current) {
+        operationRef.current += 1;
+      }
+    };
+  }, [autoReveal, entryId, fieldId, requestClient.data]);
 
   if (fieldId === null) {
     return {
@@ -49,7 +89,7 @@ export const useProtectedReveal = ({ entryId, fieldId, onReveal }: UseProtectedR
   const toggleReveal = async () => {
     if (revealed) {
       operationRef.current += 1;
-      onReveal(undefined);
+      onRevealRef.current(undefined);
       setRevealed(false);
       setError(undefined);
       return;
@@ -94,7 +134,7 @@ export const useProtectedReveal = ({ entryId, fieldId, onReveal }: UseProtectedR
     if (operation !== operationRef.current) {
       return;
     }
-    onReveal(nextValue);
+    onRevealRef.current(nextValue);
     setRevealed(true);
   };
 

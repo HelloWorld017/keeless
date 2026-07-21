@@ -3,6 +3,7 @@ import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/field';
 import { Input } from '@/components/input';
 import { IconPlus, IconTrash } from '@/icons';
 import { getFieldName } from '../_utils/getFieldName';
+import { FieldNoteEditor } from './FieldNoteEditor';
 import { FieldPasswordEditor } from './FieldPasswordEditor';
 import { FieldPlainEditor } from './FieldPlainEditor';
 import type { FieldDraft } from '../_types/FieldDraft';
@@ -14,6 +15,7 @@ export const EditContent = ({
   errors,
   pending,
   onAdd,
+  onLoad,
   onChange,
   onDelete,
 }: {
@@ -22,6 +24,7 @@ export const EditContent = ({
   errors: Set<string>;
   pending: boolean;
   onAdd: () => void;
+  onLoad: (key: string, value: string) => void;
   onChange: (key: string, patch: Partial<FieldDraft>) => void;
   onDelete: (key: string) => void;
 }) => (
@@ -34,9 +37,22 @@ export const EditContent = ({
         const valueId = `${draft.key}-value`;
         const errorId = `${draft.key}-error`;
         const displayValue = draft.value ?? '';
-        const editorName = draft.name ? getFieldName(draft.name) : 'Custom field';
+        const editorName = getFieldName(draft.kind, draft.name) || 'Custom field';
 
-        const editor = draft.isProtected ? (
+        const editor = draft.kind === 'notes' ? (
+          <FieldNoteEditor
+            id={valueId}
+            entryId={entryId}
+            fieldId={draft.fieldId}
+            name={editorName}
+            value={displayValue}
+            isProtected={draft.isProtected}
+            existing={draft.fieldId !== null && !draft.valueChanged}
+            disabled={pending}
+            onLoad={value => onLoad(draft.key, value)}
+            onChange={value => onChange(draft.key, { value, valueChanged: true })}
+          />
+        ) : draft.isProtected ? (
           <FieldPasswordEditor
             id={valueId}
             entryId={entryId}
@@ -53,7 +69,6 @@ export const EditContent = ({
             name={editorName}
             value={displayValue}
             placeholder={standard ? undefined : 'Enter a value'}
-            multiline={draft.kind === 'notes'}
             disabled={pending}
             onChange={value => onChange(draft.key, { value, valueChanged: true })}
           />

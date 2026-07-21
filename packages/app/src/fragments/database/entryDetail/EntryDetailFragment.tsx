@@ -336,38 +336,43 @@ const EntryDetailQuery = ({
           <IconChevronLeft />
         </Button>
         <div className="order-2 xl:pt-4 xl:order-none">
-          {editing && (
-            <div className="flex gap-1 justify-end">
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                disabled={pending}
-                onClick={clearEditing}
-              >
-                Cancel
-              </Button>
-              <Button type="button" size="lg" disabled={pending} onClick={() => void submit()}>
-                {pending ? <IconLoaderCircle className="animate-spin" /> : 'Done'}
-              </Button>
-            </div>
-          )}
-          {!editing && detail.data && (
-            <div className="flex gap-1 justify-end">
-              <Button variant="ghost" size="lg" onClick={startEditing}>
-                <IconPencil />
-                Edit
-              </Button>
-              <Button
-                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                variant="ghost"
-                size="icon-lg"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <IconTrash />
-              </Button>
-            </div>
-          )}
+          <div className="flex gap-1 justify-end">
+            {editing && (
+              <>
+                <Button
+                  type="button"
+                  size="lg"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={clearEditing}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" size="lg" disabled={pending} onClick={() => void submit()}>
+                  {pending ? <IconLoaderCircle className="animate-spin" /> : 'Done'}
+                </Button>
+              </>
+            )}
+            {!editing && detail.data && (
+              <>
+                <Button variant="ghost" size="lg" onClick={startEditing}>
+                  <IconPencil />
+                  Edit
+                </Button>
+                <Button
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  variant="ghost"
+                  size="icon-lg"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <IconTrash />
+                </Button>
+              </>
+            )}
+            {!detail.data && (
+              <div className='h-9' />
+            )}
+          </div>
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-3 text-xl md:text-2xl 2xl:justify-center lg:text-3xl">
           <ItemIcon
@@ -413,6 +418,13 @@ const EntryDetailQuery = ({
                 drafts={drafts}
                 errors={fieldErrors}
                 pending={pending}
+                onLoad={(key, value) =>
+                  setDrafts(current =>
+                    current.map(field =>
+                      field.key === key && !field.valueChanged ? { ...field, value } : field,
+                    ),
+                  )
+                }
                 onAdd={() =>
                   setDrafts(current => [
                     ...current,
