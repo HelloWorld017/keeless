@@ -50,6 +50,7 @@ import {
   ListIcon,
   LoaderCircleIcon,
   LockKeyholeIcon,
+  LockKeyholeOpenIcon,
   LockOpenIcon,
   MailIcon,
   MailboxIcon,
@@ -155,6 +156,7 @@ export const IconLandmark = wrapLucideComponent(LandmarkIcon);
 export const IconList = wrapLucideComponent(ListIcon);
 export const IconLoaderCircle = wrapLucideComponent(LoaderCircleIcon);
 export const IconLockKeyhole = wrapLucideComponent(LockKeyholeIcon);
+export const IconLockKeyholeOpen = wrapLucideComponent(LockKeyholeOpenIcon);
 export const IconLockOpen = wrapLucideComponent(LockOpenIcon);
 export const IconMail = wrapLucideComponent(MailIcon);
 export const IconMailbox = wrapLucideComponent(MailboxIcon);

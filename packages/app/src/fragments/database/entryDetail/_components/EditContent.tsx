@@ -3,7 +3,8 @@ import { Button } from '@/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/field';
 import { Input } from '@/components/input';
-import { IconChevronRight, IconPlus, IconTrash, IconTriangleAlert } from '@/icons';
+import { Toggle } from '@/components/toggle';
+import { IconChevronRight, IconLockKeyhole, IconLockKeyholeOpen, IconPlus, IconTrash, IconTriangleAlert } from '@/icons';
 import { cn } from '@/utils/css';
 import { useState } from 'react';
 import { ExpiryEditor } from '../_layout/ExpiryEditor';
@@ -122,6 +123,7 @@ export const EditContent = ({
     const { draft } = item;
     const standard = draft.kind !== 'custom';
     const configured = draft.control !== null;
+    const canBeProtected = !configured && (draft.kind === 'custom' || draft.kind === 'notes');
     const invalid = errors.has(draft.key);
     const nameId = `${draft.key}-name`;
     const valueId = `${draft.key}-value`;
@@ -141,17 +143,35 @@ export const EditContent = ({
         onChange={value => onChange(draft.key, { value, valueChanged: true })}
       />
     );
+    const fieldLabel = (
+      <div className="flex items-center gap-1">
+        <FieldLabel htmlFor={valueId}>{editorName}</FieldLabel>
+        {canBeProtected && (
+          <Toggle
+            type="button"
+            size="sm"
+            pressed={draft.isProtected}
+            className="min-w-0 size-7 p-0 -my-3"
+            aria-label={`Protect ${editorName}`}
+            disabled={pending}
+            onPressedChange={isProtected => onChange(draft.key, { isProtected })}
+          >
+            {draft.isProtected ? <IconLockKeyhole /> : <IconLockKeyholeOpen />}
+          </Toggle>
+        )}
+      </div>
+    );
 
     return (
       <div key={draft.key}>
         {standard || configured ? (
           <Field>
-            <FieldLabel htmlFor={valueId}>{editorName}</FieldLabel>
+            {fieldLabel}
             {editor}
           </Field>
         ) : (
           <FieldGroup className="gap-3">
-            <FieldLabel htmlFor={valueId}>{editorName}</FieldLabel>
+            {fieldLabel}
             <div className="flex items-center gap-2">
               <Field data-invalid={invalid} className="min-w-0 flex-1 gap-1.5">
                 <Input
