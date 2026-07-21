@@ -11,7 +11,6 @@ use crate::model::core::security::ProtectedString;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::entry::{memory_field, EntryField, EntryFieldId, EntryFields, StandardField};
 use crate::model::exception::{DatabaseError, DatabaseResult};
-use crate::model::meta::ETM_PREFIX;
 
 use super::Database;
 
@@ -42,19 +41,7 @@ pub struct EntryPropertiesUpdate {
 }
 
 impl Database {
-    /// Atomically replace the complete ordered field list.
-    /// Returns `false` when the requested representation is semantically unchanged.
-    pub fn update_entry_fields(
-        &mut self,
-        composite_key: &CompositeKey,
-        entry_id: &NodeId,
-        fields: &[EntryFieldUpdate],
-    ) -> DatabaseResult<bool> {
-        self.update_entry(composite_key, entry_id, fields, None)
-    }
-
-    /// Atomically replace all client-visible fields and optionally update entry properties.
-    /// Reserved ETM fields are retained unchanged and cannot be submitted by clients.
+    /// Atomically replace the complete ordered field list and optionally update entry properties.
     pub fn update_entry(
         &mut self,
         composite_key: &CompositeKey,
@@ -69,21 +56,11 @@ impl Database {
         let mut source_ids = HashSet::new();
         let mut standard_seen = HashSet::new();
         for field in fields {
-            if field.name.starts_with(ETM_PREFIX) {
-                return Err(DatabaseError::InvalidFormat(
-                    "reserved entry fields cannot be updated".into(),
-                ));
-            }
             match field.field_id {
                 Some(id) if source_ids.insert(id) => {
-                    let Some(source) = original.fields.0.get(&id) else {
+                    if !original.fields.0.contains_key(&id) {
                         return Err(DatabaseError::InvalidFormat(
                             "entry field ID is invalid".into(),
-                        ));
-                    };
-                    if source.name.starts_with(ETM_PREFIX) {
-                        return Err(DatabaseError::InvalidFormat(
-                            "reserved entry fields cannot be updated".into(),
                         ));
                     }
                     match id {
@@ -144,13 +121,7 @@ impl Database {
             .iter()
             .filter_map(|field| field.field_id)
             .collect::<Vec<_>>();
-        let original_ids = original
-            .fields
-            .0
-            .iter()
-            .filter(|(_, field)| !field.name.starts_with(ETM_PREFIX))
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>();
+        let original_ids = original.fields.0.keys().copied().collect::<Vec<_>>();
         let mut changed =
             requested_ids != original_ids || fields.iter().any(|field| field.field_id.is_none());
         let mut unlock = MemoryUnlockSession::new(composite_key);
@@ -247,17 +218,7 @@ impl Database {
             Ok(())
         })?;
 
-        let mut visible_fields = visible_fields.into_iter();
-        let mut updated_fields = IndexMap::with_capacity(original.fields.0.len() + fields.len());
-        for (id, field) in &original.fields.0 {
-            if field.name.starts_with(ETM_PREFIX) {
-                updated_fields.insert(*id, field.clone());
-            } else if let Some((id, field)) = visible_fields.next() {
-                updated_fields.insert(id, field);
-            }
-        }
-        updated_fields.extend(visible_fields);
-        updated.fields = EntryFields(updated_fields);
+        updated.fields = EntryFields(visible_fields);
 
         if let Some(properties) = properties {
             changed |= updated.override_url != properties.override_url

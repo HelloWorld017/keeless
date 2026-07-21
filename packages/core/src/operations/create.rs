@@ -49,7 +49,10 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     database.add_group(templates, &root_id);
     database.entry_templates_uuid = templates_id.as_uuid().copied();
     for template in get_builtin_templates() {
-        database.add_entry(template.into_entry(), &templates_id);
+        database.add_entry(
+            keeless_kdbx::kdbx::template::builtin_entry(template),
+            &templates_id,
+        );
     }
 
     let handle =

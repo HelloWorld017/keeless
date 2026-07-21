@@ -10,5 +10,6 @@ pub mod query;
 pub mod repair;
 pub mod signature;
 pub mod stream;
+pub mod template;
 pub mod variant_dictionary;
 pub mod xml;

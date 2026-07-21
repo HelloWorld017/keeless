@@ -32,6 +32,14 @@ export const useProtectedReveal = ({
   useEffect(() => {
     onRevealRef.current = onReveal;
   }, [onReveal]);
+  useEffect(() => {
+    operationRef.current += 1;
+    onRevealRef.current(undefined);
+    setPending(false);
+    setPromptOpen(false);
+    setError(undefined);
+    setRevealed(false);
+  }, [entryId, fieldId]);
   useEffect(
     () => () => {
       operationRef.current += 1;

@@ -28,13 +28,13 @@ export type EntryFieldInformation = { fieldId: string; kind: EntryFieldKind; nam
 
 export type EntryAttachmentInformation = { name: string; size: number; isProtected: boolean }
 
-export type EtmLayout = { templateId: string; items: EtmLayoutItem[] }
+export type EntryLayout = { templateId: string; items: EntryLayoutItem[] }
 
-export type EtmLayoutItem = { label: string; target: EtmLayoutTarget; control: EtmLayoutControl }
+export type EntryLayoutItem = { label: string; target: LayoutTarget; control: FieldControl }
 
-export type EtmLayoutTarget = { type: "field"; fieldId: string | null; fieldName: string } | { type: "passwordConfirmation"; passwordFieldId: string } | { type: "overrideUrl" } | { type: "expiry" } | { type: "tags" } | { type: "divider" }
+export type LayoutTarget = { type: "field"; fieldId: string | null; fieldName: string } | { type: "passwordConfirmation"; passwordFieldId: string } | { type: "overrideUrl" } | { type: "expiry" } | { type: "tags" } | { type: "divider" }
 
-export type EtmLayoutControl = { type: "text"; protected: boolean; lines: number } | { type: "url" } | { type: "popout"; protected: boolean } | { type: "richText"; lines: number } | { type: "date" } | { type: "time" } | { type: "dateTime" } | { type: "checkbox" } | { type: "select"; options: string[] } | { type: "divider" }
+export type FieldControl = { type: "text"; protected: boolean; lines: number } | { type: "url" } | { type: "popout"; protected: boolean } | { type: "richText"; lines: number } | { type: "date" } | { type: "time" } | { type: "dateTime" } | { type: "checkbox" } | { type: "select"; options: string[] } | { type: "divider" }
 
 export type OpenArgs = { storage: StorageDescriptor }
 
@@ -114,7 +114,7 @@ export type GroupHierarchyResult = { databaseName: string; rootGroupId: Database
 
 export type TagsResult = { tags: TagSummary[] }
 
-export type EntryDetailResult = { id: DatabaseNodeId; icon: IconReference; layout: EtmLayout | null; tags: string[]; fields: EntryFieldInformation[]; backgroundColor: string; foregroundColor: string; overrideUrl: string; creationTimeMs: number | null; lastModificationTimeMs: number | null; lastAccessTimeMs: number | null; locationChangedMs: number | null; expires: boolean; expiryTimeMs: number | null; usageCount: number; attachments: EntryAttachmentInformation[] }
+export type EntryDetailResult = { id: DatabaseNodeId; icon: IconReference; layout: EntryLayout | null; tags: string[]; fields: EntryFieldInformation[]; backgroundColor: string; foregroundColor: string; overrideUrl: string; creationTimeMs: number | null; lastModificationTimeMs: number | null; lastAccessTimeMs: number | null; locationChangedMs: number | null; expires: boolean; expiryTimeMs: number | null; usageCount: number; attachments: EntryAttachmentInformation[] }
 
 export type CustomIconsResult = { icons: CustomIcon[] }
 

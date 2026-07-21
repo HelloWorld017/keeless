@@ -431,58 +431,58 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
 }
 
 #[test]
-fn etm_layout_and_entry_properties_roundtrip() {
+fn entry_layout_and_entry_properties_roundtrip() {
     assert_roundtrip(
-        EtmLayout {
+        EntryLayout {
             template_id: "template:bank-account".into(),
             items: vec![
-                EtmLayoutItem {
+                EntryLayoutItem {
                     label: "Account number".into(),
-                    target: EtmLayoutTarget::Field {
+                    target: LayoutTarget::Field {
                         field_id: Some("field:account-number".into()),
                         field_name: "Account Number".into(),
                     },
-                    control: EtmLayoutControl::Text {
+                    control: FieldControl::Text {
                         protected: false,
                         lines: 1,
                     },
                 },
-                EtmLayoutItem {
+                EntryLayoutItem {
                     label: "Account type".into(),
-                    target: EtmLayoutTarget::Field {
+                    target: LayoutTarget::Field {
                         field_id: None,
                         field_name: "Account Type".into(),
                     },
-                    control: EtmLayoutControl::Select {
+                    control: FieldControl::Select {
                         options: vec!["Checking".into(), "Savings".into()],
                     },
                 },
-                EtmLayoutItem {
+                EntryLayoutItem {
                     label: "Confirm password".into(),
-                    target: EtmLayoutTarget::PasswordConfirmation {
+                    target: LayoutTarget::PasswordConfirmation {
                         password_field_id: "standard:Password".into(),
                     },
-                    control: EtmLayoutControl::Popout { protected: true },
+                    control: FieldControl::Popout { protected: true },
                 },
-                EtmLayoutItem {
+                EntryLayoutItem {
                     label: "Website".into(),
-                    target: EtmLayoutTarget::OverrideUrl,
-                    control: EtmLayoutControl::Url,
+                    target: LayoutTarget::OverrideUrl,
+                    control: FieldControl::Url,
                 },
-                EtmLayoutItem {
+                EntryLayoutItem {
                     label: "Expires".into(),
-                    target: EtmLayoutTarget::Expiry,
-                    control: EtmLayoutControl::DateTime,
+                    target: LayoutTarget::Expiry,
+                    control: FieldControl::DateTime,
                 },
-                EtmLayoutItem {
+                EntryLayoutItem {
                     label: "Tags".into(),
-                    target: EtmLayoutTarget::Tags,
-                    control: EtmLayoutControl::RichText { lines: 2 },
+                    target: LayoutTarget::Tags,
+                    control: FieldControl::RichText { lines: 2 },
                 },
-                EtmLayoutItem {
+                EntryLayoutItem {
                     label: String::new(),
-                    target: EtmLayoutTarget::Divider,
-                    control: EtmLayoutControl::Divider,
+                    target: LayoutTarget::Divider,
+                    control: FieldControl::Divider,
                 },
             ],
         },

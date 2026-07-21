@@ -1,4 +1,4 @@
-use keeless_kdbx::NodeId;
+use keeless_kdbx::kdbx::template;
 use keeless_schema::{AddEntryFromTemplateArgs, AddEntryResult, OperationSuccess};
 
 use crate::model::{node_id, parse_node_id};
@@ -24,22 +24,17 @@ pub(crate) fn run(
     if database.get_group(&parent_group_id).is_none() {
         return Err(CoreError::GroupNotFound);
     }
-    let is_direct_template = database
-        .entry_templates_uuid
-        .map(NodeId::from_uuid)
-        .and_then(|group_id| database.get_group(&group_id))
-        .is_some_and(|group| group.child_entry_ids.contains(&template_entry_id))
-        && database
-            .get_entry(&template_entry_id)
-            .is_some_and(|entry| entry.is_etm_template());
-    if !is_direct_template {
+    if !template::is_template(database, &template_entry_id) {
         return Err(CoreError::EntryNotFound);
     }
 
-    let id = handle
-        .database_mut()
-        .instantiate_etm_template(&template_entry_id, &parent_group_id, key.as_ref())?
-        .ok_or(CoreError::EntryNotFound)?;
+    let id = template::instantiate(
+        handle.database_mut(),
+        &template_entry_id,
+        &parent_group_id,
+        key.as_ref(),
+    )?
+    .ok_or(CoreError::EntryNotFound)?;
     core.touch_activity();
     Ok(AddEntryResult { id: node_id(id) })
 }

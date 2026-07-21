@@ -1,3 +1,4 @@
+use keeless_kdbx::kdbx::template;
 use keeless_kdbx::{
     open_database, save_database, ChangeTracker, CompositeKey, Database, DatabaseError,
     DatabaseVersion, DateInstant, Entry, EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate,
@@ -78,7 +79,7 @@ fn standard_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
 fn unchanged_visible_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
     entry
         .fields()
-        .filter(|(_, field)| !field.name().starts_with("_etm_"))
+        .filter(|(_, field)| !template::is_internal_field(field.name()))
         .map(|(id, field)| EntryFieldUpdate {
             field_id: Some(id),
             name: field.name().to_string(),
@@ -119,7 +120,7 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
     ]);
 
     assert!(database
-        .update_entry_fields(&key, &entry_id, &fields)
+        .update_entry(&key, &entry_id, &fields, None)
         .unwrap());
     let entry = database.get_entry(&entry_id).unwrap();
     assert_eq!(
@@ -200,7 +201,7 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
         },
     ]);
     changed
-        .update_entry_fields(&key, &entry_id, &changed_fields)
+        .update_entry(&key, &entry_id, &changed_fields, None)
         .unwrap();
     let diff = tracker
         .diff_against_snapshot_with_credentials(&changed, &key)
@@ -216,7 +217,7 @@ fn invalid_and_noop_updates_are_atomic() {
     let mut invalid = standard_fields(&before);
     invalid[0].name = "RenamedTitle".into();
     assert!(matches!(
-        database.update_entry_fields(&key, &entry_id, &invalid),
+        database.update_entry(&key, &entry_id, &invalid, None),
         Err(DatabaseError::InvalidFormat(_))
     ));
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
@@ -245,7 +246,7 @@ fn invalid_and_noop_updates_are_atomic() {
         },
     ]);
     assert!(!database
-        .update_entry_fields(&key, &entry_id, &unchanged)
+        .update_entry(&key, &entry_id, &unchanged, None)
         .unwrap());
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
     assert!(!database.data_modified);
@@ -271,7 +272,7 @@ fn deleting_trailing_or_all_custom_fields_is_a_change() {
         );
 
         assert!(database
-            .update_entry_fields(&key, &entry_id, &fields)
+            .update_entry(&key, &entry_id, &fields, None)
             .unwrap());
         let entry = database.get_entry(&entry_id).unwrap();
         assert_eq!(entry.custom_fields().count(), retained_occurrences.len());
@@ -281,7 +282,7 @@ fn deleting_trailing_or_all_custom_fields_is_a_change() {
 }
 
 #[test]
-fn reserved_etm_fields_are_preserved_and_cannot_be_submitted() {
+fn template_metadata_is_preserved_and_cannot_be_submitted() {
     let (mut database, key, entry_id) = loaded_database();
     let reserved_id = database.get_entry_mut(&entry_id).unwrap().add_custom_field(
         "_etm_template_uuid",
@@ -291,8 +292,9 @@ fn reserved_etm_fields_are_preserved_and_cannot_be_submitted() {
     let before = database.get_entry(&entry_id).unwrap().clone();
     let fields = unchanged_visible_fields(&before);
 
+    let complete = template::merge_metadata_updates(&before, &fields).unwrap();
     assert!(!database
-        .update_entry_fields(&key, &entry_id, &fields)
+        .update_entry(&key, &entry_id, &complete, None)
         .unwrap());
     let reserved = database
         .get_entry(&entry_id)
@@ -316,7 +318,7 @@ fn reserved_etm_fields_are_preserved_and_cannot_be_submitted() {
         is_protected: false,
     });
     assert!(matches!(
-        database.update_entry_fields(&key, &entry_id, &reserved_name),
+        template::merge_metadata_updates(&before, &reserved_name),
         Err(DatabaseError::InvalidFormat(_))
     ));
 
@@ -328,7 +330,7 @@ fn reserved_etm_fields_are_preserved_and_cannot_be_submitted() {
         is_protected: false,
     });
     assert!(matches!(
-        database.update_entry_fields(&key, &entry_id, &reserved_id_submission),
+        template::merge_metadata_updates(&before, &reserved_id_submission),
         Err(DatabaseError::InvalidFormat(_))
     ));
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);

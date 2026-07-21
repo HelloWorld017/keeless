@@ -1,4 +1,4 @@
-use keeless_kdbx::NodeId;
+use keeless_kdbx::kdbx::template;
 use keeless_schema::{EntriesResult, GetEntryTemplatesArgs, OperationSuccess};
 
 use crate::model::entry_summary;
@@ -9,19 +9,10 @@ pub(crate) fn run(core: &mut KeelessCore) -> Result<EntriesResult> {
     let entries = {
         let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
         let database = handle.database();
-        database
-            .entry_templates_uuid
-            .map(NodeId::from_uuid)
-            .filter(|group_id| database.get_group(group_id).is_some())
-            .map(|group_id| {
-                database
-                    .get_entries_in_group(&group_id)
-                    .into_iter()
-                    .filter(|entry| entry.is_etm_template())
-                    .map(entry_summary)
-                    .collect()
-            })
-            .unwrap_or_default()
+        template::entries(database)
+            .into_iter()
+            .map(entry_summary)
+            .collect()
     };
     core.touch_activity();
     Ok(EntriesResult { entries })

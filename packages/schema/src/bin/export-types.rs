@@ -32,10 +32,10 @@ fn generate() -> String {
     export::<EntryFieldKind>(&mut output);
     export::<EntryFieldInformation>(&mut output);
     export::<EntryAttachmentInformation>(&mut output);
-    export::<EtmLayout>(&mut output);
-    export::<EtmLayoutItem>(&mut output);
-    export::<EtmLayoutTarget>(&mut output);
-    export::<EtmLayoutControl>(&mut output);
+    export::<EntryLayout>(&mut output);
+    export::<EntryLayoutItem>(&mut output);
+    export::<LayoutTarget>(&mut output);
+    export::<FieldControl>(&mut output);
     export::<OpenArgs>(&mut output);
     export::<CreateArgs>(&mut output);
     export::<UnlockArgs>(&mut output);

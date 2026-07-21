@@ -25,14 +25,10 @@ import { ItemIcon } from '../_components/ItemIcon';
 import { EditContent } from './_components/EditContent';
 import { PasswordPrompt } from './_components/PasswordPrompt';
 import { ViewContent } from './_components/ViewContent';
-import type { EntryPropertiesDraft } from './_types/EntryPropertiesDraft';
-import type { FieldDraft } from './_types/FieldDraft';
-import type {
-  EntryDetailResult,
-  EntryFieldUpdate,
-  EntryPropertiesUpdate,
-  EntrySummary,
-} from '@keeless/schema';
+import { useEntryEditor } from './_hooks/useEntryEditor';
+import { usePasswordConfirmations } from './_hooks/usePasswordConfirmations';
+import { getLayoutEditorOptions } from './_layout/bindings';
+import type { EntrySummary } from '@keeless/schema';
 
 const REFRESH_OPERATIONS = [
   'getEntries',
@@ -55,52 +51,6 @@ const operationError = (error: unknown, fallback: string) =>
 const needsPassword = (error: unknown) =>
   error instanceof CoreRequestError &&
   (error.code === 'password_required' || error.code === 'invalid_credentials');
-
-const createDrafts = (detail: EntryDetailResult): FieldDraft[] => {
-  const drafts: FieldDraft[] = detail.fields.map(field => ({
-    key: field.fieldId,
-    fieldId: field.fieldId,
-    kind: field.kind,
-    name: field.name,
-    value: field.isProtected ? null : (field.value ?? ''),
-    isProtected: field.isProtected,
-    originalIsProtected: field.isProtected,
-    valueChanged: false,
-  }));
-  detail.layout?.items.forEach((item, index) => {
-    if (item.target.type !== 'field') {
-      return;
-    }
-    const protectedByTemplate =
-      (item.control.type === 'text' || item.control.type === 'popout') && item.control.protected;
-    if (item.target.fieldId !== null) {
-      const draft = drafts.find(candidate => candidate.fieldId === item.target.fieldId);
-      if (draft) {
-        draft.isProtected = protectedByTemplate;
-      }
-      return;
-    }
-    drafts.push({
-      key: `layout-${index}`,
-      fieldId: null,
-      kind: 'custom',
-      name: item.target.fieldName,
-      value: '',
-      isProtected: protectedByTemplate,
-      originalIsProtected: false,
-      valueChanged: true,
-    });
-  });
-  return drafts;
-};
-
-const createPropertiesDraft = (detail: EntryDetailResult): EntryPropertiesDraft => ({
-  overrideUrl: detail.overrideUrl,
-  tags: detail.tags.join(', '),
-  tagsChanged: false,
-  expires: detail.expires,
-  expiryTimeMs: detail.expiryTimeMs,
-});
 
 const EntryDetailSkeleton = ({ pending }: { pending: boolean }) => {
   const visible = useDebouncedValue(pending, 150, false);
@@ -143,22 +93,12 @@ const EntryDetailQuery = ({
   const queryClient = useQueryClient();
   const onPasswordInput = usePasswordInput();
   const showToast = useShowToast();
-  const nextKey = useRef(0);
   const mountedRef = useRef(true);
   const operationRef = useRef(0);
   const passwordRequestRef = useRef<PasswordRequest | undefined>(undefined);
   const [editing, setEditing] = useState(false);
-  const [drafts, setDrafts] = useState<FieldDraft[]>([]);
-  const [fieldErrors, setFieldErrors] = useState(new Set<string>());
-  const [properties, setProperties] = useState<EntryPropertiesDraft>({
-    overrideUrl: '',
-    tags: '',
-    tagsChanged: false,
-    expires: false,
-    expiryTimeMs: null,
-  });
-  const [confirmations, setConfirmations] = useState<Record<string, string>>({});
-  const [confirmationErrors, setConfirmationErrors] = useState(new Set<string>());
+  const editor = useEntryEditor();
+  const confirmations = usePasswordConfirmations();
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -269,70 +209,32 @@ const EntryDetailQuery = ({
       return;
     }
 
-    setDrafts(createDrafts(detail.data));
-    setProperties(createPropertiesDraft(detail.data));
-    setConfirmations({});
-    setConfirmationErrors(new Set());
-    setFieldErrors(new Set());
+    editor.begin(detail.data, getLayoutEditorOptions(detail.data.layout, detail.data.fields));
+    confirmations.clear();
     setError(undefined);
     setEditing(true);
   };
 
   const clearEditing = () => {
     setEditing(false);
-    setDrafts([]);
-    setConfirmations({});
-    setConfirmationErrors(new Set());
-    setFieldErrors(new Set());
+    editor.clear();
+    confirmations.clear();
     setError(undefined);
   };
 
   const submit = async () => {
-    const invalid = new Set(
-      drafts
-        .filter(field => field.kind === 'custom')
-        .filter(field => !field.name.trim())
-        .map(field => field.key),
-    );
-    setFieldErrors(invalid);
-
-    const invalidConfirmations = new Set<string>();
-    detail.data?.layout?.items.forEach(item => {
-      const target = item.target;
-      if (target.type !== 'passwordConfirmation') {
-        return;
-      }
-      const password = drafts.find(field => field.fieldId === target.passwordFieldId);
-      if (password?.valueChanged && confirmations[target.passwordFieldId] !== password.value) {
-        invalidConfirmations.add(target.passwordFieldId);
-      }
-    });
-    setConfirmationErrors(invalidConfirmations);
-
-    if (invalid.size || invalidConfirmations.size) {
+    if (!detail.data) {
+      return;
+    }
+    const fieldsValid = editor.validate();
+    const confirmationsValid = confirmations.validate(detail.data.layout, editor.drafts);
+    if (!fieldsValid || !confirmationsValid) {
       return;
     }
 
     const operation = ++operationRef.current;
-    const fields: EntryFieldUpdate[] = drafts.map(field => ({
-      fieldId: field.fieldId,
-      name: field.kind === 'custom' ? field.name.trim() : field.name,
-      value: field.originalIsProtected && !field.valueChanged ? null : field.value,
-      isProtected: field.isProtected,
-    }));
-    const propertiesUpdate: EntryPropertiesUpdate | undefined = detail.data?.layout
-      ? {
-          overrideUrl: properties.overrideUrl,
-          tags: properties.tagsChanged
-            ? properties.tags
-                .split(',')
-                .map(tag => tag.trim())
-                .filter(Boolean)
-            : (detail.data?.tags ?? []),
-          expires: properties.expires,
-          expiryTimeMs: properties.expires ? properties.expiryTimeMs : null,
-        }
-      : undefined;
+    const fields = editor.fieldUpdates();
+    const propertiesUpdate = detail.data.layout ? editor.propertiesUpdate(detail.data) : undefined;
 
     setPending(true);
     setError(undefined);
@@ -499,58 +401,19 @@ const EntryDetailQuery = ({
             {editing ? (
               <EditContent
                 entryId={entry.id}
-                drafts={drafts}
+                drafts={editor.drafts}
                 layout={detail.data?.layout ?? null}
-                properties={properties}
-                confirmations={confirmations}
-                confirmationErrors={confirmationErrors}
-                errors={fieldErrors}
+                properties={editor.properties}
+                confirmations={confirmations.values}
+                confirmationErrors={confirmations.errors}
+                errors={editor.errors}
                 pending={pending}
-                onLoad={(key, value) =>
-                  setDrafts(current =>
-                    current.map(field =>
-                      field.key === key && !field.valueChanged ? { ...field, value } : field,
-                    ),
-                  )
-                }
-                onAdd={() =>
-                  setDrafts(current => [
-                    ...current,
-                    {
-                      key: `new-${nextKey.current++}`,
-                      fieldId: null,
-                      kind: 'custom',
-                      name: '',
-                      value: '',
-                      isProtected: false,
-                      originalIsProtected: false,
-                      valueChanged: true,
-                    },
-                  ])
-                }
-                onChange={(key, patch) => {
-                  setDrafts(current =>
-                    current.map(field => (field.key === key ? { ...field, ...patch } : field)),
-                  );
-
-                  if ('name' in patch) {
-                    setFieldErrors(current => {
-                      const next = new Set(current);
-                      next.delete(key);
-                      return next;
-                    });
-                  }
-                }}
-                onDelete={key => setDrafts(current => current.filter(field => field.key !== key))}
-                onPropertiesChange={patch => setProperties(current => ({ ...current, ...patch }))}
-                onConfirmationChange={(fieldId, value) => {
-                  setConfirmations(current => ({ ...current, [fieldId]: value }));
-                  setConfirmationErrors(current => {
-                    const next = new Set(current);
-                    next.delete(fieldId);
-                    return next;
-                  });
-                }}
+                onLoad={editor.load}
+                onAdd={editor.add}
+                onChange={editor.change}
+                onDelete={editor.remove}
+                onPropertiesChange={editor.changeProperties}
+                onConfirmationChange={confirmations.change}
               />
             ) : (
               <ViewContent detail={detail.data} />

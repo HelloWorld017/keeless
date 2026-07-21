@@ -1,9 +1,8 @@
+import { EntryLayoutView } from '../_layout/EntryLayoutView';
+import { resolveLayoutField } from '../_layout/bindings';
 import { formatBytes, formatDate } from '../_utils/format';
 import { getFieldName } from '../_utils/getFieldName';
-import { FieldEtmView } from './FieldEtmView';
-import { FieldNote } from './FieldNote';
-import { FieldPassword } from './FieldPassword';
-import { FieldPlain } from './FieldPlain';
+import { EntryFieldValue } from './EntryFieldValue';
 import type { EntryAttachmentInformation, EntryDetailResult } from '@keeless/schema';
 import type { ReactNode } from 'react';
 
@@ -48,51 +47,27 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
     detail.foregroundColor && ['Foreground color', detail.foregroundColor],
   ].filter((row): row is string[] => Boolean(row));
   const referencedFieldIds = new Set(
-    detail.layout?.items.flatMap(item =>
-      item.target.type === 'field' && item.target.fieldId ? [item.target.fieldId] : [],
-    ) ?? [],
+    detail.layout?.items.flatMap(item => {
+      const field = resolveLayoutField(item.target, detail.fields);
+      return field ? [field.fieldId] : [];
+    }) ?? [],
   );
   const unreferencedFields = detail.layout
     ? detail.fields.filter(field => !referencedFieldIds.has(field.fieldId))
     : detail.fields;
-  const genericField = (field: EntryDetailResult['fields'][number]) =>
-    field.kind === 'notes' ? (
-      <FieldNote
-        key={`${detail.id}:${field.fieldId}`}
-        entryId={detail.id}
-        fieldId={field.fieldId}
-        name={getFieldName(field.kind, field.name)}
-        value={field.value}
-        isProtected={field.isProtected}
-      />
-    ) : field.isProtected ? (
-      <FieldPassword
-        key={`${detail.id}:${field.fieldId}`}
-        entryId={detail.id}
-        fieldId={field.fieldId}
-        name={getFieldName(field.kind, field.name)}
-      />
-    ) : (
-      <FieldPlain
-        key={`${detail.id}:${field.fieldId}`}
-        name={getFieldName(field.kind, field.name)}
-        value={field.value}
-      />
-    );
+  const genericField = (field: EntryDetailResult['fields'][number]) => (
+    <EntryFieldValue
+      key={`${detail.id}:${field.fieldId}`}
+      entryId={detail.id}
+      field={field}
+      label={getFieldName(field.kind, field.name)}
+    />
+  );
   return (
     <div className="w-full max-w-3xl space-y-8 p-4 sm:p-6">
       <DetailSection title="Fields">
         <dl className="divide-y rounded-lg border">
-          {detail.layout?.items.map((item, index) => (
-            <FieldEtmView
-              key={`${item.target.type}:${index}`}
-              item={item}
-              detail={detail}
-              field={detail.fields.find(
-                field => item.target.type === 'field' && field.fieldId === item.target.fieldId,
-              )}
-            />
-          ))}
+          {detail.layout && <EntryLayoutView detail={detail} layout={detail.layout} />}
           {unreferencedFields.map(genericField)}
         </dl>
       </DetailSection>

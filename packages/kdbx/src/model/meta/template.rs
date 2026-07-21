@@ -5,10 +5,6 @@
 use crate::model::core::{NodeId, ProtectedString};
 use crate::model::entry::Entry;
 use crate::model::meta::icon::{IconImage, IconImageStandard};
-use crate::model::meta::{
-    EtmFieldType, ETM_OPTIONS_PREFIX, ETM_POSITION_PREFIX, ETM_TEMPLATE, ETM_TITLE_PREFIX,
-    ETM_TYPE_PREFIX,
-};
 
 /// Template field definition
 #[derive(Debug, Clone)]
@@ -80,11 +76,8 @@ impl Template {
         entry.set_title(ProtectedString::new_plain(&self.title));
         entry.icon = IconImage::Standard(IconImageStandard::new(self.icon_id));
         entry.is_template = true;
-        entry.add_custom_field(ETM_TEMPLATE, ProtectedString::new_plain("1"));
 
-        for (position, field) in self.fields.into_iter().enumerate() {
-            let etm_type = etm_type_for_template_field(&field);
-            let metadata_name = field.name.clone();
+        for field in self.fields {
             let value = || {
                 if field.is_protected {
                     ProtectedString::new_protected("")
@@ -109,39 +102,9 @@ impl Template {
                     entry.add_custom_field(field.name, value());
                 }
             }
-            entry.add_custom_field(
-                format!("{ETM_TITLE_PREFIX}{metadata_name}"),
-                ProtectedString::new_plain(&metadata_name),
-            );
-            entry.add_custom_field(
-                format!("{ETM_TYPE_PREFIX}{metadata_name}"),
-                ProtectedString::new_plain(etm_type.as_str()),
-            );
-            entry.add_custom_field(
-                format!("{ETM_POSITION_PREFIX}{metadata_name}"),
-                ProtectedString::new_plain(&position.to_string()),
-            );
-            entry.add_custom_field(
-                format!("{ETM_OPTIONS_PREFIX}{metadata_name}"),
-                ProtectedString::new_plain(""),
-            );
         }
 
         entry
-    }
-}
-
-fn etm_type_for_template_field(field: &TemplateField) -> EtmFieldType {
-    if field.is_protected {
-        return EtmFieldType::ProtectedInline;
-    }
-    match field.field_type {
-        TemplateFieldType::Url => EtmFieldType::InlineUrl,
-        TemplateFieldType::Date => EtmFieldType::Date,
-        TemplateFieldType::Toggle => EtmFieldType::Checkbox,
-        TemplateFieldType::List => EtmFieldType::Listbox,
-        TemplateFieldType::Text if field.name == "Notes" => EtmFieldType::RichTextbox,
-        _ => EtmFieldType::Inline,
     }
 }
 
@@ -423,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn builtin_template_converts_to_template_entry() {
+    fn builtin_template_converts_to_generic_entry() {
         let template = get_builtin_templates()
             .into_iter()
             .find(|template| template.name == "Credit Card")
@@ -432,15 +395,7 @@ mod tests {
 
         assert_eq!(entry.title(), "Credit Card");
         assert!(entry.is_template);
-        assert_eq!(entry.custom_fields().count(), 34);
-        assert!(entry.is_etm_template());
-        let metadata = crate::model::meta::parse_etm_template(&entry).unwrap();
-        assert_eq!(metadata.fields.len(), 7);
-        assert_eq!(metadata.fields[0].position, 0);
-        assert_eq!(metadata.fields[6].position, 6);
-        assert!(entry.custom_fields().any(|(_, field)| {
-            field.name() == "_etm_options_Card Number" && field.value().as_str().is_empty()
-        }));
+        assert_eq!(entry.custom_fields().count(), 5);
         assert!(entry
             .custom_fields()
             .find(|(_, field)| field.name == "Card Number")

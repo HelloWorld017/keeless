@@ -1,13 +1,9 @@
 use std::collections::HashSet;
 
-use keeless_kdbx::{
-    Database, ETM_PREFIX, Entry, EntryFieldId, EtmFieldType, EtmTarget, IconImage, NodeId,
-    StandardField, parse_etm_template,
-};
+use keeless_kdbx::{Database, Entry, IconImage, NodeId, StandardField};
 use keeless_schema::{
     DatabaseNodeId, EntryAttachmentInformation, EntryDetailResult, EntryFieldInformation,
-    EntryFieldKind, EntrySummary, EtmLayout, EtmLayoutControl, EtmLayoutItem, EtmLayoutTarget,
-    GroupHierarchyItem, GroupHierarchyResult, IconReference,
+    EntryFieldKind, EntrySummary, GroupHierarchyItem, GroupHierarchyResult, IconReference,
 };
 use uuid::Uuid;
 
@@ -210,10 +206,9 @@ pub(super) fn group_hierarchy(database: &Database) -> Result<GroupHierarchyResul
     })
 }
 
-pub(super) fn entry_detail(database: &Database, entry: &Entry) -> EntryDetailResult {
+pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
     let fields = entry
         .fields()
-        .filter(|(_, field)| !field.name().starts_with(ETM_PREFIX))
         .map(|(id, field)| {
             let is_protected = field.value().is_protected();
             let kind = match field.standard() {
@@ -237,7 +232,7 @@ pub(super) fn entry_detail(database: &Database, entry: &Entry) -> EntryDetailRes
     EntryDetailResult {
         id: node_id(entry.id),
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),
-        layout: etm_layout(database, entry),
+        layout: None,
         tags: entry.tags.clone(),
         fields,
         background_color: entry.background_color.clone(),
@@ -260,89 +255,4 @@ pub(super) fn entry_detail(database: &Database, entry: &Entry) -> EntryDetailRes
             })
             .collect(),
     }
-}
-
-fn etm_layout(database: &Database, entry: &Entry) -> Option<EtmLayout> {
-    let template = database.resolve_etm_template(entry)?;
-    let parsed = parse_etm_template(template)?;
-    let items = parsed
-        .fields
-        .into_iter()
-        .filter_map(|field| {
-            let field_type = field.field_type?;
-            let control = match field_type {
-                EtmFieldType::Inline => EtmLayoutControl::Text {
-                    protected: false,
-                    lines: field.lines,
-                },
-                EtmFieldType::ProtectedInline => EtmLayoutControl::Text {
-                    protected: true,
-                    lines: field.lines,
-                },
-                EtmFieldType::InlineUrl => EtmLayoutControl::Url,
-                EtmFieldType::Popout => EtmLayoutControl::Popout { protected: false },
-                EtmFieldType::ProtectedPopout => EtmLayoutControl::Popout { protected: true },
-                EtmFieldType::RichTextbox => EtmLayoutControl::RichText { lines: field.lines },
-                EtmFieldType::Date => EtmLayoutControl::Date,
-                EtmFieldType::Time => EtmLayoutControl::Time,
-                EtmFieldType::DateTime => EtmLayoutControl::DateTime,
-                EtmFieldType::Checkbox => EtmLayoutControl::Checkbox,
-                EtmFieldType::Listbox => EtmLayoutControl::Select {
-                    options: field.list_options,
-                },
-                EtmFieldType::Divider => EtmLayoutControl::Divider,
-            };
-            let target = if field_type == EtmFieldType::Divider {
-                EtmLayoutTarget::Divider
-            } else {
-                match field.target {
-                    EtmTarget::Standard(standard) => EtmLayoutTarget::Field {
-                        field_id: Some(EntryFieldId::Standard(standard).to_string()),
-                        field_name: field.storage_name.clone(),
-                    },
-                    EtmTarget::Custom(name) => EtmLayoutTarget::Field {
-                        field_id: unique_custom_field_id(entry, &name)?,
-                        field_name: name,
-                    },
-                    EtmTarget::Confirm => EtmLayoutTarget::PasswordConfirmation {
-                        password_field_id: EntryFieldId::Standard(StandardField::Password)
-                            .to_string(),
-                    },
-                    EtmTarget::OverrideUrl => EtmLayoutTarget::OverrideUrl,
-                    EtmTarget::Expiration => EtmLayoutTarget::Expiry,
-                    EtmTarget::Tags => EtmLayoutTarget::Tags,
-                    EtmTarget::Special(_) => return None,
-                }
-            };
-            Some(EtmLayoutItem {
-                label: if field.title.is_empty() {
-                    field.storage_name
-                } else {
-                    field.title
-                },
-                target,
-                control,
-            })
-        })
-        .collect();
-
-    Some(EtmLayout {
-        template_id: template
-            .id
-            .as_uuid()
-            .expect("resolved ETM templates have UUID identities")
-            .hyphenated()
-            .to_string(),
-        items,
-    })
-}
-
-fn unique_custom_field_id(entry: &Entry, name: &str) -> Option<Option<String>> {
-    let mut matches = entry
-        .custom_fields()
-        .filter(|(_, field)| field.name() == name);
-    let Some((id, _)) = matches.next() else {
-        return Some(None);
-    };
-    matches.next().is_none().then(|| Some(id.to_string()))
 }

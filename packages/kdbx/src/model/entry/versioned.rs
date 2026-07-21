@@ -202,18 +202,6 @@ impl EntryKDB {
 pub struct EntryKDBX;
 
 impl EntryKDBX {
-    /// Get the template type from an entry's custom fields.
-    /// This is used to determine what template icon/metadata to show.
-    pub fn get_template_type(entry: &Entry) -> Option<String> {
-        // Check if the entry has a "_etm_type" custom field ( KeePass template marker)
-        for (_, f) in entry.custom_fields() {
-            if f.name == "KeePassFieldType" || f.name == "_etm_type" {
-                return Some(f.value.as_str().to_string());
-            }
-        }
-        None
-    }
-
     /// Check if entry should be serialized with protected fields.
     /// In KDBX, the inner stream cipher handles protection.
     pub fn should_protect_field(field_name: &str) -> bool {

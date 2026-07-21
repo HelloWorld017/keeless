@@ -246,7 +246,7 @@ mod tests {
         .collect::<Vec<_>>();
         let key = crate::CompositeKey::new().with_password(b"test").unwrap();
 
-        assert!(db.update_entry_fields(&key, &entry_id, &fields).unwrap());
+        assert!(db.update_entry(&key, &entry_id, &fields, None).unwrap());
         db.entries.get_mut(&entry_id).unwrap().history.clear();
         let mut write_stream = Salsa20InnerStream::new(stream_key).unwrap();
         let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();

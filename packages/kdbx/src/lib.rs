@@ -21,17 +21,14 @@ pub use model::exception::{DatabaseError, DatabaseResult};
 
 // ─── Element (Data Models) ────────────────────────────────────────────
 pub use model::{
-    get_builtin_templates, parse_etm_template, parse_tags, serialize_tags, AutoType,
-    AutoTypeAssociation, BinaryCache, BinaryData, BinaryPool, BinaryStreamReader,
-    BinaryStreamWriter, ChangeRecord, ChangeTracker, ChangeType, CompositeKey, CustomData,
-    CustomDataItem, Database, DatabaseVersion, DateInstant, DeletedObject, DiffResult, Entry,
-    EntryBinary, EntryField, EntryFieldId, EntryFieldSelector, EntryFieldUpdate, EntryKDB,
-    EntryKDBX, EntryPropertiesUpdate, EtmField, EtmFieldType, EtmTarget, EtmTemplate,
-    FieldReference, Group, GroupKDB, GroupKDBX, IconImage, IconImageCustom, IconImageStandard,
-    MasterCredential, MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, ProtectedString,
-    RefTarget, SortNodeEnum, StandardField, Tag, Template, TemplateField, TemplateFieldType,
-    TraversalOrder, ETM_OPTIONS_PREFIX, ETM_POSITION_PREFIX, ETM_PREFIX, ETM_TEMPLATE,
-    ETM_TEMPLATE_UUID, ETM_TITLE_PREFIX, ETM_TYPE_PREFIX,
+    get_builtin_templates, parse_tags, serialize_tags, AutoType, AutoTypeAssociation, BinaryCache,
+    BinaryData, BinaryPool, BinaryStreamReader, BinaryStreamWriter, ChangeRecord, ChangeTracker,
+    ChangeType, CompositeKey, CustomData, CustomDataItem, Database, DatabaseVersion, DateInstant,
+    DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldId, EntryFieldSelector,
+    EntryFieldUpdate, EntryKDB, EntryKDBX, EntryPropertiesUpdate, FieldReference, Group, GroupKDB,
+    GroupKDBX, IconImage, IconImageCustom, IconImageStandard, MasterCredential,
+    MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, ProtectedString, RefTarget,
+    SortNodeEnum, StandardField, Tag, Template, TemplateField, TemplateFieldType, TraversalOrder,
 };
 
 // ─── Crypto ───────────────────────────────────────────────────────────

@@ -141,17 +141,17 @@ pub struct EntryAttachmentInformation {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EtmLayout {
+pub struct EntryLayout {
     pub template_id: String,
-    pub items: Vec<EtmLayoutItem>,
+    pub items: Vec<EntryLayoutItem>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EtmLayoutItem {
+pub struct EntryLayoutItem {
     pub label: String,
-    pub target: EtmLayoutTarget,
-    pub control: EtmLayoutControl,
+    pub target: LayoutTarget,
+    pub control: FieldControl,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -161,7 +161,7 @@ pub struct EtmLayoutItem {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub enum EtmLayoutTarget {
+pub enum LayoutTarget {
     Field {
         #[serde(rename = "fieldId", deserialize_with = "deserialize_nullable")]
         field_id: Option<String>,
@@ -185,7 +185,7 @@ pub enum EtmLayoutTarget {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub enum EtmLayoutControl {
+pub enum FieldControl {
     Text { protected: bool, lines: u8 },
     Url,
     Popout { protected: bool },
@@ -510,7 +510,7 @@ pub struct EntryDetailResult {
     pub id: DatabaseNodeId,
     pub icon: IconReference,
     #[serde(deserialize_with = "deserialize_nullable")]
-    pub layout: Option<EtmLayout>,
+    pub layout: Option<EntryLayout>,
     pub tags: Vec<String>,
     pub fields: Vec<EntryFieldInformation>,
     pub background_color: String,

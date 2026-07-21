@@ -36,9 +36,6 @@ pub use entry::{Entry, EntryBinary, EntryField, EntryFieldId, StandardField};
 pub use group::versioned::{GroupKDB, GroupKDBX};
 pub use group::Group;
 pub use meta::{
-    get_builtin_templates, parse_etm_template, parse_tags, serialize_tags, CustomData,
-    CustomDataItem, DeletedObject, EtmField, EtmFieldType, EtmTarget, EtmTemplate, IconImage,
-    IconImageCustom, IconImageStandard, Tag, Template, TemplateField, TemplateFieldType,
-    ETM_OPTIONS_PREFIX, ETM_POSITION_PREFIX, ETM_PREFIX, ETM_TEMPLATE, ETM_TEMPLATE_UUID,
-    ETM_TITLE_PREFIX, ETM_TYPE_PREFIX,
+    get_builtin_templates, parse_tags, serialize_tags, CustomData, CustomDataItem, DeletedObject,
+    IconImage, IconImageCustom, IconImageStandard, Tag, Template, TemplateField, TemplateFieldType,
 };
