@@ -42,6 +42,7 @@ fn generate() -> String {
     export_empty("GetConfigArgs", &mut output);
     export::<SetConfigArgs>(&mut output);
     export::<GetEntriesArgs>(&mut output);
+    export::<SearchEntriesArgs>(&mut output);
     export_empty("GetGroupHierarchyArgs", &mut output);
     export::<GetGroupEntriesArgs>(&mut output);
     export::<GetTagEntriesArgs>(&mut output);

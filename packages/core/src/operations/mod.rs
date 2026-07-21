@@ -23,6 +23,7 @@ pub(crate) mod open;
 pub(crate) mod rename_group;
 pub(crate) mod reveal_entry_field;
 pub(crate) mod save_database;
+pub(crate) mod search_entries;
 pub(crate) mod set_config;
 pub(crate) mod unlock;
 pub(crate) mod update_entry;
@@ -45,6 +46,7 @@ pub(crate) async fn execute(
         Operation::GetConfig(args) => get_config::execute(core, args),
         Operation::SetConfig(args) => set_config::execute(core, args).await,
         Operation::GetEntries(args) => get_entries::execute(core, args),
+        Operation::SearchEntries(args) => search_entries::execute(core, args),
         Operation::GetGroupHierarchy(args) => get_group_hierarchy::execute(core, args),
         Operation::GetGroupEntries(args) => get_group_entries::execute(core, args),
         Operation::GetTagEntries(args) => get_tag_entries::execute(core, args),

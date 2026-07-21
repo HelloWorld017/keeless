@@ -276,6 +276,12 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SearchEntriesArgs {
+    pub query: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
 pub struct GetGroupHierarchyArgs {}
@@ -432,6 +438,7 @@ pub enum Operation {
     GetConfig(GetConfigArgs),
     SetConfig(SetConfigArgs),
     GetEntries(GetEntriesArgs),
+    SearchEntries(SearchEntriesArgs),
     GetGroupHierarchy(GetGroupHierarchyArgs),
     GetGroupEntries(GetGroupEntriesArgs),
     GetTagEntries(GetTagEntriesArgs),
@@ -568,6 +575,7 @@ pub enum OperationSuccess {
     GetConfig(ConfigResult),
     SetConfig(EmptyResult),
     GetEntries(EntriesResult),
+    SearchEntries(EntriesResult),
     GetGroupHierarchy(GroupHierarchyResult),
     GetGroupEntries(EntriesResult),
     GetTagEntries(EntriesResult),

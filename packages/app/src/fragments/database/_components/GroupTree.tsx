@@ -70,7 +70,7 @@ type DropIndicator = {
   edge: 'before' | 'after';
 };
 
-const flattenHierarchy = (hierarchy: GroupHierarchyResult) => {
+export const flattenHierarchy = (hierarchy: GroupHierarchyResult) => {
   const groups = new Map(hierarchy.groups.map(group => [nodeKey(group.id), group]));
   const hidden = new Set<string>();
   const hide = (id: DatabaseNodeId) => {

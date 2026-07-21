@@ -16,7 +16,7 @@ use keeless_schema::{
     EntryFieldUpdate as SchemaEntryFieldUpdate, EntryPropertiesUpdate, FieldControl,
     GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
     GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
-    OperationResponse, OperationSuccess, RenameGroupArgs,
+    OperationResponse, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -1004,6 +1004,112 @@ async fn template_queries_are_direct_and_excluded_from_regular_results() {
             .tags
             .iter()
             .all(|tag| tag.name != "template-only")
+    );
+}
+
+#[tokio::test]
+async fn search_entries_preserves_relevance_and_applies_visibility_and_protection_policy() {
+    let (mut core, ids) = query_core().await;
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let high_score_id = NodeId::from_uuid(Uuid::from_u128(60));
+    let low_score_id = NodeId::from_uuid(Uuid::from_u128(61));
+    let template_id = NodeId::from_uuid(Uuid::from_u128(62));
+    let templates_uuid = Uuid::from_u128(63);
+    {
+        let database = core.handle.as_mut().unwrap().database_mut();
+        let root_id = NodeId::from_uuid(ids.root_group);
+
+        let mut high_score = Entry::new(high_score_id);
+        high_score.set_title("Needle account");
+        high_score.set_username(ProtectedString::new_plain("needle-user"));
+        assert!(database.add_entry(high_score, &root_id));
+
+        let mut low_score = Entry::new(low_score_id);
+        low_score.set_title("Other account");
+        low_score.set_username(ProtectedString::new_plain("needle-user"));
+        assert!(database.add_entry(low_score, &root_id));
+
+        let recycle_bin_id = database.create_recycle_bin();
+        let mut trash = Entry::new(NodeId::from_uuid(Uuid::from_u128(64)));
+        trash.set_title("Needle trash");
+        assert!(database.add_entry(trash, &recycle_bin_id));
+
+        let templates_id = NodeId::from_uuid(templates_uuid);
+        assert!(database.add_group(Group::new(templates_id), &root_id));
+        let mut template = Entry::new(template_id);
+        template.set_title("Needle template");
+        template.add_custom_field("_etm_template", ProtectedString::new_plain("1"));
+        assert!(database.add_entry(template, &templates_id));
+        database.entry_templates_uuid = Some(templates_uuid);
+        database.protect_entry_strings(&key).unwrap();
+    }
+
+    let entries = operations::search_entries::run(
+        &mut core,
+        SearchEntriesArgs {
+            query: "needle".into(),
+        },
+    )
+    .unwrap()
+    .entries;
+    assert_eq!(
+        entries
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>(),
+        vec![
+            crate::model::node_id(high_score_id),
+            crate::model::node_id(low_score_id)
+        ]
+    );
+
+    let protected = operations::execute(
+        &mut core,
+        Operation::SearchEntries(SearchEntriesArgs {
+            query: "protected-title-secret".into(),
+        }),
+    )
+    .await
+    .unwrap();
+    let OperationSuccess::SearchEntries(protected) = protected else {
+        panic!("unexpected operation result");
+    };
+    assert_eq!(protected.entries.len(), 1);
+    assert_eq!(protected.entries[0].id, schema_id(ids.child_entry));
+    assert_eq!(protected.entries[0].name, None);
+
+    assert!(
+        operations::search_entries::run(
+            &mut core,
+            SearchEntriesArgs {
+                query: "password-secret".into(),
+            },
+        )
+        .unwrap()
+        .entries
+        .is_empty()
+    );
+
+    operations::set_config::run(
+        &mut core,
+        KeelessConfigPatch {
+            auto_lock_timeout_ms: None,
+            paranoia_mode: Some(true),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(core.credential.is_none());
+    assert!(
+        operations::search_entries::run(
+            &mut core,
+            SearchEntriesArgs {
+                query: "protected-title-secret".into(),
+            },
+        )
+        .unwrap()
+        .entries
+        .is_empty()
     );
 }
 
@@ -2313,6 +2419,15 @@ async fn database_query_operations_report_lookup_errors_and_require_unlock() {
     operations::lock::run(&mut core);
     assert!(matches!(
         operations::get_entries::run(&mut core, GetEntriesArgs::default()),
+        Err(CoreError::DatabaseLocked)
+    ));
+    assert!(matches!(
+        operations::search_entries::run(
+            &mut core,
+            SearchEntriesArgs {
+                query: "entry".into(),
+            },
+        ),
         Err(CoreError::DatabaseLocked)
     ));
     assert!(matches!(

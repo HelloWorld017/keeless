@@ -109,6 +109,8 @@ export type SetConfigArgs = { config: KeelessConfigPatch };
 
 export type GetEntriesArgs = { excludeTrash?: boolean };
 
+export type SearchEntriesArgs = { query: string };
+
 export type GetGroupHierarchyArgs = Record<string, never>;
 
 export type GetGroupEntriesArgs = { groupId: DatabaseNodeId };
@@ -187,6 +189,7 @@ export type Operation =
   | { op: 'getConfig'; args: GetConfigArgs }
   | { op: 'setConfig'; args: SetConfigArgs }
   | { op: 'getEntries'; args: GetEntriesArgs }
+  | { op: 'searchEntries'; args: SearchEntriesArgs }
   | { op: 'getGroupHierarchy'; args: GetGroupHierarchyArgs }
   | { op: 'getGroupEntries'; args: GetGroupEntriesArgs }
   | { op: 'getTagEntries'; args: GetTagEntriesArgs }
@@ -217,6 +220,7 @@ export type OperationRequest = (
   | { op: 'getConfig'; args: GetConfigArgs }
   | { op: 'setConfig'; args: SetConfigArgs }
   | { op: 'getEntries'; args: GetEntriesArgs }
+  | { op: 'searchEntries'; args: SearchEntriesArgs }
   | { op: 'getGroupHierarchy'; args: GetGroupHierarchyArgs }
   | { op: 'getGroupEntries'; args: GetGroupEntriesArgs }
   | { op: 'getTagEntries'; args: GetTagEntriesArgs }
@@ -294,6 +298,7 @@ export type OperationSuccess =
   | { op: 'getConfig'; result: ConfigResult }
   | { op: 'setConfig'; result: EmptyResult }
   | { op: 'getEntries'; result: EntriesResult }
+  | { op: 'searchEntries'; result: EntriesResult }
   | { op: 'getGroupHierarchy'; result: GroupHierarchyResult }
   | { op: 'getGroupEntries'; result: EntriesResult }
   | { op: 'getTagEntries'; result: EntriesResult }

@@ -124,8 +124,9 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
             control={field.control}
           />
         );
+      default:
+        return null;
     }
-    return null;
   };
 
   return (

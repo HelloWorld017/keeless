@@ -1,5 +1,6 @@
 import { SidebarInset, SidebarProvider } from '@/components/sidebar';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useNavigate } from '@/fragments/_providers/RouterProvider';
 import { cx } from '@/utils/css';
 import { buildRoute } from '@/utils/route';
 import {
@@ -25,6 +26,7 @@ import { Redirect, useSearchParams } from 'wouter';
 import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
 import { GroupDragOverlay } from './_components/GroupTree';
+import { SearchCommand } from './_components/SearchCommand';
 import { Sidebar } from './_components/Sidebar';
 import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
@@ -64,6 +66,7 @@ const announcements = {
 
 const entryQueryNames = [
   'getEntries',
+  'searchEntries',
   'getGroupEntries',
   'getTagEntries',
   'getTrashEntries',
@@ -74,7 +77,10 @@ const entryQueryNames = [
 const DatabaseFragmentContents = () => {
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [activeDrag, setActiveDrag] = useState<DragDropData | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
   const [entryOverGroup, setEntryOverGroup] = useState(false);
   const [movingEntry, setMovingEntry] = useState<Pick<EntryDragData, 'entryId' | 'source'>>();
   const validEntryDrop = useRef(false);
@@ -170,7 +176,9 @@ const DatabaseFragmentContents = () => {
       activeData.source.type === 'group' ||
       (activeData.source.type === 'trash' &&
         (overData.type === 'group' || overData.type === 'root')) ||
-      ((activeData.source.type === 'all' || activeData.source.type === 'tag') &&
+      ((activeData.source.type === 'all' ||
+        activeData.source.type === 'search' ||
+        activeData.source.type === 'tag') &&
         overData.type === 'trash');
 
     if (leavesCurrentList) {
@@ -198,13 +206,23 @@ const DatabaseFragmentContents = () => {
       onDragEnd={handleDragEnd}
     >
       <SidebarProvider className="[--sidebar-width:16rem]! xl:[--sidebar-width:18rem]!">
-        <Sidebar />
+        <Sidebar onSearch={() => setSearchOpen(true)} />
+        <SearchCommand
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          onSearch={query => {
+            const search = crypto.randomUUID();
+            setSearchQueries(current => ({ ...current, [search]: query }));
+            navigate(buildRoute('search', { search }));
+          }}
+        />
         <SidebarInset className="h-svh overflow-hidden">
           <div className="flex min-h-0 flex-1">
             <EntryList
               movePending={moveEntry.isPending}
               moveError={moveEntry.isError}
               hiddenEntry={movingEntry}
+              searchQueries={searchQueries}
             />
           </div>
         </SidebarInset>

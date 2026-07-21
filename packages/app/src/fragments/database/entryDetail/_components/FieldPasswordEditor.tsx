@@ -2,6 +2,7 @@ import { Button } from '@/components/button';
 import { Input } from '@/components/input';
 import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
 import { useProtectedReveal } from '../_hooks/useProtectedReveal';
+import { PasswordGenerator } from './PasswordGenerator';
 import type { DatabaseNodeId } from '@keeless/schema';
 
 export const FieldPasswordEditor = ({
@@ -65,6 +66,7 @@ export const FieldPasswordEditor = ({
             <IconEye />
           )}
         </Button>
+        <PasswordGenerator name={name} disabled={disabled} onConfirm={onChange} />
       </div>
       {prompt}
       {error && !promptOpen && (

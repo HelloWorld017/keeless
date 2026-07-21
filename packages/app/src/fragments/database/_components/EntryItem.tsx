@@ -21,7 +21,7 @@ export const EntryItem = ({
   const username = entry.username || (entry.usernameIsProtected ? 'Protected username' : undefined);
   const url = entry.url || (entry.urlIsProtected ? 'Protected URL' : undefined);
   const tags = entry.tags.map(tag => `#${tag}`).join(', ');
-  const description = [url, username, tags || undefined].filter(Boolean).join(' | ');
+  const description = [username, url].filter(Boolean).join(' | ');
 
   return (
     <Item
@@ -35,7 +35,7 @@ export const EntryItem = ({
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className={cx(selected && 'text-primary-foreground')}>{title}</ItemTitle>
         <ItemDescription
-          className={cx('min-h-5 line-clamp-1', selected && 'text-primary-foreground/75')}
+          className={cx('min-h-5 line-clamp-1 break-all', selected && 'text-primary-foreground/75')}
         >
           {description}
         </ItemDescription>

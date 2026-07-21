@@ -10,6 +10,7 @@ import {
   BookOpenTextIcon,
   CameraIcon,
   CalendarIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -70,6 +71,7 @@ import {
   PuzzleIcon,
   RadioIcon,
   RadioTowerIcon,
+  RefreshCwIcon,
   SaveIcon,
   ScanLineIcon,
   SearchIcon,
@@ -113,6 +115,7 @@ export const IconBookOpen = wrapLucideComponent(BookOpenIcon);
 export const IconBookOpenText = wrapLucideComponent(BookOpenTextIcon);
 export const IconCamera = wrapLucideComponent(CameraIcon);
 export const IconCalendar = wrapLucideComponent(CalendarIcon);
+export const IconCheck = wrapLucideComponent(CheckIcon);
 export const IconChevronDown = wrapLucideComponent(ChevronDownIcon);
 export const IconChevronLeft = wrapLucideComponent(ChevronLeftIcon);
 export const IconChevronRight = wrapLucideComponent(ChevronRightIcon);
@@ -173,6 +176,7 @@ export const IconPrinter = wrapLucideComponent(PrinterIcon);
 export const IconPuzzle = wrapLucideComponent(PuzzleIcon);
 export const IconRadio = wrapLucideComponent(RadioIcon);
 export const IconRadioTower = wrapLucideComponent(RadioTowerIcon);
+export const IconRefreshCw = wrapLucideComponent(RefreshCwIcon);
 export const IconSave = wrapLucideComponent(SaveIcon);
 export const IconScanLine = wrapLucideComponent(ScanLineIcon);
 export const IconSearch = wrapLucideComponent(SearchIcon);

@@ -7,13 +7,13 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { IconAlertCircle, IconChevronDown, IconLoaderCircle, IconPlus } from '@/icons';
 import { cn, cx } from '@/utils/css';
-import { getRoute } from '@/utils/route';
+import { buildRoute, getRoute } from '@/utils/route';
 import { Menu } from '@base-ui/react/menu';
 import { useDraggable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef } from 'react';
-import { useRoute, useSearchParams } from 'wouter';
+import { Redirect, useRoute, useSearchParams } from 'wouter';
 import {
   databaseNodeKey,
   entryDndId,
@@ -34,7 +34,7 @@ import type {
 
 type EntryOperationName = Extract<
   OperationName,
-  'getEntries' | 'getGroupEntries' | 'getTagEntries' | 'getTrashEntries'
+  'getEntries' | 'searchEntries' | 'getGroupEntries' | 'getTagEntries' | 'getTrashEntries'
 >;
 
 type HiddenEntry = Pick<EntryDragData, 'entryId' | 'source'>;
@@ -186,6 +186,7 @@ const EntryQuery = <TName extends EntryOperationName>({
   moveError,
   hiddenEntry,
   creationParentId,
+  preserveOrder = false,
 }: {
   name: TName;
   args: OperationArgs<TName>;
@@ -195,6 +196,7 @@ const EntryQuery = <TName extends EntryOperationName>({
   moveError: boolean;
   hiddenEntry?: HiddenEntry;
   creationParentId?: DatabaseNodeId;
+  preserveOrder?: boolean;
 }) => {
   const entries = useRequest(name, args);
   const templates = useRequest('getEntryTemplates', {});
@@ -207,6 +209,7 @@ const EntryQuery = <TName extends EntryOperationName>({
   const onAddSuccess = async (result: { id: DatabaseNodeId }) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
+      queryClient.invalidateQueries({ queryKey: ['request', 'searchEntries'] }),
       queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
       queryClient.invalidateQueries({ queryKey: ['request', 'getEntryTemplates'] }),
       queryClient.invalidateQueries({ queryKey: ['request', 'getTagEntries'] }),
@@ -225,21 +228,25 @@ const EntryQuery = <TName extends EntryOperationName>({
   });
   const addPending = addEntry.isPending || addEntryFromTemplate.isPending;
   const result = entries.data as EntriesResult | undefined;
-  const resultSorted = useMemo(
-    () =>
-      result?.entries.toSorted((a, b) => {
-        if (!a.name) {
-          return -1;
-        }
+  const resultSorted = useMemo(() => {
+    if (!result) {
+      return [];
+    }
+    if (preserveOrder) {
+      return result.entries;
+    }
+    return result.entries.toSorted((a, b) => {
+      if (!a.name) {
+        return -1;
+      }
 
-        if (!b.name) {
-          return -1;
-        }
+      if (!b.name) {
+        return -1;
+      }
 
-        return a.name.localeCompare(b.name);
-      }) ?? [],
-    [result?.entries],
-  );
+      return a.name.localeCompare(b.name);
+    });
+  }, [preserveOrder, result]);
   const selectedEntrySummary = resultSorted.find(entry => String(entry.id) === selectedEntry);
   const closeEntry = () => {
     if (isMobile) {
@@ -259,7 +266,7 @@ const EntryQuery = <TName extends EntryOperationName>({
         )}
       >
         <div className="flex flex-col xl:px-6">
-          <header className="flex min-h-16 items-start justify-between gap-3 px-6 py-3 xl:py-6 xl:pb-4">
+          <header className="flex min-h-16 items-start justify-between gap-3 px-4 py-3 xl:py-6 xl:pb-4">
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold">{title}</h1>
               {result && (
@@ -464,16 +471,37 @@ export const EntryList = ({
   movePending,
   moveError,
   hiddenEntry,
+  searchQueries,
 }: {
   movePending: boolean;
   moveError: boolean;
   hiddenEntry?: HiddenEntry;
+  searchQueries: Record<string, string>;
 }) => {
   const hierarchy = useRequest('getGroupHierarchy', {});
+  const [searchMatch, searchParams] = useRoute<{ search: string }>(getRoute('search'));
   const [groupMatch, groupParams] = useRoute<{ group: string }>(getRoute('group'));
   const [tagMatch, tagParams] = useRoute<{ tag: string }>(getRoute('tag'));
   const [trashMatch] = useRoute(getRoute('trash'));
 
+  if (searchMatch) {
+    const searchQuery = searchQueries[searchParams.search];
+    if (!searchQuery) {
+      return <Redirect to={buildRoute('database')} replace />;
+    }
+    return (
+      <EntryQuery
+        name="searchEntries"
+        args={{ query: searchQuery }}
+        source={{ type: 'search' }}
+        title={`Search: ${searchQuery}`}
+        movePending={movePending}
+        moveError={moveError}
+        hiddenEntry={hiddenEntry}
+        preserveOrder
+      />
+    );
+  }
   if (groupMatch) {
     return (
       <GroupEntries

@@ -8,6 +8,7 @@ type ExtractParams<Path extends string> = Path extends `${infer SegmentA}/${infe
 
 export const RouteMap = {
   database: '/',
+  search: '/search/:search',
   group: '/group/:group',
   tag: '/tag/:tag',
   trash: '/trash',

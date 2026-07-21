@@ -18,7 +18,7 @@ import {
   useSidebar,
 } from '@/components/sidebar';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { IconList, IconPlus, IconTag, IconTrash } from '@/icons';
+import { IconList, IconPlus, IconSearch, IconTag, IconTrash } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
@@ -39,6 +39,7 @@ import type {
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
 const groupDeletionQueryNames = [
   'getEntries',
+  'searchEntries',
   'getGroupEntries',
   'getTagEntries',
   'getTrashEntries',
@@ -121,7 +122,7 @@ const TrashMenuItem = ({
   );
 };
 
-const DatabaseSidebar = () => {
+const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
   const [location, setLocation] = useLocation();
   const [groupMatch, groupParams] = useRoute<{ group: string }>(getRoute('group'));
   const hierarchy = useRequest('getGroupHierarchy', {});
@@ -263,6 +264,18 @@ const DatabaseSidebar = () => {
                 location={location}
                 onNavigate={closeMobile}
               />
+              <SidebarMenuItem className="border-2 border-transparent" >
+                <SidebarMenuButton
+                  onClick={() => {
+                    closeMobile();
+                    onSearch();
+                  }}
+                >
+                  <IconSearch />
+                  <span>Search</span>
+                  <kbd className="ml-auto text-[10px] text-sidebar-foreground/60">^P</kbd>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

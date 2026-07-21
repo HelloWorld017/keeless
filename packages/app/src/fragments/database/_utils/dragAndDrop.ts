@@ -9,6 +9,7 @@ export const entryDndId = (id: DatabaseNodeId) => `entry:${databaseNodeKey(id)}`
 
 export type EntryDragSource =
   | { type: 'all' }
+  | { type: 'search' }
   | { type: 'group'; groupId: DatabaseNodeId }
   | { type: 'tag' }
   | { type: 'trash' };

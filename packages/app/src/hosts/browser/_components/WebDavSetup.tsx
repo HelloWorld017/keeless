@@ -58,7 +58,7 @@ export const WebDavSetup = ({
         <Button type="button" variant="outline" disabled={isPending} onClick={onBack}>
           <IconChevronLeft /> Back
         </Button>
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" variant="contrast" disabled={isPending}>
           {isPending && <IconLoaderCircle className="animate-spin" />}
           Continue
         </Button>

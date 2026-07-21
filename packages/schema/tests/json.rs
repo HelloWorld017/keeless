@@ -209,6 +209,19 @@ fn database_query_requests_support_uuid_and_integer_node_ids() {
     );
     assert_roundtrip(
         OperationRequest {
+            request_id: "search-1".into(),
+            operation: Operation::SearchEntries(SearchEntriesArgs {
+                query: "example account".into(),
+            }),
+        },
+        json!({
+            "requestId": "search-1",
+            "op": "searchEntries",
+            "args": { "query": "example account" }
+        }),
+    );
+    assert_roundtrip(
+        OperationRequest {
             request_id: "trash-1".into(),
             operation: Operation::GetTrashEntries(GetTrashEntriesArgs {}),
         },
@@ -754,6 +767,20 @@ fn success_response_is_flat_and_operation_specific() {
             "result": { "status": "not_exist" }
         }),
     );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "search-2".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::SearchEntries(EntriesResult { entries: vec![] }),
+            },
+        },
+        json!({
+            "requestId": "search-2",
+            "status": "success",
+            "op": "searchEntries",
+            "result": { "entries": [] }
+        }),
+    );
 }
 
 #[test]
@@ -802,6 +829,7 @@ fn all_request_and_success_variants_have_explicit_empty_objects() {
         json!({ "requestId": "3", "op": "getConfig", "args": {} }),
         json!({ "requestId": "4", "op": "setConfig", "args": { "config": { "paranoiaMode": true } } }),
         json!({ "requestId": "5", "op": "getEntries", "args": { "excludeTrash": true } }),
+        json!({ "requestId": "5a", "op": "searchEntries", "args": { "query": "mail" } }),
         json!({ "requestId": "6", "op": "getGroupHierarchy", "args": {} }),
         json!({ "requestId": "7", "op": "getTags", "args": {} }),
         json!({ "requestId": "8", "op": "getCustomIcons", "args": {} }),
