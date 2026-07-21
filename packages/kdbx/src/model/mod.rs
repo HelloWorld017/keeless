@@ -32,7 +32,7 @@ pub use db::{
 pub use entry::auto_type::{AutoType, AutoTypeAssociation};
 pub use entry::field_references::{FieldReference, RefTarget};
 pub use entry::versioned::{EntryKDB, EntryKDBX};
-pub use entry::{Entry, EntryBinary, EntryField};
+pub use entry::{Entry, EntryBinary, EntryField, EntryFieldId, StandardField};
 pub use group::versioned::{GroupKDB, GroupKDBX};
 pub use group::Group;
 pub use meta::{

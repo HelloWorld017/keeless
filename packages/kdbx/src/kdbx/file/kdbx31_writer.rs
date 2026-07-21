@@ -216,8 +216,8 @@ mod tests {
 
         let entry_id = NodeId::from_uuid(Uuid::new_v4());
         let mut entry = Entry::new(entry_id);
-        entry.title = "Test".into();
-        entry.password = ProtectedString::new_protected("secret123");
+        entry.set_title("Test");
+        entry.set_password(ProtectedString::new_protected("secret123"));
 
         root.add_child_entry(entry_id);
         db.entries.insert(entry_id, entry);
@@ -238,6 +238,6 @@ mod tests {
         assert_eq!(db2.version, DatabaseVersion::KDBX31);
         assert_eq!(db2.entries.len(), 1);
         let e = db2.entries.values().next().unwrap();
-        assert_eq!(e.title, "Test");
+        assert_eq!(e.title(), "Test");
     }
 }

@@ -25,8 +25,7 @@ import { ItemIcon } from '../_components/ItemIcon';
 import { EditContent } from './_components/EditContent';
 import { PasswordPrompt } from './_components/PasswordPrompt';
 import { ViewContent } from './_components/ViewContent';
-import { STANDARD_NAMES } from './_constants';
-import { FieldDraft } from './_types/FieldDraft';
+import type { FieldDraft } from './_types/FieldDraft';
 import type { EntryDetailResult, EntryFieldUpdate, EntrySummary } from '@keeless/schema';
 
 const REFRESH_OPERATIONS = [
@@ -51,32 +50,16 @@ const needsPassword = (error: unknown) =>
   error instanceof CoreRequestError &&
   (error.code === 'password_required' || error.code === 'invalid_credentials');
 
-const createDrafts = (detail: EntryDetailResult): FieldDraft[] => {
-  const fields = new Map(detail.fields.map(field => [field.fieldIndex, field]));
-  const standard = STANDARD_NAMES.map((name, fieldIndex) => {
-    const field = fields.get(fieldIndex);
-    return {
-      key: `standard-${fieldIndex}`,
-      fieldIndex,
-      name,
-      value: field?.isProtected ? null : (field?.value ?? ''),
-      isProtected: field?.isProtected ?? fieldIndex === STANDARD_NAMES.indexOf('Password'),
-      valueChanged: !field,
-    };
-  });
-
-  const custom = detail.fields
-    .filter(field => field.fieldIndex >= STANDARD_NAMES.length)
-    .map(field => ({
-      key: `custom-${field.fieldIndex}`,
-      fieldIndex: field.fieldIndex,
-      name: field.name,
-      value: field.isProtected ? null : (field.value ?? ''),
-      isProtected: field.isProtected,
-      valueChanged: false,
-    }));
-  return [...standard, ...custom];
-};
+const createDrafts = (detail: EntryDetailResult): FieldDraft[] =>
+  detail.fields.map(field => ({
+    key: field.fieldId,
+    fieldId: field.fieldId,
+    kind: field.kind,
+    name: field.name,
+    value: field.isProtected ? null : (field.value ?? ''),
+    isProtected: field.isProtected,
+    valueChanged: false,
+  }));
 
 const EntryDetailSkeleton = ({ pending }: { pending: boolean }) => {
   const visible = useDebouncedValue(pending, 150, false);
@@ -252,7 +235,7 @@ const EntryDetailQuery = ({
   const submit = async () => {
     const invalid = new Set(
       drafts
-        .filter(field => field.fieldIndex === null || field.fieldIndex >= STANDARD_NAMES.length)
+        .filter(field => field.kind === 'custom')
         .filter(field => !field.name.trim())
         .map(field => field.key),
     );
@@ -264,11 +247,8 @@ const EntryDetailQuery = ({
 
     const operation = ++operationRef.current;
     const fields: EntryFieldUpdate[] = drafts.map(field => ({
-      fieldIndex: field.fieldIndex,
-      name:
-        field.fieldIndex !== null && field.fieldIndex < STANDARD_NAMES.length
-          ? STANDARD_NAMES[field.fieldIndex]
-          : field.name.trim(),
+      fieldId: field.fieldId,
+      name: field.kind === 'custom' ? field.name.trim() : field.name,
       value: field.isProtected && !field.valueChanged ? null : field.value,
       isProtected: field.isProtected,
     }));
@@ -358,7 +338,13 @@ const EntryDetailQuery = ({
         <div className="order-2 xl:pt-4 xl:order-none">
           {editing && (
             <div className="flex gap-1 justify-end">
-              <Button type="button" size="lg" variant="outline" disabled={pending} onClick={clearEditing}>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                disabled={pending}
+                onClick={clearEditing}
+              >
                 Cancel
               </Button>
               <Button type="button" size="lg" disabled={pending} onClick={() => void submit()}>
@@ -368,11 +354,7 @@ const EntryDetailQuery = ({
           )}
           {!editing && detail.data && (
             <div className="flex gap-1 justify-end">
-              <Button
-                variant="ghost"
-                size="lg"
-                onClick={startEditing}
-              >
+              <Button variant="ghost" size="lg" onClick={startEditing}>
                 <IconPencil />
                 Edit
               </Button>
@@ -436,7 +418,8 @@ const EntryDetailQuery = ({
                     ...current,
                     {
                       key: `new-${nextKey.current++}`,
-                      fieldIndex: null,
+                      fieldId: null,
+                      kind: 'custom',
                       name: '',
                       value: '',
                       isProtected: false,

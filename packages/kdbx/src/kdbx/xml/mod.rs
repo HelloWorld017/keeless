@@ -17,7 +17,7 @@ mod tests {
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
     use crate::model::db::database::{Database, DatabaseVersion, EntryFieldUpdate};
-    use crate::model::entry::Entry;
+    use crate::model::entry::{Entry, EntryFieldId, StandardField};
     use crate::model::exception::DatabaseResult;
     use crate::model::group::Group;
     use crate::model::DeletedObject;
@@ -39,10 +39,10 @@ mod tests {
         let entry_id =
             NodeId::from_uuid(Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap());
         let mut entry = Entry::new(entry_id);
-        entry.title = "Test Entry".into();
-        entry.username = ProtectedString::new_plain("user@test.com");
-        entry.password = ProtectedString::new_protected("s3cret!");
-        entry.url = "https://example.com".into();
+        entry.set_title("Test Entry");
+        entry.set_username(ProtectedString::new_plain("user@test.com"));
+        entry.set_password(ProtectedString::new_protected("s3cret!"));
+        entry.set_url("https://example.com");
 
         root.add_child_entry(entry_id);
         db.entries.insert(entry_id, entry);
@@ -88,9 +88,9 @@ mod tests {
         let db2 = KdbxXmlReader::read(&xml, &mut is_r).unwrap();
 
         let entry = db2.entries.values().next().unwrap();
-        assert_eq!(entry.password.as_str(), "s3cret!");
-        assert!(entry.password.is_protected());
-        assert!(!entry.username.is_protected());
+        assert_eq!(entry.password().as_str(), "s3cret!");
+        assert!(entry.password().is_protected());
+        assert!(!entry.username().is_protected());
     }
 
     #[test]
@@ -201,19 +201,44 @@ mod tests {
         let mut read_stream = Salsa20InnerStream::new(stream_key).unwrap();
         let mut db = KdbxXmlReader::read(xml, &mut read_stream).unwrap();
         let entry_id = *db.entries.keys().next().unwrap();
+        let mut custom_field_ids = db.entries[&entry_id].custom_fields().map(|(id, _)| id);
+        let first_duplicate_id = custom_field_ids.next().unwrap();
+        let second_duplicate_id = custom_field_ids.next().unwrap();
+        let _deleted_id = custom_field_ids.next().unwrap();
+        drop(custom_field_ids);
         let fields = [
-            (Some(0), "Title", "title"),
-            (Some(1), "UserName", "user"),
-            (Some(2), "Password", "password"),
-            (Some(3), "URL", "url"),
-            (Some(4), "Notes", "notes"),
-            (Some(6), "Renamed", "second"),
-            (Some(5), "Duplicate", "first"),
+            (
+                Some(EntryFieldId::Standard(StandardField::Title)),
+                "Title",
+                "title",
+            ),
+            (
+                Some(EntryFieldId::Standard(StandardField::UserName)),
+                "UserName",
+                "user",
+            ),
+            (
+                Some(EntryFieldId::Standard(StandardField::Password)),
+                "Password",
+                "password",
+            ),
+            (
+                Some(EntryFieldId::Standard(StandardField::Url)),
+                "URL",
+                "url",
+            ),
+            (
+                Some(EntryFieldId::Standard(StandardField::Notes)),
+                "Notes",
+                "notes",
+            ),
+            (Some(second_duplicate_id), "Renamed", "second"),
+            (Some(first_duplicate_id), "Duplicate", "first"),
             (None, "Added", "added"),
         ]
         .into_iter()
-        .map(|(field_index, name, value)| EntryFieldUpdate {
-            field_index,
+        .map(|(field_id, name, value)| EntryFieldUpdate {
+            field_id,
             name: name.into(),
             value: Some(value.into()),
             is_protected: false,
@@ -238,11 +263,48 @@ mod tests {
         let reread = KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
         assert_eq!(
             reread.entries[&entry_id]
-                .custom_fields
-                .iter()
-                .map(|field| field.name.as_str())
+                .custom_fields()
+                .map(|(_, field)| field.name.as_str())
                 .collect::<Vec<_>>(),
             ["Renamed", "Duplicate", "Added"]
+        );
+    }
+
+    #[test]
+    fn entry_string_order_is_preserved_across_round_trips() {
+        let xml = r#"<KeePassFile><Meta></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><String><Key>Custom A</Key><Value>a</Value></String><String><Key>Password</Key><Value>password</Value></String><String><Key>Title</Key><Value>title</Value></String><String><Key>Custom B</Key><Value>b</Value></String><String><Key>Notes</Key><Value>notes</Value></String><String><Key>UserName</Key><Value>user</Value></String><String><Key>URL</Key><Value>url</Value></String></Entry></Group></Root></KeePassFile>"#;
+        let key = b"field-order";
+        let mut read_stream = Salsa20InnerStream::new(key).unwrap();
+        let db = KdbxXmlReader::read(xml, &mut read_stream).unwrap();
+        let entry = db.entries.values().next().unwrap();
+        assert_eq!(
+            entry
+                .fields()
+                .map(|(_, field)| field.name())
+                .collect::<Vec<_>>(),
+            ["Custom A", "Password", "Title", "Custom B", "Notes", "UserName", "URL",]
+        );
+
+        let mut write_stream = Salsa20InnerStream::new(key).unwrap();
+        let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();
+        let positions = [
+            "Custom A", "Password", "Title", "Custom B", "Notes", "UserName", "URL",
+        ]
+        .map(|name| output.find(&format!("<Key>{name}</Key>")).unwrap());
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+
+        let mut reread_stream = Salsa20InnerStream::new(key).unwrap();
+        let reread = KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
+        assert_eq!(
+            reread
+                .entries
+                .values()
+                .next()
+                .unwrap()
+                .fields()
+                .map(|(_, field)| field.name())
+                .collect::<Vec<_>>(),
+            ["Custom A", "Password", "Title", "Custom B", "Notes", "UserName", "URL",]
         );
     }
 
@@ -263,7 +325,7 @@ mod tests {
         let mut read_stream = Salsa20InnerStream::new(key).unwrap();
         let db = KdbxXmlReader::read(&xml, &mut read_stream).unwrap();
         assert_eq!(
-            db.entries.values().next().unwrap().password.as_str(),
+            db.entries.values().next().unwrap().password().as_str(),
             "password"
         );
 
@@ -273,7 +335,7 @@ mod tests {
         let mut reread_stream = Salsa20InnerStream::new(key).unwrap();
         let reread = KdbxXmlReader::read(&output, &mut reread_stream).unwrap();
         assert_eq!(
-            reread.entries.values().next().unwrap().password.as_str(),
+            reread.entries.values().next().unwrap().password().as_str(),
             "password"
         );
         Ok(())
@@ -405,9 +467,9 @@ mod tests {
         let entry_id =
             NodeId::from_uuid(Uuid::parse_str("99999999-8888-7777-6666-555555555555").unwrap());
         let mut entry = Entry::new(entry_id);
-        entry.title = r#"Title with <>&"special"#.into();
-        entry.username = ProtectedString::new_plain("user");
-        entry.password = ProtectedString::new_protected("pass");
+        entry.set_title(r#"Title with <>&"special"#);
+        entry.set_username(ProtectedString::new_plain("user"));
+        entry.set_password(ProtectedString::new_protected("pass"));
 
         root.add_child_entry(entry_id);
         db.entries.insert(entry_id, entry);
@@ -424,7 +486,7 @@ mod tests {
         let db2 = KdbxXmlReader::read(&xml, &mut is_r).unwrap();
 
         let entry2 = db2.entries.values().next().unwrap();
-        assert_eq!(entry2.title, r#"Title with <>&"special"#);
+        assert_eq!(entry2.title(), r#"Title with <>&"special"#);
     }
 
     #[test]

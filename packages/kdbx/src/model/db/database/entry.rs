@@ -2,7 +2,7 @@ use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
 use crate::model::core::date::DateInstant;
 use crate::model::core::node::NodeId;
 use crate::model::db::composite_key::CompositeKey;
-use crate::model::entry::Entry;
+use crate::model::entry::{memory_field, Entry, EntryFieldId};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 use crate::model::meta::DeletedObject;
 
@@ -33,6 +33,29 @@ impl EntryFieldSelector {
 }
 
 impl Database {
+    pub fn with_entry_field_id<T>(
+        &self,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+        field_id: EntryFieldId,
+        use_value: impl FnOnce(&str) -> T,
+    ) -> DatabaseResult<T> {
+        let entry = self
+            .entries
+            .get(entry_id)
+            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?;
+        let field = entry
+            .field(field_id)
+            .ok_or_else(|| DatabaseError::InvalidFormat("unknown field ID".into()))?;
+        let memory_field = memory_field(field_id, field.name());
+        let mut unlock = MemoryUnlockSession::new(composite_key);
+        field
+            .value()
+            .with_plaintext(&mut unlock, entry.id, &memory_field, |value| {
+                Ok(use_value(value))
+            })
+    }
+
     /// Temporarily expose one entry field while the supplied credential is valid.
     pub fn with_entry_field<T>(
         &self,
@@ -49,31 +72,6 @@ impl Database {
         entry.with_memory_field(&mut unlock, &selector.memory_field(), |value| {
             Ok(use_value(value))
         })
-    }
-
-    /// Temporarily expose one custom field selected by its vector index.
-    pub fn with_entry_custom_field<T>(
-        &self,
-        composite_key: &CompositeKey,
-        entry_id: &NodeId,
-        field_index: usize,
-        use_value: impl FnOnce(&str) -> T,
-    ) -> DatabaseResult<T> {
-        let entry = self
-            .entries
-            .get(entry_id)
-            .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?;
-        let field = entry
-            .custom_fields
-            .get(field_index)
-            .ok_or_else(|| DatabaseError::InvalidFormat("unknown field index".into()))?;
-        let memory_field = MemoryField::Custom(field.name.clone());
-        let mut unlock = MemoryUnlockSession::new(composite_key);
-        field
-            .value
-            .with_plaintext(&mut unlock, entry.id, &memory_field, |value| {
-                Ok(use_value(value))
-            })
     }
 
     /// Replace an entry field and immediately memory-protect it when requested.

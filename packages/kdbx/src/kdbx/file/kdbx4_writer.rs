@@ -275,8 +275,8 @@ mod tests {
 
         let entry_id = NodeId::from_uuid(Uuid::new_v4());
         let mut entry = Entry::new(entry_id);
-        entry.title = "KDBX4 Test".into();
-        entry.password = ProtectedString::new_protected("p@ssw0rd");
+        entry.set_title("KDBX4 Test");
+        entry.set_password(ProtectedString::new_protected("p@ssw0rd"));
         entry.binaries.push(EntryBinary {
             name: "protected.bin".to_string(),
             data: vec![0, 1, 2, 255],
@@ -302,7 +302,7 @@ mod tests {
         assert_eq!(db2.version, DatabaseVersion::KDBX4);
         assert_eq!(db2.entries.len(), 1);
         let e = db2.entries.values().next().unwrap();
-        assert_eq!(e.title, "KDBX4 Test");
+        assert_eq!(e.title(), "KDBX4 Test");
         assert_eq!(e.binaries.len(), 1);
         assert_eq!(e.binaries[0].name, "protected.bin");
         assert_eq!(e.binaries[0].data, vec![0, 1, 2, 255]);

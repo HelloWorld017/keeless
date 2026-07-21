@@ -1,6 +1,9 @@
+import type { EntryFieldKind } from '@keeless/schema';
+
 export type FieldDraft = {
   key: string;
-  fieldIndex: number | null;
+  fieldId: string | null;
+  kind: EntryFieldKind;
   name: string;
   value: string | null;
   isProtected: boolean;

@@ -71,115 +71,19 @@ fn write_fields(
     inner_stream: &mut dyn InnerStreamCipher,
     memory: &mut MemoryWriteAccess<'_>,
 ) -> DatabaseResult<()> {
-    write_memory_field(
-        writer,
-        entry,
-        "Title",
-        &MemoryField::Title,
-        entry.title.is_protected(),
-        inner_stream,
-        memory,
-    )?;
-    write_memory_field(
-        writer,
-        entry,
-        "UserName",
-        &MemoryField::UserName,
-        entry.username.is_protected(),
-        inner_stream,
-        memory,
-    )?;
-    write_memory_field(
-        writer,
-        entry,
-        "Password",
-        &MemoryField::Password,
-        entry.password.is_protected(),
-        inner_stream,
-        memory,
-    )?;
-    write_memory_field(
-        writer,
-        entry,
-        "URL",
-        &MemoryField::Url,
-        entry.url.is_protected(),
-        inner_stream,
-        memory,
-    )?;
-    write_memory_field(
-        writer,
-        entry,
-        "Notes",
-        &MemoryField::Notes,
-        entry.notes.is_protected(),
-        inner_stream,
-        memory,
-    )?;
-    for (index, field) in entry.custom_fields.iter().enumerate() {
-        write_custom_field(
-            writer,
-            entry,
-            index,
-            &field.name,
-            field.value.is_protected(),
-            inner_stream,
-            memory,
-        )?;
+    for (id, field) in entry.fields() {
+        memory.with_entry_field(entry, id, |value| {
+            write_field(
+                writer,
+                field.name(),
+                value,
+                field.value().is_protected(),
+                inner_stream,
+                &field.xml_extensions,
+            )
+        })?;
     }
     Ok(())
-}
-
-fn write_custom_field(
-    writer: &mut XmlWriter,
-    entry: &Entry,
-    index: usize,
-    key: &str,
-    protect: bool,
-    inner_stream: &mut dyn InnerStreamCipher,
-    memory: &mut MemoryWriteAccess<'_>,
-) -> DatabaseResult<()> {
-    memory.with_custom_field(entry, index, |value| {
-        write_field(
-            writer,
-            key,
-            value,
-            protect,
-            inner_stream,
-            entry
-                .xml_extensions
-                .custom_strings
-                .get(index)
-                .map(Vec::as_slice)
-                .unwrap_or_default(),
-        )
-    })
-}
-
-fn write_memory_field(
-    writer: &mut XmlWriter,
-    entry: &Entry,
-    key: &str,
-    field: &MemoryField,
-    protect: bool,
-    inner_stream: &mut dyn InnerStreamCipher,
-    memory: &mut MemoryWriteAccess<'_>,
-) -> DatabaseResult<()> {
-    memory.with_field(entry, field, |value| {
-        write_field(
-            writer,
-            key,
-            value,
-            protect,
-            inner_stream,
-            entry
-                .xml_extensions
-                .strings
-                .get(key)
-                .map(Vec::as_slice)
-                .unwrap_or_default(),
-        )
-    })
 }
 
 fn write_field(

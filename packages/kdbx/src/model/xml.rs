@@ -68,8 +68,6 @@ pub struct EntryXmlExtensions {
     pub(crate) history: Vec<PreservedXmlElement>,
     pub(crate) auto_type: Vec<PreservedXmlElement>,
     pub(crate) associations: Vec<Vec<PreservedXmlElement>>,
-    pub(crate) strings: HashMap<String, Vec<PreservedXmlElement>>,
-    pub(crate) custom_strings: Vec<Vec<PreservedXmlElement>>,
     pub(crate) binaries: HashMap<String, Vec<PreservedXmlElement>>,
 }
 

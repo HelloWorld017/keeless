@@ -34,9 +34,9 @@ pub(crate) fn run(
     let mut fields = fields.into_iter();
     let mut converted = Vec::with_capacity(field_count);
     while let Some(mut field) = fields.next() {
-        let field_index = match field.field_index.map(usize::try_from).transpose() {
-            Ok(index) => index,
-            Err(_) => {
+        let field_id = match field.field_id.as_deref().map(str::parse).transpose() {
+            Ok(id) => id,
+            Err(()) => {
                 field.value.zeroize();
                 for mut field in fields {
                     field.value.zeroize();
@@ -45,7 +45,7 @@ pub(crate) fn run(
             }
         };
         converted.push(KdbxFieldUpdate {
-            field_index,
+            field_id,
             name: field.name,
             value: field.value,
             is_protected: field.is_protected,

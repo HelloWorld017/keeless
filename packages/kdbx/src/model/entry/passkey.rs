@@ -258,7 +258,7 @@ impl PasskeyCredential {
 
     /// Remove canonical, future KPEX, and known compatibility passkey fields.
     pub fn remove_from_entry(entry: &mut Entry) {
-        entry.custom_fields.retain(|field| {
+        entry.retain_custom_fields(|field| {
             !field.name.starts_with("KPEX_PASSKEY") && field.name != FIELD_COMPATIBLE_USERNAME
         });
     }
@@ -311,7 +311,7 @@ impl PasskeyCredential {
         let credential_id = URL_SAFE_NO_PAD.encode(&self.credential_id);
         let user_handle = URL_SAFE_NO_PAD.encode(&self.user_handle);
 
-        entry.custom_fields.extend([
+        for field in [
             plain_field(FIELD_USERNAME, &self.username),
             protected_field(FIELD_CREDENTIAL_ID, &credential_id),
             protected_field(FIELD_PRIVATE_KEY_PEM, private_key.as_str()),
@@ -325,7 +325,9 @@ impl PasskeyCredential {
                 FIELD_BACKUP_STATE,
                 if self.backup_state { "1" } else { "0" },
             ),
-        ]);
+        ] {
+            entry.add_custom_field(field.name, field.value);
+        }
         Ok(())
     }
 }
@@ -404,9 +406,8 @@ impl PasskeyAuthenticator {
 /// Detect any canonical or future KPEX passkey field.
 pub fn is_passkey_entry(entry: &Entry) -> bool {
     entry
-        .custom_fields
-        .iter()
-        .any(|field| field.name.starts_with("KPEX_PASSKEY"))
+        .custom_fields()
+        .any(|(_, field)| field.name.starts_with("KPEX_PASSKEY"))
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -477,14 +478,14 @@ fn validate_user_handle(user_handle: &[u8]) -> Result<(), PasskeyError> {
 }
 
 fn has_field(entry: &Entry, name: &str) -> bool {
-    entry.custom_fields.iter().any(|field| field.name == name)
+    entry.custom_fields().any(|(_, field)| field.name == name)
 }
 
 fn required_field<'a>(entry: &'a Entry, name: &'static str) -> Result<&'a str, PasskeyError> {
     let mut fields = entry
-        .custom_fields
-        .iter()
-        .filter(|field| field.name == name);
+        .custom_fields()
+        .filter(|(_, field)| field.name == name)
+        .map(|(_, field)| field);
     let value = fields
         .next()
         .ok_or(PasskeyError::MissingField(name))?
@@ -525,15 +526,9 @@ fn parse_flag(entry: &Entry, name: &'static str, default: bool) -> Result<bool, 
 }
 
 fn plain_field(name: &str, value: &str) -> EntryField {
-    EntryField {
-        name: name.to_string(),
-        value: ProtectedString::new_plain(value),
-    }
+    EntryField::new(name, ProtectedString::new_plain(value))
 }
 
 fn protected_field(name: &str, value: &str) -> EntryField {
-    EntryField {
-        name: name.to_string(),
-        value: ProtectedString::new_protected(value),
-    }
+    EntryField::new(name, ProtectedString::new_protected(value))
 }

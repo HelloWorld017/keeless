@@ -24,11 +24,11 @@ pub use model::{
     get_builtin_templates, parse_tags, serialize_tags, AutoType, AutoTypeAssociation, BinaryCache,
     BinaryData, BinaryPool, BinaryStreamReader, BinaryStreamWriter, ChangeRecord, ChangeTracker,
     ChangeType, CompositeKey, CustomData, CustomDataItem, Database, DatabaseVersion, DateInstant,
-    DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldSelector,
+    DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldId, EntryFieldSelector,
     EntryFieldUpdate, EntryKDB, EntryKDBX, FieldReference, Group, GroupKDB, GroupKDBX, IconImage,
     IconImageCustom, IconImageStandard, MasterCredential, MemoryProtectionConfig, Node,
-    NodeHandler, NodeId, NodeType, ProtectedString, RefTarget, SortNodeEnum, Tag, Template,
-    TemplateField, TemplateFieldType, TraversalOrder,
+    NodeHandler, NodeId, NodeType, ProtectedString, RefTarget, SortNodeEnum, StandardField, Tag,
+    Template, TemplateField, TemplateFieldType, TraversalOrder,
 };
 
 // ─── Crypto ───────────────────────────────────────────────────────────
@@ -281,7 +281,7 @@ mod tests {
         root.title = "Root".to_string();
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "Test".into();
+        entry.set_title("Test");
         root.add_child_entry(entry_id);
         db.groups.insert(root_id, root);
         db.entries.insert(entry_id, entry);
@@ -346,8 +346,8 @@ mod tests {
         root.title = "Root".into();
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = ProtectedString::new_protected("hidden title");
-        entry.password = ProtectedString::new_protected("initial secret");
+        entry.set_title(ProtectedString::new_protected("hidden title"));
+        entry.set_password(ProtectedString::new_protected("initial secret"));
         root.add_child_entry(entry_id);
         database.groups.insert(root_id, root);
         database.entries.insert(entry_id, entry);
@@ -359,8 +359,8 @@ mod tests {
         let mut loaded = open_database(bytes.as_slice(), &old_key).unwrap();
 
         let loaded_entry = &loaded.entries[&entry_id];
-        assert!(loaded_entry.password.is_memory_protected());
-        assert!(loaded_entry.title.is_memory_protected());
+        assert!(loaded_entry.password().is_memory_protected());
+        assert!(loaded_entry.title().is_memory_protected());
         assert_eq!(
             loaded
                 .with_entry_field(

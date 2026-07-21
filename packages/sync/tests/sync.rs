@@ -165,7 +165,7 @@ fn database_with_entry(title: &str) -> (Database, NodeId) {
 
     let entry_id = NodeId::new_uuid();
     let mut entry = Entry::new(entry_id);
-    entry.title = title.into();
+    entry.set_title(title);
     entry.last_modification_time = DateInstant::EpochMillis(1);
     assert!(database.add_entry(entry, &root_id));
     (database, entry_id)
@@ -193,7 +193,7 @@ async fn open_syncs_local_changes_with_cas() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "local".into();
+        .set_title("local");
     assert!(handle.is_dirty());
 
     let report = handle.sync(&key).await.unwrap();
@@ -202,7 +202,7 @@ async fn open_syncs_local_changes_with_cas() {
     assert_eq!(report.attempts, 1);
 
     let saved = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
-    assert_eq!(saved.entries[&entry_id].title, "local");
+    assert_eq!(saved.entries[&entry_id].title().as_str(), "local");
 }
 
 #[tokio::test]
@@ -213,7 +213,7 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
     let root_id = database.root_group_id.unwrap();
     let second_id = NodeId::new_uuid();
     let mut second = Entry::new(second_id);
-    second.title = "second".into();
+    second.set_title("second");
     second.last_modification_time = DateInstant::EpochMillis(1);
     assert!(database.add_entry(second, &root_id));
     storage.put("vault.kdbx", encode(&database, &key));
@@ -223,21 +223,27 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
         .await
         .unwrap();
     let local = handle.database_mut().entries.get_mut(&first_id).unwrap();
-    local.title = "local first".into();
+    local.set_title("local first");
     local.last_modification_time = DateInstant::EpochMillis(10);
 
     let remote_bytes = storage.bytes("vault.kdbx");
     let mut remote = open_database(remote_bytes.as_slice(), &key).unwrap();
     let remote_entry = remote.entries.get_mut(&second_id).unwrap();
-    remote_entry.title = "remote second".into();
+    remote_entry.set_title("remote second");
     remote_entry.last_modification_time = DateInstant::EpochMillis(20);
     storage.put("vault.kdbx", encode(&remote, &key));
 
     let report = handle.sync(&key).await.unwrap();
     assert!(report.uploaded);
     assert!(report.downloaded);
-    assert_eq!(handle.database().entries[&first_id].title, "local first");
-    assert_eq!(handle.database().entries[&second_id].title, "remote second");
+    assert_eq!(
+        handle.database().entries[&first_id].title().as_str(),
+        "local first"
+    );
+    assert_eq!(
+        handle.database().entries[&second_id].title().as_str(),
+        "remote second"
+    );
 }
 
 #[tokio::test]
@@ -255,13 +261,16 @@ async fn sync_retries_from_the_original_local_snapshot() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "local".into();
+        .set_title("local");
     storage.force_conflicts(1);
 
     let report = handle.sync(&key).await.unwrap();
     assert_eq!(report.attempts, 2);
     assert_eq!(storage.writes(), 2);
-    assert_eq!(handle.database().entries[&entry_id].title, "local");
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "local"
+    );
 }
 
 #[tokio::test]
@@ -276,14 +285,21 @@ async fn sync_pulls_remote_changes_without_rewriting_an_unmodified_local_file() 
         .unwrap();
 
     let mut remote = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
-    remote.entries.get_mut(&entry_id).unwrap().title = "remote".into();
+    remote
+        .entries
+        .get_mut(&entry_id)
+        .unwrap()
+        .set_title("remote");
     storage.put("vault.kdbx", encode(&remote, &key));
 
     let report = handle.sync(&key).await.unwrap();
     assert!(report.downloaded);
     assert!(!report.uploaded);
     assert_eq!(storage.writes(), 0);
-    assert_eq!(handle.database().entries[&entry_id].title, "remote");
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "remote"
+    );
 }
 
 #[tokio::test]
@@ -309,7 +325,7 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "local entry".into();
+        .set_title("local entry");
     handle.database_mut().custom_data.set("local", "value");
     let mut remote = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     remote.name = "remote name".to_string();
@@ -363,12 +379,15 @@ async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "unsaved".into();
+        .set_title("unsaved");
     storage.force_conflicts(2);
 
     let error = handle.sync(&key).await.unwrap_err();
     assert!(matches!(error, SyncError::RetryExhausted { attempts: 2 }));
-    assert_eq!(handle.database().entries[&entry_id].title, "unsaved");
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "unsaved"
+    );
     assert_eq!(handle.checkpoint_revision(), original_revision.as_ref());
     assert!(handle.is_dirty());
 }
@@ -389,7 +408,7 @@ async fn unsupported_write_preserves_the_local_database_and_checkpoint() {
         .entries
         .get_mut(&entry_id)
         .unwrap()
-        .title = "unsaved".into();
+        .set_title("unsaved");
     storage.fail_writes_with(StorageErrorKind::Unsupported);
 
     let error = handle.sync(&key).await.unwrap_err();
@@ -397,7 +416,10 @@ async fn unsupported_write_preserves_the_local_database_and_checkpoint() {
         error,
         SyncError::Storage(error) if error.kind() == StorageErrorKind::Unsupported
     ));
-    assert_eq!(handle.database().entries[&entry_id].title, "unsaved");
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "unsaved"
+    );
     assert_eq!(handle.checkpoint_revision(), original_revision.as_ref());
     assert!(handle.is_dirty());
 }
@@ -414,20 +436,33 @@ async fn atomic_change_marks_dirty_only_when_changed() {
         .unwrap();
 
     assert!(!handle.apply_update::<()>(|_| Ok(false)).unwrap());
-    assert_eq!(handle.database().entries[&entry_id].title, "base");
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "base"
+    );
     assert!(!handle.is_dirty());
     let error = handle.apply_update::<&str>(|_| Err("failed")).unwrap_err();
     assert_eq!(error, "failed");
-    assert_eq!(handle.database().entries[&entry_id].title, "base");
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "base"
+    );
     assert!(!handle.is_dirty());
 
     assert!(handle
         .apply_update::<()>(|database| {
-            database.entries.get_mut(&entry_id).unwrap().title = "changed".into();
+            database
+                .entries
+                .get_mut(&entry_id)
+                .unwrap()
+                .set_title("changed");
             Ok(true)
         })
         .unwrap());
-    assert_eq!(handle.database().entries[&entry_id].title, "changed");
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "changed"
+    );
     assert!(handle.is_dirty());
 }
 

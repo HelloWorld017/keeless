@@ -13,13 +13,13 @@ fn database_with_root(root_id: NodeId) -> Database {
 
 fn make_entry_with_title(id: NodeId, title: &str) -> Entry {
     let mut entry = Entry::new(id);
-    entry.title = title.into();
+    entry.set_title(title);
     entry
 }
 
 fn make_entry_newer(id: NodeId, title: &str) -> Entry {
     let mut entry = Entry::new(id);
-    entry.title = title.into();
+    entry.set_title(title);
     entry.last_modification_time =
         DateInstant::EpochMillis(entry.last_modification_time.as_millis().unwrap_or(0) + 100_000);
     entry
@@ -27,7 +27,7 @@ fn make_entry_newer(id: NodeId, title: &str) -> Entry {
 
 fn entry_version(seed: &Entry, title: &str, modified: i64) -> Entry {
     let mut entry = seed.clone();
-    entry.title = title.into();
+    entry.set_title(title);
     entry.last_modification_time = DateInstant::EpochMillis(modified);
     entry.history.clear();
     entry
@@ -109,7 +109,7 @@ fn test_merge_keep_existing() {
     let merger = DatabaseMerger::new(MergeStrategy::KeepExisting);
     merger.merge(&mut target, &source);
 
-    assert_eq!(target.entries.get(&entry_id).unwrap().title, "Original");
+    assert_eq!(target.entries.get(&entry_id).unwrap().title(), "Original");
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn test_merge_overwrite() {
     let result = merger.merge(&mut target, &source);
 
     assert_eq!(result.entries_modified, 1);
-    assert_eq!(target.entries.get(&entry_id).unwrap().title, "New");
+    assert_eq!(target.entries.get(&entry_id).unwrap().title(), "New");
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn test_three_way_merge_source_only_change() {
     base.entries.insert(entry_id, base_entry.clone());
     target.entries.insert(entry_id, base_entry.clone());
     let mut source_entry = base_entry;
-    source_entry.title = "Source Modified".into();
+    source_entry.set_title("Source Modified");
     source_entry.last_modification_time =
         DateInstant::EpochMillis(source_entry.last_modified() + 100_000);
     source.entries.insert(entry_id, source_entry);
@@ -173,7 +173,7 @@ fn test_three_way_merge_source_only_change() {
 
     assert_eq!(result.conflicts.len(), 0);
     assert_eq!(
-        target.entries.get(&entry_id).unwrap().title,
+        target.entries.get(&entry_id).unwrap().title(),
         "Source Modified"
     );
 }
@@ -233,16 +233,16 @@ fn three_way_password_only_change_conflicts() {
     let entry_id = NodeId::new_uuid();
     let mut base = database_with_root(root_id);
     let mut entry = Entry::new(entry_id);
-    entry.password = ProtectedString::new_protected("base");
+    entry.set_password(ProtectedString::new_protected("base"));
     base.add_entry(entry.clone(), &root_id);
 
     let mut target = database_with_root(root_id);
     let mut target_entry = entry.clone();
-    target_entry.password = ProtectedString::new_protected("target");
+    target_entry.set_password(ProtectedString::new_protected("target"));
     target.add_entry(target_entry, &root_id);
 
     let mut source = database_with_root(root_id);
-    entry.password = ProtectedString::new_protected("source");
+    entry.set_password(ProtectedString::new_protected("source"));
     source.add_entry(entry, &root_id);
 
     let result = DatabaseMerger::new(MergeStrategy::KeepExisting).merge_three_way(
@@ -252,7 +252,7 @@ fn three_way_password_only_change_conflicts() {
     );
 
     assert_eq!(result.conflicts.len(), 1);
-    assert_eq!(target.entries[&entry_id].password.as_str(), "target");
+    assert_eq!(target.entries[&entry_id].password().as_str(), "target");
     target.validate().unwrap();
 }
 
@@ -393,12 +393,12 @@ fn overwrite_preserves_both_histories_and_previous_target() {
     let merged = &target.entries[&entry_id];
 
     assert_eq!(result.entries_modified, 1);
-    assert_eq!(merged.title, "source");
+    assert_eq!(merged.title(), "source");
     assert_eq!(
         merged
             .history
             .iter()
-            .map(|entry| entry.title.as_str())
+            .map(|entry| entry.title().as_str())
             .collect::<Vec<_>>(),
         vec!["shared", "source-old", "target-old", "target"]
     );
@@ -429,12 +429,12 @@ fn keep_existing_records_incoming_current_state() {
     let merged = &target.entries[&entry_id];
 
     assert_eq!(result.entries_modified, 1);
-    assert_eq!(merged.title, "target");
+    assert_eq!(merged.title(), "target");
     assert_eq!(
         merged
             .history
             .iter()
-            .map(|entry| entry.title.as_str())
+            .map(|entry| entry.title().as_str())
             .collect::<Vec<_>>(),
         vec!["source-old", "source"]
     );
@@ -473,7 +473,7 @@ fn three_way_history_only_changes_merge_without_conflict() {
         merged
             .history
             .iter()
-            .map(|entry| entry.title.as_str())
+            .map(|entry| entry.title().as_str())
             .collect::<Vec<_>>(),
         vec!["base-old", "target-old", "source-old"]
     );
@@ -499,12 +499,12 @@ fn three_way_conflict_preserves_base_and_losing_current_state() {
     let merged = &target.entries[&entry_id];
 
     assert_eq!(result.conflicts.len(), 1);
-    assert_eq!(merged.title, "source");
+    assert_eq!(merged.title(), "source");
     assert_eq!(
         merged
             .history
             .iter()
-            .map(|entry| entry.title.as_str())
+            .map(|entry| entry.title().as_str())
             .collect::<Vec<_>>(),
         vec!["base", "target"]
     );
@@ -532,7 +532,7 @@ fn keep_both_rewrites_duplicate_history_ids() {
         .values()
         .find(|entry| entry.id != entry_id)
         .expect("duplicate exists");
-    assert_eq!(duplicate.title, "source");
+    assert_eq!(duplicate.title(), "source");
     assert!(duplicate
         .history
         .iter()
@@ -557,7 +557,7 @@ fn merge_does_not_truncate_history() {
     DatabaseMerger::new(MergeStrategy::Overwrite).merge(&mut target, &source);
 
     assert_eq!(target.entries[&entry_id].history.len(), 13);
-    assert_eq!(target.entries[&entry_id].history[12].title, "target");
+    assert_eq!(target.entries[&entry_id].history[12].title(), "target");
 }
 
 #[test]
@@ -719,7 +719,11 @@ fn three_way_group_deletion_preserves_target_modified_descendant() {
     base.add_entry(Entry::new(entry_id), &group_id);
     base.data_modified = false;
     let mut target = base.clone();
-    target.entries.get_mut(&entry_id).unwrap().title = "target change".into();
+    target
+        .entries
+        .get_mut(&entry_id)
+        .unwrap()
+        .set_title("target change");
     let mut source = base.clone();
     source.remove_group(&group_id, false).unwrap();
 

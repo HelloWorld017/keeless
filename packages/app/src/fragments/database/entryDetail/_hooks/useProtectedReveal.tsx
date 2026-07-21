@@ -1,13 +1,13 @@
-import {usePasswordInput} from "@/fragments/_providers/HostProvider";
-import {useRequestClient} from "@/fragments/_providers/QueryProvider";
-import {CoreRequestError} from "@/utils/request";
-import {DatabaseNodeId} from "@keeless/schema";
-import {useEffect, useRef, useState} from "react";
-import {PasswordPrompt} from "../_components/PasswordPrompt";
+import { usePasswordInput } from '@/fragments/_providers/HostProvider';
+import { useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { CoreRequestError } from '@/utils/request';
+import { useEffect, useRef, useState } from 'react';
+import { PasswordPrompt } from '../_components/PasswordPrompt';
+import type { DatabaseNodeId } from '@keeless/schema';
 
 type UseProtectedRevealOptions = {
   entryId: DatabaseNodeId;
-  fieldIndex: number | null;
+  fieldId: string | null;
   onReveal: (value: string | undefined) => void;
 };
 
@@ -16,7 +16,7 @@ const revealError = (error: unknown) =>
     ? 'The master password is incorrect.'
     : 'The protected value could not be revealed.';
 
-export const useProtectedReveal = ({ entryId, fieldIndex, onReveal }: UseProtectedRevealOptions) => {
+export const useProtectedReveal = ({ entryId, fieldId, onReveal }: UseProtectedRevealOptions) => {
   const [pending, setPending] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [error, setError] = useState<string>();
@@ -32,7 +32,7 @@ export const useProtectedReveal = ({ entryId, fieldIndex, onReveal }: UseProtect
   const requestClient = useRequestClient();
   const onPasswordInput = usePasswordInput();
 
-  if (fieldIndex === null) {
+  if (fieldId === null) {
     return {
       prompt: <></>,
       promptOpen: false,
@@ -44,7 +44,7 @@ export const useProtectedReveal = ({ entryId, fieldIndex, onReveal }: UseProtect
   }
 
   const reveal = (password?: string) =>
-    requestClient.data!.request('revealEntryField', { entryId, fieldIndex, password });
+    requestClient.data!.request('revealEntryField', { entryId, fieldId, password });
 
   const toggleReveal = async () => {
     if (revealed) {
@@ -144,6 +144,6 @@ export const useProtectedReveal = ({ entryId, fieldIndex, onReveal }: UseProtect
     pending,
     error,
     revealed,
-    toggleReveal
+    toggleReveal,
   };
 };

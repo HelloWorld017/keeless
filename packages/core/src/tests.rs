@@ -6,8 +6,8 @@ use std::sync::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
 use keeless_kdbx::{
-    Database, DatabaseVersion, Entry, EntryBinary, EntryField, EntryFieldSelector, Group,
-    IconImageCustom, IconImageStandard, NodeId, ProtectedString, save_database,
+    Database, DatabaseVersion, Entry, EntryBinary, EntryFieldSelector, Group, IconImageCustom,
+    IconImageStandard, NodeId, ProtectedString, save_database,
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
@@ -233,27 +233,19 @@ fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
     database.custom_icons.insert(custom_icon_uuid, custom_icon);
 
     let mut root_entry = Entry::new(root_entry_id);
-    root_entry.title = "Root Entry".into();
-    root_entry.username = ProtectedString::new_plain("alice");
-    root_entry.password = ProtectedString::new_protected("password-secret");
-    root_entry.url = "https://example.test".into();
-    root_entry.notes = ProtectedString::new_protected("notes-secret");
+    root_entry.set_title("Root Entry");
+    root_entry.set_username(ProtectedString::new_plain("alice"));
+    root_entry.set_password(ProtectedString::new_protected("password-secret"));
+    root_entry.set_url("https://example.test");
+    root_entry.set_notes(ProtectedString::new_protected("notes-secret"));
     root_entry.icon = keeless_kdbx::IconImage::Standard(IconImageStandard::new(7));
     root_entry.tags = vec!["shared".into(), "work".into(), "shared".into()];
     root_entry.background_color = "#000000".into();
     root_entry.foreground_color = "#ffffff".into();
     root_entry.override_url = "cmd://open".into();
     root_entry.usage_count = 3;
-    root_entry.custom_fields = vec![
-        EntryField {
-            name: "Public".into(),
-            value: ProtectedString::new_plain("public-value"),
-        },
-        EntryField {
-            name: "Secret".into(),
-            value: ProtectedString::new_protected("custom-secret"),
-        },
-    ];
+    root_entry.add_custom_field("Public", ProtectedString::new_plain("public-value"));
+    root_entry.add_custom_field("Secret", ProtectedString::new_protected("custom-secret"));
     root_entry.binaries.push(EntryBinary {
         name: "secret.bin".into(),
         data: b"attachment-secret".to_vec(),
@@ -261,14 +253,14 @@ fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
     });
 
     let mut child_entry = Entry::new(child_entry_id);
-    child_entry.title = ProtectedString::new_protected("protected-title-secret");
-    child_entry.username = ProtectedString::new_protected("protected-username-secret");
-    child_entry.url = ProtectedString::new_protected("protected-url-secret");
+    child_entry.set_title(ProtectedString::new_protected("protected-title-secret"));
+    child_entry.set_username(ProtectedString::new_protected("protected-username-secret"));
+    child_entry.set_url(ProtectedString::new_protected("protected-url-secret"));
     child_entry.tags = vec!["shared".into()];
     child_entry.custom_icon_uuid = Some(custom_icon_uuid);
 
     let mut nested_entry = Entry::new(nested_entry_id);
-    nested_entry.title = "Nested Entry".into();
+    nested_entry.set_title("Nested Entry");
     nested_entry.tags = vec!["nested".into()];
 
     database.entries.insert(root_entry_id, root_entry);
@@ -310,20 +302,17 @@ async fn query_core() -> (KeelessCore, QueryIds) {
         .unwrap();
     let key = core.credential.as_ref().unwrap().restore_key().unwrap();
     let database = core.handle.as_mut().unwrap().database_mut();
-    database
+    let entry = database
         .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
-        .unwrap()
-        .custom_fields
-        .extend([
-            EntryField {
-                name: "Duplicate".into(),
-                value: ProtectedString::new_protected("duplicate-first"),
-            },
-            EntryField {
-                name: "Duplicate".into(),
-                value: ProtectedString::new_protected("duplicate-second"),
-            },
-        ]);
+        .unwrap();
+    entry.add_custom_field(
+        "Duplicate",
+        ProtectedString::new_protected("duplicate-first"),
+    );
+    entry.add_custom_field(
+        "Duplicate",
+        ProtectedString::new_protected("duplicate-second"),
+    );
     database.protect_entry_strings(&key).unwrap();
     (core, ids)
 }
@@ -929,12 +918,12 @@ async fn template_queries_are_direct_and_excluded_from_regular_results() {
         assert!(database.add_group(Group::new(nested_group_id), &templates_id));
 
         let mut direct = Entry::new(direct_template_id);
-        direct.title = "Direct Template".into();
+        direct.set_title("Direct Template");
         direct.tags = vec!["template-only".into()];
         assert!(database.add_entry(direct, &templates_id));
 
         let mut nested = Entry::new(nested_template_id);
-        nested.title = "Nested Template".into();
+        nested.set_title("Nested Template");
         nested.tags = vec!["template-only".into()];
         assert!(database.add_entry(nested, &nested_group_id));
         database.entry_templates_uuid = Some(templates_uuid);
@@ -973,13 +962,13 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
         let database = core.handle.as_mut().unwrap().database_mut();
         assert!(database.add_group(Group::new(templates_id), &NodeId::from_uuid(ids.root_group)));
         let mut template = Entry::new(template_id);
-        template.title = ProtectedString::new_protected("Secret Template");
-        template.username = ProtectedString::new_plain("public-user");
-        template.password = ProtectedString::new_protected("secret-password");
-        template.custom_fields.push(EntryField {
-            name: "Secret Field".into(),
-            value: ProtectedString::new_protected("secret-value"),
-        });
+        template.set_title(ProtectedString::new_protected("Secret Template"));
+        template.set_username(ProtectedString::new_plain("public-user"));
+        template.set_password(ProtectedString::new_protected("secret-password"));
+        template.add_custom_field(
+            "Secret Field",
+            ProtectedString::new_protected("secret-value"),
+        );
         template.binaries = vec![
             EntryBinary {
                 name: "public.txt".into(),
@@ -1067,9 +1056,12 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
         ""
     );
     let redacted = database.get_entry(&redacted_id).unwrap();
-    assert_eq!(redacted.username.as_str(), "public-user");
-    assert_eq!(redacted.password.as_str(), "");
-    assert_eq!(redacted.custom_fields[0].value.as_str(), "");
+    assert_eq!(redacted.username().as_str(), "public-user");
+    assert_eq!(redacted.password().as_str(), "");
+    assert_eq!(
+        redacted.custom_fields().next().unwrap().1.value().as_str(),
+        ""
+    );
     assert_eq!(redacted.binaries.len(), 1);
     assert_eq!(redacted.binaries[0].name, "public.txt");
     assert_eq!(
@@ -1100,13 +1092,13 @@ async fn trash_and_tag_queries_filter_recursively_and_preserve_order() {
             .push(" Work ".into());
         let recycle_bin_id = database.create_recycle_bin();
         let mut trash_entry = Entry::new(trash_entry_id);
-        trash_entry.title = "Trash".into();
-        trash_entry.username = ProtectedString::new_plain("trashed-user");
+        trash_entry.set_title("Trash");
+        trash_entry.set_username(ProtectedString::new_plain("trashed-user"));
         trash_entry.tags = vec![" work ".into(), "TrashOnly".into(), "".into()];
         assert!(database.add_entry(trash_entry, &recycle_bin_id));
         assert!(database.add_group(Group::new(trash_group_id), &recycle_bin_id));
         let mut nested_trash_entry = Entry::new(nested_trash_entry_id);
-        nested_trash_entry.title = "Nested Trash".into();
+        nested_trash_entry.set_title("Nested Trash");
         nested_trash_entry.tags = vec!["nested".into()];
         assert!(database.add_entry(nested_trash_entry, &trash_group_id));
     }
@@ -1412,15 +1404,14 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
             .unwrap()
     };
     assert_eq!(field("Title").value.as_deref(), Some("Root Entry"));
-    assert_eq!(result.fields[0].field_index, 0);
-    assert_eq!(result.fields[1].field_index, 1);
-    assert_eq!(result.fields[2].field_index, 2);
-    assert_eq!(result.fields[3].field_index, 3);
-    assert_eq!(result.fields[4].field_index, 4);
-    assert_eq!(result.fields[5].field_index, 5);
-    assert_eq!(result.fields[6].field_index, 6);
-    assert_eq!(result.fields[7].field_index, 7);
-    assert_eq!(result.fields[8].field_index, 8);
+    assert_eq!(field("Title").field_id, "standard:Title");
+    assert_eq!(field("Title").kind, keeless_schema::EntryFieldKind::Title);
+    assert_eq!(field("UserName").field_id, "standard:UserName");
+    assert_eq!(field("Password").field_id, "standard:Password");
+    assert_eq!(field("URL").field_id, "standard:URL");
+    assert_eq!(field("Notes").field_id, "standard:Notes");
+    assert_eq!(field("Public").kind, keeless_schema::EntryFieldKind::Custom);
+    assert!(Uuid::parse_str(&field("Public").field_id).is_ok());
     assert_eq!(field("UserName").value.as_deref(), Some("alice"));
     assert_eq!(field("URL").value.as_deref(), Some("https://example.test"));
     assert_eq!(field("Public").value.as_deref(), Some("public-value"));
@@ -1474,6 +1465,23 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
 async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_secrets() {
     let (mut core, ids) = query_core().await;
     let entry_id = schema_id(ids.root_entry);
+    let detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap();
+    let field_id = |name: &str, occurrence: usize| {
+        detail
+            .fields
+            .iter()
+            .filter(|field| field.name == name)
+            .nth(occurrence)
+            .unwrap()
+            .field_id
+            .clone()
+    };
     let old = core
         .handle
         .as_ref()
@@ -1484,49 +1492,49 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         .clone();
     let fields = vec![
         SchemaEntryFieldUpdate {
-            field_index: Some(0),
+            field_id: Some(field_id("Title", 0)),
             name: "Title".into(),
             value: Some("Updated".into()),
             is_protected: false,
         },
         SchemaEntryFieldUpdate {
-            field_index: Some(1),
+            field_id: Some(field_id("UserName", 0)),
             name: "UserName".into(),
             value: Some("alice".into()),
             is_protected: false,
         },
         SchemaEntryFieldUpdate {
-            field_index: Some(2),
+            field_id: Some(field_id("Password", 0)),
             name: "Password".into(),
             value: None,
             is_protected: true,
         },
         SchemaEntryFieldUpdate {
-            field_index: Some(3),
+            field_id: Some(field_id("URL", 0)),
             name: "URL".into(),
             value: Some("https://example.test".into()),
             is_protected: false,
         },
         SchemaEntryFieldUpdate {
-            field_index: Some(4),
+            field_id: Some(field_id("Notes", 0)),
             name: "Notes".into(),
             value: None,
             is_protected: true,
         },
         SchemaEntryFieldUpdate {
-            field_index: Some(8),
+            field_id: Some(field_id("Duplicate", 1)),
             name: "Renamed".into(),
             value: None,
             is_protected: true,
         },
         SchemaEntryFieldUpdate {
-            field_index: Some(7),
+            field_id: Some(field_id("Duplicate", 0)),
             name: "Duplicate".into(),
             value: None,
             is_protected: true,
         },
         SchemaEntryFieldUpdate {
-            field_index: None,
+            field_id: None,
             name: "Added".into(),
             value: Some("new-secret".into()),
             is_protected: true,
@@ -1548,30 +1556,37 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
     );
     assert_eq!(
         entry
-            .custom_fields
-            .iter()
-            .map(|field| field.name.as_str())
+            .custom_fields()
+            .map(|(_, field)| field.name())
             .collect::<Vec<_>>(),
         ["Renamed", "Duplicate", "Added"]
     );
-    assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 5, None)
+    let updated = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap();
+    for (name, expected) in [
+        ("Renamed", "duplicate-second"),
+        ("Duplicate", "duplicate-first"),
+        ("Added", "new-secret"),
+    ] {
+        let field_id = updated
+            .fields
+            .iter()
+            .find(|field| field.name == name)
             .unwrap()
-            .value,
-        "duplicate-second"
-    );
-    assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 6, None)
-            .unwrap()
-            .value,
-        "duplicate-first"
-    );
-    assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 7, None)
-            .unwrap()
-            .value,
-        "new-secret"
-    );
+            .field_id
+            .clone();
+        assert_eq!(
+            operations::reveal_entry_field::run(&mut core, entry_id.clone(), field_id, None)
+                .unwrap()
+                .value,
+            expected
+        );
+    }
 
     let before_failure = core
         .handle
@@ -1586,7 +1601,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             &mut core,
             entry_id,
             vec![SchemaEntryFieldUpdate {
-                field_index: Some(0),
+                field_id: Some(field_id("Title", 0)),
                 name: "Wrong".into(),
                 value: Some("bad".into()),
                 is_protected: false
@@ -1615,7 +1630,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
     .fields
     .into_iter()
     .map(|field| SchemaEntryFieldUpdate {
-        field_index: Some(field.field_index),
+        field_id: Some(field.field_id),
         name: field.name,
         value: field.value,
         is_protected: field.is_protected,
@@ -1718,7 +1733,7 @@ async fn save_database_protocol_uses_sync_and_preserves_dirty_memory_on_failure(
         .database_mut()
         .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
         .unwrap()
-        .title = "unsaved".into();
+        .set_title("unsaved");
     assert!(core.handle.as_ref().unwrap().is_dirty());
     assert!(
         operations::save_database::run(&mut core, None)
@@ -1733,7 +1748,8 @@ async fn save_database_protocol_uses_sync_and_preserves_dirty_memory_on_failure(
             .database()
             .get_entry(&NodeId::from_uuid(ids.root_entry))
             .unwrap()
-            .title,
+            .title()
+            .as_str(),
         "unsaved"
     );
 }
@@ -1824,34 +1840,56 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
 }
 
 #[tokio::test]
-async fn reveal_entry_field_handles_indices_duplicates_and_credentials() {
+async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
     let (mut core, ids) = query_core().await;
     let entry_id = schema_id(ids.root_entry);
+    let detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap();
+    let field_id = |name: &str, occurrence: usize| {
+        detail
+            .fields
+            .iter()
+            .filter(|field| field.name == name)
+            .nth(occurrence)
+            .unwrap()
+            .field_id
+            .clone()
+    };
+    let password_id = field_id("Password", 0);
+    let notes_id = field_id("Notes", 0);
+    let public_id = field_id("Public", 0);
+    let duplicate_first_id = field_id("Duplicate", 0);
+    let duplicate_second_id = field_id("Duplicate", 1);
 
     assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 2, None)
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None)
             .unwrap()
             .value,
         "password-secret"
     );
     assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 7, None)
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), duplicate_first_id, None)
             .unwrap()
             .value,
         "duplicate-first"
     );
     assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 8, None)
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), duplicate_second_id, None)
             .unwrap()
             .value,
         "duplicate-second"
     );
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 5, None),
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), public_id, None),
         Err(CoreError::InvalidEntryField)
     ));
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 99, None),
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), "invalid".into(), None),
         Err(CoreError::InvalidEntryField)
     ));
     assert_eq!(
@@ -1859,7 +1897,12 @@ async fn reveal_entry_field_handles_indices_duplicates_and_credentials() {
         "invalid_entry_field"
     );
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, schema_id(Uuid::from_u128(999)), 2, None,),
+        operations::reveal_entry_field::run(
+            &mut core,
+            schema_id(Uuid::from_u128(999)),
+            password_id.clone(),
+            None,
+        ),
         Err(CoreError::EntryNotFound)
     ));
 
@@ -1873,17 +1916,27 @@ async fn reveal_entry_field_handles_indices_duplicates_and_credentials() {
     .await
     .unwrap();
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 2, None),
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None),
         Err(CoreError::PasswordRequired)
     ));
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 2, Some(b"wrong")),
+        operations::reveal_entry_field::run(
+            &mut core,
+            entry_id.clone(),
+            password_id.clone(),
+            Some(b"wrong"),
+        ),
         Err(CoreError::InvalidCredentials)
     ));
     assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), 4, Some(b"correct"))
-            .unwrap()
-            .value,
+        operations::reveal_entry_field::run(
+            &mut core,
+            entry_id.clone(),
+            notes_id,
+            Some(b"correct")
+        )
+        .unwrap()
+        .value,
         "notes-secret"
     );
 
@@ -1892,7 +1945,7 @@ async fn reveal_entry_field_handles_indices_duplicates_and_credentials() {
         operations::reveal_entry_field::run(
             &mut core,
             DatabaseNodeId::Uuid("invalid".into()),
-            2,
+            password_id,
             Some(b"correct"),
         ),
         Err(CoreError::DatabaseLocked)

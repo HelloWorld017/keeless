@@ -6,7 +6,7 @@ use regex::Regex;
 use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
 use crate::model::core::node::NodeId;
 use crate::model::db::{CompositeKey, Database, EntryFieldSelector};
-use crate::model::entry::Entry;
+use crate::model::entry::{memory_field, Entry};
 use crate::model::exception::DatabaseResult;
 
 /// Search parameters.
@@ -283,13 +283,12 @@ impl SearchHelper {
         }
 
         if params.search_in_other_fields {
-            for field in &entry.custom_fields {
-                if unsealed_field_matches(
-                    entry,
-                    &EntryFieldSelector::Custom(field.name.clone()),
-                    query,
-                    params.case_sensitive,
-                ) {
+            for (_, field) in entry.custom_fields() {
+                if field
+                    .value
+                    .as_unsealed_str()
+                    .is_some_and(|value| field_matches(value, query, params.case_sensitive))
+                {
                     score += 0.5;
                     break;
                 }
@@ -335,12 +334,12 @@ impl SearchHelper {
             }
         }
         if params.search_in_other_fields {
-            for field in &entry.custom_fields {
-                if unsealed_field_matches_regex(
-                    entry,
-                    &EntryFieldSelector::Custom(field.name.clone()),
-                    re,
-                ) {
+            for (_, field) in entry.custom_fields() {
+                if field
+                    .value
+                    .as_unsealed_str()
+                    .is_some_and(|value| re.is_match(value))
+                {
                     score += 0.5;
                     break;
                 }
@@ -406,11 +405,13 @@ fn score_memory_entry_plain(
         score += 1.0;
     }
     if params.search_in_other_fields {
-        for custom in &entry.custom_fields {
-            let field = MemoryField::Custom(custom.name.clone());
-            let matched = entry.with_memory_field(unlock, &field, |value| {
-                Ok(field_matches(value, query, params.case_sensitive))
-            })?;
+        for (id, custom) in entry.custom_fields() {
+            let field = memory_field(id, &custom.name);
+            let matched = custom
+                .value
+                .with_plaintext(unlock, entry.id, &field, |value| {
+                    Ok(field_matches(value, query, params.case_sensitive))
+                })?;
             if matched {
                 score += 0.5;
                 break;
@@ -447,10 +448,11 @@ fn score_memory_entry_regex(
         score += 1.0;
     }
     if params.search_in_other_fields {
-        for custom in &entry.custom_fields {
-            let field = MemoryField::Custom(custom.name.clone());
-            let matched =
-                entry.with_memory_field(unlock, &field, |value| Ok(regex.is_match(value)))?;
+        for (id, custom) in entry.custom_fields() {
+            let field = memory_field(id, &custom.name);
+            let matched = custom
+                .value
+                .with_plaintext(unlock, entry.id, &field, |value| Ok(regex.is_match(value)))?;
             if matched {
                 score += 0.5;
                 break;
@@ -476,12 +478,11 @@ mod tests {
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
     use crate::model::db::DatabaseVersion;
-    use crate::model::entry::EntryField;
 
     fn make_entry(id: u8, title: &str, username: &str) -> Entry {
         let mut e = Entry::new(NodeId::from_int(id as i32));
-        e.title = title.into();
-        e.username = ProtectedString::new_plain(username);
+        e.set_title(title);
+        e.set_username(ProtectedString::new_plain(username));
         e
     }
 
@@ -560,8 +561,8 @@ mod tests {
     #[test]
     fn test_search_password_field() {
         let mut e = Entry::new(NodeId::from_int(1));
-        e.title = "Test".into();
-        e.password = ProtectedString::new_protected("super_secret_password");
+        e.set_title("Test");
+        e.set_password(ProtectedString::new_protected("super_secret_password"));
 
         let entries: Vec<&Entry> = vec![&e];
 
@@ -590,7 +591,7 @@ mod tests {
         database.kdf_parameters = Some(parameters);
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.password = ProtectedString::new_protected("needle-secret");
+        entry.set_password(ProtectedString::new_protected("needle-secret"));
         database.entries.insert(entry_id, entry);
         let key = CompositeKey::new()
             .with_password(b"search password")
@@ -622,15 +623,12 @@ mod tests {
 
         let sealed_id = NodeId::new_uuid();
         let mut sealed = Entry::new(sealed_id);
-        sealed.title = ProtectedString::new_protected("needle title");
-        sealed.username = ProtectedString::new_protected("needle username");
-        sealed.password = ProtectedString::new_protected("needle password");
-        sealed.url = ProtectedString::new_protected("https://needle.example");
-        sealed.notes = ProtectedString::new_protected("needle notes");
-        sealed.custom_fields.push(EntryField {
-            name: "Secret".into(),
-            value: ProtectedString::new_protected("needle custom"),
-        });
+        sealed.set_title(ProtectedString::new_protected("needle title"));
+        sealed.set_username(ProtectedString::new_protected("needle username"));
+        sealed.set_password(ProtectedString::new_protected("needle password"));
+        sealed.set_url(ProtectedString::new_protected("https://needle.example"));
+        sealed.set_notes(ProtectedString::new_protected("needle notes"));
+        sealed.add_custom_field("Secret", ProtectedString::new_protected("needle custom"));
         database.entries.insert(sealed_id, sealed);
 
         let key = CompositeKey::new()
@@ -640,15 +638,12 @@ mod tests {
 
         let unsealed_id = NodeId::new_uuid();
         let mut unsealed = Entry::new(unsealed_id);
-        unsealed.title = ProtectedString::new_protected("needle title");
-        unsealed.username = ProtectedString::new_protected("needle username");
-        unsealed.password = ProtectedString::new_protected("needle password");
-        unsealed.url = ProtectedString::new_protected("https://needle.example");
-        unsealed.notes = ProtectedString::new_protected("needle notes");
-        unsealed.custom_fields.push(EntryField {
-            name: "Secret".into(),
-            value: ProtectedString::new_protected("needle custom"),
-        });
+        unsealed.set_title(ProtectedString::new_protected("needle title"));
+        unsealed.set_username(ProtectedString::new_protected("needle username"));
+        unsealed.set_password(ProtectedString::new_protected("needle password"));
+        unsealed.set_url(ProtectedString::new_protected("https://needle.example"));
+        unsealed.set_notes(ProtectedString::new_protected("needle notes"));
+        unsealed.add_custom_field("Secret", ProtectedString::new_protected("needle custom"));
         database.entries.insert(unsealed_id, unsealed);
 
         let mut params = SearchParameters::new("needle");

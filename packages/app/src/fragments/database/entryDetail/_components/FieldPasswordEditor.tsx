@@ -1,13 +1,13 @@
+import { Button } from '@/components/button';
 import { Input } from '@/components/input';
+import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
+import { useProtectedReveal } from '../_hooks/useProtectedReveal';
 import type { DatabaseNodeId } from '@keeless/schema';
-import {useProtectedReveal} from '../_hooks/useProtectedReveal';
-import {Button} from '@/components/button';
-import {IconEye, IconEyeOff, IconLoaderCircle} from '@/icons';
 
 export const FieldPasswordEditor = ({
   id,
   entryId,
-  fieldIndex,
+  fieldId,
   name,
   value,
   existing,
@@ -16,7 +16,7 @@ export const FieldPasswordEditor = ({
 }: {
   id?: string;
   entryId: DatabaseNodeId;
-  fieldIndex: number | null;
+  fieldId: string | null;
   name: string;
   value: string;
   existing: boolean;
@@ -25,7 +25,7 @@ export const FieldPasswordEditor = ({
 }) => {
   const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
     entryId,
-    fieldIndex,
+    fieldId,
     onReveal: nextValue => {
       if (existing && !value && nextValue) {
         onChange(nextValue);
@@ -48,8 +48,8 @@ export const FieldPasswordEditor = ({
         />
         <Button
           type="button"
-          variant='outline'
-          size='icon'
+          variant="outline"
+          size="icon"
           aria-label={revealed ? `Hide ${name}` : `Reveal ${name}`}
           aria-pressed={revealed}
           disabled={disabled || pending}

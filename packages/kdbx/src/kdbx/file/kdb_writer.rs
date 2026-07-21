@@ -306,8 +306,8 @@ mod tests {
 
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "Test".into();
-        entry.password = ProtectedString::new_protected("secret");
+        entry.set_title("Test");
+        entry.set_password(ProtectedString::new_protected("secret"));
 
         root.add_child_entry(entry_id);
         db.entries.insert(entry_id, entry);

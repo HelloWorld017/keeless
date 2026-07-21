@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use indexmap::IndexMap;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::memory_protection::{MemoryField, MemoryProtectionContext, MemoryUnlockSession};
@@ -8,7 +9,7 @@ use crate::model::core::date::DateInstant;
 use crate::model::core::node::NodeId;
 use crate::model::core::security::ProtectedString;
 use crate::model::db::composite_key::CompositeKey;
-use crate::model::entry::{Entry, EntryField};
+use crate::model::entry::{memory_field, EntryField, EntryFieldId, EntryFields, StandardField};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
 use super::Database;
@@ -16,8 +17,8 @@ use super::Database;
 /// One field in the complete desired field list for an entry update.
 #[derive(Clone, PartialEq, Eq)]
 pub struct EntryFieldUpdate {
-    /// Absolute index in the original entry, or `None` for a new custom field.
-    pub field_index: Option<usize>,
+    /// Runtime ID in the original entry, or `None` for a new custom field.
+    pub field_id: Option<EntryFieldId>,
     pub name: String,
     /// `None` preserves an existing protected value without exposing it.
     pub value: Option<String>,
@@ -31,7 +32,7 @@ impl Drop for EntryFieldUpdate {
 }
 
 impl Database {
-    /// Atomically replace all standard fields and the complete ordered custom-field list.
+    /// Atomically replace the complete ordered field list.
     /// Returns `false` when the requested representation is semantically unchanged.
     pub fn update_entry_fields(
         &mut self,
@@ -39,34 +40,42 @@ impl Database {
         entry_id: &NodeId,
         fields: &[EntryFieldUpdate],
     ) -> DatabaseResult<bool> {
-        const STANDARD_NAMES: [&str; 5] = ["Title", "UserName", "Password", "URL", "Notes"];
-
         let original = self
             .entries
             .get(entry_id)
             .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?;
-        let source_count = 5 + original.custom_fields.len();
-        let mut source_indices = HashSet::new();
-        let mut standard_seen = [false; 5];
+        let mut source_ids = HashSet::new();
+        let mut standard_seen = HashSet::new();
         for field in fields {
-            match field.field_index {
-                Some(index) if index < source_count && source_indices.insert(index) => {
-                    if index < 5 {
-                        if field.name != STANDARD_NAMES[index] {
+            match field.field_id {
+                Some(id) if source_ids.insert(id) => {
+                    if !original.fields.0.contains_key(&id) {
+                        return Err(DatabaseError::InvalidFormat(
+                            "entry field ID is invalid".into(),
+                        ));
+                    }
+                    match id {
+                        EntryFieldId::Standard(standard) => {
+                            if field.name != standard.name() {
+                                return Err(DatabaseError::InvalidFormat(
+                                    "standard entry field was renamed".into(),
+                                ));
+                            }
+                            standard_seen.insert(standard);
+                        }
+                        EntryFieldId::Custom(_)
+                            if StandardField::from_name(&field.name).is_some() =>
+                        {
                             return Err(DatabaseError::InvalidFormat(
-                                "standard entry field was renamed".into(),
+                                "standard entry field was duplicated".into(),
                             ));
                         }
-                        standard_seen[index] = true;
-                    } else if STANDARD_NAMES.contains(&field.name.as_str()) {
-                        return Err(DatabaseError::InvalidFormat(
-                            "standard entry field was duplicated".into(),
-                        ));
+                        EntryFieldId::Custom(_) => {}
                     }
                 }
                 Some(_) => {
                     return Err(DatabaseError::InvalidFormat(
-                        "entry field source index is invalid or duplicated".into(),
+                        "entry field ID is invalid or duplicated".into(),
                     ));
                 }
                 None if field.value.is_none() => {
@@ -74,7 +83,7 @@ impl Database {
                         "new entry fields require a value".into(),
                     ));
                 }
-                None if STANDARD_NAMES.contains(&field.name.as_str()) => {
+                None if StandardField::from_name(&field.name).is_some() => {
                     return Err(DatabaseError::InvalidFormat(
                         "standard entry field was duplicated".into(),
                     ));
@@ -82,7 +91,10 @@ impl Database {
                 None => {}
             }
         }
-        if !standard_seen.into_iter().all(|seen| seen) {
+        if !StandardField::ALL
+            .into_iter()
+            .all(|field| standard_seen.contains(&field))
+        {
             return Err(DatabaseError::InvalidFormat(
                 "all standard entry fields are required".into(),
             ));
@@ -96,125 +108,107 @@ impl Database {
                 self.create_memory_context(composite_key)
                     .map(|(context, _)| context)
             })?;
-        let mut updated = original.clone();
-        updated.custom_fields.clear();
-        updated.xml_extensions.custom_strings.clear();
-        let retained_custom_count = fields
+        let requested_ids = fields
             .iter()
-            .filter(|field| field.field_index.is_some_and(|index| index >= 5))
-            .count();
-        let mut changed = retained_custom_count != original.custom_fields.len();
-        let mut custom_position = 5;
+            .filter_map(|field| field.field_id)
+            .collect::<Vec<_>>();
+        let original_ids = original.fields.0.keys().copied().collect::<Vec<_>>();
+        let mut changed =
+            requested_ids != original_ids || fields.iter().any(|field| field.field_id.is_none());
         let mut unlock = MemoryUnlockSession::new(composite_key);
         let mut plaintexts = Vec::with_capacity(fields.len());
         for requested in fields {
-            let Some(index) = requested.field_index else {
+            let Some(id) = requested.field_id else {
                 plaintexts.push(None);
-                changed = true;
                 continue;
             };
-            if index >= 5 {
-                changed |= index != custom_position;
-                custom_position += 1;
-            }
-            let (source_value, source_field) = entry_value_at(&original, index);
-            if requested.value.is_none() && !source_value.is_protected() {
+            let source = original.fields.0.get(&id).expect("validated source field");
+            let source_memory = memory_field(id, &source.name);
+            if requested.value.is_none() && !source.value.is_protected() {
                 return Err(DatabaseError::InvalidFormat(
                     "only protected entry fields can preserve a hidden value".into(),
                 ));
             }
             let plaintext =
-                source_value.with_plaintext(&mut unlock, original.id, &source_field, |value| {
-                    Ok(Zeroizing::new(value.to_string()))
-                })?;
-            let target_field = entry_memory_field(index, &requested.name);
+                source
+                    .value
+                    .with_plaintext(&mut unlock, original.id, &source_memory, |value| {
+                        Ok(Zeroizing::new(value.to_string()))
+                    })?;
+            let target_memory = memory_field(id, &requested.name);
             changed |= requested
                 .value
                 .as_deref()
                 .is_some_and(|value| value != *plaintext)
-                || source_value.is_protected() != requested.is_protected
-                || source_field != target_field;
+                || source.value.is_protected() != requested.is_protected
+                || source_memory != target_memory;
             plaintexts.push(Some(plaintext));
         }
 
+        let mut updated = original.clone();
+        let mut updated_fields = IndexMap::with_capacity(fields.len());
         unlock.with_root(&context, |root| {
             for (requested, plaintext) in fields.iter().zip(&plaintexts) {
-                let (source_value, source_field) = match requested.field_index {
-                    Some(index) => entry_value_at(&original, index),
-                    None => {
+                let id = requested
+                    .field_id
+                    .unwrap_or_else(|| EntryFieldId::Custom(uuid::Uuid::new_v4()));
+                let target_memory = memory_field(id, &requested.name);
+                let field = if let Some(source_id) = requested.field_id {
+                    let source = original
+                        .fields
+                        .0
+                        .get(&source_id)
+                        .expect("validated source field");
+                    let source_memory = memory_field(source_id, &source.name);
+                    let mut target = if requested.value.is_none()
+                        && source_memory == target_memory
+                        && requested.is_protected
+                    {
+                        source.value.clone()
+                    } else {
                         let value = requested
                             .value
                             .as_deref()
-                            .expect("new field value validated");
+                            .unwrap_or_else(|| plaintext.as_ref().expect("existing plaintext"));
                         let mut target = ProtectedString::new_plain(value);
                         replace_entry_value(
                             &mut target,
                             context.clone(),
                             root,
                             original.id,
-                            &MemoryField::Custom(requested.name.clone()),
+                            &target_memory,
                             value,
                             requested.is_protected,
                         )?;
-                        updated.custom_fields.push(EntryField {
-                            name: requested.name.clone(),
-                            value: target,
-                        });
-                        updated.xml_extensions.custom_strings.push(Vec::new());
-                        changed = true;
-                        continue;
+                        target
+                    };
+                    EntryField {
+                        name: requested.name.clone(),
+                        value: std::mem::take(&mut target),
+                        xml_extensions: source.xml_extensions.clone(),
                     }
-                };
-                let index = requested.field_index.expect("existing source");
-                let target_field = entry_memory_field(index, &requested.name);
-
-                let mut target = if requested.value.is_none()
-                    && source_field == target_field
-                    && requested.is_protected
-                {
-                    source_value.clone()
                 } else {
                     let value = requested
                         .value
                         .as_deref()
-                        .unwrap_or_else(|| plaintext.as_ref().expect("existing plaintext"));
+                        .expect("new field value validated");
                     let mut target = ProtectedString::new_plain(value);
                     replace_entry_value(
                         &mut target,
                         context.clone(),
                         root,
                         original.id,
-                        &target_field,
+                        &target_memory,
                         value,
                         requested.is_protected,
                     )?;
-                    target
+                    EntryField::new(requested.name.clone(), target)
                 };
-
-                match requested.field_index.expect("existing source") {
-                    0 => updated.title = target,
-                    1 => updated.username = target,
-                    2 => updated.password = target,
-                    3 => updated.url = target,
-                    4 => updated.notes = target,
-                    _ => {
-                        updated.custom_fields.push(EntryField {
-                            name: requested.name.clone(),
-                            value: std::mem::take(&mut target),
-                        });
-                        updated.xml_extensions.custom_strings.push(
-                            original
-                                .xml_extensions
-                                .custom_strings
-                                .get(index - 5)
-                                .cloned()
-                                .unwrap_or_default(),
-                        );
-                    }
-                }
+                updated_fields.insert(id, field);
             }
             Ok(())
         })?;
+        updated.fields = EntryFields(updated_fields);
 
         if !changed {
             return Ok(false);
@@ -253,30 +247,5 @@ fn replace_entry_value(
     } else {
         target.replace_plain(value);
         Ok(())
-    }
-}
-
-fn entry_value_at(entry: &Entry, index: usize) -> (&ProtectedString, MemoryField) {
-    match index {
-        0 => (&entry.title, MemoryField::Title),
-        1 => (&entry.username, MemoryField::UserName),
-        2 => (&entry.password, MemoryField::Password),
-        3 => (&entry.url, MemoryField::Url),
-        4 => (&entry.notes, MemoryField::Notes),
-        _ => {
-            let field = &entry.custom_fields[index - 5];
-            (&field.value, MemoryField::Custom(field.name.clone()))
-        }
-    }
-}
-
-fn entry_memory_field(index: usize, name: &str) -> MemoryField {
-    match index {
-        0 => MemoryField::Title,
-        1 => MemoryField::UserName,
-        2 => MemoryField::Password,
-        3 => MemoryField::Url,
-        4 => MemoryField::Notes,
-        _ => MemoryField::Custom(name.to_string()),
     }
 }

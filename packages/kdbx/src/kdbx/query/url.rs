@@ -6,7 +6,7 @@ use url::{Host, Url};
 use crate::crypto::memory_protection::MemoryField;
 use crate::model::core::node::NodeId;
 use crate::model::db::{CompositeKey, Database, EntryFieldSelector};
-use crate::model::entry::Entry;
+use crate::model::entry::{memory_field, Entry};
 use crate::model::exception::DatabaseResult;
 
 const ADDITIONAL_URL_PREFIX: &str = "KP2A_URL_";
@@ -66,19 +66,22 @@ impl UrlMatcher {
                 entry.with_memory_field(&mut unlock, &MemoryField::Url, |value| {
                     Ok(score_regular_url(value, &target, params.match_scheme))
                 })?;
-            for field in &entry.custom_fields {
+            for (id, field) in entry.custom_fields() {
                 if !field.name.starts_with(ADDITIONAL_URL_PREFIX) {
                     continue;
                 }
-                let memory_field = MemoryField::Custom(field.name.clone());
-                let score = entry.with_memory_field(&mut unlock, &memory_field, |value| {
-                    Ok(score_additional_url(
-                        value,
-                        &params.url,
-                        &target,
-                        params.match_scheme,
-                    ))
-                })?;
+                let memory_field = memory_field(id, &field.name);
+                let score =
+                    field
+                        .value
+                        .with_plaintext(&mut unlock, entry.id, &memory_field, |value| {
+                            Ok(score_additional_url(
+                                value,
+                                &params.url,
+                                &target,
+                                params.match_scheme,
+                            ))
+                        })?;
                 best_score = max_score(best_score, score);
             }
             if let Some(score) = best_score {
@@ -110,16 +113,14 @@ impl UrlMatcher {
                 })
                 .flatten();
 
-            for field in &entry.custom_fields {
+            for (_, field) in entry.custom_fields() {
                 if !field.name.starts_with(ADDITIONAL_URL_PREFIX) {
                     continue;
                 }
 
-                let score = entry
-                    .with_unsealed_field(&EntryFieldSelector::Custom(field.name.clone()), |value| {
-                        score_additional_url(value, &params.url, &target, params.match_scheme)
-                    })
-                    .flatten();
+                let score = field.value.as_unsealed_str().and_then(|value| {
+                    score_additional_url(value, &params.url, &target, params.match_scheme)
+                });
                 best_score = max_score(best_score, score);
             }
 
@@ -395,19 +396,15 @@ mod tests {
     use crate::kdbx::kdf::KdfParameters;
     use crate::model::core::security::ProtectedString;
     use crate::model::db::DatabaseVersion;
-    use crate::model::entry::EntryField;
 
     fn entry(id: i32, url: &str) -> Entry {
         let mut entry = Entry::new(NodeId::from_int(id));
-        entry.url = url.into();
+        entry.set_url(url);
         entry
     }
 
     fn add_url(entry: &mut Entry, name: &str, url: &str) {
-        entry.custom_fields.push(EntryField {
-            name: name.to_string(),
-            value: ProtectedString::new_plain(url),
-        });
+        entry.add_custom_field(name, ProtectedString::new_plain(url));
     }
 
     fn matches(entries: &[&Entry], url: &str) -> Vec<UrlMatchResult> {
@@ -546,11 +543,11 @@ mod tests {
 
         let sealed_id = NodeId::new_uuid();
         let mut sealed = Entry::new(sealed_id);
-        sealed.url = ProtectedString::new_protected("https://example.com/login");
-        sealed.custom_fields.push(EntryField {
-            name: "KP2A_URL_1".into(),
-            value: ProtectedString::new_protected("https://example.com/login"),
-        });
+        sealed.set_url(ProtectedString::new_protected("https://example.com/login"));
+        sealed.add_custom_field(
+            "KP2A_URL_1",
+            ProtectedString::new_protected("https://example.com/login"),
+        );
         database.entries.insert(sealed_id, sealed);
 
         let key = CompositeKey::new().with_password(b"url password").unwrap();
@@ -558,11 +555,11 @@ mod tests {
 
         let unsealed_id = NodeId::new_uuid();
         let mut unsealed = Entry::new(unsealed_id);
-        unsealed.url = ProtectedString::new_protected("https://example.com/login");
-        unsealed.custom_fields.push(EntryField {
-            name: "KP2A_URL_1".into(),
-            value: ProtectedString::new_protected("https://example.com/login"),
-        });
+        unsealed.set_url(ProtectedString::new_protected("https://example.com/login"));
+        unsealed.add_custom_field(
+            "KP2A_URL_1",
+            ProtectedString::new_protected("https://example.com/login"),
+        );
         database.entries.insert(unsealed_id, unsealed);
 
         let params = UrlMatchParameters::new("https://example.com/login");

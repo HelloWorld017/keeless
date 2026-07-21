@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use keeless_kdbx::{Database, Entry, EntryFieldSelector, IconImage, NodeId};
+use keeless_kdbx::{Database, Entry, IconImage, NodeId, StandardField};
 use keeless_schema::{
     DatabaseNodeId, EntryAttachmentInformation, EntryDetailResult, EntryFieldInformation,
-    EntrySummary, GroupHierarchyItem, GroupHierarchyResult, IconReference,
+    EntryFieldKind, EntrySummary, GroupHierarchyItem, GroupHierarchyResult, IconReference,
 };
 use uuid::Uuid;
 
@@ -53,12 +53,12 @@ fn icon_reference(icon: &IconImage, custom_icon_uuid: Option<Uuid>) -> IconRefer
 pub(super) fn entry_summary(entry: &Entry) -> EntrySummary {
     EntrySummary {
         id: node_id(entry.id),
-        name: (!entry.title.is_protected()).then(|| entry.title.as_str().to_owned()),
-        name_is_protected: entry.title.is_protected(),
-        username: (!entry.username.is_protected()).then(|| entry.username.as_str().to_owned()),
-        username_is_protected: entry.username.is_protected(),
-        url: (!entry.url.is_protected()).then(|| entry.url.as_str().to_owned()),
-        url_is_protected: entry.url.is_protected(),
+        name: (!entry.title().is_protected()).then(|| entry.title().as_str().to_owned()),
+        name_is_protected: entry.title().is_protected(),
+        username: (!entry.username().is_protected()).then(|| entry.username().as_str().to_owned()),
+        username_is_protected: entry.username().is_protected(),
+        url: (!entry.url().is_protected()).then(|| entry.url().as_str().to_owned()),
+        url_is_protected: entry.url().is_protected(),
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),
         tags: entry.tags.clone(),
     }
@@ -206,79 +206,28 @@ pub(super) fn group_hierarchy(database: &Database) -> Result<GroupHierarchyResul
     })
 }
 
-fn standard_field(
-    entry: &Entry,
-    field_index: u64,
-    name: &str,
-    selector: EntryFieldSelector,
-    is_protected: bool,
-) -> EntryFieldInformation {
-    let value = if is_protected {
-        None
-    } else {
-        entry.with_unsealed_field(&selector, str::to_owned)
-    };
-    EntryFieldInformation {
-        field_index,
-        name: name.to_string(),
-        value,
-        is_protected,
-    }
-}
-
 pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
-    let mut fields = vec![
-        standard_field(
-            entry,
-            0,
-            "Title",
-            EntryFieldSelector::Title,
-            entry.title.is_protected(),
-        ),
-        standard_field(
-            entry,
-            1,
-            "UserName",
-            EntryFieldSelector::UserName,
-            entry.username.is_protected(),
-        ),
-        standard_field(
-            entry,
-            2,
-            "Password",
-            EntryFieldSelector::Password,
-            entry.password.is_protected(),
-        ),
-        standard_field(
-            entry,
-            3,
-            "URL",
-            EntryFieldSelector::Url,
-            entry.url.is_protected(),
-        ),
-        standard_field(
-            entry,
-            4,
-            "Notes",
-            EntryFieldSelector::Notes,
-            entry.notes.is_protected(),
-        ),
-    ];
-    fields.extend(
-        entry
-            .custom_fields
-            .iter()
-            .enumerate()
-            .map(|(index, field)| {
-                let is_protected = field.value.is_protected();
-                EntryFieldInformation {
-                    field_index: 5 + index as u64,
-                    name: field.name.clone(),
-                    value: (!is_protected).then(|| field.value.as_str().to_string()),
-                    is_protected,
-                }
-            }),
-    );
+    let fields = entry
+        .fields()
+        .map(|(id, field)| {
+            let is_protected = field.value().is_protected();
+            let kind = match field.standard() {
+                Some(StandardField::Title) => EntryFieldKind::Title,
+                Some(StandardField::UserName) => EntryFieldKind::UserName,
+                Some(StandardField::Password) => EntryFieldKind::Password,
+                Some(StandardField::Url) => EntryFieldKind::Url,
+                Some(StandardField::Notes) => EntryFieldKind::Notes,
+                None => EntryFieldKind::Custom,
+            };
+            EntryFieldInformation {
+                field_id: id.to_string(),
+                kind,
+                name: field.name().to_string(),
+                value: (!is_protected).then(|| field.value().as_str().to_string()),
+                is_protected,
+            }
+        })
+        .collect();
 
     EntryDetailResult {
         id: node_id(entry.id),

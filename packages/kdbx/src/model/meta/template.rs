@@ -3,7 +3,7 @@
 //! Template definitions and inference for entry types (Login, Credit Card, etc.)
 
 use crate::model::core::{NodeId, ProtectedString};
-use crate::model::entry::{Entry, EntryField};
+use crate::model::entry::Entry;
 use crate::model::meta::icon::{IconImage, IconImageStandard};
 
 /// Template field definition
@@ -73,7 +73,7 @@ impl Template {
 
     pub fn into_entry(self) -> Entry {
         let mut entry = Entry::new(NodeId::from_uuid(self.uuid));
-        entry.title = ProtectedString::new_plain(&self.title);
+        entry.set_title(ProtectedString::new_plain(&self.title));
         entry.icon = IconImage::Standard(IconImageStandard::new(self.icon_id));
         entry.is_template = true;
 
@@ -87,21 +87,20 @@ impl Template {
             };
             match field.name.as_str() {
                 "Title" => {
-                    let title = entry.title.as_str().to_string();
-                    entry.title = if field.is_protected {
+                    let title = entry.title().as_str().to_string();
+                    entry.set_title(if field.is_protected {
                         ProtectedString::new_protected(&title)
                     } else {
                         ProtectedString::new_plain(&title)
-                    };
+                    });
                 }
-                "UserName" => entry.username = value(),
-                "Password" => entry.password = value(),
-                "URL" => entry.url = value(),
-                "Notes" => entry.notes = value(),
-                _ => entry.custom_fields.push(EntryField {
-                    name: field.name,
-                    value: value(),
-                }),
+                "UserName" => entry.set_username(value()),
+                "Password" => entry.set_password(value()),
+                "URL" => entry.set_url(value()),
+                "Notes" => entry.set_notes(value()),
+                _ => {
+                    entry.add_custom_field(field.name, value());
+                }
             }
         }
 
@@ -394,14 +393,14 @@ mod tests {
             .unwrap();
         let entry = template.into_entry();
 
-        assert_eq!(entry.title, "Credit Card");
+        assert_eq!(entry.title(), "Credit Card");
         assert!(entry.is_template);
-        assert_eq!(entry.custom_fields.len(), 5);
+        assert_eq!(entry.custom_fields().count(), 5);
         assert!(entry
-            .custom_fields
-            .iter()
-            .find(|field| field.name == "Card Number")
+            .custom_fields()
+            .find(|(_, field)| field.name == "Card Number")
             .unwrap()
+            .1
             .value
             .is_protected());
         assert!(matches!(

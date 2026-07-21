@@ -2,12 +2,11 @@ import { Button } from '@/components/button';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/field';
 import { Input } from '@/components/input';
 import { IconPlus, IconTrash } from '@/icons';
-import { STANDARD_NAMES } from '../_constants';
+import { getFieldName } from '../_utils/getFieldName';
 import { FieldPasswordEditor } from './FieldPasswordEditor';
 import { FieldPlainEditor } from './FieldPlainEditor';
 import type { FieldDraft } from '../_types/FieldDraft';
 import type { DatabaseNodeId } from '@keeless/schema';
-import {getFieldName} from '../_utils/getFieldName';
 
 export const EditContent = ({
   entryId,
@@ -29,7 +28,7 @@ export const EditContent = ({
   <div className="w-full max-w-3xl space-y-8 p-4 sm:p-6">
     <FieldGroup className="gap-5">
       {drafts.map(draft => {
-        const standard = draft.fieldIndex !== null && draft.fieldIndex < STANDARD_NAMES.length;
+        const standard = draft.kind !== 'custom';
         const invalid = errors.has(draft.key);
         const nameId = `${draft.key}-name`;
         const valueId = `${draft.key}-value`;
@@ -41,10 +40,10 @@ export const EditContent = ({
           <FieldPasswordEditor
             id={valueId}
             entryId={entryId}
-            fieldIndex={draft.fieldIndex}
+            fieldId={draft.fieldId}
             name={editorName}
             value={displayValue}
-            existing={draft.fieldIndex !== null && !draft.valueChanged}
+            existing={draft.fieldId !== null && !draft.valueChanged}
             disabled={pending}
             onChange={value => onChange(draft.key, { value, valueChanged: true })}
           />
@@ -54,7 +53,7 @@ export const EditContent = ({
             name={editorName}
             value={displayValue}
             placeholder={standard ? undefined : 'Enter a value'}
-            multiline={draft.fieldIndex === STANDARD_NAMES.indexOf('Notes')}
+            multiline={draft.kind === 'notes'}
             disabled={pending}
             onChange={value => onChange(draft.key, { value, valueChanged: true })}
           />
@@ -86,9 +85,7 @@ export const EditContent = ({
                       </FieldError>
                     )}
                   </Field>
-                  <Field className="flex-2">
-                    {editor}
-                  </Field>
+                  <Field className="flex-2">{editor}</Field>
                   <Button
                     type="button"
                     variant="ghost"

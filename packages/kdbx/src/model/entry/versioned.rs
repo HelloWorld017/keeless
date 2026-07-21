@@ -37,10 +37,22 @@ impl EntryKDB {
     pub fn from_kdb_fields(id: NodeId, fields: &std::collections::HashMap<u16, Vec<u8>>) -> Entry {
         let mut e = Entry::new(id);
 
-        e.title = ProtectedString::new_plain(&get_string(fields, kdb_field::TITLE));
-        e.username = ProtectedString::new_plain(&get_string(fields, kdb_field::USER_NAME));
-        e.password = ProtectedString::new_protected(&get_string(fields, kdb_field::PASSWORD));
-        e.notes = ProtectedString::new_plain(&get_string(fields, kdb_field::NOTES));
+        e.set_title(ProtectedString::new_plain(&get_string(
+            fields,
+            kdb_field::TITLE,
+        )));
+        e.set_username(ProtectedString::new_plain(&get_string(
+            fields,
+            kdb_field::USER_NAME,
+        )));
+        e.set_password(ProtectedString::new_protected(&get_string(
+            fields,
+            kdb_field::PASSWORD,
+        )));
+        e.set_notes(ProtectedString::new_plain(&get_string(
+            fields,
+            kdb_field::NOTES,
+        )));
 
         if let Some(data) = fields.get(&kdb_field::ICON_ID) {
             if data.len() >= 4 {
@@ -82,16 +94,16 @@ impl EntryKDB {
             _ => 0,
         };
         let mut fields = vec![
-            (kdb_field::TITLE, entry.title.as_bytes().to_vec()),
+            (kdb_field::TITLE, entry.title().as_bytes().to_vec()),
             (
                 kdb_field::USER_NAME,
-                entry.username.as_str().as_bytes().to_vec(),
+                entry.username().as_str().as_bytes().to_vec(),
             ),
             (
                 kdb_field::PASSWORD,
-                entry.password.as_str().as_bytes().to_vec(),
+                entry.password().as_str().as_bytes().to_vec(),
             ),
-            (kdb_field::NOTES, entry.notes.as_str().as_bytes().to_vec()),
+            (kdb_field::NOTES, entry.notes().as_str().as_bytes().to_vec()),
             (kdb_field::ICON_ID, icon_id.to_le_bytes().to_vec()),
             (
                 kdb_field::CREATION_TIME,
@@ -194,7 +206,7 @@ impl EntryKDBX {
     /// This is used to determine what template icon/metadata to show.
     pub fn get_template_type(entry: &Entry) -> Option<String> {
         // Check if the entry has a "_etm_type" custom field ( KeePass template marker)
-        for f in &entry.custom_fields {
+        for (_, f) in entry.custom_fields() {
             if f.name == "KeePassFieldType" || f.name == "_etm_type" {
                 return Some(f.value.as_str().to_string());
             }
@@ -206,11 +218,6 @@ impl EntryKDBX {
     /// In KDBX, the inner stream cipher handles protection.
     pub fn should_protect_field(field_name: &str) -> bool {
         matches!(field_name, "Password")
-    }
-
-    /// Get entry field names in standard KDBX order.
-    pub fn field_order() -> &'static [&'static str] {
-        &["Title", "UserName", "Password", "URL", "Notes"]
     }
 }
 
@@ -246,30 +253,22 @@ mod tests {
         fields.insert(kdb_field::ICON_ID, 5u32.to_le_bytes().to_vec());
 
         let entry = EntryKDB::from_kdb_fields(NodeId::new_uuid(), &fields);
-        assert_eq!(entry.title, "Test Entry");
-        assert_eq!(entry.username.as_str(), "user123");
-        assert_eq!(entry.password.as_str(), "secret");
+        assert_eq!(entry.title(), "Test Entry");
+        assert_eq!(entry.username().as_str(), "user123");
+        assert_eq!(entry.password().as_str(), "secret");
     }
 
     #[test]
     fn test_kdb_entry_to_fields() {
         let mut entry = Entry::new(NodeId::new_uuid());
-        entry.title = "Test".into();
-        entry.username = ProtectedString::new_plain("user");
-        entry.password = ProtectedString::new_protected("pass");
+        entry.set_title("Test");
+        entry.set_username(ProtectedString::new_plain("user"));
+        entry.set_password(ProtectedString::new_protected("pass"));
 
         let fields = EntryKDB::to_kdb_fields(&entry);
         assert!(fields.iter().any(|(k, _)| *k == kdb_field::TITLE));
         assert!(fields.iter().any(|(k, _)| *k == kdb_field::PASSWORD));
         assert!(fields.iter().any(|(k, _)| *k == kdb_field::END));
-    }
-
-    #[test]
-    fn test_kdbx_field_order() {
-        let order = EntryKDBX::field_order();
-        assert_eq!(order[0], "Title");
-        assert_eq!(order[1], "UserName");
-        assert_eq!(order[2], "Password");
     }
 
     #[test]
@@ -283,10 +282,10 @@ mod tests {
     fn test_roundtrip_kdb() {
         let id = NodeId::new_uuid();
         let mut entry = Entry::new(id);
-        entry.title = "RoundTrip".into();
-        entry.username = ProtectedString::new_plain("u");
-        entry.password = ProtectedString::new_protected("p");
-        entry.notes = ProtectedString::new_plain("n");
+        entry.set_title("RoundTrip");
+        entry.set_username(ProtectedString::new_plain("u"));
+        entry.set_password(ProtectedString::new_protected("p"));
+        entry.set_notes(ProtectedString::new_plain("n"));
         entry.binaries.push(EntryBinary {
             name: "file.txt".to_string(),
             data: vec![0x42, 0x43],
@@ -297,8 +296,8 @@ mod tests {
         let map: HashMap<u16, Vec<u8>> = fields.into_iter().collect();
         let restored = EntryKDB::from_kdb_fields(id, &map);
 
-        assert_eq!(restored.title, "RoundTrip");
-        assert_eq!(restored.username.as_str(), "u");
+        assert_eq!(restored.title(), "RoundTrip");
+        assert_eq!(restored.username().as_str(), "u");
         assert_eq!(restored.binaries.len(), 1);
         assert_eq!(restored.binaries[0].name, "file.txt");
     }

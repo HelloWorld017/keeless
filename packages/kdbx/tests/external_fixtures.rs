@@ -74,11 +74,11 @@ fn opens_and_preserves_kdbxweb_kdbx41_extensions() {
     assert!(database
         .entries
         .values()
-        .any(|entry| entry.title == "DisabledQ"));
+        .any(|entry| entry.title().as_str() == "DisabledQ"));
     assert!(database
         .entries
         .values()
-        .any(|entry| entry.title == "Was inside"));
+        .any(|entry| entry.title().as_str() == "Was inside"));
     assert!(database.contains_unsupported_xml);
 
     let reopened = round_trip(&database, "test");
@@ -91,11 +91,11 @@ fn opens_and_preserves_kdbxweb_kdbx41_extensions() {
     assert!(reopened
         .entries
         .values()
-        .any(|entry| entry.title == "DisabledQ"));
+        .any(|entry| entry.title().as_str() == "DisabledQ"));
     assert!(reopened
         .entries
         .values()
-        .any(|entry| entry.title == "Was inside"));
+        .any(|entry| entry.title().as_str() == "Was inside"));
     assert!(reopened.contains_unsupported_xml);
 }
 
@@ -119,14 +119,13 @@ fn opens_and_preserves_kdbxweb_cyrillic_fixture() {
     let entry = database
         .entries
         .values()
-        .find(|entry| entry.title == "моя запись")
+        .find(|entry| entry.title().as_str() == "моя запись")
         .expect("Cyrillic entry should exist");
     assert_eq!(entry.tags, ["теги"]);
     assert_eq!(entry.history.len(), 1);
     assert!(entry
-        .custom_fields
-        .iter()
-        .any(|field| field.name == "поле1" && field.value.as_str() == "значение1"));
+        .custom_fields()
+        .any(|(_, field)| field.name() == "поле1" && field.value().as_str() == "значение1"));
     assert_eq!(
         database
             .with_entry_field(
@@ -155,7 +154,7 @@ fn opens_and_preserves_kdbxweb_cyrillic_fixture() {
     assert_eq!(reopened.group_count(), 7);
     assert_eq!(reopened.entry_count(), 2);
     assert!(reopened.entries.values().any(|entry| {
-        entry.title == "моя запись" && entry.tags == ["теги"] && entry.history.len() == 1
+        entry.title().as_str() == "моя запись" && entry.tags == ["теги"] && entry.history.len() == 1
     }));
 
     let mut encoded = Vec::new();
@@ -200,11 +199,10 @@ fn opens_and_preserves_keepassxc_format400_content() {
     assert_eq!(database.root_group().unwrap().title, "Format400");
     assert_eq!(database.entry_count(), 1);
     let entry = database.entries.values().next().unwrap();
-    assert_eq!(entry.title, "Format400");
+    assert_eq!(entry.title().as_str(), "Format400");
     assert!(entry
-        .custom_fields
-        .iter()
-        .any(|field| field.name == "Format400"));
+        .custom_fields()
+        .any(|(_, field)| field.name() == "Format400"));
     assert_eq!(
         database
             .with_entry_field(
@@ -272,8 +270,8 @@ fn opens_and_preserves_keepassxc_protected_strings() {
     assert_eq!(database.name, "Protected Strings Test");
 
     let entry = database.entries.values().next().unwrap();
-    assert_eq!(entry.title, "Sample Entry");
-    assert!(entry.password.is_memory_protected());
+    assert_eq!(entry.title().as_str(), "Sample Entry");
+    assert!(entry.password().is_memory_protected());
     assert_eq!(
         database
             .with_entry_field(
@@ -296,14 +294,13 @@ fn opens_and_preserves_keepassxc_protected_strings() {
             .unwrap(),
         "ProtectedPassword"
     );
-    assert!(entry
-        .custom_fields
-        .iter()
-        .any(|field| { field.name == "TestProtected" && field.value.is_memory_protected() }));
-    assert!(entry.custom_fields.iter().any(|field| {
-        field.name == "TestUnprotected"
-            && !field.value.is_protected()
-            && field.value.as_str() == "DEF"
+    assert!(entry.custom_fields().any(|(_, field)| {
+        field.name() == "TestProtected" && field.value().is_memory_protected()
+    }));
+    assert!(entry.custom_fields().any(|(_, field)| {
+        field.name() == "TestUnprotected"
+            && !field.value().is_protected()
+            && field.value().as_str() == "DEF"
     }));
     assert_eq!(
         database

@@ -21,6 +21,7 @@ flate2 = "1"
 getrandom = "0.2"
 hmac = "0.12"
 hkdf = "0.12"
+indexmap = "2"
 log = "0.4"
 minicbor = { version = "=0.25.1", features = ["alloc"] }
 p256 = { version = "0.13", features = ["ecdsa", "pem"] }

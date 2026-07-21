@@ -110,9 +110,21 @@ pub struct TagSummary {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum EntryFieldKind {
+    Title,
+    UserName,
+    Password,
+    Url,
+    Notes,
+    Custom,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EntryFieldInformation {
-    pub field_index: u64,
+    pub field_id: String,
+    pub kind: EntryFieldKind,
     pub name: String,
     #[serde(deserialize_with = "deserialize_nullable")]
     pub value: Option<String>,
@@ -237,7 +249,7 @@ pub struct GetEntryDetailArgs {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EntryFieldUpdate {
     #[serde(deserialize_with = "deserialize_nullable")]
-    pub field_index: Option<u64>,
+    pub field_id: Option<String>,
     pub name: String,
     #[serde(deserialize_with = "deserialize_nullable")]
     pub value: Option<String>,
@@ -328,7 +340,7 @@ pub struct RenameGroupArgs {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevealEntryFieldArgs {
     pub entry_id: DatabaseNodeId,
-    pub field_index: u64,
+    pub field_id: String,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     #[specta(optional = true)]
     pub password: Option<String>,

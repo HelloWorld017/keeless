@@ -29,6 +29,7 @@ fn generate() -> String {
     export::<CustomIcon>(&mut output);
     export::<GroupHierarchyItem>(&mut output);
     export::<TagSummary>(&mut output);
+    export::<EntryFieldKind>(&mut output);
     export::<EntryFieldInformation>(&mut output);
     export::<EntryAttachmentInformation>(&mut output);
     export::<OpenArgs>(&mut output);

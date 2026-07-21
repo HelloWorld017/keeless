@@ -239,13 +239,13 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
                 entry_id: DatabaseNodeId::Int(42),
                 fields: vec![
                     EntryFieldUpdate {
-                        field_index: Some(2),
+                        field_id: Some("standard:Password".into()),
                         name: "Password".into(),
                         value: None,
                         is_protected: true,
                     },
                     EntryFieldUpdate {
-                        field_index: None,
+                        field_id: None,
                         name: "Account".into(),
                         value: Some("value".into()),
                         is_protected: false,
@@ -261,8 +261,8 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
                 "entryId": 42,
                 "password": null,
                 "fields": [
-                    { "fieldIndex": 2, "name": "Password", "value": null, "isProtected": true },
-                    { "fieldIndex": null, "name": "Account", "value": "value", "isProtected": false }
+                    { "fieldId": "standard:Password", "name": "Password", "value": null, "isProtected": true },
+                    { "fieldId": null, "name": "Account", "value": "value", "isProtected": false }
                 ]
             }
         }),
@@ -377,7 +377,8 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                     },
                     tags: vec!["work".into()],
                     fields: vec![EntryFieldInformation {
-                        field_index: 2,
+                        field_id: "standard:Password".into(),
+                        kind: EntryFieldKind::Password,
                         name: "Password".into(),
                         value: None,
                         is_protected: true,
@@ -408,7 +409,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                 "id": 7,
                 "icon": { "standardId": 1, "customUuid": null },
                 "tags": ["work"],
-                "fields": [{ "fieldIndex": 2, "name": "Password", "value": null, "isProtected": true }],
+                "fields": [{ "fieldId": "standard:Password", "kind": "password", "name": "Password", "value": null, "isProtected": true }],
                 "backgroundColor": "#000000",
                 "foregroundColor": "#ffffff",
                 "overrideUrl": "",
@@ -537,11 +538,11 @@ fn database_editing_operations_have_stable_shapes() {
             request_id: "reveal-1".into(),
             operation: Operation::RevealEntryField(RevealEntryFieldArgs {
                 entry_id: DatabaseNodeId::Int(8),
-                field_index: 2,
+                field_id: "standard:Password".into(),
                 password: None,
             }),
         },
-        json!({ "requestId": "reveal-1", "op": "revealEntryField", "args": { "entryId": 8, "fieldIndex": 2, "password": null } }),
+        json!({ "requestId": "reveal-1", "op": "revealEntryField", "args": { "entryId": 8, "fieldId": "standard:Password", "password": null } }),
     );
     assert_roundtrip(
         OperationResponse {
@@ -557,7 +558,7 @@ fn database_editing_operations_have_stable_shapes() {
 
     let omitted: RevealEntryFieldArgs = serde_json::from_value(json!({
         "entryId": 8,
-        "fieldIndex": 2
+        "fieldId": "standard:Password"
     }))
     .unwrap();
     assert_eq!(omitted.password, None);

@@ -6,9 +6,10 @@ mod group;
 mod meta;
 
 use super::helpers::*;
-use crate::crypto::memory_protection::{MemoryField, MemoryUnlockSession};
+use crate::crypto::memory_protection::MemoryUnlockSession;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::DatabaseVersion;
+use crate::model::entry::{memory_field, EntryFieldId};
 
 type XmlWriter = quick_xml::Writer<Vec<u8>>;
 
@@ -79,64 +80,16 @@ pub(super) enum MemoryWriteAccess<'a> {
 }
 
 impl MemoryWriteAccess<'_> {
-    pub(super) fn with_field<T>(
+    pub(super) fn with_entry_field<T>(
         &mut self,
         entry: &Entry,
-        field: &MemoryField,
-        use_value: impl FnOnce(&str) -> DatabaseResult<T>,
-    ) -> DatabaseResult<T> {
-        match self {
-            Self::Unlocked(unlock) => entry.with_memory_field(unlock, field, use_value),
-            Self::Unsealed => match field {
-                MemoryField::Title if !entry.title.is_memory_protected() => {
-                    use_value(entry.title.as_str())
-                }
-                MemoryField::Title => Err(DatabaseError::InvalidCredentials),
-                MemoryField::UserName if !entry.username.is_memory_protected() => {
-                    use_value(entry.username.as_str())
-                }
-                MemoryField::UserName => Err(DatabaseError::InvalidCredentials),
-                MemoryField::Password if !entry.password.is_memory_protected() => {
-                    use_value(entry.password.as_str())
-                }
-                MemoryField::Password => Err(DatabaseError::InvalidCredentials),
-                MemoryField::Url if !entry.url.is_memory_protected() => {
-                    use_value(entry.url.as_str())
-                }
-                MemoryField::Url => Err(DatabaseError::InvalidCredentials),
-                MemoryField::Notes if !entry.notes.is_memory_protected() => {
-                    use_value(entry.notes.as_str())
-                }
-                MemoryField::Notes => Err(DatabaseError::InvalidCredentials),
-                MemoryField::Custom(name) => {
-                    let field = entry
-                        .custom_fields
-                        .iter()
-                        .find(|candidate| candidate.name == *name)
-                        .ok_or_else(|| {
-                            DatabaseError::InvalidFormat(format!("unknown field: {name}"))
-                        })?;
-                    if field.value.is_memory_protected() {
-                        Err(DatabaseError::InvalidCredentials)
-                    } else {
-                        use_value(field.value.as_str())
-                    }
-                }
-            },
-        }
-    }
-
-    pub(super) fn with_custom_field<T>(
-        &mut self,
-        entry: &Entry,
-        index: usize,
+        id: EntryFieldId,
         use_value: impl FnOnce(&str) -> DatabaseResult<T>,
     ) -> DatabaseResult<T> {
         let field = entry
-            .custom_fields
-            .get(index)
-            .ok_or_else(|| DatabaseError::InvalidFormat(format!("unknown field index: {index}")))?;
-        let memory_field = MemoryField::Custom(field.name.clone());
+            .field(id)
+            .ok_or_else(|| DatabaseError::InvalidFormat(format!("unknown field ID: {id}")))?;
+        let memory_field = memory_field(id, field.name());
         match self {
             Self::Unlocked(unlock) => {
                 field

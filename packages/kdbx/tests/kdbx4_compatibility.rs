@@ -86,8 +86,8 @@ fn output_opens_with_independent_keepass_parser() {
 
     let entry_id = NodeId::new_uuid();
     let mut entry = Entry::new(entry_id);
-    entry.title = "Interoperability".into();
-    entry.password = ProtectedString::new_protected("secret");
+    entry.set_title("Interoperability");
+    entry.set_password(ProtectedString::new_protected("secret"));
     entry.binaries.push(EntryBinary {
         name: "protected.bin".into(),
         data: vec![0, 1, 2, 255],

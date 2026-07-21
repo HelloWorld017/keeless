@@ -287,10 +287,10 @@ impl ChangeTracker {
         use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        entry.title.as_str().hash(&mut hasher);
-        entry.username.as_str().hash(&mut hasher);
-        entry.url.as_str().hash(&mut hasher);
-        entry.notes.as_str().hash(&mut hasher);
+        entry.title().as_str().hash(&mut hasher);
+        entry.username().as_str().hash(&mut hasher);
+        entry.url().as_str().hash(&mut hasher);
+        entry.notes().as_str().hash(&mut hasher);
         hasher.finish()
     }
 
@@ -314,7 +314,7 @@ impl ChangeTracker {
                 Ok(())
             })?;
         }
-        for custom in &entry.custom_fields {
+        for (_, custom) in entry.custom_fields() {
             custom.name.hash(&mut hasher);
             custom.value.with_plaintext(
                 unlock,
@@ -479,7 +479,7 @@ mod tests {
         // Add a new entry
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "New Entry".into();
+        entry.set_title("New Entry");
         db.entries.insert(entry_id, entry);
 
         let diff = tracker.diff_against_snapshot(&db);
@@ -497,13 +497,13 @@ mod tests {
 
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "Original".into();
+        entry.set_title("Original");
         db.entries.insert(entry_id, entry);
 
         let mut tracker = ChangeTracker::from_snapshot(&db);
 
         // Modify entry
-        db.entries.get_mut(&entry_id).unwrap().title = "Modified".into();
+        db.entries.get_mut(&entry_id).unwrap().set_title("Modified");
 
         let diff = tracker.diff_against_snapshot(&db);
         assert_eq!(diff.modified_entries.len(), 1);

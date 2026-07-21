@@ -1,9 +1,9 @@
-import { ReactNode } from 'react';
 import { formatBytes, formatDate } from '../_utils/format';
+import { getFieldName } from '../_utils/getFieldName';
 import { FieldPassword } from './FieldPassword';
 import { FieldPlain } from './FieldPlain';
 import type { EntryAttachmentInformation, EntryDetailResult } from '@keeless/schema';
-import {getFieldName} from '../_utils/getFieldName';
+import type { ReactNode } from 'react';
 
 const DetailSection = ({
   title,
@@ -49,17 +49,17 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
     <div className="w-full max-w-3xl space-y-8 p-4 sm:p-6">
       <DetailSection title="Fields">
         <dl className="divide-y rounded-lg border">
-          {detail.fields.map((field, index) =>
+          {detail.fields.map(field =>
             field.isProtected ? (
               <FieldPassword
-                key={`${detail.id}:${field.fieldIndex}:${index}`}
+                key={`${detail.id}:${field.fieldId}`}
                 entryId={detail.id}
-                fieldIndex={field.fieldIndex}
+                fieldId={field.fieldId}
                 name={getFieldName(field.name)}
               />
             ) : (
               <FieldPlain
-                key={`${detail.id}:${field.fieldIndex}:${index}`}
+                key={`${detail.id}:${field.fieldId}`}
                 name={getFieldName(field.name)}
                 value={field.value}
               />

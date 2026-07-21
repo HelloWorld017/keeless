@@ -94,7 +94,7 @@ impl IntegrityVerifier {
 
         // Check for empty titles
         for (id, entry) in &database.entries {
-            if entry.title.is_empty() && !entry.title.is_memory_protected() {
+            if entry.title().is_empty() && !entry.title().is_memory_protected() {
                 report.warnings.push(IntegrityWarning::EmptyTitle(*id));
             }
         }
@@ -262,7 +262,7 @@ mod tests {
 
         let entry_id = NodeId::new_uuid();
         let mut entry = Entry::new(entry_id);
-        entry.title = "Test".into();
+        entry.set_title("Test");
 
         root.add_child_entry(entry_id);
         db.entries.insert(entry_id, entry);
@@ -285,7 +285,7 @@ mod tests {
         let mut db = make_healthy_db();
         let orphan_id = NodeId::new_uuid();
         let mut orphan = Entry::new(orphan_id);
-        orphan.title = "Orphan".into();
+        orphan.set_title("Orphan");
         db.entries.insert(orphan_id, orphan);
 
         let report = IntegrityVerifier::verify(&db);

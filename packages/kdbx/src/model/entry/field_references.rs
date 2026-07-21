@@ -154,17 +154,17 @@ fn resolve_single_reference(
     for entry in all_entries {
         // Search by ID or title depending on the search field
         let matches = match field_ref.search_in {
-            RefTarget::Title => entry.title == field_ref.search_value,
+            RefTarget::Title => entry.title().as_str() == field_ref.search_value,
             _ => false, // Simplified for now
         };
 
         if matches {
             return match field_ref.target_field {
-                RefTarget::Title => entry.title.as_str().to_string(),
-                RefTarget::UserName => entry.username.as_str().to_string(),
-                RefTarget::Password => entry.password.as_str().to_string(),
-                RefTarget::Url => entry.url.as_str().to_string(),
-                RefTarget::Notes => entry.notes.as_str().to_string(),
+                RefTarget::Title => entry.title().as_str().to_string(),
+                RefTarget::UserName => entry.username().as_str().to_string(),
+                RefTarget::Password => entry.password().as_str().to_string(),
+                RefTarget::Url => entry.url().as_str().to_string(),
+                RefTarget::Notes => entry.notes().as_str().to_string(),
                 RefTarget::CustomField => String::new(),
             };
         }

@@ -15,6 +15,7 @@ pub(super) fn read_entry<R: std::io::BufRead>(
     buf: &mut Vec<u8>,
 ) -> DatabaseResult<Entry> {
     let mut entry = Entry::new(NodeId::new_uuid());
+    entry.begin_field_import();
     let mut saw_uuid = false;
     let mut seen = std::collections::HashSet::new();
 
@@ -182,5 +183,6 @@ pub(super) fn read_entry<R: std::io::BufRead>(
         return Err(DatabaseError::InvalidFormat("entry is missing UUID".into()));
     }
 
+    entry.finish_field_import();
     Ok(entry)
 }

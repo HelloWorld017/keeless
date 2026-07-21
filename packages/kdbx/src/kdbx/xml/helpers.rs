@@ -13,7 +13,7 @@ pub(crate) use crate::model::core::date::DateInstant;
 pub(crate) use crate::model::core::node::NodeId;
 pub(crate) use crate::model::core::security::ProtectedString;
 pub(crate) use crate::model::db::database::Database;
-pub(crate) use crate::model::entry::{AutoTypeAssociation, Entry, EntryBinary, EntryField};
+pub(crate) use crate::model::entry::{AutoTypeAssociation, Entry, EntryBinary};
 pub(crate) use crate::model::exception::{DatabaseError, DatabaseResult};
 pub(crate) use crate::model::group::Group;
 pub(crate) use crate::model::meta::icon::{IconImage, IconImageCustom, IconImageStandard};

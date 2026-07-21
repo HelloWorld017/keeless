@@ -1,34 +1,33 @@
 import { Button } from '@/components/button';
 import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
 import { useState } from 'react';
+import { useProtectedReveal } from '../_hooks/useProtectedReveal';
 import type { DatabaseNodeId } from '@keeless/schema';
-import {useProtectedReveal} from '../_hooks/useProtectedReveal';
-
 
 export const FieldPassword = ({
   entryId,
-  fieldIndex,
+  fieldId,
   name,
   disabled = false,
 }: {
   entryId: DatabaseNodeId;
-  fieldIndex: number;
+  fieldId: string;
   name: string;
   disabled?: boolean;
 }) => {
   const [value, setValue] = useState<string>();
   const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
     entryId,
-    fieldIndex,
+    fieldId,
     onReveal: setValue,
   });
 
   const revealButton = (
     <Button
       type="button"
-      variant='ghost'
-      size='icon-sm'
-      className='-my-1 shrink-0 text-muted-foreground'
+      variant="ghost"
+      size="icon-sm"
+      className="-my-1 shrink-0 text-muted-foreground"
       aria-label={revealed ? `Hide ${name}` : `Reveal ${name}`}
       aria-pressed={revealed}
       disabled={disabled || pending}

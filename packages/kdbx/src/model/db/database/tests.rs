@@ -1,7 +1,7 @@
 use super::*;
 use crate::model::core::date::DateInstant;
 use crate::model::core::security::ProtectedString;
-use crate::model::entry::{EntryBinary, EntryField};
+use crate::model::entry::EntryBinary;
 use crate::model::exception::DatabaseError;
 
 fn make_test_db() -> Database {
@@ -92,12 +92,12 @@ fn test_add_entry() {
 
     let entry_id = NodeId::new_uuid();
     let mut entry = Entry::new(entry_id);
-    entry.title = "Test Entry".into();
-    entry.password = ProtectedString::new_protected("secret");
+    entry.set_title("Test Entry");
+    entry.set_password(ProtectedString::new_protected("secret"));
 
     assert!(db.add_entry(entry, &root_id));
     assert_eq!(db.entry_count(), 1);
-    assert_eq!(db.get_entry(&entry_id).unwrap().title, "Test Entry");
+    assert_eq!(db.get_entry(&entry_id).unwrap().title(), "Test Entry");
 }
 
 #[test]
@@ -420,19 +420,11 @@ fn duplicate_entry_rebinds_or_redacts_protected_content() {
     db.add_group(Group::new(destination_id), &root_id);
 
     let mut source = Entry::new(source_id);
-    source.title = ProtectedString::new_protected("Protected title");
-    source.username = ProtectedString::new_plain("public-user");
-    source.password = ProtectedString::new_protected("secret-password");
-    source.custom_fields = vec![
-        EntryField {
-            name: "Public".into(),
-            value: ProtectedString::new_plain("public-value"),
-        },
-        EntryField {
-            name: "Secret".into(),
-            value: ProtectedString::new_protected("secret-value"),
-        },
-    ];
+    source.set_title(ProtectedString::new_protected("Protected title"));
+    source.set_username(ProtectedString::new_plain("public-user"));
+    source.set_password(ProtectedString::new_protected("secret-password"));
+    source.add_custom_field("Public", ProtectedString::new_plain("public-value"));
+    source.add_custom_field("Secret", ProtectedString::new_protected("secret-value"));
     source.binaries = vec![
         EntryBinary {
             name: "public.txt".into(),
@@ -496,12 +488,16 @@ fn duplicate_entry_rebinds_or_redacts_protected_content() {
         ""
     );
     let redacted = db.get_entry(&redacted_id).unwrap();
-    assert_eq!(redacted.username.as_str(), "public-user");
-    assert!(redacted.password.is_protected());
-    assert_eq!(redacted.password.as_str(), "");
-    assert_eq!(redacted.custom_fields[0].value.as_str(), "public-value");
-    assert!(redacted.custom_fields[1].value.is_protected());
-    assert_eq!(redacted.custom_fields[1].value.as_str(), "");
+    assert_eq!(redacted.username().as_str(), "public-user");
+    assert!(redacted.password().is_protected());
+    assert_eq!(redacted.password().as_str(), "");
+    let custom_fields = redacted
+        .custom_fields()
+        .map(|(_, field)| field)
+        .collect::<Vec<_>>();
+    assert_eq!(custom_fields[0].value.as_str(), "public-value");
+    assert!(custom_fields[1].value.is_protected());
+    assert_eq!(custom_fields[1].value.as_str(), "");
     assert_eq!(redacted.binaries.len(), 1);
     assert_eq!(redacted.binaries[0].name, "public.txt");
 }

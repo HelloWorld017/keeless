@@ -22,7 +22,9 @@ export type GroupHierarchyItem = { id: DatabaseNodeId; name: string; icon: IconR
 
 export type TagSummary = { name: string; entryCount: number }
 
-export type EntryFieldInformation = { fieldIndex: number; name: string; value: string | null; isProtected: boolean }
+export type EntryFieldKind = "title" | "userName" | "password" | "url" | "notes" | "custom"
+
+export type EntryFieldInformation = { fieldId: string; kind: EntryFieldKind; name: string; value: string | null; isProtected: boolean }
 
 export type EntryAttachmentInformation = { name: string; size: number; isProtected: boolean }
 
@@ -56,7 +58,7 @@ export type GetTagsArgs = Record<string, never>
 
 export type GetEntryDetailArgs = { entryId: DatabaseNodeId }
 
-export type EntryFieldUpdate = { fieldIndex: number | null; name: string; value: string | null; isProtected: boolean }
+export type EntryFieldUpdate = { fieldId: string | null; name: string; value: string | null; isProtected: boolean }
 
 export type UpdateEntryArgs = { entryId: DatabaseNodeId; fields: EntryFieldUpdate[]; password?: string | null }
 
@@ -82,7 +84,7 @@ export type DeleteGroupArgs = { groupId: DatabaseNodeId }
 
 export type RenameGroupArgs = { groupId: DatabaseNodeId; name: string }
 
-export type RevealEntryFieldArgs = { entryId: DatabaseNodeId; fieldIndex: number; password?: string | null }
+export type RevealEntryFieldArgs = { entryId: DatabaseNodeId; fieldId: string; password?: string | null }
 
 export type Operation = { op: "open"; args: OpenArgs } | { op: "create"; args: CreateArgs } | { op: "unlock"; args: UnlockArgs } | { op: "lock"; args: LockArgs } | { op: "getDatabaseStatus"; args: GetDatabaseStatusArgs } | { op: "getStorageDescriptor"; args: GetStorageDescriptorArgs } | { op: "getConfig"; args: GetConfigArgs } | { op: "setConfig"; args: SetConfigArgs } | { op: "getEntries"; args: GetEntriesArgs } | { op: "getGroupHierarchy"; args: GetGroupHierarchyArgs } | { op: "getGroupEntries"; args: GetGroupEntriesArgs } | { op: "getTagEntries"; args: GetTagEntriesArgs } | { op: "getTrashEntries"; args: GetTrashEntriesArgs } | { op: "getTags"; args: GetTagsArgs } | { op: "getEntryDetail"; args: GetEntryDetailArgs } | { op: "updateEntry"; args: UpdateEntryArgs } | { op: "deleteEntry"; args: DeleteEntryArgs } | { op: "saveDatabase"; args: SaveDatabaseArgs } | { op: "getCustomIcons"; args: GetCustomIconsArgs } | { op: "getEntryTemplates"; args: GetEntryTemplatesArgs } | { op: "moveGroup"; args: MoveGroupArgs } | { op: "moveEntry"; args: MoveEntryArgs } | { op: "addEntry"; args: AddEntryArgs } | { op: "addEntryFromTemplate"; args: AddEntryFromTemplateArgs } | { op: "addGroup"; args: AddGroupArgs } | { op: "deleteGroup"; args: DeleteGroupArgs } | { op: "renameGroup"; args: RenameGroupArgs } | { op: "revealEntryField"; args: RevealEntryFieldArgs }
 
