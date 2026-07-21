@@ -4,6 +4,7 @@ pub(crate) mod add_group;
 pub(crate) mod create;
 pub(crate) mod delete_entry;
 pub(crate) mod delete_group;
+pub(crate) mod delete_tag;
 pub(crate) mod get_config;
 pub(crate) mod get_custom_icons;
 pub(crate) mod get_database_status;
@@ -27,6 +28,8 @@ pub(crate) mod search_entries;
 pub(crate) mod set_config;
 pub(crate) mod unlock;
 pub(crate) mod update_entry;
+pub(crate) mod update_group;
+pub(crate) mod update_tag_style;
 
 use keeless_schema::{Operation, OperationSuccess};
 
@@ -65,6 +68,9 @@ pub(crate) async fn execute(
         Operation::AddGroup(args) => add_group::execute(core, args),
         Operation::DeleteGroup(args) => delete_group::execute(core, args),
         Operation::RenameGroup(args) => rename_group::execute(core, args),
+        Operation::UpdateGroup(args) => update_group::execute(core, args),
+        Operation::UpdateTagStyle(args) => update_tag_style::execute(core, args),
+        Operation::DeleteTag(args) => delete_tag::execute(core, args),
         Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args),
     }
 }

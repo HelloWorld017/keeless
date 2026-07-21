@@ -1,7 +1,8 @@
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
 import { cn, cx } from '@/utils/css';
 import { ItemIcon } from './ItemIcon';
-import type { EntrySummary } from '@keeless/schema';
+import { Tag } from './Tag';
+import type { EntrySummary, TagSummary } from '@keeless/schema';
 import type { ComponentProps } from 'react';
 
 export const getEntryTitle = (entry: EntrySummary) =>
@@ -12,15 +13,16 @@ export const EntryItem = ({
   selected = false,
   className,
   variant,
+  tags: tagCatalog = [],
   ...props
 }: ComponentProps<typeof Item> & {
   entry: EntrySummary;
   selected?: boolean;
+  tags?: TagSummary[];
 }) => {
   const title = getEntryTitle(entry);
   const username = entry.username || (entry.usernameIsProtected ? 'Protected username' : undefined);
   const url = entry.url || (entry.urlIsProtected ? 'Protected URL' : undefined);
-  const tags = entry.tags.map(tag => `#${tag}`).join(', ');
   const description = [username, url].filter(Boolean).join(' | ');
 
   return (
@@ -34,10 +36,23 @@ export const EntryItem = ({
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className={cx(selected && 'text-primary-foreground')}>{title}</ItemTitle>
-        <ItemDescription
-          className={cx('min-h-5 line-clamp-1 break-all', selected && 'text-primary-foreground/75')}
-        >
-          {description}
+        <ItemDescription className="flex min-h-5 items-center gap-1 overflow-hidden">
+          {description && (
+            <span
+              className={cx('min-w-0 truncate break-all', selected && 'text-primary-foreground/75')}
+            >
+              {description}
+            </span>
+          )}
+          {entry.tags.map(name => (
+            <Tag
+              key={name}
+              name={name}
+              style={tagCatalog.find(tag => tag.name === name)?.style}
+              compact
+              className={cx('max-w-24', selected && 'ring-1 ring-primary-foreground/20')}
+            />
+          ))}
         </ItemDescription>
       </ItemContent>
     </Item>

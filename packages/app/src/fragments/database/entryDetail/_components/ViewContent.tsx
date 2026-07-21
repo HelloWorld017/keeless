@@ -1,9 +1,11 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
 import { Button } from '@/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
+import { useRequest } from '@/fragments/_providers/QueryProvider';
 import { IconChevronRight, IconInfo } from '@/icons';
 import { cn } from '@/utils/css';
 import { useState, type ReactNode } from 'react';
+import { Tag } from '../../_components/Tag';
 import { ExpiryValue } from '../_layout/ExpiryValue';
 import { FieldDivider } from '../_layout/FieldDivider';
 import { formatBytes, formatDate } from '../_utils/format';
@@ -68,6 +70,8 @@ const fieldKey = (field: EntryFieldInformation) =>
 
 export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
   const [internalOpen, setInternalOpen] = useState(false);
+  const tags = useRequest('getTags', {});
+  const tagStyle = (name: string) => tags.data?.tags.find(tag => tag.name === name)?.style;
   const colorRows = [
     detail.backgroundColor && ['Background color', detail.backgroundColor],
     detail.foregroundColor && ['Foreground color', detail.foregroundColor],
@@ -75,6 +79,17 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
   const fields = detail.fields.toSorted((left, right) => left.order - right.order);
   const internalFields = fields.filter(field => field.type === 'field' && field.isInternal);
   const visibleFields = fields.filter(field => field.type !== 'field' || !field.isInternal);
+  const hasTagField = fields.some(field => field.type === 'tags');
+  const tagList = (key: string, label?: string) => (
+    <div key={key} className="space-y-2 px-4 py-3">
+      {label && <dt className="text-xs text-muted-foreground">{label}</dt>}
+      <dd className="flex flex-wrap gap-1.5">
+        {detail.tags.map(name => (
+          <Tag key={name} name={name} style={tagStyle(name)} />
+        ))}
+      </dd>
+    </div>
+  );
 
   const fieldValue = (field: EntryFieldInformation): ReactNode => {
     const key = fieldKey(field);
@@ -114,7 +129,7 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
           />
         );
       case 'tags':
-        return <FieldPlain key={key} name={field.label} value={detail.tags.join(', ')} />;
+        return tagList(key, field.label);
       case 'field':
         return (
           <EntryFieldValue
@@ -159,9 +174,13 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
           </Collapsible>
         )}
       </DetailSection>
-      {detail.tags.length > 0 && (
+      {detail.tags.length > 0 && !hasTagField && (
         <DetailSection title="Tags">
-          <p className="text-sm leading-6">{detail.tags.join(', ')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {detail.tags.map(name => (
+              <Tag key={name} name={name} style={tagStyle(name)} />
+            ))}
+          </div>
         </DetailSection>
       )}
       {detail.attachments.length > 0 && (

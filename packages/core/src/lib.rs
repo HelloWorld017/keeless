@@ -9,6 +9,7 @@ mod model;
 mod network;
 mod operations;
 mod protocol;
+mod tag_styles;
 
 use std::{collections::HashMap, sync::Arc};
 

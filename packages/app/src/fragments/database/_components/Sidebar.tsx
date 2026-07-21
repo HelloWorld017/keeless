@@ -1,4 +1,15 @@
 import Logo from '@/assets/images/logo.png';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/alert-dialog';
 import { Button } from '@/components/button';
 import {
   Sidebar,
@@ -18,7 +29,7 @@ import {
   useSidebar,
 } from '@/components/sidebar';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { IconList, IconPlus, IconSearch, IconTag, IconTrash } from '@/icons';
+import { IconList, IconPlus, IconSearch, IconTrash } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
@@ -27,13 +38,16 @@ import { useMemo } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
 import { databaseNodeKey, type RootDropData, type TrashDropData } from '../_utils/dragAndDrop';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
+import { Tag } from './Tag';
+import { TagStyleEditor } from './TagStyleEditor';
 import type {
   AddGroupArgs,
   DatabaseNodeId,
   DeleteGroupArgs,
   GroupHierarchyResult,
   MoveGroupArgs,
-  RenameGroupArgs,
+  TagStyle,
+  UpdateGroupArgs,
 } from '@keeless/schema';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
@@ -164,8 +178,10 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
     },
   });
 
-  const renameGroup = useMutation({
-    mutationFn: (args: RenameGroupArgs) => requestClient.data!.request('renameGroup', args),
+  const updateGroup = useMutation({
+    mutationFn: async (args: UpdateGroupArgs) => {
+      await requestClient.data!.request('updateGroup', args);
+    },
     onMutate: async args => {
       await queryClient.cancelQueries({ queryKey: hierarchyQueryKey });
       const previous = queryClient.getQueryData<GroupHierarchyResult>(hierarchyQueryKey);
@@ -174,7 +190,7 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
           ? {
               ...current,
               groups: current.groups.map(group =>
-                group.id === args.groupId ? { ...group, name: args.name } : group,
+                group.id === args.groupId ? { ...group, name: args.name, icon: args.icon } : group,
               ),
             }
           : current,
@@ -187,6 +203,24 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
       }
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
+  });
+  const updateTagStyle = useMutation({
+    mutationFn: async ({ name, style }: { name: string; style: TagStyle }) => {
+      await requestClient.data!.request('updateTagStyle', { name, style });
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] }),
+  });
+  const deleteTag = useMutation({
+    mutationFn: async (name: string) => {
+      await requestClient.data!.request('deleteTag', { name });
+    },
+    onSuccess: async (_result, name) => {
+      const href = buildRoute('tag', { tag: name });
+      if (location === href) {
+        setLocation(buildRoute('database'), { replace: true });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] });
+    },
   });
 
   const databaseName = hierarchy.data
@@ -232,7 +266,7 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
   });
   const groupParentId = activeGroup?.id ?? hierarchy.data?.rootGroupId;
   const groupsPending =
-    moveGroup.isPending || addGroup.isPending || renameGroup.isPending || deleteGroup.isPending;
+    moveGroup.isPending || addGroup.isPending || updateGroup.isPending || deleteGroup.isPending;
 
   return (
     <Sidebar className="p-2 xl:p-4">
@@ -302,8 +336,8 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
                 location={location}
                 disabled={groupsPending}
                 onMove={args => moveGroup.mutate(args)}
-                onRename={async args => {
-                  await renameGroup.mutateAsync(args);
+                onUpdate={async args => {
+                  await updateGroup.mutateAsync(args);
                 }}
                 onDelete={() => {
                   if (activeGroup) {
@@ -323,9 +357,9 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
                 The group could not be added.
               </p>
             )}
-            {renameGroup.isError && (
+            {updateGroup.isError && (
               <p className="px-2 pt-2 text-xs text-destructive" role="alert">
-                The group could not be renamed.
+                The group could not be updated.
               </p>
             )}
             {deleteGroup.isError && (
@@ -346,21 +380,66 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
                 {tags.data.tags.map(tag => {
                   const href = buildRoute('tag', { tag: tag.name });
                   return (
-                    <SidebarMenuItem key={tag.name}>
+                    <SidebarMenuItem key={tag.name} className="group">
                       <SidebarMenuButton
                         render={<Link href={href} replace />}
                         isActive={location === href}
-                        className="pr-8"
+                        className="pr-16"
                         onClick={closeMobile}
                       >
-                        <IconTag />
-                        <span>{tag.name}</span>
+                        <Tag name={tag.name} style={tag.style} compact className="max-w-36" />
                       </SidebarMenuButton>
+                      <TagStyleEditor
+                        tag={tag}
+                        disabled={updateTagStyle.isPending || deleteTag.isPending}
+                        onSave={style => updateTagStyle.mutateAsync({ name: tag.name, style })}
+                      />
+                      {tag.canDelete && (
+                        <AlertDialog>
+                          <AlertDialogTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                className="absolute top-1 right-14 z-10 text-destructive opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                                aria-label={`Delete ${tag.name} tag`}
+                              />
+                            }
+                            disabled={updateTagStyle.isPending || deleteTag.isPending}
+                            onClick={event => event.stopPropagation()}
+                          >
+                            <IconTrash />
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete tag?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                The unused "{tag.name}" tag and its style will be removed.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                variant="destructive"
+                                onClick={() => deleteTag.mutate(tag.name)}
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                       <SidebarMenuBadge>{tag.entryCount}</SidebarMenuBadge>
                     </SidebarMenuItem>
                   );
                 })}
               </SidebarMenu>
+            )}
+            {(updateTagStyle.isError || deleteTag.isError) && (
+              <p className="px-2 pt-2 text-xs text-destructive" role="alert">
+                The tag could not be updated.
+              </p>
             )}
           </SidebarGroupContent>
         </SidebarGroup>

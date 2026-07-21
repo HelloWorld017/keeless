@@ -11,6 +11,8 @@ use crate::model::core::security::ProtectedString;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::entry::{memory_field, EntryField, EntryFieldId, EntryFields, StandardField};
 use crate::model::exception::{DatabaseError, DatabaseResult};
+use crate::model::meta::icon::{IconImage, IconImageStandard};
+use uuid::Uuid;
 
 use super::Database;
 
@@ -31,6 +33,12 @@ impl Drop for EntryFieldUpdate {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IconUpdate {
+    pub standard_id: u32,
+    pub custom_uuid: Option<Uuid>,
+}
+
 /// Complete desired update for entry properties stored outside string fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryPropertiesUpdate {
@@ -38,6 +46,7 @@ pub struct EntryPropertiesUpdate {
     pub tags: Vec<String>,
     pub expires: bool,
     pub expiry_time_ms: Option<i64>,
+    pub icon: Option<IconUpdate>,
 }
 
 impl Database {
@@ -228,7 +237,11 @@ impl Database {
                     != properties
                         .expiry_time_ms
                         .map(DateInstant::EpochMillis)
-                        .unwrap_or_else(DateInstant::never);
+                        .unwrap_or_else(DateInstant::never)
+                || properties.icon.is_some_and(|icon| {
+                    updated.icon != IconImage::Standard(IconImageStandard::new(icon.standard_id))
+                        || updated.custom_icon_uuid != icon.custom_uuid
+                });
             updated.override_url.clone_from(&properties.override_url);
             updated.tags.clone_from(&properties.tags);
             updated.expires = properties.expires;
@@ -236,6 +249,10 @@ impl Database {
                 .expiry_time_ms
                 .map(DateInstant::EpochMillis)
                 .unwrap_or_else(DateInstant::never);
+            if let Some(icon) = properties.icon {
+                updated.icon = IconImage::Standard(IconImageStandard::new(icon.standard_id));
+                updated.custom_icon_uuid = icon.custom_uuid;
+            }
         }
 
         if !changed {

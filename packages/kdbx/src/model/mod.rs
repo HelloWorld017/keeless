@@ -27,7 +27,7 @@ pub use core::{
 };
 pub use db::{
     ChangeRecord, ChangeTracker, ChangeType, CompositeKey, Database, DatabaseVersion, DiffResult,
-    EntryFieldSelector, EntryFieldUpdate, EntryPropertiesUpdate, MasterCredential,
+    EntryFieldSelector, EntryFieldUpdate, EntryPropertiesUpdate, IconUpdate, MasterCredential,
 };
 pub use entry::auto_type::{AutoType, AutoTypeAssociation};
 pub use entry::field_references::{FieldReference, RefTarget};
@@ -38,4 +38,5 @@ pub use group::Group;
 pub use meta::{
     get_builtin_templates, parse_tags, serialize_tags, CustomData, CustomDataItem, DeletedObject,
     IconImage, IconImageCustom, IconImageStandard, Tag, Template, TemplateField, TemplateFieldType,
+    NUMBER_STANDARD_ICONS,
 };

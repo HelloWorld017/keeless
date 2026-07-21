@@ -5,10 +5,11 @@ import type { EntryDetailResult, EntryFieldUpdate, EntryPropertiesUpdate } from 
 
 const createPropertiesDraft = (detail: EntryDetailResult): EntryPropertiesDraft => ({
   overrideUrl: detail.overrideUrl,
-  tags: detail.tags.join(', '),
+  tags: detail.tags,
   tagsChanged: false,
   expires: detail.expires,
   expiryTimeMs: detail.expiryTimeMs,
+  icon: detail.icon,
 });
 
 const createDrafts = (detail: EntryDetailResult): FieldDraft[] =>
@@ -37,10 +38,11 @@ const createDrafts = (detail: EntryDetailResult): FieldDraft[] =>
 
 const emptyProperties: EntryPropertiesDraft = {
   overrideUrl: '',
-  tags: '',
+  tags: [],
   tagsChanged: false,
   expires: false,
   expiryTimeMs: null,
+  icon: { standardId: 0, customUuid: null },
 };
 
 export const useEntryEditor = () => {
@@ -122,14 +124,10 @@ export const useEntryEditor = () => {
 
   const propertiesUpdate = (detail: EntryDetailResult): EntryPropertiesUpdate => ({
     overrideUrl: properties.overrideUrl,
-    tags: properties.tagsChanged
-      ? properties.tags
-          .split(',')
-          .map(tag => tag.trim())
-          .filter(Boolean)
-      : detail.tags,
+    tags: properties.tagsChanged ? properties.tags : detail.tags,
     expires: properties.expires,
     expiryTimeMs: properties.expires ? properties.expiryTimeMs : null,
+    icon: properties.icon,
   });
 
   return {

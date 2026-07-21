@@ -36,6 +36,7 @@ import { CoreRequestError } from '@/utils/request';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { getEntryTitle } from '../_components/EntryItem';
+import { IconPicker } from '../_components/IconPicker';
 import { ItemIcon } from '../_components/ItemIcon';
 import { EditContent } from './_components/EditContent';
 import { PasswordPrompt } from './_components/PasswordPrompt';
@@ -399,11 +400,28 @@ const EntryDetailQuery = ({
           </div>
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-3 text-xl md:text-2xl 2xl:justify-center lg:text-3xl">
-          <ItemIcon
-            icon={entry.icon}
-            fallback="entry"
-            className="hidden shrink-0 text-muted-foreground sm:block"
-          />
+          {editing ? (
+            <IconPicker
+              value={editor.properties.icon}
+              fallback="entry"
+              disabled={pending}
+              onChange={icon => editor.changeProperties({ icon })}
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="shrink-0 text-muted-foreground"
+                />
+              }
+            />
+          ) : (
+            <ItemIcon
+              icon={detail.data?.icon ?? entry.icon}
+              fallback="entry"
+              className="shrink-0 text-muted-foreground"
+            />
+          )}
           <h1 id="entry-detail-title" className="min-w-0 truncate font-semibold">
             {getEntryTitle(entry)}
           </h1>

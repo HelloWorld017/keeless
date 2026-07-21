@@ -1,7 +1,7 @@
 use keeless_kdbx::{
     open_database, save_database, ChangeTracker, CompositeKey, Database, DatabaseError,
     DatabaseVersion, DateInstant, Entry, EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate,
-    Group, NodeId, ProtectedString,
+    Group, IconImage, IconImageStandard, IconUpdate, NodeId, ProtectedString,
 };
 
 fn loaded_database() -> (Database, CompositeKey, NodeId) {
@@ -351,6 +351,8 @@ fn fields_and_properties_commit_with_one_history_snapshot() {
     original.tags = vec!["old".into()];
     original.expires = false;
     original.expiry_time = DateInstant::EpochMillis(1234);
+    original.icon = IconImage::Standard(IconImageStandard::new(5));
+    original.custom_icon_uuid = Some(uuid::Uuid::from_u128(1));
     database.data_modified = false;
 
     let before = database.get_entry(&entry_id).unwrap().clone();
@@ -365,6 +367,10 @@ fn fields_and_properties_commit_with_one_history_snapshot() {
         tags: vec!["one".into(), "two".into()],
         expires: true,
         expiry_time_ms: None,
+        icon: Some(IconUpdate {
+            standard_id: 12,
+            custom_uuid: Some(uuid::Uuid::from_u128(2)),
+        }),
     };
 
     assert!(database
@@ -376,11 +382,24 @@ fn fields_and_properties_commit_with_one_history_snapshot() {
     assert_eq!(updated.tags, ["one", "two"]);
     assert!(updated.expires);
     assert_eq!(updated.expiry_time, DateInstant::never());
+    assert_eq!(
+        updated.icon,
+        IconImage::Standard(IconImageStandard::new(12))
+    );
+    assert_eq!(updated.custom_icon_uuid, Some(uuid::Uuid::from_u128(2)));
     assert_eq!(updated.history.len(), 1);
     assert_eq!(updated.history[0].title().as_str(), "Old");
     assert_eq!(updated.history[0].override_url, "old-override");
     assert_eq!(updated.history[0].tags, ["old"]);
     assert!(!updated.history[0].expires);
+    assert_eq!(
+        updated.history[0].icon,
+        IconImage::Standard(IconImageStandard::new(5))
+    );
+    assert_eq!(
+        updated.history[0].custom_icon_uuid,
+        Some(uuid::Uuid::from_u128(1))
+    );
     assert_eq!(
         updated.history[0].expiry_time,
         DateInstant::EpochMillis(1234)

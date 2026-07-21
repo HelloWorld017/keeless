@@ -30,6 +30,7 @@ import type {
   DatabaseNodeId,
   EntriesResult,
   EntrySummary,
+  TagSummary,
 } from '@keeless/schema';
 
 type EntryOperationName = Extract<
@@ -54,6 +55,7 @@ const decodeRouteParam = (value: string) => {
 
 type EntryRowProps = {
   entry: EntrySummary;
+  tags: TagSummary[];
   source: EntryDragSource;
   selectedEntry: string | null;
   disabled: boolean;
@@ -63,6 +65,7 @@ type EntryRowProps = {
 
 const VirtualEntryRow = ({
   entry,
+  tags,
   source,
   selectedEntry,
   disabled,
@@ -81,6 +84,7 @@ const VirtualEntryRow = ({
     <EntryItem
       ref={setNodeRef}
       entry={entry}
+      tags={tags}
       selected={selectedEntry === String(entry.id)}
       render={<button type="button" aria-label={title} />}
       className={cn(
@@ -101,6 +105,7 @@ const VirtualEntryRow = ({
 const VirtualEntryList = ({
   className,
   entries,
+  tags,
   source,
   selectedEntry,
   disabled,
@@ -135,6 +140,7 @@ const VirtualEntryList = ({
             >
               <VirtualEntryRow
                 entry={entry}
+                tags={tags}
                 source={source}
                 selectedEntry={selectedEntry}
                 disabled={disabled}
@@ -200,6 +206,7 @@ const EntryQuery = <TName extends EntryOperationName>({
 }) => {
   const entries = useRequest(name, args);
   const templates = useRequest('getEntryTemplates', {});
+  const tags = useRequest('getTags', {});
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -390,6 +397,7 @@ const EntryQuery = <TName extends EntryOperationName>({
           <VirtualEntryList
             className="xl:px-6"
             entries={resultSorted}
+            tags={tags.data?.tags ?? []}
             source={source}
             selectedEntry={selectedEntry}
             disabled={movePending}

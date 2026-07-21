@@ -3,9 +3,10 @@ use std::collections::HashSet;
 use crate::model::core::date::DateInstant;
 use crate::model::core::node::NodeId;
 use crate::model::group::Group;
+use crate::model::meta::icon::{IconImage, IconImageStandard};
 use crate::model::meta::DeletedObject;
 
-use super::Database;
+use super::{Database, IconUpdate};
 
 impl Database {
     /// Immutable reference to the root group, always read from `self.groups`.
@@ -66,6 +67,26 @@ impl Database {
             return false;
         };
         group.title = name;
+        group.last_modification_time = DateInstant::now();
+        self.mark_modified();
+        true
+    }
+
+    /// Atomically update a group's name and icon metadata.
+    pub fn update_group(&mut self, group_id: &NodeId, name: String, icon: IconUpdate) -> bool {
+        let Some(group) = self.groups.get_mut(group_id) else {
+            return false;
+        };
+        let icon_image = IconImage::Standard(IconImageStandard::new(icon.standard_id));
+        if group.title == name
+            && group.icon == icon_image
+            && group.custom_icon_uuid == icon.custom_uuid
+        {
+            return false;
+        }
+        group.title = name;
+        group.icon = icon_image;
+        group.custom_icon_uuid = icon.custom_uuid;
         group.last_modification_time = DateInstant::now();
         self.mark_modified();
         true

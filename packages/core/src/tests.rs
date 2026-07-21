@@ -12,11 +12,12 @@ use keeless_kdbx::{
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
-    DeleteEntryArgs, DeleteGroupArgs, EntryFieldInformation,
+    DeleteEntryArgs, DeleteGroupArgs, DeleteTagArgs, EntryFieldInformation,
     EntryFieldUpdate as SchemaEntryFieldUpdate, EntryPropertiesUpdate, FieldControl,
     GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
-    GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
-    OperationResponse, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,
+    GetTagEntriesArgs, IconReference, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome,
+    OperationRequest, OperationResponse, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,
+    TagStyle, UpdateGroupArgs, UpdateTagStyleArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -941,6 +942,123 @@ async fn database_query_operations_preserve_hierarchy_order_and_group_scope() {
     assert_eq!(icons.icons[0].data_base64, "AQID");
     assert_eq!(icons.icons[0].name, "Custom");
     assert_eq!(icons.icons[0].last_modification_time_ms, 1_700_000_000_000);
+}
+
+#[tokio::test]
+async fn tag_styles_union_hidden_usage_and_validate_mutations() {
+    let (mut core, ids) = query_core().await;
+    let trash_group_id = NodeId::from_uuid(Uuid::from_u128(70));
+    let template_group_id = NodeId::from_uuid(Uuid::from_u128(71));
+    {
+        let database = core.handle.as_mut().unwrap().database_mut();
+        assert!(database.add_group(
+            Group::new(trash_group_id),
+            &NodeId::from_uuid(ids.root_group)
+        ));
+        assert!(database.add_group(
+            Group::new(template_group_id),
+            &NodeId::from_uuid(ids.root_group)
+        ));
+        let mut trash = Entry::new(NodeId::from_uuid(Uuid::from_u128(72)));
+        trash.tags = vec![" TrashOnly ".into()];
+        assert!(database.add_entry(trash, &trash_group_id));
+        let mut template = Entry::new(NodeId::from_uuid(Uuid::from_u128(73)));
+        template.tags = vec!["TemplateOnly".into()];
+        template.is_template = true;
+        assert!(database.add_entry(template, &template_group_id));
+        database.recycle_bin_uuid = Some(Uuid::from_u128(70));
+        database.entry_templates_uuid = Some(Uuid::from_u128(71));
+    }
+
+    let style = |standard_id, color: &str| TagStyle {
+        icon: IconReference {
+            standard_id,
+            custom_uuid: None,
+        },
+        color: color.into(),
+    };
+    for (name, style) in [
+        ("orphan", style(1, "#AABBCC")),
+        ("shared", style(2, "#112233")),
+        ("TrashOnly", style(3, "#445566")),
+        ("TemplateOnly", style(4, "#778899")),
+    ] {
+        operations::update_tag_style::run(
+            &mut core,
+            UpdateTagStyleArgs {
+                name: name.into(),
+                style,
+            },
+        )
+        .unwrap();
+    }
+
+    let tags = operations::get_tags::run(&mut core).unwrap().tags;
+    assert!(tags.windows(2).all(|pair| pair[0].name < pair[1].name));
+    let tag = |name: &str| tags.iter().find(|tag| tag.name == name).unwrap();
+    assert_eq!(tag("orphan").entry_count, 0);
+    assert_eq!(tag("orphan").style.as_ref().unwrap().color, "#aabbcc");
+    assert!(tag("orphan").can_delete);
+    assert!(!tag("shared").can_delete);
+    assert_eq!(tag("TrashOnly").entry_count, 0);
+    assert!(!tag("TrashOnly").can_delete);
+    assert_eq!(tag("TemplateOnly").entry_count, 0);
+    assert!(!tag("TemplateOnly").can_delete);
+
+    operations::delete_tag::run(
+        &mut core,
+        DeleteTagArgs {
+            name: " orphan ".into(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        operations::delete_tag::run(
+            &mut core,
+            DeleteTagArgs {
+                name: "shared".into()
+            }
+        ),
+        Err(CoreError::TagInUse)
+    ));
+    assert!(matches!(
+        operations::update_tag_style::run(
+            &mut core,
+            UpdateTagStyleArgs {
+                name: "bad".into(),
+                style: style(1, "red"),
+            }
+        ),
+        Err(CoreError::InvalidTagStyle)
+    ));
+    assert!(matches!(
+        operations::update_tag_style::run(
+            &mut core,
+            UpdateTagStyleArgs {
+                name: "bad".into(),
+                style: style(69, "#000000"),
+            }
+        ),
+        Err(CoreError::InvalidIconReference)
+    ));
+
+    core.handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .custom_data
+        .set("KLSS_TAG_STYLES", "not json");
+    assert!(operations::get_tags::run(&mut core).is_ok());
+    assert!(matches!(
+        operations::update_tag_style::run(
+            &mut core,
+            UpdateTagStyleArgs {
+                name: "new".into(),
+                style: style(1, "#000000"),
+            }
+        ),
+        Err(CoreError::MalformedTagStyles)
+    ));
 }
 
 #[tokio::test]
@@ -1937,6 +2055,10 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             tags: vec!["updated".into()],
             expires: true,
             expiry_time_ms: Some(123_456),
+            icon: Some(IconReference {
+                standard_id: 12,
+                custom_uuid: Some(Uuid::from_u128(100).hyphenated().to_string()),
+            }),
         }),
         None,
     )
@@ -1954,6 +2076,16 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
     assert_eq!(entry.tags, ["updated"]);
     assert!(entry.expires);
     assert_eq!(entry.expiry_time.as_millis(), Some(123_456));
+    assert_eq!(
+        entry.icon,
+        keeless_kdbx::IconImage::Standard(IconImageStandard::new(12))
+    );
+    assert_eq!(entry.custom_icon_uuid, Some(Uuid::from_u128(100)));
+    assert_eq!(
+        entry.history.last().unwrap().icon,
+        keeless_kdbx::IconImage::Standard(IconImageStandard::new(7))
+    );
+    assert_eq!(entry.history.last().unwrap().custom_icon_uuid, None);
     assert_eq!(
         entry
             .custom_fields()
@@ -2028,6 +2160,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
                 tags: vec![],
                 expires: false,
                 expiry_time_ms: None,
+                icon: None,
             }),
             None,
         ),
@@ -2249,14 +2382,30 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
         },
     )
     .unwrap();
+    operations::update_group::run(
+        &mut core,
+        UpdateGroupArgs {
+            group_id: group.id.clone(),
+            name: "  Updated Group  ".into(),
+            icon: IconReference {
+                standard_id: 9,
+                custom_uuid: Some(Uuid::from_u128(100).hyphenated().to_string()),
+            },
+        },
+    )
+    .unwrap();
     let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
     let created_group = hierarchy
         .groups
         .iter()
         .find(|candidate| candidate.id == group.id)
         .unwrap();
-    assert_eq!(created_group.name, "Renamed Group");
-    assert_eq!(created_group.icon.standard_id, 48);
+    assert_eq!(created_group.name, "Updated Group");
+    assert_eq!(created_group.icon.standard_id, 9);
+    assert_eq!(
+        created_group.icon.custom_uuid.as_deref(),
+        Some(Uuid::from_u128(100).hyphenated().to_string().as_str())
+    );
     assert!(matches!(
         operations::rename_group::run(
             &mut core,

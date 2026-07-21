@@ -26,9 +26,10 @@ pub use model::{
     ChangeType, CompositeKey, CustomData, CustomDataItem, Database, DatabaseVersion, DateInstant,
     DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldId, EntryFieldSelector,
     EntryFieldUpdate, EntryKDB, EntryKDBX, EntryPropertiesUpdate, FieldReference, Group, GroupKDB,
-    GroupKDBX, IconImage, IconImageCustom, IconImageStandard, MasterCredential,
+    GroupKDBX, IconImage, IconImageCustom, IconImageStandard, IconUpdate, MasterCredential,
     MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, ProtectedString, RefTarget,
     SortNodeEnum, StandardField, Tag, Template, TemplateField, TemplateFieldType, TraversalOrder,
+    NUMBER_STANDARD_ICONS,
 };
 
 // ─── Crypto ───────────────────────────────────────────────────────────

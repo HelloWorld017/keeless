@@ -569,6 +569,7 @@ fn entry_field_layout_and_entry_properties_roundtrip() {
             tags: vec!["finance".into(), "personal".into()],
             expires: true,
             expiry_time_ms: Some(1_900_000_000_000),
+            icon: None,
         },
         json!({
             "overrideUrl": "https://example.test/login",
@@ -581,6 +582,61 @@ fn entry_field_layout_and_entry_properties_roundtrip() {
 
 #[test]
 fn database_editing_operations_have_stable_shapes() {
+    let style = TagStyle {
+        icon: IconReference {
+            standard_id: 12,
+            custom_uuid: None,
+        },
+        color: "#abcdef".into(),
+    };
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "tag-style-1".into(),
+            operation: Operation::UpdateTagStyle(UpdateTagStyleArgs {
+                name: "work".into(),
+                style: style.clone(),
+            }),
+        },
+        json!({
+            "requestId": "tag-style-1",
+            "op": "updateTagStyle",
+            "args": {
+                "name": "work",
+                "style": { "icon": { "standardId": 12, "customUuid": null }, "color": "#abcdef" }
+            }
+        }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "delete-tag-1".into(),
+            operation: Operation::DeleteTag(DeleteTagArgs {
+                name: "work".into(),
+            }),
+        },
+        json!({ "requestId": "delete-tag-1", "op": "deleteTag", "args": { "name": "work" } }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "update-group-1".into(),
+            operation: Operation::UpdateGroup(UpdateGroupArgs {
+                group_id: DatabaseNodeId::Int(9),
+                name: "Personal".into(),
+                icon: IconReference {
+                    standard_id: 4,
+                    custom_uuid: Some("00000000-0000-0000-0000-000000000001".into()),
+                },
+            }),
+        },
+        json!({
+            "requestId": "update-group-1",
+            "op": "updateGroup",
+            "args": {
+                "groupId": 9,
+                "name": "Personal",
+                "icon": { "standardId": 4, "customUuid": "00000000-0000-0000-0000-000000000001" }
+            }
+        }),
+    );
     assert_roundtrip(
         OperationRequest {
             request_id: "templates-1".into(),

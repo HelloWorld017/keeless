@@ -77,6 +77,7 @@ const entryQueryNames = [
 const DatabaseFragmentContents = () => {
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
+  const tags = useRequest('getTags', {});
   const navigate = useNavigate();
   const [activeDrag, setActiveDrag] = useState<DragDropData | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -235,6 +236,7 @@ const DatabaseFragmentContents = () => {
         {activeEntry ? (
           <EntryItem
             entry={activeEntry.entry}
+            tags={tags.data?.tags ?? []}
             selected={selectedEntry === String(activeEntry.entry.id)}
             className={cx(
               'w-full opacity-75 transition-opacity transition-transform',

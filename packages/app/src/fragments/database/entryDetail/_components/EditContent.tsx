@@ -14,6 +14,7 @@ import {
 } from '@/icons';
 import { cn } from '@/utils/css';
 import { useState } from 'react';
+import { TagPicker } from '../../_components/TagPicker';
 import { ExpiryEditor } from '../_layout/ExpiryEditor';
 import { FieldDivider } from '../_layout/FieldDivider';
 import { PasswordConfirmationEditor } from '../_layout/PasswordConfirmationEditor';
@@ -92,24 +93,29 @@ export const EditContent = ({
           />
         );
       }
-      if (field.type === 'overrideUrl' || field.type === 'tags') {
-        const tags = field.type === 'tags';
+      if (field.type === 'tags') {
+        return (
+          <Field key={id}>
+            <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+            <TagPicker
+              id={id}
+              value={properties.tags}
+              disabled={pending}
+              onChange={tags => onPropertiesChange({ tags, tagsChanged: true })}
+            />
+          </Field>
+        );
+      }
+      if (field.type === 'overrideUrl') {
         return (
           <Field key={id}>
             <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
             <Input
               id={id}
-              type={tags ? 'text' : 'url'}
-              value={tags ? properties.tags : properties.overrideUrl}
-              placeholder={tags ? 'Comma-separated tags' : undefined}
+              type="url"
+              value={properties.overrideUrl}
               disabled={pending}
-              onChange={event =>
-                onPropertiesChange(
-                  tags
-                    ? { tags: event.target.value, tagsChanged: true }
-                    : { overrideUrl: event.target.value },
-                )
-              }
+              onChange={event => onPropertiesChange({ overrideUrl: event.target.value })}
             />
           </Field>
         );
@@ -268,14 +274,11 @@ export const EditContent = ({
             {!hasTags && (
               <Field>
                 <FieldLabel htmlFor="additional-tags">Tags</FieldLabel>
-                <Input
+                <TagPicker
                   id="additional-tags"
                   value={properties.tags}
-                  placeholder="Comma-separated tags"
                   disabled={pending}
-                  onChange={event =>
-                    onPropertiesChange({ tags: event.target.value, tagsChanged: true })
-                  }
+                  onChange={tags => onPropertiesChange({ tags, tagsChanged: true })}
                 />
               </Field>
             )}

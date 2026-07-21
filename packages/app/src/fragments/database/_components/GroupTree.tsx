@@ -39,13 +39,15 @@ import { CSS } from '@dnd-kit/utilities';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { groupDndId, type GroupDragData } from '../_utils/dragAndDrop';
+import { IconPicker } from './IconPicker';
 import { ItemIcon } from './ItemIcon';
 import type {
   DatabaseNodeId,
   GroupHierarchyItem,
   GroupHierarchyResult,
   MoveGroupArgs,
-  RenameGroupArgs,
+  IconReference,
+  UpdateGroupArgs,
 } from '@keeless/schema';
 
 const INDENTATION_WIDTH = 16;
@@ -193,7 +195,7 @@ const SortableGroup = ({
   disabled,
   indicator,
   onNavigate,
-  onRename,
+  onUpdate,
   onDelete,
 }: {
   item: FlatGroup;
@@ -202,11 +204,12 @@ const SortableGroup = ({
   disabled: boolean;
   indicator?: DropIndicator;
   onNavigate: () => void;
-  onRename: (args: RenameGroupArgs) => Promise<void>;
+  onUpdate: (args: UpdateGroupArgs) => Promise<void>;
   onDelete: () => void;
 }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.group.name);
+  const [draftIcon, setDraftIcon] = useState<IconReference>(item.group.icon);
   const [renamePending, setRenamePending] = useState(false);
   const [renameError, setRenameError] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -236,7 +239,7 @@ const SortableGroup = ({
       inputRef.current?.select();
     }
   }, [editing]);
-  const commitRename = async () => {
+  const commitRename = async (icon = draftIcon) => {
     if (renamePending) {
       return;
     }
@@ -245,14 +248,18 @@ const SortableGroup = ({
       setRenameError(true);
       return;
     }
-    if (name === item.group.name) {
+    if (
+      name === item.group.name &&
+      icon.standardId === item.group.icon.standardId &&
+      icon.customUuid === item.group.icon.customUuid
+    ) {
       setEditing(false);
       return;
     }
     setRenamePending(true);
     setRenameError(false);
     try {
-      await onRename({ groupId: item.id, name });
+      await onUpdate({ groupId: item.id, name, icon });
       setEditing(false);
     } catch {
       setRenameError(true);
@@ -263,6 +270,7 @@ const SortableGroup = ({
   const startEditing = () => {
     cancelRenameRef.current = false;
     setDraft(item.group.name);
+    setDraftIcon(item.group.icon);
     setRenameError(false);
     setEditing(true);
   };
@@ -289,7 +297,26 @@ const SortableGroup = ({
 
       {editing ? (
         <div className="flex h-8 items-center gap-2 px-2 pr-8">
-          <ItemIcon icon={item.group.icon} fallback="group" className="size-4 shrink-0" />
+          <IconPicker
+            value={draftIcon}
+            fallback="group"
+            disabled={renamePending}
+            onChange={icon => {
+              setDraftIcon(icon);
+              void commitRename(icon);
+            }}
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="size-6 shrink-0"
+                onMouseDown={() => {
+                  cancelRenameRef.current = true;
+                }}
+              />
+            }
+          />
           <Input
             ref={inputRef}
             value={draft}
@@ -420,7 +447,7 @@ export const GroupTree = ({
   location,
   disabled,
   onMove,
-  onRename,
+  onUpdate,
   onDelete,
   onNavigate,
 }: {
@@ -428,7 +455,7 @@ export const GroupTree = ({
   location: string;
   disabled: boolean;
   onMove: (args: MoveGroupArgs) => void;
-  onRename: (args: RenameGroupArgs) => Promise<void>;
+  onUpdate: (args: UpdateGroupArgs) => Promise<void>;
   onDelete: () => void;
   onNavigate: () => void;
 }) => {
@@ -537,7 +564,7 @@ export const GroupTree = ({
             disabled={disabled}
             indicator={indicator?.key === item.key ? indicator : undefined}
             onNavigate={onNavigate}
-            onRename={onRename}
+            onUpdate={onUpdate}
             onDelete={onDelete}
           />
         ))}

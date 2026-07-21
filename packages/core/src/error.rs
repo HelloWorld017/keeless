@@ -41,6 +41,18 @@ pub enum CoreError {
     InvalidEntryUpdate,
     #[error("entry cannot be deleted in the requested mode")]
     InvalidEntryDelete,
+    #[error("icon reference is invalid")]
+    InvalidIconReference,
+    #[error("tag name cannot be empty")]
+    InvalidTagName,
+    #[error("tag style is invalid")]
+    InvalidTagStyle,
+    #[error("persisted tag styles are malformed")]
+    MalformedTagStyles,
+    #[error("tag style does not exist")]
+    TagStyleNotFound,
+    #[error("tag is used by an entry")]
+    TagInUse,
     #[error("cryptographic operation failed")]
     Crypto,
     #[error("serialization failed: {0}")]
@@ -123,6 +135,16 @@ impl From<&CoreError> for OperationError {
                 "invalid_entry_delete",
                 "Entry cannot be deleted in the requested mode",
             ),
+            CoreError::InvalidIconReference => {
+                ("invalid_icon_reference", "Icon reference is invalid")
+            }
+            CoreError::InvalidTagName => ("invalid_tag_name", "Tag name cannot be empty"),
+            CoreError::InvalidTagStyle => ("invalid_tag_style", "Tag style is invalid"),
+            CoreError::MalformedTagStyles => {
+                ("malformed_tag_styles", "Persisted tag styles are malformed")
+            }
+            CoreError::TagStyleNotFound => ("tag_style_not_found", "Tag style does not exist"),
+            CoreError::TagInUse => ("tag_in_use", "Tag is used by an entry"),
             CoreError::Storage(_) | CoreError::Sync(_) => {
                 ("storage_error", "Storage operation failed")
             }

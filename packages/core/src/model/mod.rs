@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use keeless_kdbx::{Database, Entry, IconImage, NodeId, StandardField, kdbx::template};
+use keeless_kdbx::{
+    Database, Entry, IconImage, IconUpdate, NUMBER_STANDARD_ICONS, NodeId, StandardField,
+    kdbx::template,
+};
 use keeless_schema::{
     DatabaseNodeId, EntryAttachmentInformation, EntryDetailResult, EntryFieldInformation,
     EntryFieldKind, EntrySummary, GroupHierarchyItem, GroupHierarchyResult, IconReference,
@@ -32,7 +35,7 @@ fn node_id_sort_key(id: &NodeId) -> String {
     }
 }
 
-fn icon_reference(icon: &IconImage, custom_icon_uuid: Option<Uuid>) -> IconReference {
+pub(super) fn icon_reference(icon: &IconImage, custom_icon_uuid: Option<Uuid>) -> IconReference {
     let standard_id = match icon {
         IconImage::Standard(icon) => icon.icon_id,
         IconImage::Custom(_) => 0,
@@ -48,6 +51,28 @@ fn icon_reference(icon: &IconImage, custom_icon_uuid: Option<Uuid>) -> IconRefer
         standard_id,
         custom_uuid,
     }
+}
+
+pub(super) fn parse_icon_reference(
+    database: &Database,
+    icon: &IconReference,
+) -> Result<IconUpdate> {
+    if icon.standard_id >= NUMBER_STANDARD_ICONS as u32 {
+        return Err(CoreError::InvalidIconReference);
+    }
+    let custom_uuid = icon
+        .custom_uuid
+        .as_deref()
+        .map(Uuid::parse_str)
+        .transpose()
+        .map_err(|_| CoreError::InvalidIconReference)?;
+    if custom_uuid.is_some_and(|uuid| !database.custom_icons.contains_key(&uuid)) {
+        return Err(CoreError::InvalidIconReference);
+    }
+    Ok(IconUpdate {
+        standard_id: icon.standard_id,
+        custom_uuid,
+    })
 }
 
 pub(super) fn entry_summary(entry: &Entry) -> EntrySummary {

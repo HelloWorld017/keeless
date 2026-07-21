@@ -5,7 +5,7 @@ use keeless_kdbx::{
 use keeless_schema::{EmptyResult, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::model::parse_node_id;
+use crate::model::{parse_icon_reference, parse_node_id};
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(
@@ -55,12 +55,22 @@ pub(crate) fn run(
             is_protected: field.is_protected,
         });
     }
-    let properties = properties.map(|properties| KdbxPropertiesUpdate {
-        override_url: properties.override_url,
-        tags: properties.tags,
-        expires: properties.expires,
-        expiry_time_ms: properties.expiry_time_ms,
-    });
+    let properties = properties
+        .map(|properties| {
+            let icon = properties
+                .icon
+                .as_ref()
+                .map(|icon| parse_icon_reference(handle.database(), icon))
+                .transpose()?;
+            Ok::<_, CoreError>(KdbxPropertiesUpdate {
+                override_url: properties.override_url,
+                tags: properties.tags,
+                expires: properties.expires,
+                expiry_time_ms: properties.expiry_time_ms,
+                icon,
+            })
+        })
+        .transpose()?;
     let changed = core
         .handle
         .as_mut()

@@ -48,7 +48,14 @@ export type GroupHierarchyItem = {
   childGroupIds: DatabaseNodeId[];
 };
 
-export type TagSummary = { name: string; entryCount: number };
+export type TagStyle = { icon: IconReference; color: string };
+
+export type TagSummary = {
+  name: string;
+  entryCount: number;
+  style: TagStyle | null;
+  canDelete: boolean;
+};
 
 export type EntryFieldKind = 'title' | 'userName' | 'password' | 'url' | 'notes' | 'custom';
 
@@ -135,6 +142,7 @@ export type EntryPropertiesUpdate = {
   tags: string[];
   expires: boolean;
   expiryTimeMs: number | null;
+  icon?: IconReference | null;
 };
 
 export type UpdateEntryArgs = {
@@ -173,6 +181,12 @@ export type DeleteGroupArgs = { groupId: DatabaseNodeId };
 
 export type RenameGroupArgs = { groupId: DatabaseNodeId; name: string };
 
+export type UpdateGroupArgs = { groupId: DatabaseNodeId; name: string; icon: IconReference };
+
+export type UpdateTagStyleArgs = { name: string; style: TagStyle };
+
+export type DeleteTagArgs = { name: string };
+
 export type RevealEntryFieldArgs = {
   entryId: DatabaseNodeId;
   fieldId: string;
@@ -208,6 +222,9 @@ export type Operation =
   | { op: 'addGroup'; args: AddGroupArgs }
   | { op: 'deleteGroup'; args: DeleteGroupArgs }
   | { op: 'renameGroup'; args: RenameGroupArgs }
+  | { op: 'updateGroup'; args: UpdateGroupArgs }
+  | { op: 'updateTagStyle'; args: UpdateTagStyleArgs }
+  | { op: 'deleteTag'; args: DeleteTagArgs }
   | { op: 'revealEntryField'; args: RevealEntryFieldArgs };
 
 export type OperationRequest = (
@@ -239,6 +256,9 @@ export type OperationRequest = (
   | { op: 'addGroup'; args: AddGroupArgs }
   | { op: 'deleteGroup'; args: DeleteGroupArgs }
   | { op: 'renameGroup'; args: RenameGroupArgs }
+  | { op: 'updateGroup'; args: UpdateGroupArgs }
+  | { op: 'updateTagStyle'; args: UpdateTagStyleArgs }
+  | { op: 'deleteTag'; args: DeleteTagArgs }
   | { op: 'revealEntryField'; args: RevealEntryFieldArgs }
 ) & { requestId: string };
 
@@ -317,6 +337,9 @@ export type OperationSuccess =
   | { op: 'addGroup'; result: AddGroupResult }
   | { op: 'deleteGroup'; result: EmptyResult }
   | { op: 'renameGroup'; result: EmptyResult }
+  | { op: 'updateGroup'; result: EmptyResult }
+  | { op: 'updateTagStyle'; result: EmptyResult }
+  | { op: 'deleteTag'; result: EmptyResult }
   | { op: 'revealEntryField'; result: RevealEntryFieldResult };
 
 export type OperationError = { code: string; message: string };

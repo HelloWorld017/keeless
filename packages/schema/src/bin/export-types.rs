@@ -28,6 +28,7 @@ fn generate() -> String {
     export::<EntrySummary>(&mut output);
     export::<CustomIcon>(&mut output);
     export::<GroupHierarchyItem>(&mut output);
+    export::<TagStyle>(&mut output);
     export::<TagSummary>(&mut output);
     export::<EntryFieldKind>(&mut output);
     export::<EntryFieldInformation>(&mut output);
@@ -63,6 +64,9 @@ fn generate() -> String {
     export::<AddGroupArgs>(&mut output);
     export::<DeleteGroupArgs>(&mut output);
     export::<RenameGroupArgs>(&mut output);
+    export::<UpdateGroupArgs>(&mut output);
+    export::<UpdateTagStyleArgs>(&mut output);
+    export::<DeleteTagArgs>(&mut output);
     export::<RevealEntryFieldArgs>(&mut output);
     export::<Operation>(&mut output);
     export::<OperationRequest>(&mut output);

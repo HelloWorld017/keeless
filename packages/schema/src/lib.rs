@@ -104,9 +104,19 @@ pub struct GroupHierarchyItem {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TagStyle {
+    pub icon: IconReference,
+    pub color: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TagSummary {
     pub name: String,
     pub entry_count: u64,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub style: Option<TagStyle>,
+    pub can_delete: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -331,6 +341,13 @@ pub struct EntryPropertiesUpdate {
     pub expires: bool,
     #[serde(deserialize_with = "deserialize_nullable")]
     pub expiry_time_ms: Option<i64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[specta(optional = true)]
+    pub icon: Option<IconReference>,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -416,6 +433,27 @@ pub struct RenameGroupArgs {
     pub name: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateGroupArgs {
+    pub group_id: DatabaseNodeId,
+    pub name: String,
+    pub icon: IconReference,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateTagStyleArgs {
+    pub name: String,
+    pub style: TagStyle,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteTagArgs {
+    pub name: String,
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevealEntryFieldArgs {
@@ -457,6 +495,9 @@ pub enum Operation {
     AddGroup(AddGroupArgs),
     DeleteGroup(DeleteGroupArgs),
     RenameGroup(RenameGroupArgs),
+    UpdateGroup(UpdateGroupArgs),
+    UpdateTagStyle(UpdateTagStyleArgs),
+    DeleteTag(DeleteTagArgs),
     RevealEntryField(RevealEntryFieldArgs),
 }
 
@@ -594,6 +635,9 @@ pub enum OperationSuccess {
     AddGroup(AddGroupResult),
     DeleteGroup(EmptyResult),
     RenameGroup(EmptyResult),
+    UpdateGroup(EmptyResult),
+    UpdateTagStyle(EmptyResult),
+    DeleteTag(EmptyResult),
     RevealEntryField(RevealEntryFieldResult),
 }
 

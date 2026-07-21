@@ -8,6 +8,6 @@ pub mod template;
 
 pub use custom_data::{CustomData, CustomDataItem};
 pub use deleted_object::DeletedObject;
-pub use icon::{IconImage, IconImageCustom, IconImageStandard};
+pub use icon::{IconImage, IconImageCustom, IconImageStandard, NUMBER_STANDARD_ICONS};
 pub use tags::{parse_tags, serialize_tags, Tag};
 pub use template::{get_builtin_templates, Template, TemplateField, TemplateFieldType};
