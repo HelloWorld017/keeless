@@ -387,7 +387,7 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
                         className="pr-16"
                         onClick={closeMobile}
                       >
-                        <Tag name={tag.name} style={tag.style} compact className="max-w-36" />
+                        <Tag name={tag.name} tagStyle={tag.style} className="max-w-36" />
                       </SidebarMenuButton>
                       <TagStyleEditor
                         tag={tag}

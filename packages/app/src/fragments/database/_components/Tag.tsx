@@ -1,19 +1,38 @@
 import { Badge } from '@/components/badge';
 import { IconTag, IconX } from '@/icons';
-import { cn } from '@/utils/css';
 import { ItemIcon } from './ItemIcon';
 import type { TagStyle } from '@keeless/schema';
-import type { CSSProperties, MouseEvent } from 'react';
+import type { MouseEvent } from 'react';
+import {cva, VariantProps} from 'class-variance-authority';
+
+const tagVariants = cva(
+  'max-w-full border-transparent px-1.5 transition-none',
+  {
+    variants: {
+      variant: {
+        default: 'bg-[color-mix(in_oklch,var(--tag-color)_16%,transparent)] text-[color-mix(in_oklch,var(--tag-color)_68%,black)] dark:bg-[color-mix(in_oklch,var(--tag-color)_22%,transparent)] dark:text-[color-mix(in_oklch,var(--tag-color)_72%,white)]',
+        transparent: 'bg-transparent text-primary-foreground',
+      },
+      size: {
+        default: 'gap-1',
+        compact: 'gap-0.5 py-0 text-[0.6875rem]'
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  }
+);
 
 type TagProps = {
   name: string;
-  style?: TagStyle | null;
-  compact?: boolean;
-  className?: string;
+  className?: string | undefined;
+  tagStyle?: TagStyle | null;
   onRemove?: () => void;
-};
+} & (VariantProps<typeof tagVariants> & { class?: never; })
 
-export const Tag = ({ name, style, compact = false, className, onRemove }: TagProps) => {
+export const Tag = ({ name, tagStyle, onRemove, ...props }: TagProps) => {
   const remove = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onRemove?.();
@@ -21,20 +40,14 @@ export const Tag = ({ name, style, compact = false, className, onRemove }: TagPr
 
   return (
     <Badge
-      variant={style ? 'outline' : 'secondary'}
-      className={cn(
-        'max-w-full border-transparent',
-        compact ? 'gap-0.5 px-1.5 py-0 text-[0.6875rem]' : 'gap-1',
-        style &&
-          'border-[color-mix(in_oklch,var(--tag-color)_30%,transparent)] bg-[color-mix(in_oklch,var(--tag-color)_16%,transparent)] text-[color-mix(in_oklch,var(--tag-color)_68%,black)] dark:bg-[color-mix(in_oklch,var(--tag-color)_22%,transparent)] dark:text-[color-mix(in_oklch,var(--tag-color)_72%,white)]',
-        className,
-      )}
-      style={style ? ({ '--tag-color': style.color } as CSSProperties) : undefined}
+      variant="secondary"
+      className={tagVariants(props)}
+      style={{ '--tag-color': tagStyle?.color ?? 'var(--color-primary)' }}
     >
-      {style ? (
-        <ItemIcon icon={style.icon} fallback="entry" className="size-3" />
+      {tagStyle ? (
+        <ItemIcon icon={tagStyle.icon} className='size-[1.2em]!' fallback="entry" />
       ) : (
-        <IconTag className="size-3" aria-hidden="true" />
+        <IconTag aria-hidden="true" />
       )}
       <span className="truncate">{name}</span>
       {onRemove && (

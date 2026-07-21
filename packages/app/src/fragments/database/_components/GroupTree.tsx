@@ -299,6 +299,7 @@ const SortableGroup = ({
         <div className="flex h-8 items-center gap-2 px-2 pr-8">
           <IconPicker
             value={draftIcon}
+            iconClassName="size-4"
             fallback="group"
             disabled={renamePending}
             onChange={icon => {
@@ -310,7 +311,7 @@ const SortableGroup = ({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                className="size-6 shrink-0"
+                className="shrink-0 size-8 -m-1.5"
                 onMouseDown={() => {
                   cancelRenameRef.current = true;
                 }}

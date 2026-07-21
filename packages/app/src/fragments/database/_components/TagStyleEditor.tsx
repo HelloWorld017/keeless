@@ -84,7 +84,7 @@ export const TagStyleEditor = ({
           <PopoverDescription>Choose the icon and accent color for this tag.</PopoverDescription>
         </PopoverHeader>
         <div className="flex justify-center rounded-lg border bg-muted/30 p-4">
-          <Tag name={tag.name} style={draft} />
+          <Tag name={tag.name} tagStyle={draft} />
         </div>
         <Field>
           <FieldLabel>Icon</FieldLabel>

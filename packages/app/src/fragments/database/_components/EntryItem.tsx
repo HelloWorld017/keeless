@@ -48,12 +48,12 @@ export const EntryItem = ({
             <Tag
               key={name}
               name={name}
-              style={tagCatalog.find(tag => tag.name === name)?.style}
-              compact
-              className={cx('max-w-24', selected && 'ring-1 ring-primary-foreground/20')}
-            />
-          ))}
-        </ItemDescription>
+                  tagStyle={tagCatalog.find(tag => tag.name === name)?.style}
+                  variant={selected ? 'transparent' : 'default'}
+                  className='max-w-24'
+                />
+              ))}
+        )}
       </ItemContent>
     </Item>
   );

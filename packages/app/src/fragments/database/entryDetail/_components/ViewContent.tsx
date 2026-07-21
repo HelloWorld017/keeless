@@ -85,7 +85,7 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
       {label && <dt className="text-xs text-muted-foreground">{label}</dt>}
       <dd className="flex flex-wrap gap-1.5">
         {detail.tags.map(name => (
-          <Tag key={name} name={name} style={tagStyle(name)} />
+          <Tag key={name} name={name} tagStyle={tagStyle(name)} />
         ))}
       </dd>
     </div>
@@ -178,7 +178,7 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
         <DetailSection title="Tags">
           <div className="flex flex-wrap gap-1.5">
             {detail.tags.map(name => (
-              <Tag key={name} name={name} style={tagStyle(name)} />
+              <Tag key={name} name={name} tagStyle={tagStyle(name)} />
             ))}
           </div>
         </DetailSection>

@@ -19,6 +19,7 @@ import type { ComponentProps } from 'react';
 
 type IconPickerProps = {
   value: IconReference;
+  iconClassName?: string;
   onChange: (value: IconReference) => void;
   disabled?: boolean;
   fallback: 'entry' | 'group';
@@ -29,7 +30,7 @@ const sameIcon = (left: IconReference, right: IconReference) =>
   left.standardId === right.standardId &&
   (left.customUuid ?? '').toLowerCase() === (right.customUuid ?? '').toLowerCase();
 
-export const IconPicker = ({ value, onChange, disabled, fallback, render }: IconPickerProps) => {
+export const IconPicker = ({ value, iconClassName, onChange, disabled, fallback, render }: IconPickerProps) => {
   const [open, setOpen] = useState(false);
   const customIcons = useRequest('getCustomIcons', {});
   const select = (icon: IconReference) => {
@@ -44,7 +45,7 @@ export const IconPicker = ({ value, onChange, disabled, fallback, render }: Icon
         disabled={disabled}
         aria-label="Choose icon"
       >
-        <ItemIcon icon={value} fallback={fallback} />
+        <ItemIcon className={iconClassName} icon={value} fallback={fallback} />
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="start">
         <Command>
