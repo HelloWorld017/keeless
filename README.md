@@ -56,3 +56,12 @@ which helps the master key to be easily zeroized.
 All messages between the clients (App/Extension) and the core are signed and encrypted.  
 Connecting the companion web extension is based on tofu(trust on first use).
 An approval dialog ensures that only explicitly authorized devices can establish a connection and access the database.
+
+## FAQ
+> Not actually "frequently asked", but rather what I expect to be "frequently asked".
+
+* **I like the design/features, but I'm not sure about the results of vibe coding.**
+  In fact, most of the architectural design was done by me, so it is not actually 100% vibe coded.  
+  But anyway if you don't want those, that's where the open-source comes into play.  
+  As the backend and the frontend are strictly separated, you can freely fork and create your own frontend/backend implementation.  
+  If you rewrite the backend, please let me know so I can use your implementation.
