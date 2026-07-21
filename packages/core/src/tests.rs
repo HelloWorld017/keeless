@@ -12,10 +12,11 @@ use keeless_kdbx::{
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
-    DeleteEntryArgs, DeleteGroupArgs, EntryFieldUpdate as SchemaEntryFieldUpdate,
-    EntryPropertiesUpdate, FieldControl, GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs,
-    GetGroupEntriesArgs, GetTagEntriesArgs, LayoutTarget, MoveEntryArgs, MoveGroupArgs, Operation,
-    OperationOutcome, OperationRequest, OperationResponse, OperationSuccess, RenameGroupArgs,
+    DeleteEntryArgs, DeleteGroupArgs, EntryFieldInformation,
+    EntryFieldUpdate as SchemaEntryFieldUpdate, EntryPropertiesUpdate, FieldControl,
+    GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
+    GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
+    OperationResponse, OperationSuccess, RenameGroupArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -26,6 +27,43 @@ use x25519_dalek::{PublicKey, StaticSecret};
 
 use super::*;
 use crate::protocol::{decrypt_frame, encrypt_frame, handshake_frame, public_key_bundle};
+
+struct DetailField<'a> {
+    order: u64,
+    field_id: Option<&'a str>,
+    kind: &'a keeless_schema::EntryFieldKind,
+    name: &'a str,
+    label: &'a str,
+    value: Option<&'a str>,
+    is_protected: bool,
+    control: Option<&'a FieldControl>,
+}
+
+fn detail_field(field: &EntryFieldInformation) -> Option<DetailField<'_>> {
+    let EntryFieldInformation::Field {
+        order,
+        field_id,
+        kind,
+        name,
+        label,
+        value,
+        is_protected,
+        control,
+    } = field
+    else {
+        return None;
+    };
+    Some(DetailField {
+        order: *order,
+        field_id: field_id.as_deref(),
+        kind,
+        name,
+        label,
+        value: value.as_deref(),
+        is_protected: *is_protected,
+        control: control.as_ref(),
+    })
+}
 
 #[derive(Default)]
 struct MemoryConfig(Mutex<Option<Vec<u8>>>);
@@ -1424,21 +1462,25 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
         result
             .fields
             .iter()
+            .filter_map(detail_field)
             .find(|field| field.name == name)
             .unwrap()
     };
-    assert_eq!(field("Title").value.as_deref(), Some("Root Entry"));
-    assert_eq!(field("Title").field_id, "standard:Title");
-    assert_eq!(field("Title").kind, keeless_schema::EntryFieldKind::Title);
-    assert_eq!(field("UserName").field_id, "standard:UserName");
-    assert_eq!(field("Password").field_id, "standard:Password");
-    assert_eq!(field("URL").field_id, "standard:URL");
-    assert_eq!(field("Notes").field_id, "standard:Notes");
-    assert_eq!(field("Public").kind, keeless_schema::EntryFieldKind::Custom);
-    assert!(Uuid::parse_str(&field("Public").field_id).is_ok());
-    assert_eq!(field("UserName").value.as_deref(), Some("alice"));
-    assert_eq!(field("URL").value.as_deref(), Some("https://example.test"));
-    assert_eq!(field("Public").value.as_deref(), Some("public-value"));
+    assert_eq!(field("Title").value, Some("Root Entry"));
+    assert_eq!(field("Title").field_id, Some("standard:Title"));
+    assert_eq!(field("Title").kind, &keeless_schema::EntryFieldKind::Title);
+    assert_eq!(field("UserName").field_id, Some("standard:UserName"));
+    assert_eq!(field("Password").field_id, Some("standard:Password"));
+    assert_eq!(field("URL").field_id, Some("standard:URL"));
+    assert_eq!(field("Notes").field_id, Some("standard:Notes"));
+    assert_eq!(
+        field("Public").kind,
+        &keeless_schema::EntryFieldKind::Custom
+    );
+    assert!(Uuid::parse_str(field("Public").field_id.unwrap()).is_ok());
+    assert_eq!(field("UserName").value, Some("alice"));
+    assert_eq!(field("URL").value, Some("https://example.test"));
+    assert_eq!(field("Public").value, Some("public-value"));
     for name in ["Password", "Notes", "Secret"] {
         assert_eq!(field(name).value, None);
         assert!(field(name).is_protected);
@@ -1474,6 +1516,7 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
     let title = protected_title
         .fields
         .iter()
+        .filter_map(detail_field)
         .find(|field| field.name == "Title")
         .unwrap();
     assert_eq!(title.value, None);
@@ -1558,106 +1601,85 @@ async fn entry_detail_resolves_layout_and_ignores_invalid_links() {
         },
     )
     .unwrap();
-    assert!(
-        detail
-            .fields
-            .iter()
-            .all(|field| !template::is_internal_field(&field.name))
-    );
-    let public_id = detail
+    let actual = detail
         .fields
         .iter()
-        .find(|field| field.name == "Public")
-        .unwrap()
-        .field_id
-        .clone();
-    let layout = detail.layout.unwrap();
-    assert_eq!(layout.template_id, template_uuid.to_string());
-    assert_eq!(
-        layout
-            .items
+        .filter_map(detail_field)
+        .collect::<Vec<_>>();
+    assert!(
+        actual
             .iter()
-            .map(|item| item.label.as_str())
-            .collect::<Vec<_>>(),
-        [
-            "Name", "Secret", "Site", "Kind", "Details", "Confirm", "Override", "Expires", "Tags"
-        ]
+            .any(|field| field.name == "_etm_template_uuid")
     );
     assert_eq!(
-        layout
-            .items
+        actual
             .iter()
-            .map(|item| item.control.clone())
+            .filter(|field| field.order < 5)
+            .map(|field| field.name)
             .collect::<Vec<_>>(),
-        [
-            FieldControl::Text {
-                protected: false,
-                lines: 2,
-            },
-            FieldControl::Text {
-                protected: true,
-                lines: 1,
-            },
-            FieldControl::Url,
-            FieldControl::Select {
-                options: vec!["one".into(), "two".into()],
-            },
-            FieldControl::Divider,
-            FieldControl::Text {
-                protected: true,
-                lines: 1,
-            },
-            FieldControl::Url,
-            FieldControl::Date,
-            FieldControl::Text {
-                protected: false,
-                lines: 1,
-            },
-        ]
+        ["Title", "UserName", "Password", "URL", "Notes"]
     );
+    let title = actual.iter().find(|field| field.name == "Title").unwrap();
+    assert_eq!(title.label, "Name");
     assert_eq!(
-        layout
-            .items
-            .into_iter()
-            .map(|item| item.target)
-            .collect::<Vec<_>>(),
-        [
-            LayoutTarget::Field {
-                field_id: Some("standard:Title".into()),
-                field_name: "Title".into(),
-            },
-            LayoutTarget::Field {
-                field_id: Some("standard:Password".into()),
-                field_name: "Password".into(),
-            },
-            LayoutTarget::Field {
-                field_id: Some("standard:URL".into()),
-                field_name: "URL".into(),
-            },
-            LayoutTarget::Field {
-                field_id: Some(public_id),
-                field_name: "Public".into(),
-            },
-            LayoutTarget::Divider,
-            LayoutTarget::PasswordConfirmation {
-                password_field_id: "standard:Password".into(),
-            },
-            LayoutTarget::OverrideUrl,
-            LayoutTarget::Expiry,
-            LayoutTarget::Tags,
-        ]
+        title.control,
+        Some(&FieldControl::Text {
+            protected: false,
+            lines: 2,
+        })
     );
+    let public = actual.iter().find(|field| field.name == "Public").unwrap();
+    assert_eq!(public.label, "Kind");
+    assert_eq!(
+        public.control,
+        Some(&FieldControl::Select {
+            options: vec!["one".into(), "two".into()],
+        })
+    );
+    let ordered_types = detail
+        .fields
+        .iter()
+        .filter(|field| !matches!(field, EntryFieldInformation::Field { .. }))
+        .map(|field| match field {
+            EntryFieldInformation::PasswordConfirmation { .. } => "confirmation",
+            EntryFieldInformation::OverrideUrl { .. } => "override",
+            EntryFieldInformation::Expiry { .. } => "expiry",
+            EntryFieldInformation::Tags { .. } => "tags",
+            EntryFieldInformation::Divider { .. } => "divider",
+            EntryFieldInformation::Field { .. } => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ordered_types,
+        ["divider", "confirmation", "override", "expiry", "tags"]
+    );
+    assert!(detail.fields.iter().all(|field| match field {
+        EntryFieldInformation::Field { order, .. }
+        | EntryFieldInformation::PasswordConfirmation { order, .. }
+        | EntryFieldInformation::OverrideUrl { order, .. }
+        | EntryFieldInformation::Expiry { order, .. }
+        | EntryFieldInformation::Tags { order, .. }
+        | EntryFieldInformation::Divider { order, .. } => (*order as usize) < detail.fields.len(),
+    }));
     for entry_id in [ids.child_entry, ids.nested_entry] {
-        assert_eq!(
-            operations::get_entry_detail::run(
-                &mut core,
-                GetEntryDetailArgs {
-                    entry_id: schema_id(entry_id),
-                },
-            )
-            .unwrap()
-            .layout,
-            None
+        let invalid = operations::get_entry_detail::run(
+            &mut core,
+            GetEntryDetailArgs {
+                entry_id: schema_id(entry_id),
+            },
+        )
+        .unwrap();
+        assert!(
+            invalid.fields.iter().all(|field| {
+                matches!(field, EntryFieldInformation::Field { control: None, .. })
+            })
+        );
+        assert!(
+            invalid
+                .fields
+                .iter()
+                .filter_map(detail_field)
+                .any(|field| { field.name == "_etm_template_uuid" })
         );
     }
 }
@@ -1687,11 +1709,13 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         detail
             .fields
             .iter()
+            .filter_map(detail_field)
             .filter(|field| field.name == name)
             .nth(occurrence)
             .unwrap()
             .field_id
-            .clone()
+            .unwrap()
+            .to_string()
     };
     let old = core
         .handle
@@ -1750,6 +1774,12 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             value: Some("new-secret".into()),
             is_protected: true,
         },
+        SchemaEntryFieldUpdate {
+            field_id: Some(field_id("_etm_template_uuid", 0)),
+            name: "_etm_template_uuid".into(),
+            value: Some(Uuid::from_u128(60).to_string()),
+            is_protected: false,
+        },
     ];
     operations::update_entry::run(
         &mut core,
@@ -1785,7 +1815,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             .1
             .value()
             .as_str(),
-        Uuid::from_u128(50).to_string()
+        Uuid::from_u128(60).to_string()
     );
     assert_eq!(
         entry.history.last().unwrap().last_modification_time,
@@ -1814,10 +1844,12 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         let field_id = updated
             .fields
             .iter()
+            .filter_map(detail_field)
             .find(|field| field.name == name)
             .unwrap()
             .field_id
-            .clone();
+            .unwrap()
+            .to_string();
         assert_eq!(
             operations::reveal_entry_field::run(&mut core, entry_id.clone(), field_id, None)
                 .unwrap()
@@ -1873,11 +1905,20 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
     .unwrap()
     .fields
     .into_iter()
-    .map(|field| SchemaEntryFieldUpdate {
-        field_id: Some(field.field_id),
-        name: field.name,
-        value: field.value,
-        is_protected: field.is_protected,
+    .filter_map(|field| match field {
+        EntryFieldInformation::Field {
+            field_id,
+            name,
+            value,
+            is_protected,
+            ..
+        } => Some(SchemaEntryFieldUpdate {
+            field_id,
+            name,
+            value,
+            is_protected,
+        }),
+        _ => None,
     })
     .collect::<Vec<_>>();
     operations::set_config::run(
@@ -2044,7 +2085,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
     let detail =
         operations::get_entry_detail::run(&mut core, GetEntryDetailArgs { entry_id: entry.id })
             .unwrap();
-    assert_eq!(detail.fields[0].value.as_deref(), Some(""));
+    assert_eq!(detail_field(&detail.fields[0]).unwrap().value, Some(""));
 
     let group = operations::add_group::run(
         &mut core,
@@ -2100,11 +2141,13 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
         detail
             .fields
             .iter()
+            .filter_map(detail_field)
             .filter(|field| field.name == name)
             .nth(occurrence)
             .unwrap()
             .field_id
-            .clone()
+            .unwrap()
+            .to_string()
     };
     let password_id = field_id("Password", 0);
     let notes_id = field_id("Notes", 0);

@@ -4,6 +4,8 @@ import { FieldPlain } from './FieldPlain';
 import { PopoutFieldValue } from './PopoutFieldValue';
 import type { DatabaseNodeId, EntryFieldInformation, FieldControl } from '@keeless/schema';
 
+type EntryField = Extract<EntryFieldInformation, { type: 'field' }>;
+
 const safeUrl = (value: string | null) => {
   if (!value) {
     return undefined;
@@ -23,14 +25,14 @@ export const EntryFieldValue = ({
   control,
 }: {
   entryId: DatabaseNodeId;
-  field?: EntryFieldInformation;
+  field: EntryField;
   label: string;
-  control?: FieldControl;
+  control?: FieldControl | null;
 }) => {
   if (control?.type === 'popout') {
     return <PopoutFieldValue entryId={entryId} field={field} label={label} />;
   }
-  if (field?.isProtected) {
+  if (field.fieldId !== null && field.isProtected) {
     if (
       (!control && field.kind === 'notes') ||
       control?.type === 'richText' ||
@@ -49,7 +51,7 @@ export const EntryFieldValue = ({
     return <FieldPassword entryId={entryId} fieldId={field.fieldId} name={label} />;
   }
   if (control?.type === 'url') {
-    const href = safeUrl(field?.value ?? null);
+    const href = safeUrl(field.value);
     if (href) {
       return (
         <div className="space-y-1 px-4 py-3">
@@ -61,7 +63,7 @@ export const EntryFieldValue = ({
               target="_blank"
               rel="noreferrer"
             >
-              {field?.value}
+              {field.value}
             </a>
           </dd>
         </div>
@@ -73,25 +75,25 @@ export const EntryFieldValue = ({
       <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
         <dt className="text-muted-foreground">{label}</dt>
         <dd>
-          <input type="checkbox" checked={field?.value === 'True'} disabled aria-label={label} />
+          <input type="checkbox" checked={field.value === 'True'} disabled aria-label={label} />
         </dd>
       </div>
     );
   }
   if (
-    (!control && field?.kind === 'notes') ||
+    (!control && field.kind === 'notes') ||
     control?.type === 'richText' ||
     (control?.type === 'text' && control.lines > 1)
   ) {
     return (
       <FieldNote
         entryId={entryId}
-        fieldId={field?.fieldId ?? ''}
+        fieldId={field.fieldId ?? ''}
         name={label}
-        value={field?.value ?? null}
+        value={field.value}
         isProtected={false}
       />
     );
   }
-  return <FieldPlain name={label} value={field?.value ?? null} />;
+  return <FieldPlain name={label} value={field.value} />;
 };

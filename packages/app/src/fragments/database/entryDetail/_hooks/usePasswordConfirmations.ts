@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FieldDraft } from '../_types/FieldDraft';
-import type { EntryLayout } from '@keeless/schema';
+import type { EntryFieldInformation } from '@keeless/schema';
 
 export const usePasswordConfirmations = () => {
   const [values, setValues] = useState<Record<string, string>>({});
@@ -20,14 +20,14 @@ export const usePasswordConfirmations = () => {
     });
   };
 
-  const validate = (layout: EntryLayout | null, drafts: FieldDraft[]) => {
+  const validate = (fields: EntryFieldInformation[], drafts: FieldDraft[]) => {
     const invalid = new Set<string>();
-    layout?.items.forEach(item => {
-      if (item.target.type !== 'passwordConfirmation') {
+    fields.forEach(field => {
+      if (field.type !== 'passwordConfirmation') {
         return;
       }
-      const { passwordFieldId } = item.target;
-      const password = drafts.find(field => field.fieldId === passwordFieldId);
+      const { passwordFieldId } = field;
+      const password = drafts.find(draft => draft.fieldId === passwordFieldId);
       if (password?.valueChanged && values[passwordFieldId] !== password.value) {
         invalid.add(passwordFieldId);
       }

@@ -15,6 +15,6 @@
     "index.d.ts"
   ],
   "scripts": {
-    "generate": "cargo run --bin export-types"
+    "generate": "cargo run --bin export-types && oxfmt index.d.ts"
   }
 }

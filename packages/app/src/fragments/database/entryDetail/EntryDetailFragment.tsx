@@ -27,7 +27,6 @@ import { PasswordPrompt } from './_components/PasswordPrompt';
 import { ViewContent } from './_components/ViewContent';
 import { useEntryEditor } from './_hooks/useEntryEditor';
 import { usePasswordConfirmations } from './_hooks/usePasswordConfirmations';
-import { getLayoutEditorOptions } from './_layout/bindings';
 import type { EntrySummary } from '@keeless/schema';
 
 const REFRESH_OPERATIONS = [
@@ -209,7 +208,7 @@ const EntryDetailQuery = ({
       return;
     }
 
-    editor.begin(detail.data, getLayoutEditorOptions(detail.data.layout, detail.data.fields));
+    editor.begin(detail.data);
     confirmations.clear();
     setError(undefined);
     setEditing(true);
@@ -227,14 +226,14 @@ const EntryDetailQuery = ({
       return;
     }
     const fieldsValid = editor.validate();
-    const confirmationsValid = confirmations.validate(detail.data.layout, editor.drafts);
+    const confirmationsValid = confirmations.validate(detail.data.fields, editor.drafts);
     if (!fieldsValid || !confirmationsValid) {
       return;
     }
 
     const operation = ++operationRef.current;
     const fields = editor.fieldUpdates();
-    const propertiesUpdate = detail.data.layout ? editor.propertiesUpdate(detail.data) : undefined;
+    const propertiesUpdate = editor.propertiesUpdate(detail.data);
 
     setPending(true);
     setError(undefined);
@@ -402,7 +401,7 @@ const EntryDetailQuery = ({
               <EditContent
                 entryId={entry.id}
                 drafts={editor.drafts}
-                layout={detail.data?.layout ?? null}
+                fields={detail.data?.fields ?? []}
                 properties={editor.properties}
                 confirmations={confirmations.values}
                 confirmationErrors={confirmations.errors}

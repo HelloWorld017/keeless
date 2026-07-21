@@ -3,11 +3,6 @@ import type { EntryPropertiesDraft } from '../_types/EntryPropertiesDraft';
 import type { FieldDraft } from '../_types/FieldDraft';
 import type { EntryDetailResult, EntryFieldUpdate, EntryPropertiesUpdate } from '@keeless/schema';
 
-export type EntryEditorOptions = {
-  fieldSeeds?: Array<{ key: string; name: string; isProtected: boolean }>;
-  fieldProtection?: ReadonlyMap<string, boolean>;
-};
-
 const createPropertiesDraft = (detail: EntryDetailResult): EntryPropertiesDraft => ({
   overrideUrl: detail.overrideUrl,
   tags: detail.tags.join(', '),
@@ -16,29 +11,28 @@ const createPropertiesDraft = (detail: EntryDetailResult): EntryPropertiesDraft 
   expiryTimeMs: detail.expiryTimeMs,
 });
 
-const createDrafts = (detail: EntryDetailResult, options: EntryEditorOptions): FieldDraft[] => {
-  const drafts: FieldDraft[] = detail.fields.map(field => ({
-    key: field.fieldId,
-    fieldId: field.fieldId,
-    kind: field.kind,
-    name: field.name,
-    value: field.isProtected ? null : field.value,
-    isProtected: options.fieldProtection?.get(field.fieldId) ?? field.isProtected,
-    originalIsProtected: field.isProtected,
-    valueChanged: false,
-  }));
-  drafts.push(
-    ...(options.fieldSeeds ?? []).map(seed => ({
-      ...seed,
-      fieldId: null,
-      kind: 'custom' as const,
-      value: '',
-      originalIsProtected: false,
-      valueChanged: true,
-    })),
-  );
-  return drafts;
-};
+const createDrafts = (detail: EntryDetailResult): FieldDraft[] =>
+  detail.fields
+    .filter(field => field.type === 'field')
+    .map(field => {
+      const controlledProtection =
+        field.control?.type === 'text' || field.control?.type === 'popout'
+          ? field.control.protected
+          : undefined;
+      return {
+        key: field.fieldId ?? `template-${field.order}`,
+        order: field.order,
+        fieldId: field.fieldId,
+        kind: field.kind,
+        name: field.name,
+        label: field.label,
+        control: field.control,
+        value: field.fieldId !== null && field.isProtected ? null : field.value,
+        isProtected: controlledProtection ?? field.isProtected,
+        originalIsProtected: field.fieldId !== null && field.isProtected,
+        valueChanged: field.fieldId === null,
+      };
+    });
 
 const emptyProperties: EntryPropertiesDraft = {
   overrideUrl: '',
@@ -50,12 +44,15 @@ const emptyProperties: EntryPropertiesDraft = {
 
 export const useEntryEditor = () => {
   const nextKey = useRef(0);
+  const nextOrder = useRef(0);
   const [drafts, setDrafts] = useState<FieldDraft[]>([]);
   const [properties, setProperties] = useState<EntryPropertiesDraft>(emptyProperties);
   const [errors, setErrors] = useState(new Set<string>());
 
-  const begin = (detail: EntryDetailResult, options: EntryEditorOptions = {}) => {
-    setDrafts(createDrafts(detail, options));
+  const begin = (detail: EntryDetailResult) => {
+    nextOrder.current =
+      detail.fields.reduce((maximum, field) => Math.max(maximum, field.order), -1) + 1;
+    setDrafts(createDrafts(detail));
     setProperties(createPropertiesDraft(detail));
     setErrors(new Set());
   };
@@ -70,9 +67,12 @@ export const useEntryEditor = () => {
       ...current,
       {
         key: `new-${nextKey.current++}`,
+        order: nextOrder.current++,
         fieldId: null,
         kind: 'custom',
         name: '',
+        label: '',
+        control: null,
         value: '',
         isProtected: false,
         originalIsProtected: false,

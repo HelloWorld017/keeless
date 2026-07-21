@@ -1,20 +1,15 @@
 use crate::crypto::memory_protection::MemoryUnlockSession;
 use crate::model::{
-    CompositeKey, Database, Entry, EntryField, EntryFieldId, EntryFieldUpdate, NodeId,
-    ProtectedString, Template, TemplateField, TemplateFieldType,
+    CompositeKey, Database, Entry, EntryFieldId, NodeId, ProtectedString, StandardField, Template,
+    TemplateField, TemplateFieldType,
 };
-use crate::{DatabaseError, DatabaseResult};
+use crate::DatabaseResult;
+use indexmap::IndexMap;
 
 use super::metadata::{self, FieldType};
 
 pub fn is_internal_field(name: &str) -> bool {
     name.starts_with(metadata::PREFIX)
-}
-
-pub fn visible_fields(entry: &Entry) -> impl Iterator<Item = (EntryFieldId, &EntryField)> {
-    entry
-        .fields()
-        .filter(|(_, field)| !is_internal_field(field.name()))
 }
 
 pub fn is_template(database: &Database, entry_id: &NodeId) -> bool {
@@ -67,7 +62,10 @@ pub fn instantiate(
     let id = NodeId::new_uuid();
     let mut unlock = composite_key.map(MemoryUnlockSession::new);
     entry.prepare_duplicate(id, unlock.as_mut())?;
-    entry.retain_custom_fields(|field| !is_internal_field(field.name()));
+    entry.retain_custom_fields(|field| {
+        !is_internal_field(field.name()) && !field.name().starts_with('@')
+    });
+    standard_fields_first(&mut entry);
     entry.add_custom_field(
         metadata::TEMPLATE_UUID,
         ProtectedString::new_plain(&source_uuid.simple().to_string().to_ascii_uppercase()),
@@ -75,47 +73,23 @@ pub fn instantiate(
     Ok(database.add_entry(entry, parent_group_id).then_some(id))
 }
 
+fn standard_fields_first(entry: &mut Entry) {
+    let mut ordered = IndexMap::with_capacity(entry.fields.0.len());
+    for standard in StandardField::ALL {
+        let id = EntryFieldId::Standard(standard);
+        if let Some(field) = entry.fields.0.shift_remove(&id) {
+            ordered.insert(id, field);
+        }
+    }
+    ordered.append(&mut entry.fields.0);
+    entry.fields.0 = ordered;
+}
+
 pub(super) fn resolve<'a>(database: &'a Database, entry: &Entry) -> Option<&'a Entry> {
     let id = NodeId::from_uuid(metadata::template_uuid(entry)?);
     is_template(database, &id)
         .then(|| database.get_entry(&id))
         .flatten()
-}
-
-pub fn merge_metadata_updates(
-    original: &Entry,
-    fields: &[EntryFieldUpdate],
-) -> DatabaseResult<Vec<EntryFieldUpdate>> {
-    for requested in fields {
-        if is_internal_field(&requested.name)
-            || requested.field_id.is_some_and(|id| {
-                original
-                    .field(id)
-                    .is_some_and(|field| is_internal_field(field.name()))
-            })
-        {
-            return Err(DatabaseError::InvalidFormat(
-                "internal template fields cannot be updated".into(),
-            ));
-        }
-    }
-
-    let mut visible = fields.iter();
-    let mut complete = Vec::with_capacity(original.fields().count() + fields.len());
-    for (id, field) in original.fields() {
-        if is_internal_field(field.name()) {
-            complete.push(EntryFieldUpdate {
-                field_id: Some(id),
-                name: field.name().to_string(),
-                value: (!field.value().is_protected()).then(|| field.value().as_str().to_string()),
-                is_protected: field.value().is_protected(),
-            });
-        } else if let Some(field) = visible.next() {
-            complete.push(field.clone());
-        }
-    }
-    complete.extend(visible.cloned());
-    Ok(complete)
 }
 
 pub fn builtin_entry(template: Template) -> Entry {
@@ -177,6 +151,9 @@ mod tests {
         let mut source = Entry::new(source_id);
         source.set_title("Template title");
         source.add_custom_field("Ordinary", ProtectedString::new_plain("default"));
+        source.add_custom_field("@exp_date", ProtectedString::new_plain("placeholder"));
+        source.add_custom_field("@confirm", ProtectedString::new_plain("placeholder"));
+        source.add_custom_field("@future", ProtectedString::new_plain("placeholder"));
         source.add_custom_field(metadata::MARKER, ProtectedString::new_plain("1"));
         source.add_custom_field(
             format!("{}Ordinary", metadata::TITLE_PREFIX),
@@ -189,6 +166,21 @@ mod tests {
             .unwrap();
         let child = database.get_entry(&child_id).unwrap();
         assert_eq!(child.title().as_str(), "Template title");
+        assert_eq!(
+            child
+                .fields()
+                .map(|(_, field)| field.name())
+                .collect::<Vec<_>>(),
+            [
+                "Title",
+                "UserName",
+                "Password",
+                "URL",
+                "Notes",
+                "Ordinary",
+                metadata::TEMPLATE_UUID,
+            ]
+        );
         assert!(child.custom_fields().any(|(_, field)| {
             field.name() == metadata::TEMPLATE_UUID
                 && field.value().as_str()

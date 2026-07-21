@@ -121,14 +121,53 @@ pub enum EntryFieldKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EntryFieldInformation {
-    pub field_id: String,
-    pub kind: EntryFieldKind,
-    pub name: String,
-    #[serde(deserialize_with = "deserialize_nullable")]
-    pub value: Option<String>,
-    pub is_protected: bool,
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum EntryFieldInformation {
+    Field {
+        order: u64,
+        #[serde(rename = "fieldId", deserialize_with = "deserialize_nullable")]
+        field_id: Option<String>,
+        kind: EntryFieldKind,
+        name: String,
+        label: String,
+        #[serde(deserialize_with = "deserialize_nullable")]
+        value: Option<String>,
+        #[serde(rename = "isProtected")]
+        is_protected: bool,
+        #[serde(deserialize_with = "deserialize_nullable")]
+        control: Option<FieldControl>,
+    },
+    PasswordConfirmation {
+        order: u64,
+        label: String,
+        #[serde(rename = "passwordFieldId")]
+        password_field_id: String,
+        control: FieldControl,
+    },
+    OverrideUrl {
+        order: u64,
+        label: String,
+        control: FieldControl,
+    },
+    Expiry {
+        order: u64,
+        label: String,
+        control: FieldControl,
+    },
+    Tags {
+        order: u64,
+        label: String,
+        control: FieldControl,
+    },
+    Divider {
+        order: u64,
+        label: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -137,45 +176,6 @@ pub struct EntryAttachmentInformation {
     pub name: String,
     pub size: u64,
     pub is_protected: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EntryLayout {
-    pub template_id: String,
-    pub items: Vec<EntryLayoutItem>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EntryLayoutItem {
-    pub label: String,
-    pub target: LayoutTarget,
-    pub control: FieldControl,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub enum LayoutTarget {
-    Field {
-        #[serde(rename = "fieldId", deserialize_with = "deserialize_nullable")]
-        field_id: Option<String>,
-        #[serde(rename = "fieldName")]
-        field_name: String,
-    },
-    PasswordConfirmation {
-        #[serde(rename = "passwordFieldId")]
-        password_field_id: String,
-    },
-    OverrideUrl,
-    Expiry,
-    Tags,
-    Divider,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -509,8 +509,6 @@ pub struct TagsResult {
 pub struct EntryDetailResult {
     pub id: DatabaseNodeId,
     pub icon: IconReference,
-    #[serde(deserialize_with = "deserialize_nullable")]
-    pub layout: Option<EntryLayout>,
     pub tags: Vec<String>,
     pub fields: Vec<EntryFieldInformation>,
     pub background_color: String,

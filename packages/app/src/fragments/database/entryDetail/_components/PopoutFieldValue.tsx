@@ -5,24 +5,26 @@ import { useState } from 'react';
 import { useProtectedReveal } from '../_hooks/useProtectedReveal';
 import type { DatabaseNodeId, EntryFieldInformation } from '@keeless/schema';
 
+type EntryField = Extract<EntryFieldInformation, { type: 'field' }>;
+
 export const PopoutFieldValue = ({
   entryId,
   field,
   label,
 }: {
   entryId: DatabaseNodeId;
-  field?: EntryFieldInformation;
+  field: EntryField;
   label: string;
 }) => {
   const [open, setOpen] = useState(false);
   const [protectedValue, setProtectedValue] = useState<string>();
-  const isProtected = field?.isProtected ?? false;
+  const isProtected = field.fieldId !== null && field.isProtected;
   const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
     entryId,
-    fieldId: isProtected ? (field?.fieldId ?? null) : null,
+    fieldId: isProtected ? field.fieldId : null,
     onReveal: setProtectedValue,
   });
-  const value = isProtected ? protectedValue : field?.value;
+  const value = isProtected ? protectedValue : field.value;
 
   return (
     <div className="space-y-1 px-4 py-3">

@@ -1,9 +1,14 @@
-import { EntryLayoutView } from '../_layout/EntryLayoutView';
-import { resolveLayoutField } from '../_layout/bindings';
+import { ExpiryValue } from '../_layout/ExpiryValue';
+import { FieldDivider } from '../_layout/FieldDivider';
 import { formatBytes, formatDate } from '../_utils/format';
 import { getFieldName } from '../_utils/getFieldName';
 import { EntryFieldValue } from './EntryFieldValue';
-import type { EntryAttachmentInformation, EntryDetailResult } from '@keeless/schema';
+import { FieldPlain } from './FieldPlain';
+import type {
+  EntryAttachmentInformation,
+  EntryDetailResult,
+  EntryFieldInformation,
+} from '@keeless/schema';
 import type { ReactNode } from 'react';
 
 const DetailSection = ({
@@ -41,35 +46,83 @@ const MetadataRow = ({ label, value }: { label: string; value: ReactNode }) => (
   </div>
 );
 
+const safeUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const fieldKey = (field: EntryFieldInformation) =>
+  field.type === 'field' && field.fieldId !== null
+    ? `field:${field.fieldId}`
+    : `${field.type}:${field.order}`;
+
 export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
   const colorRows = [
     detail.backgroundColor && ['Background color', detail.backgroundColor],
     detail.foregroundColor && ['Foreground color', detail.foregroundColor],
   ].filter((row): row is string[] => Boolean(row));
-  const referencedFieldIds = new Set(
-    detail.layout?.items.flatMap(item => {
-      const field = resolveLayoutField(item.target, detail.fields);
-      return field ? [field.fieldId] : [];
-    }) ?? [],
-  );
-  const unreferencedFields = detail.layout
-    ? detail.fields.filter(field => !referencedFieldIds.has(field.fieldId))
-    : detail.fields;
-  const genericField = (field: EntryDetailResult['fields'][number]) => (
-    <EntryFieldValue
-      key={`${detail.id}:${field.fieldId}`}
-      entryId={detail.id}
-      field={field}
-      label={getFieldName(field.kind, field.name)}
-    />
-  );
+  const fields = detail.fields.toSorted((left, right) => left.order - right.order);
+
+  const fieldValue = (field: EntryFieldInformation): ReactNode => {
+    const key = fieldKey(field);
+    switch (field.type) {
+      case 'passwordConfirmation':
+        return null;
+      case 'divider':
+        return <FieldDivider key={key} label={field.label} />;
+      case 'overrideUrl': {
+        const href = safeUrl(detail.overrideUrl);
+        return href ? (
+          <div key={key} className="space-y-1 px-4 py-3">
+            <dt className="text-xs text-muted-foreground">{field.label}</dt>
+            <dd className="min-w-0 break-words text-sm">
+              <a
+                className="underline underline-offset-4"
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {detail.overrideUrl}
+              </a>
+            </dd>
+          </div>
+        ) : (
+          <FieldPlain key={key} name={field.label} value={detail.overrideUrl} />
+        );
+      }
+      case 'expiry':
+        return (
+          <ExpiryValue
+            key={key}
+            label={field.label}
+            expires={detail.expires}
+            expiryTimeMs={detail.expiryTimeMs}
+          />
+        );
+      case 'tags':
+        return <FieldPlain key={key} name={field.label} value={detail.tags.join(', ')} />;
+      case 'field':
+        return (
+          <EntryFieldValue
+            key={key}
+            entryId={detail.id}
+            field={field}
+            label={field.control ? field.label : getFieldName(field.kind, field.name)}
+            control={field.control}
+          />
+        );
+    }
+    return null;
+  };
+
   return (
     <div className="w-full max-w-3xl space-y-8 p-4 sm:p-6">
       <DetailSection title="Fields">
-        <dl className="divide-y rounded-lg border">
-          {detail.layout && <EntryLayoutView detail={detail} layout={detail.layout} />}
-          {unreferencedFields.map(genericField)}
-        </dl>
+        <dl className="divide-y rounded-lg border">{fields.map(fieldValue)}</dl>
       </DetailSection>
       {detail.tags.length > 0 && (
         <DetailSection title="Tags">

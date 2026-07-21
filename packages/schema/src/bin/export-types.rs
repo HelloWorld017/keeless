@@ -32,9 +32,6 @@ fn generate() -> String {
     export::<EntryFieldKind>(&mut output);
     export::<EntryFieldInformation>(&mut output);
     export::<EntryAttachmentInformation>(&mut output);
-    export::<EntryLayout>(&mut output);
-    export::<EntryLayoutItem>(&mut output);
-    export::<LayoutTarget>(&mut output);
     export::<FieldControl>(&mut output);
     export::<OpenArgs>(&mut output);
     export::<CreateArgs>(&mut output);

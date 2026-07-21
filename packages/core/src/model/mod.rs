@@ -219,12 +219,15 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
                 Some(StandardField::Notes) => EntryFieldKind::Notes,
                 None => EntryFieldKind::Custom,
             };
-            EntryFieldInformation {
-                field_id: id.to_string(),
+            EntryFieldInformation::Field {
+                order: 0,
+                field_id: Some(id.to_string()),
                 kind,
                 name: field.name().to_string(),
+                label: field.name().to_string(),
                 value: (!is_protected).then(|| field.value().as_str().to_string()),
                 is_protected,
+                control: None,
             }
         })
         .collect();
@@ -232,7 +235,6 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
     EntryDetailResult {
         id: node_id(entry.id),
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),
-        layout: None,
         tags: entry.tags.clone(),
         fields,
         background_color: entry.background_color.clone(),

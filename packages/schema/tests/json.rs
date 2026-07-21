@@ -377,14 +377,16 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                         standard_id: 1,
                         custom_uuid: None,
                     },
-                    layout: None,
                     tags: vec!["work".into()],
-                    fields: vec![EntryFieldInformation {
-                        field_id: "standard:Password".into(),
+                    fields: vec![EntryFieldInformation::Field {
+                        order: 0,
+                        field_id: Some("standard:Password".into()),
                         kind: EntryFieldKind::Password,
                         name: "Password".into(),
+                        label: "Password".into(),
                         value: None,
                         is_protected: true,
+                        control: None,
                     }],
                     background_color: "#000000".into(),
                     foreground_color: "#ffffff".into(),
@@ -411,9 +413,8 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
             "result": {
                 "id": 7,
                 "icon": { "standardId": 1, "customUuid": null },
-                "layout": null,
                 "tags": ["work"],
-                "fields": [{ "fieldId": "standard:Password", "kind": "password", "name": "Password", "value": null, "isProtected": true }],
+                "fields": [{ "type": "field", "order": 0, "fieldId": "standard:Password", "kind": "password", "name": "Password", "label": "Password", "value": null, "isProtected": true, "control": null }],
                 "backgroundColor": "#000000",
                 "foregroundColor": "#ffffff",
                 "overrideUrl": "",
@@ -431,101 +432,115 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
 }
 
 #[test]
-fn entry_layout_and_entry_properties_roundtrip() {
+fn entry_field_layout_and_entry_properties_roundtrip() {
     assert_roundtrip(
-        EntryLayout {
-            template_id: "template:bank-account".into(),
-            items: vec![
-                EntryLayoutItem {
-                    label: "Account number".into(),
-                    target: LayoutTarget::Field {
-                        field_id: Some("field:account-number".into()),
-                        field_name: "Account Number".into(),
-                    },
-                    control: FieldControl::Text {
-                        protected: false,
-                        lines: 1,
-                    },
-                },
-                EntryLayoutItem {
-                    label: "Account type".into(),
-                    target: LayoutTarget::Field {
-                        field_id: None,
-                        field_name: "Account Type".into(),
-                    },
-                    control: FieldControl::Select {
-                        options: vec!["Checking".into(), "Savings".into()],
-                    },
-                },
-                EntryLayoutItem {
-                    label: "Confirm password".into(),
-                    target: LayoutTarget::PasswordConfirmation {
-                        password_field_id: "standard:Password".into(),
-                    },
-                    control: FieldControl::Popout { protected: true },
-                },
-                EntryLayoutItem {
-                    label: "Website".into(),
-                    target: LayoutTarget::OverrideUrl,
-                    control: FieldControl::Url,
-                },
-                EntryLayoutItem {
-                    label: "Expires".into(),
-                    target: LayoutTarget::Expiry,
-                    control: FieldControl::DateTime,
-                },
-                EntryLayoutItem {
-                    label: "Tags".into(),
-                    target: LayoutTarget::Tags,
-                    control: FieldControl::RichText { lines: 2 },
-                },
-                EntryLayoutItem {
-                    label: String::new(),
-                    target: LayoutTarget::Divider,
-                    control: FieldControl::Divider,
-                },
-            ],
-        },
-        json!({
-            "templateId": "template:bank-account",
-            "items": [
-                {
-                    "label": "Account number",
-                    "target": { "type": "field", "fieldId": "field:account-number", "fieldName": "Account Number" },
-                    "control": { "type": "text", "protected": false, "lines": 1 }
-                },
-                {
-                    "label": "Account type",
-                    "target": { "type": "field", "fieldId": null, "fieldName": "Account Type" },
-                    "control": { "type": "select", "options": ["Checking", "Savings"] }
-                },
-                {
-                    "label": "Confirm password",
-                    "target": { "type": "passwordConfirmation", "passwordFieldId": "standard:Password" },
-                    "control": { "type": "popout", "protected": true }
-                },
-                {
-                    "label": "Website",
-                    "target": { "type": "overrideUrl" },
-                    "control": { "type": "url" }
-                },
-                {
-                    "label": "Expires",
-                    "target": { "type": "expiry" },
-                    "control": { "type": "dateTime" }
-                },
-                {
-                    "label": "Tags",
-                    "target": { "type": "tags" },
-                    "control": { "type": "richText", "lines": 2 }
-                },
-                {
-                    "label": "",
-                    "target": { "type": "divider" },
-                    "control": { "type": "divider" }
+        vec![
+            EntryFieldInformation::Field {
+                order: 0,
+                field_id: Some("field:account-number".into()),
+                kind: EntryFieldKind::Custom,
+                name: "Account Number".into(),
+                label: "Account number".into(),
+                value: Some("1234".into()),
+                is_protected: false,
+                control: FieldControl::Text {
+                    protected: false,
+                    lines: 1,
                 }
-            ]
-        }),
+                .into(),
+            },
+            EntryFieldInformation::Field {
+                order: 1,
+                field_id: None,
+                kind: EntryFieldKind::Custom,
+                name: "Account Type".into(),
+                label: "Account type".into(),
+                value: Some(String::new()),
+                is_protected: false,
+                control: Some(FieldControl::Select {
+                    options: vec!["Checking".into(), "Savings".into()],
+                }),
+            },
+            EntryFieldInformation::PasswordConfirmation {
+                order: 2,
+                label: "Confirm password".into(),
+                password_field_id: "standard:Password".into(),
+                control: FieldControl::Popout { protected: true },
+            },
+            EntryFieldInformation::OverrideUrl {
+                order: 3,
+                label: "Website".into(),
+                control: FieldControl::Url,
+            },
+            EntryFieldInformation::Expiry {
+                order: 4,
+                label: "Expires".into(),
+                control: FieldControl::DateTime,
+            },
+            EntryFieldInformation::Tags {
+                order: 5,
+                label: "Tags".into(),
+                control: FieldControl::RichText { lines: 2 },
+            },
+            EntryFieldInformation::Divider {
+                order: 6,
+                label: String::new(),
+            },
+        ],
+        json!([
+            {
+                "type": "field",
+                "order": 0,
+                "fieldId": "field:account-number",
+                "kind": "custom",
+                "name": "Account Number",
+                "label": "Account number",
+                "value": "1234",
+                "isProtected": false,
+                "control": { "type": "text", "protected": false, "lines": 1 }
+            },
+            {
+                "type": "field",
+                "order": 1,
+                "fieldId": null,
+                "kind": "custom",
+                "name": "Account Type",
+                "label": "Account type",
+                "value": "",
+                "isProtected": false,
+                "control": { "type": "select", "options": ["Checking", "Savings"] }
+            },
+            {
+                "type": "passwordConfirmation",
+                "order": 2,
+                "label": "Confirm password",
+                "passwordFieldId": "standard:Password",
+                "control": { "type": "popout", "protected": true }
+            },
+            {
+                "type": "overrideUrl",
+                "order": 3,
+                "label": "Website",
+                "control": { "type": "url" }
+            },
+            {
+                "type": "expiry",
+                "order": 4,
+                "label": "Expires",
+                "control": { "type": "dateTime" }
+            },
+            {
+                "type": "tags",
+                "order": 5,
+                "label": "Tags",
+                "control": { "type": "richText", "lines": 2 }
+            },
+            {
+                "type": "divider",
+                "order": 6,
+                "label": ""
+            }
+        ]),
     );
 
     assert_roundtrip(

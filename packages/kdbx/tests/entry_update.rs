@@ -1,4 +1,3 @@
-use keeless_kdbx::kdbx::template;
 use keeless_kdbx::{
     open_database, save_database, ChangeTracker, CompositeKey, Database, DatabaseError,
     DatabaseVersion, DateInstant, Entry, EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate,
@@ -76,10 +75,9 @@ fn standard_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
     ]
 }
 
-fn unchanged_visible_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
+fn unchanged_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
     entry
         .fields()
-        .filter(|(_, field)| !template::is_internal_field(field.name()))
         .map(|(id, field)| EntryFieldUpdate {
             field_id: Some(id),
             name: field.name().to_string(),
@@ -282,7 +280,7 @@ fn deleting_trailing_or_all_custom_fields_is_a_change() {
 }
 
 #[test]
-fn template_metadata_is_preserved_and_cannot_be_submitted() {
+fn template_metadata_can_be_updated_added_and_deleted() {
     let (mut database, key, entry_id) = loaded_database();
     let reserved_id = database.get_entry_mut(&entry_id).unwrap().add_custom_field(
         "_etm_template_uuid",
@@ -290,11 +288,10 @@ fn template_metadata_is_preserved_and_cannot_be_submitted() {
     );
     database.data_modified = false;
     let before = database.get_entry(&entry_id).unwrap().clone();
-    let fields = unchanged_visible_fields(&before);
+    let fields = unchanged_fields(&before);
 
-    let complete = template::merge_metadata_updates(&before, &fields).unwrap();
     assert!(!database
-        .update_entry(&key, &entry_id, &complete, None)
+        .update_entry(&key, &entry_id, &fields, None)
         .unwrap());
     let reserved = database
         .get_entry(&entry_id)
@@ -310,31 +307,40 @@ fn template_metadata_is_preserved_and_cannot_be_submitted() {
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
     assert!(!database.data_modified);
 
-    let mut reserved_name = fields.clone();
-    reserved_name.push(EntryFieldUpdate {
+    let mut changed = fields;
+    let reserved = changed
+        .iter_mut()
+        .find(|field| field.field_id == Some(reserved_id))
+        .unwrap();
+    reserved.name = "_etm_updated_uuid".into();
+    reserved.value = Some("FFEEDDCCBBAA99887766554433221100".into());
+    changed.push(EntryFieldUpdate {
         field_id: None,
         name: "_etm_client_value".into(),
-        value: Some("forbidden".into()),
-        is_protected: false,
+        value: Some("allowed".into()),
+        is_protected: true,
     });
-    assert!(matches!(
-        template::merge_metadata_updates(&before, &reserved_name),
-        Err(DatabaseError::InvalidFormat(_))
-    ));
+    assert!(database
+        .update_entry(&key, &entry_id, &changed, None)
+        .unwrap());
+    let updated = database.get_entry(&entry_id).unwrap();
+    let renamed = updated.field(reserved_id).unwrap();
+    assert_eq!(renamed.name(), "_etm_updated_uuid");
+    assert_eq!(renamed.value().as_str(), "FFEEDDCCBBAA99887766554433221100");
+    assert!(updated
+        .custom_fields()
+        .any(|(_, field)| field.name() == "_etm_client_value" && field.value().is_protected()));
 
-    let mut reserved_id_submission = fields;
-    reserved_id_submission.push(EntryFieldUpdate {
-        field_id: Some(reserved_id),
-        name: "Ordinary".into(),
-        value: Some("forbidden".into()),
-        is_protected: false,
-    });
-    assert!(matches!(
-        template::merge_metadata_updates(&before, &reserved_id_submission),
-        Err(DatabaseError::InvalidFormat(_))
-    ));
-    assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
-    assert!(!database.data_modified);
+    let mut without_internal = unchanged_fields(updated);
+    without_internal.retain(|field| !field.name.starts_with("_etm_"));
+    assert!(database
+        .update_entry(&key, &entry_id, &without_internal, None)
+        .unwrap());
+    assert!(database
+        .get_entry(&entry_id)
+        .unwrap()
+        .custom_fields()
+        .all(|(_, field)| !field.name().starts_with("_etm_")));
 }
 
 #[test]
@@ -348,7 +354,7 @@ fn fields_and_properties_commit_with_one_history_snapshot() {
     database.data_modified = false;
 
     let before = database.get_entry(&entry_id).unwrap().clone();
-    let mut fields = unchanged_visible_fields(&before);
+    let mut fields = unchanged_fields(&before);
     fields
         .iter_mut()
         .find(|field| field.name == "Title")

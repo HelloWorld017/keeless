@@ -1,4 +1,3 @@
-use keeless_kdbx::kdbx::template;
 use keeless_kdbx::{
     CompositeKey, DatabaseError, EntryFieldUpdate as KdbxFieldUpdate,
     EntryPropertiesUpdate as KdbxPropertiesUpdate,
@@ -62,17 +61,6 @@ pub(crate) fn run(
         expires: properties.expires,
         expiry_time_ms: properties.expiry_time_ms,
     });
-    let converted = {
-        let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
-        let entry = handle
-            .database()
-            .get_entry(&entry_id)
-            .ok_or(CoreError::EntryNotFound)?;
-        template::merge_metadata_updates(entry, &converted).map_err(|error| match error {
-            DatabaseError::InvalidFormat(_) => CoreError::InvalidEntryUpdate,
-            error => CoreError::from(error),
-        })?
-    };
     let changed = core
         .handle
         .as_mut()
