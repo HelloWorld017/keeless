@@ -21,7 +21,7 @@ import {
   type EntryDragSource,
 } from '../_utils/dragAndDrop';
 import { EntryDetailFragment } from '../entryDetail/EntryDetailFragment';
-import { EntryItem, getEntryTitle } from './EntryItem';
+import { EntryItem, getEntryItemSize, getEntryTitle } from './EntryItem';
 import { ItemIcon } from './ItemIcon';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type {
@@ -116,7 +116,7 @@ const VirtualEntryList = ({
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 68,
+    estimateSize: (index) => getEntryItemSize(entries[index]) + 8,
     getItemKey: index => entryDndId(entries[index].id),
     overscan: 4,
   });

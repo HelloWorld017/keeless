@@ -1,4 +1,4 @@
-import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
+import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/item';
 import { cn, cx } from '@/utils/css';
 import { ItemIcon } from './ItemIcon';
 import { Tag } from './Tag';
@@ -8,12 +8,26 @@ import type { ComponentProps } from 'react';
 export const getEntryTitle = (entry: EntrySummary) =>
   entry.name || (entry.nameIsProtected ? '(Protected Entry)' : '(Untitled Entry)');
 
+export const getEntryItemSize = (entry: EntrySummary) => {
+  let height = 10;
+  if (entry.username || entry.url) {
+    height += 6;
+  }
+
+  if (entry.tags.length > 0) {
+    height += 6;
+  }
+
+  return Math.max(height, 12) * 4;
+};
+
 export const EntryItem = ({
   entry,
   selected = false,
   className,
   variant,
   tags: tagCatalog = [],
+  style,
   ...props
 }: ComponentProps<typeof Item> & {
   entry: EntrySummary;
@@ -28,7 +42,8 @@ export const EntryItem = ({
   return (
     <Item
       variant={variant ?? (selected ? 'muted' : 'default')}
-      className={cn('h-16 flex-nowrap', selected && 'bg-primary', className)}
+      className={cn('flex-nowrap', selected && 'bg-primary', className)}
+      style={{ ...style, height: `${getEntryItemSize(entry)}px` }}
       {...props}
     >
       <ItemMedia variant="icon" className={cx(selected && 'text-primary-foreground')}>
@@ -36,23 +51,27 @@ export const EntryItem = ({
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className={cx(selected && 'text-primary-foreground')}>{title}</ItemTitle>
-        <ItemDescription className="flex min-h-5 items-center gap-1 overflow-hidden">
-          {description && (
-            <span
-              className={cx('min-w-0 truncate break-all', selected && 'text-primary-foreground/75')}
-            >
-              {description}
-            </span>
-          )}
-          {entry.tags.map(name => (
-            <Tag
-              key={name}
-              name={name}
+        {description && (
+          <ItemDescription className="flex h-5.5 items-center gap-1 overflow-hidden">
+              <span
+                className={cx('min-w-0 truncate break-all', selected && 'text-primary-foreground/75')}
+              >
+                {description}
+              </span>
+          </ItemDescription>
+        )}
+        {!!entry.tags.length && (
+          <ItemDescription className="flex h-5.5 items-center gap-1 overflow-hidden">
+              {entry.tags.map(name => (
+                <Tag
+                  key={name}
+                  name={name}
                   tagStyle={tagCatalog.find(tag => tag.name === name)?.style}
                   variant={selected ? 'transparent' : 'default'}
                   className='max-w-24'
                 />
               ))}
+          </ItemDescription>
         )}
       </ItemContent>
     </Item>
