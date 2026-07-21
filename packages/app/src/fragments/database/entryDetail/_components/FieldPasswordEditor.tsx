@@ -1,10 +1,9 @@
 import { Button } from '@/components/button';
-import { Input } from '@/components/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/input-group';
 import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
 import { useProtectedReveal } from '../_hooks/useProtectedReveal';
 import { PasswordGenerator } from './PasswordGenerator';
 import type { DatabaseNodeId } from '@keeless/schema';
-import {InputGroup, InputGroupAddon, InputGroupInput} from '@/components/input-group';
 
 export const FieldPasswordEditor = ({
   id,

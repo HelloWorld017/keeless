@@ -34,9 +34,10 @@ export default defineConfig({
     'import/no-named-as-default-member': 'off',
     'import/no-unassigned-import': 'off',
     'import/prefer-default-export': 'off',
-
     'react/no-unknown-property': 'off',
     'react/react-in-jsx-scope': 'off',
+    'unicorn/require-module-specifiers': 'off',
+    'unicorn/prefer-add-event-listener': 'off',
 
     'arrow-body-style': ['error', 'as-needed'],
     'eqeqeq': ['error', 'always'],
@@ -52,6 +53,16 @@ export default defineConfig({
       files: ['**/*.d.ts'],
       rules: {
         'no-var': 'off',
+      },
+    },
+    {
+      files: ['./src/components/*.tsx'],
+      rules: {
+        'jsx-a11y/click-events-have-key-events': 'off',
+        'jsx-a11y/no-noninteractive-element-interactions': 'off',
+        'jsx-a11y/prefer-tag-over-role': 'off',
+        'react/no-unstable-nested-components': 'off',
+        'no-underscore-dangle': 'off',
       },
     },
   ],

@@ -7,19 +7,10 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/popover';
-import {Slider} from '@/components/slider';
-import {ToggleGroup, ToggleGroupItem} from '@/components/toggle-group';
+import { Slider } from '@/components/slider';
+import { ToggleGroup, ToggleGroupItem } from '@/components/toggle-group';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
-import {
-  IconCheck,
-  IconClipboardCheck,
-  IconCopy,
-  IconEye,
-  IconEyeOff,
-  IconRefreshCw,
-  IconSparkles,
-  IconZap,
-} from '@/icons';
+import { IconClipboardCheck, IconCopy, IconEye, IconEyeOff, IconRefreshCw, IconZap } from '@/icons';
 import { useId, useState } from 'react';
 
 const MIN_LENGTH = 8;
@@ -110,7 +101,7 @@ const fromSliderIndex = (value: number) => {
   }
 
   return 32 + (value - 24) * 16;
-}
+};
 
 const generatePassword = (options: PasswordOptions) => {
   const characterGroups = [
@@ -210,8 +201,8 @@ export const PasswordGenerator = ({
         <IconZap />
       </PopoverTrigger>
       <PopoverContent className="w-auto max-w-[calc(100vw-2rem)]" align="end">
-        <PopoverHeader className='flex flex-row justify-between items-center'>
-          <PopoverTitle className='font-semibold'>Password Generator</PopoverTitle>
+        <PopoverHeader className="flex flex-row justify-between items-center">
+          <PopoverTitle className="font-semibold">Password Generator</PopoverTitle>
         </PopoverHeader>
         <div className="flex items-center gap-1 rounded-lg border border-input p-1">
           <Input
@@ -254,20 +245,25 @@ export const PasswordGenerator = ({
           </Button>
         </div>
 
-        <span className="font-semibold">
-          Options
-        </span>
+        <span className="font-semibold">Options</span>
 
         <ToggleGroup
           multiple
           variant="outline"
-          value={CHARACTER_OPTIONS.map(({ key }) => key).filter(key => !!options[key])}
-          onValueChange={(values) => updateOptions({ ...options, ...Object.fromEntries(CHARACTER_OPTIONS.map(({ key }) => [key, values.includes(key)])) })}
+          value={CHARACTER_OPTIONS.map(({ key }) => key).filter(key => options[key])}
+          onValueChange={values =>
+            updateOptions({
+              ...options,
+              ...Object.fromEntries(
+                CHARACTER_OPTIONS.map(({ key }) => [key, values.includes(key)]),
+              ),
+            })
+          }
         >
           {CHARACTER_OPTIONS.map(option => (
             <ToggleGroupItem
               key={option.key}
-              className='w-10 h-10'
+              className="w-10 h-10"
               value={option.key}
               onClick={() => updateOptions({ ...options, [option.key]: !options[option.key] })}
             >
@@ -276,7 +272,7 @@ export const PasswordGenerator = ({
           ))}
         </ToggleGroup>
 
-        <div className='flex flex-col'>
+        <div className="flex flex-col">
           <label htmlFor={lengthId} className="sr-only">
             Length
           </label>
@@ -289,7 +285,9 @@ export const PasswordGenerator = ({
               variant="contrast"
               className="flex-1 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={disabled}
-              onValueChange={value => updateOptions({ ...options, length: fromSliderIndex(value as number) })}
+              onValueChange={value =>
+                updateOptions({ ...options, length: fromSliderIndex(value as number) })
+              }
             />
             <Input
               id={lengthId}

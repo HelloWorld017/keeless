@@ -1,22 +1,19 @@
-import { Slider as SliderPrimitive } from "@base-ui/react/slider"
+import { cn } from '@/utils/css/index';
+import { Slider as SliderPrimitive } from '@base-ui/react/slider';
+import { cva } from 'class-variance-authority';
+import type { VariantProps } from 'class-variance-authority';
 
-import { cn } from "@/utils/css/index"
-import {cva, VariantProps} from "class-variance-authority"
-
-const indicatorVariants = cva(
-  'select-none data-horizontal:h-full data-vertical:w-full',
-  {
-    variants: {
-      variant: {
-        default: 'bg-primary',
-        contrast: 'bg-contrast',
-      },
+const indicatorVariants = cva('select-none data-horizontal:h-full data-vertical:w-full', {
+  variants: {
+    variant: {
+      default: 'bg-primary',
+      contrast: 'bg-contrast',
     },
-    defaultVariants: {
-      variant: 'default',
-    },
-  }
-);
+  },
+  defaultVariants: {
+    variant: 'default',
+  },
+});
 
 function Slider({
   className,
@@ -30,11 +27,11 @@ function Slider({
     ? value
     : Array.isArray(defaultValue)
       ? defaultValue
-      : [min, max]
+      : [min, max];
 
   return (
     <SliderPrimitive.Root
-      className={cn("data-horizontal:w-full data-vertical:h-full", className)}
+      className={cn('data-horizontal:w-full data-vertical:h-full', className)}
       data-slot="slider"
       defaultValue={defaultValue}
       value={value}
@@ -62,7 +59,7 @@ function Slider({
         ))}
       </SliderPrimitive.Control>
     </SliderPrimitive.Root>
-  )
+  );
 }
 
-export { Slider }
+export { Slider };

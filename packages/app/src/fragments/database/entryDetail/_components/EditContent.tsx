@@ -4,7 +4,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/field';
 import { Input } from '@/components/input';
 import { Toggle } from '@/components/toggle';
-import { IconChevronRight, IconLockKeyhole, IconLockKeyholeOpen, IconPlus, IconTrash, IconTriangleAlert } from '@/icons';
+import {
+  IconChevronRight,
+  IconLockKeyhole,
+  IconLockKeyholeOpen,
+  IconPlus,
+  IconTrash,
+  IconTriangleAlert,
+} from '@/icons';
 import { cn } from '@/utils/css';
 import { useState } from 'react';
 import { ExpiryEditor } from '../_layout/ExpiryEditor';

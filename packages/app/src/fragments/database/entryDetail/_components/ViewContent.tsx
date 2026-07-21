@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
 import { Button } from '@/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
 import { IconChevronRight, IconInfo } from '@/icons';
@@ -15,7 +16,6 @@ import type {
   EntryDetailResult,
   EntryFieldInformation,
 } from '@keeless/schema';
-import {Alert, AlertDescription, AlertTitle} from '@/components/alert';
 
 const DetailSection = ({
   title,

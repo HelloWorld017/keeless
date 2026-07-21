@@ -264,7 +264,7 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
                 location={location}
                 onNavigate={closeMobile}
               />
-              <SidebarMenuItem className="border-2 border-transparent" >
+              <SidebarMenuItem className="border-2 border-transparent">
                 <SidebarMenuButton
                   onClick={() => {
                     closeMobile();

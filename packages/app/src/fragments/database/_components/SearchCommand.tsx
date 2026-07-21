@@ -27,7 +27,10 @@ type SearchRecord<T> = {
 
 const fuzzySearch = <T,>(query: string, records: SearchRecord<T>[]) =>
   fuzzysort
-    .go(query.normalize('NFKD'), records, { key: record => record.text.normalize('NFKD'), limit: RESULT_LIMIT })
+    .go(query.normalize('NFKD'), records, {
+      key: record => record.text.normalize('NFKD'),
+      limit: RESULT_LIMIT,
+    })
     .map(result => result.obj.item);
 
 const CommandResult = ({
