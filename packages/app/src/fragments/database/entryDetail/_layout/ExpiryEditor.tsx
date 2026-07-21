@@ -1,5 +1,6 @@
 import { Field, FieldLabel } from '@/components/field';
 import { Input } from '@/components/input';
+import { DateInput } from '../_components/DateInput';
 import type { EntryPropertiesDraft } from '../_types/EntryPropertiesDraft';
 import type { FieldControl } from '@keeless/schema';
 
@@ -78,16 +79,29 @@ export const ExpiryEditor = ({
           Expires
         </label>
       </div>
-      <Input
-        id={id}
-        type={type}
-        value={localInputValue(properties.expiryTimeMs, type)}
-        disabled={pending || !properties.expires}
-        onChange={event => {
-          const expiryTimeMs = inputTimestamp(event.target.value, type, properties.expiryTimeMs);
-          onChange({ expiryTimeMs, expires: expiryTimeMs !== null });
-        }}
-      />
+      {type === 'time' ? (
+        <Input
+          id={id}
+          type="time"
+          value={localInputValue(properties.expiryTimeMs, type)}
+          disabled={pending || !properties.expires}
+          onChange={event => {
+            const expiryTimeMs = inputTimestamp(event.target.value, type, properties.expiryTimeMs);
+            onChange({ expiryTimeMs, expires: expiryTimeMs !== null });
+          }}
+        />
+      ) : (
+        <DateInput
+          id={id}
+          value={localInputValue(properties.expiryTimeMs, type)}
+          dateTime={type === 'datetime-local'}
+          disabled={pending || !properties.expires}
+          onChange={value => {
+            const expiryTimeMs = inputTimestamp(value, type, properties.expiryTimeMs);
+            onChange({ expiryTimeMs, expires: expiryTimeMs !== null });
+          }}
+        />
+      )}
     </Field>
   );
 };

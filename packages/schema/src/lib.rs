@@ -139,6 +139,8 @@ pub enum EntryFieldInformation {
         value: Option<String>,
         #[serde(rename = "isProtected")]
         is_protected: bool,
+        #[serde(rename = "isInternal")]
+        is_internal: bool,
         #[serde(deserialize_with = "deserialize_nullable")]
         control: Option<FieldControl>,
     },
@@ -508,6 +510,7 @@ pub struct TagsResult {
 #[serde(rename_all = "camelCase")]
 pub struct EntryDetailResult {
     pub id: DatabaseNodeId,
+    pub is_template: bool,
     pub icon: IconReference,
     pub tags: Vec<String>,
     pub fields: Vec<EntryFieldInformation>,

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use keeless_kdbx::{Database, Entry, IconImage, NodeId, StandardField};
+use keeless_kdbx::{Database, Entry, IconImage, NodeId, StandardField, kdbx::template};
 use keeless_schema::{
     DatabaseNodeId, EntryAttachmentInformation, EntryDetailResult, EntryFieldInformation,
     EntryFieldKind, EntrySummary, GroupHierarchyItem, GroupHierarchyResult, IconReference,
@@ -227,6 +227,7 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
                 label: field.name().to_string(),
                 value: (!is_protected).then(|| field.value().as_str().to_string()),
                 is_protected,
+                is_internal: template::is_internal_field(field.name()),
                 control: None,
             }
         })
@@ -234,6 +235,7 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
 
     EntryDetailResult {
         id: node_id(entry.id),
+        is_template: false,
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),
         tags: entry.tags.clone(),
         fields,

@@ -1,29 +1,24 @@
 import { Button } from '@/components/button';
-import { IconLoaderCircle } from '@/icons';
+import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
 import { cn } from '@/utils/css';
-import { useState } from 'react';
-import { useProtectedReveal } from '../_hooks/useProtectedReveal';
-import type { DatabaseNodeId } from '@keeless/schema';
+import { useEntryFieldValueActions } from '../_hooks/useEntryFieldValues';
+import { FieldCopyButton } from './FieldCopyButton';
 
 export const FieldNote = ({
-  entryId,
   fieldId,
   name,
   value,
   isProtected,
 }: {
-  entryId: DatabaseNodeId;
   fieldId: string;
   name: string;
   value: string | null;
   isProtected: boolean;
 }) => {
-  const [protectedValue, setProtectedValue] = useState<string>();
-  const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
-    entryId,
-    fieldId: isProtected ? fieldId : null,
-    onReveal: setProtectedValue,
-  });
+  const actions = useEntryFieldValueActions();
+  const protectedValue = actions.values[fieldId];
+  const pending = actions.pendingFieldIds.has(fieldId);
+  const revealed = protectedValue !== undefined;
   const displayValue = isProtected ? protectedValue : value;
 
   return (
@@ -39,25 +34,32 @@ export const FieldNote = ({
         >
           {isProtected && !revealed ? '(protected)' : displayValue || 'Empty'}
         </span>
-        {isProtected && !revealed && (
+        {isProtected && (
           <Button
             type="button"
-            variant="outline"
-            size="xs"
+            variant="ghost"
+            size="icon-sm"
+            className="-my-1 shrink-0 text-muted-foreground"
+            aria-label={revealed ? `Hide ${name}` : `Reveal ${name}`}
+            aria-pressed={revealed}
             disabled={pending}
-            onClick={() => void toggleReveal()}
+            onClick={() => actions.toggleReveal(fieldId)}
           >
-            {pending && <IconLoaderCircle className="animate-spin" />}
-            View
+            {pending ? (
+              <IconLoaderCircle className="animate-spin" />
+            ) : revealed ? (
+              <IconEyeOff />
+            ) : (
+              <IconEye />
+            )}
           </Button>
         )}
+        <FieldCopyButton
+          label={name}
+          value={isProtected ? undefined : value}
+          fieldId={isProtected ? fieldId : undefined}
+        />
       </dd>
-      {error && !promptOpen && (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-      {prompt}
     </div>
   );
 };

@@ -1,26 +1,21 @@
 import { Button } from '@/components/button';
 import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
-import { useState } from 'react';
-import { useProtectedReveal } from '../_hooks/useProtectedReveal';
-import type { DatabaseNodeId } from '@keeless/schema';
+import { useEntryFieldValueActions } from '../_hooks/useEntryFieldValues';
+import { FieldCopyButton } from './FieldCopyButton';
 
 export const FieldPassword = ({
-  entryId,
   fieldId,
   name,
   disabled = false,
 }: {
-  entryId: DatabaseNodeId;
   fieldId: string;
   name: string;
   disabled?: boolean;
 }) => {
-  const [value, setValue] = useState<string>();
-  const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
-    entryId,
-    fieldId,
-    onReveal: setValue,
-  });
+  const actions = useEntryFieldValueActions();
+  const value = actions.values[fieldId];
+  const revealed = value !== undefined;
+  const pending = actions.pendingFieldIds.has(fieldId);
 
   const revealButton = (
     <Button
@@ -31,7 +26,7 @@ export const FieldPassword = ({
       aria-label={revealed ? `Hide ${name}` : `Reveal ${name}`}
       aria-pressed={revealed}
       disabled={disabled || pending}
-      onClick={toggleReveal}
+      onClick={() => actions.toggleReveal(fieldId)}
     >
       {pending ? (
         <IconLoaderCircle className="animate-spin" />
@@ -62,13 +57,8 @@ export const FieldPassword = ({
           )}
         </span>
         {revealButton}
+        <FieldCopyButton label={name} fieldId={fieldId} />
       </dd>
-      {error && !promptOpen && (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-      {prompt}
     </div>
   );
 };

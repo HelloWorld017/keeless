@@ -1,15 +1,20 @@
+import { Button } from '@/components/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
+import { IconChevronRight } from '@/icons';
+import { cn } from '@/utils/css';
+import { useState, type ReactNode } from 'react';
 import { ExpiryValue } from '../_layout/ExpiryValue';
 import { FieldDivider } from '../_layout/FieldDivider';
 import { formatBytes, formatDate } from '../_utils/format';
 import { getFieldName } from '../_utils/getFieldName';
 import { EntryFieldValue } from './EntryFieldValue';
+import { FieldCopyButton } from './FieldCopyButton';
 import { FieldPlain } from './FieldPlain';
 import type {
   EntryAttachmentInformation,
   EntryDetailResult,
   EntryFieldInformation,
 } from '@keeless/schema';
-import type { ReactNode } from 'react';
 
 const DetailSection = ({
   title,
@@ -61,11 +66,14 @@ const fieldKey = (field: EntryFieldInformation) =>
     : `${field.type}:${field.order}`;
 
 export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
+  const [internalOpen, setInternalOpen] = useState(false);
   const colorRows = [
     detail.backgroundColor && ['Background color', detail.backgroundColor],
     detail.foregroundColor && ['Foreground color', detail.foregroundColor],
   ].filter((row): row is string[] => Boolean(row));
   const fields = detail.fields.toSorted((left, right) => left.order - right.order);
+  const internalFields = fields.filter(field => field.type === 'field' && field.isInternal);
+  const visibleFields = fields.filter(field => field.type !== 'field' || !field.isInternal);
 
   const fieldValue = (field: EntryFieldInformation): ReactNode => {
     const key = fieldKey(field);
@@ -79,15 +87,16 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
         return href ? (
           <div key={key} className="space-y-1 px-4 py-3">
             <dt className="text-xs text-muted-foreground">{field.label}</dt>
-            <dd className="min-w-0 break-words text-sm">
+            <dd className="flex min-w-0 items-start gap-2 text-sm">
               <a
-                className="underline underline-offset-4"
+                className="min-w-0 flex-1 break-words underline underline-offset-4"
                 href={href}
                 target="_blank"
                 rel="noreferrer"
               >
                 {detail.overrideUrl}
               </a>
+              <FieldCopyButton label={field.label} value={detail.overrideUrl} />
             </dd>
           </div>
         ) : (
@@ -109,7 +118,6 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
         return (
           <EntryFieldValue
             key={key}
-            entryId={detail.id}
             field={field}
             label={field.control ? field.label : getFieldName(field.kind, field.name)}
             control={field.control}
@@ -122,7 +130,23 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
   return (
     <div className="w-full max-w-3xl space-y-8 p-4 sm:p-6">
       <DetailSection title="Fields">
-        <dl className="divide-y rounded-lg border">{fields.map(fieldValue)}</dl>
+        <dl className="divide-y rounded-lg border">{visibleFields.map(fieldValue)}</dl>
+        {internalFields.length > 0 && (
+          <Collapsible open={internalOpen} onOpenChange={setInternalOpen}>
+            <CollapsibleTrigger
+              render={<Button type="button" variant="ghost" className="w-full justify-start" />}
+            >
+              <IconChevronRight
+                className={cn('transition-transform', internalOpen && 'rotate-90')}
+              />
+              Internal fields
+              <span className="text-muted-foreground">({internalFields.length})</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <dl className="divide-y rounded-lg border">{internalFields.map(fieldValue)}</dl>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </DetailSection>
       {detail.tags.length > 0 && (
         <DetailSection title="Tags">

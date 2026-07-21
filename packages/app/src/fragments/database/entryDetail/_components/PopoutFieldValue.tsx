@@ -2,53 +2,51 @@ import { Button } from '@/components/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/sheet';
 import { cn } from '@/utils/css';
 import { useState } from 'react';
-import { useProtectedReveal } from '../_hooks/useProtectedReveal';
-import type { DatabaseNodeId, EntryFieldInformation } from '@keeless/schema';
+import { useEntryFieldValueActions } from '../_hooks/useEntryFieldValues';
+import { FieldCopyButton } from './FieldCopyButton';
+import type { EntryFieldInformation } from '@keeless/schema';
 
 type EntryField = Extract<EntryFieldInformation, { type: 'field' }>;
 
-export const PopoutFieldValue = ({
-  entryId,
-  field,
-  label,
-}: {
-  entryId: DatabaseNodeId;
-  field: EntryField;
-  label: string;
-}) => {
+export const PopoutFieldValue = ({ field, label }: { field: EntryField; label: string }) => {
   const [open, setOpen] = useState(false);
-  const [protectedValue, setProtectedValue] = useState<string>();
   const isProtected = field.fieldId !== null && field.isProtected;
-  const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
-    entryId,
-    fieldId: isProtected ? field.fieldId : null,
-    onReveal: setProtectedValue,
-  });
+  const actions = useEntryFieldValueActions();
+  const protectedValue = field.fieldId === null ? undefined : actions.values[field.fieldId];
+  const pending = field.fieldId === null ? false : actions.pendingFieldIds.has(field.fieldId);
+  const revealed = protectedValue !== undefined;
   const value = isProtected ? protectedValue : field.value;
 
   return (
     <div className="space-y-1 px-4 py-3">
       <dt className="text-xs text-muted-foreground">{label || 'Untitled field'}</dt>
-      <dd>
+      <dd className="flex items-center gap-2">
         <Button
           type="button"
           variant="outline"
           size="sm"
           aria-label={`${isProtected && !revealed ? 'Reveal' : 'Open'} ${label || 'field'}`}
           disabled={pending}
-          onClick={() => (isProtected && !revealed ? void toggleReveal() : setOpen(true))}
+          onClick={() =>
+            isProtected && !revealed && field.fieldId !== null
+              ? actions.toggleReveal(field.fieldId)
+              : setOpen(true)
+          }
         >
           {isProtected && !revealed ? 'Reveal' : 'Open'}
         </Button>
+        <FieldCopyButton
+          label={label}
+          value={isProtected ? undefined : field.value}
+          fieldId={isProtected && field.fieldId !== null ? field.fieldId : undefined}
+        />
       </dd>
-      {error && !promptOpen && <p className="text-xs text-destructive">{error}</p>}
-      {prompt}
       <Sheet
         open={open}
         onOpenChange={nextOpen => {
           setOpen(nextOpen);
-          if (!nextOpen && isProtected && revealed) {
-            void toggleReveal();
+          if (!nextOpen && isProtected && revealed && field.fieldId !== null) {
+            actions.toggleReveal(field.fieldId);
           }
         }}
       >

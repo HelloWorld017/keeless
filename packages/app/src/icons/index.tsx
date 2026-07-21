@@ -9,6 +9,7 @@ import {
   BookOpenIcon,
   BookOpenTextIcon,
   CameraIcon,
+  CalendarIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -19,6 +20,7 @@ import {
   ClockIcon,
   CloudIcon,
   ContactIcon,
+  CopyIcon,
   DatabaseIcon,
   DatabaseZapIcon,
   Disc3Icon,
@@ -110,6 +112,7 @@ export const IconBatteryCharging = wrapLucideComponent(BatteryChargingIcon);
 export const IconBookOpen = wrapLucideComponent(BookOpenIcon);
 export const IconBookOpenText = wrapLucideComponent(BookOpenTextIcon);
 export const IconCamera = wrapLucideComponent(CameraIcon);
+export const IconCalendar = wrapLucideComponent(CalendarIcon);
 export const IconChevronDown = wrapLucideComponent(ChevronDownIcon);
 export const IconChevronLeft = wrapLucideComponent(ChevronLeftIcon);
 export const IconChevronRight = wrapLucideComponent(ChevronRightIcon);
@@ -120,6 +123,7 @@ export const IconClock = wrapLucideComponent(ClockIcon);
 export const IconClockAlert = wrapLucideComponent(ClockAlertIcon);
 export const IconCloud = wrapLucideComponent(CloudIcon);
 export const IconContact = wrapLucideComponent(ContactIcon);
+export const IconCopy = wrapLucideComponent(CopyIcon);
 export const IconDatabase = wrapLucideComponent(DatabaseIcon);
 export const IconDatabaseZap = wrapLucideComponent(DatabaseZapIcon);
 export const IconDisc3 = wrapLucideComponent(Disc3Icon);

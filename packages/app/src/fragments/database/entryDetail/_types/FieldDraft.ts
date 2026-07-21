@@ -10,6 +10,7 @@ export type FieldDraft = {
   control: FieldControl | null;
   value: string | null;
   isProtected: boolean;
+  isInternal: boolean;
   originalIsProtected: boolean;
   valueChanged: boolean;
 };

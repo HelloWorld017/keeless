@@ -62,6 +62,7 @@ export type EntryFieldInformation =
       label: string;
       value: string | null;
       isProtected: boolean;
+      isInternal: boolean;
       control: FieldControl | null;
     }
   | {
@@ -258,6 +259,7 @@ export type TagsResult = { tags: TagSummary[] };
 
 export type EntryDetailResult = {
   id: DatabaseNodeId;
+  isTemplate: boolean;
   icon: IconReference;
   tags: string[];
   fields: EntryFieldInformation[];

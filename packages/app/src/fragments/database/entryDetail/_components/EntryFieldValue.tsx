@@ -1,8 +1,9 @@
+import { FieldCopyButton } from './FieldCopyButton';
 import { FieldNote } from './FieldNote';
 import { FieldPassword } from './FieldPassword';
 import { FieldPlain } from './FieldPlain';
 import { PopoutFieldValue } from './PopoutFieldValue';
-import type { DatabaseNodeId, EntryFieldInformation, FieldControl } from '@keeless/schema';
+import type { EntryFieldInformation, FieldControl } from '@keeless/schema';
 
 type EntryField = Extract<EntryFieldInformation, { type: 'field' }>;
 
@@ -19,18 +20,16 @@ const safeUrl = (value: string | null) => {
 };
 
 export const EntryFieldValue = ({
-  entryId,
   field,
   label,
   control,
 }: {
-  entryId: DatabaseNodeId;
   field: EntryField;
   label: string;
   control?: FieldControl | null;
 }) => {
   if (control?.type === 'popout') {
-    return <PopoutFieldValue entryId={entryId} field={field} label={label} />;
+    return <PopoutFieldValue field={field} label={label} />;
   }
   if (field.fieldId !== null && field.isProtected) {
     if (
@@ -38,17 +37,9 @@ export const EntryFieldValue = ({
       control?.type === 'richText' ||
       (control?.type === 'text' && control.lines > 1)
     ) {
-      return (
-        <FieldNote
-          entryId={entryId}
-          fieldId={field.fieldId}
-          name={label}
-          value={field.value}
-          isProtected
-        />
-      );
+      return <FieldNote fieldId={field.fieldId} name={label} value={field.value} isProtected />;
     }
-    return <FieldPassword entryId={entryId} fieldId={field.fieldId} name={label} />;
+    return <FieldPassword fieldId={field.fieldId} name={label} />;
   }
   if (control?.type === 'url') {
     const href = safeUrl(field.value);
@@ -56,15 +47,16 @@ export const EntryFieldValue = ({
       return (
         <div className="space-y-1 px-4 py-3">
           <dt className="text-xs text-muted-foreground">{label}</dt>
-          <dd className="min-w-0 break-words text-sm">
+          <dd className="flex min-w-0 items-start gap-2 text-sm">
             <a
-              className="underline underline-offset-4"
+              className="min-w-0 flex-1 break-words underline underline-offset-4"
               href={href}
               target="_blank"
               rel="noreferrer"
             >
               {field.value}
             </a>
+            <FieldCopyButton label={label} value={field.value} />
           </dd>
         </div>
       );
@@ -74,8 +66,9 @@ export const EntryFieldValue = ({
     return (
       <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
         <dt className="text-muted-foreground">{label}</dt>
-        <dd>
+        <dd className="flex items-center gap-2">
           <input type="checkbox" checked={field.value === 'True'} disabled aria-label={label} />
+          <FieldCopyButton label={label} value={field.value} />
         </dd>
       </div>
     );
@@ -87,7 +80,6 @@ export const EntryFieldValue = ({
   ) {
     return (
       <FieldNote
-        entryId={entryId}
         fieldId={field.fieldId ?? ''}
         name={label}
         value={field.value}

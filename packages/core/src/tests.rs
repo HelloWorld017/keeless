@@ -36,6 +36,7 @@ struct DetailField<'a> {
     label: &'a str,
     value: Option<&'a str>,
     is_protected: bool,
+    is_internal: bool,
     control: Option<&'a FieldControl>,
 }
 
@@ -48,6 +49,7 @@ fn detail_field(field: &EntryFieldInformation) -> Option<DetailField<'_>> {
         label,
         value,
         is_protected,
+        is_internal,
         control,
     } = field
     else {
@@ -61,6 +63,7 @@ fn detail_field(field: &EntryFieldInformation) -> Option<DetailField<'_>> {
         label,
         value: value.as_deref(),
         is_protected: *is_protected,
+        is_internal: *is_internal,
         control: control.as_ref(),
     })
 }
@@ -1093,6 +1096,31 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
         );
     }
 
+    let template_detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: schema_id(Uuid::from_u128(41)),
+        },
+    )
+    .unwrap();
+    assert!(template_detail.is_template);
+    assert!(
+        template_detail
+            .fields
+            .iter()
+            .filter_map(detail_field)
+            .filter(|field| field.name.starts_with("_etm_"))
+            .all(|field| field.is_internal)
+    );
+    let copied_detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: crate::model::node_id(copied_id),
+        },
+    )
+    .unwrap();
+    assert!(!copied_detail.is_template);
+
     core.credential = None;
     let redacted_id = model_id(
         operations::add_entry_from_template::run(
@@ -1610,6 +1638,19 @@ async fn entry_detail_resolves_layout_and_ignores_invalid_links() {
         actual
             .iter()
             .any(|field| field.name == "_etm_template_uuid")
+    );
+    assert!(
+        actual
+            .iter()
+            .find(|field| field.name == "_etm_template_uuid")
+            .unwrap()
+            .is_internal
+    );
+    assert!(
+        actual
+            .iter()
+            .filter(|field| !field.name.starts_with("_etm_"))
+            .all(|field| !field.is_internal)
     );
     assert_eq!(
         actual

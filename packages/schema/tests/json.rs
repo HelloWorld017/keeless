@@ -373,6 +373,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
             outcome: OperationOutcome::Success {
                 success: OperationSuccess::GetEntryDetail(Box::new(EntryDetailResult {
                     id: DatabaseNodeId::Int(7),
+                    is_template: false,
                     icon: IconReference {
                         standard_id: 1,
                         custom_uuid: None,
@@ -386,6 +387,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                         label: "Password".into(),
                         value: None,
                         is_protected: true,
+                        is_internal: false,
                         control: None,
                     }],
                     background_color: "#000000".into(),
@@ -412,9 +414,10 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
             "op": "getEntryDetail",
             "result": {
                 "id": 7,
+                "isTemplate": false,
                 "icon": { "standardId": 1, "customUuid": null },
                 "tags": ["work"],
-                "fields": [{ "type": "field", "order": 0, "fieldId": "standard:Password", "kind": "password", "name": "Password", "label": "Password", "value": null, "isProtected": true, "control": null }],
+                "fields": [{ "type": "field", "order": 0, "fieldId": "standard:Password", "kind": "password", "name": "Password", "label": "Password", "value": null, "isProtected": true, "isInternal": false, "control": null }],
                 "backgroundColor": "#000000",
                 "foregroundColor": "#ffffff",
                 "overrideUrl": "",
@@ -443,6 +446,7 @@ fn entry_field_layout_and_entry_properties_roundtrip() {
                 label: "Account number".into(),
                 value: Some("1234".into()),
                 is_protected: false,
+                is_internal: false,
                 control: FieldControl::Text {
                     protected: false,
                     lines: 1,
@@ -457,6 +461,7 @@ fn entry_field_layout_and_entry_properties_roundtrip() {
                 label: "Account type".into(),
                 value: Some(String::new()),
                 is_protected: false,
+                is_internal: false,
                 control: Some(FieldControl::Select {
                     options: vec!["Checking".into(), "Savings".into()],
                 }),
@@ -497,6 +502,7 @@ fn entry_field_layout_and_entry_properties_roundtrip() {
                 "label": "Account number",
                 "value": "1234",
                 "isProtected": false,
+                "isInternal": false,
                 "control": { "type": "text", "protected": false, "lines": 1 }
             },
             {
@@ -508,6 +514,7 @@ fn entry_field_layout_and_entry_properties_roundtrip() {
                 "label": "Account type",
                 "value": "",
                 "isProtected": false,
+                "isInternal": false,
                 "control": { "type": "select", "options": ["Checking", "Savings"] }
             },
             {

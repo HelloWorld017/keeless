@@ -10,12 +10,27 @@ import {
   AlertDialogTitle,
 } from '@/components/alert-dialog';
 import { Button } from '@/components/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/dropdown-menu';
 import { Skeleton } from '@/components/skeleton';
 import { usePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { IconAlertCircle, IconChevronLeft, IconLoaderCircle, IconPencil, IconTrash } from '@/icons';
+import {
+  IconAlertCircle,
+  IconChevronLeft,
+  IconEllipsisVertical,
+  IconEye,
+  IconLoaderCircle,
+  IconPencil,
+  IconTrash,
+} from '@/icons';
 import { cn } from '@/utils/css';
 import { CoreRequestError } from '@/utils/request';
 import { useQueryClient } from '@tanstack/react-query';
@@ -26,6 +41,7 @@ import { EditContent } from './_components/EditContent';
 import { PasswordPrompt } from './_components/PasswordPrompt';
 import { ViewContent } from './_components/ViewContent';
 import { useEntryEditor } from './_hooks/useEntryEditor';
+import { EntryFieldValuesProvider, useEntryFieldValues } from './_hooks/useEntryFieldValues';
 import { usePasswordConfirmations } from './_hooks/usePasswordConfirmations';
 import type { EntrySummary } from '@keeless/schema';
 
@@ -97,11 +113,16 @@ const EntryDetailQuery = ({
   const passwordRequestRef = useRef<PasswordRequest | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const editor = useEntryEditor();
+  const fieldValues = useEntryFieldValues(entry.id);
   const confirmations = usePasswordConfirmations();
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest>();
+  const protectedFieldIds =
+    detail.data?.fields.flatMap(field =>
+      field.type === 'field' && field.fieldId !== null && field.isProtected ? [field.fieldId] : [],
+    ) ?? [];
 
   useEffect(() => {
     mountedRef.current = true;
@@ -209,6 +230,7 @@ const EntryDetailQuery = ({
     }
 
     editor.begin(detail.data);
+    fieldValues.controller.hideAll();
     confirmations.clear();
     setError(undefined);
     setEditing(true);
@@ -346,14 +368,30 @@ const EntryDetailQuery = ({
                   <IconPencil />
                   Edit
                 </Button>
-                <Button
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  variant="ghost"
-                  size="icon-lg"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <IconTrash />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button variant="ghost" size="icon-lg" aria-label="Entry options" />}
+                  >
+                    <IconEllipsisVertical />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-44">
+                    <DropdownMenuItem
+                      disabled={
+                        protectedFieldIds.length === 0 ||
+                        fieldValues.controller.pendingFieldIds.size > 0
+                      }
+                      onClick={() => fieldValues.controller.revealAll(protectedFieldIds)}
+                    >
+                      <IconEye />
+                      Reveal all fields
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                      <IconTrash />
+                      {inTrash ? 'Delete permanently' : 'Move to Trash'}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
             {!detail.data && <div className="h-9" />}
@@ -400,6 +438,7 @@ const EntryDetailQuery = ({
             {editing ? (
               <EditContent
                 entryId={entry.id}
+                isTemplate={detail.data?.isTemplate ?? false}
                 drafts={editor.drafts}
                 fields={detail.data?.fields ?? []}
                 properties={editor.properties}
@@ -415,7 +454,9 @@ const EntryDetailQuery = ({
                 onConfirmationChange={confirmations.change}
               />
             ) : (
-              <ViewContent detail={detail.data} />
+              <EntryFieldValuesProvider value={fieldValues.controller}>
+                <ViewContent detail={detail.data} />
+              </EntryFieldValuesProvider>
             )}
           </>
         )}
@@ -468,6 +509,7 @@ const EntryDetailQuery = ({
           setPasswordRequest(undefined);
         }}
       />
+      {fieldValues.prompt}
       <div className="sr-only" aria-live="polite">
         {pending ? 'Entry operation in progress' : ''}
       </div>

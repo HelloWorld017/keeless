@@ -20,6 +20,7 @@ pub(crate) fn run(core: &mut KeelessCore, args: GetEntryDetailArgs) -> Result<En
             .get_entry(&entry_id)
             .ok_or(CoreError::EntryNotFound)?;
         let mut detail = entry_detail(entry);
+        detail.is_template = template::is_template(database, &entry_id);
         let stored_field_count = detail.fields.len();
         let mut layout_order = Vec::new();
 
@@ -77,6 +78,7 @@ pub(crate) fn run(core: &mut KeelessCore, args: GetEntryDetailArgs) -> Result<En
                                 label: item.label,
                                 value: Some(String::new()),
                                 is_protected,
+                                is_internal: false,
                                 control: Some(control),
                             });
                             Some(detail.fields.len() - 1)

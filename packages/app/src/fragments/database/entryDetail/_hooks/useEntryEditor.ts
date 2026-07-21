@@ -29,6 +29,7 @@ const createDrafts = (detail: EntryDetailResult): FieldDraft[] =>
         control: field.control,
         value: field.fieldId !== null && field.isProtected ? null : field.value,
         isProtected: controlledProtection ?? field.isProtected,
+        isInternal: field.isInternal,
         originalIsProtected: field.fieldId !== null && field.isProtected,
         valueChanged: field.fieldId === null,
       };
@@ -75,6 +76,7 @@ export const useEntryEditor = () => {
         control: null,
         value: '',
         isProtected: false,
+        isInternal: false,
         originalIsProtected: false,
         valueChanged: true,
       },

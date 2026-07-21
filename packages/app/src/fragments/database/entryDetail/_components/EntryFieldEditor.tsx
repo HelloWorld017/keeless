@@ -1,5 +1,6 @@
 import { Input } from '@/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/select';
+import { DateInput } from './DateInput';
 import { FieldNoteEditor } from './FieldNoteEditor';
 import { FieldPasswordEditor } from './FieldPasswordEditor';
 import { FieldPlainEditor } from './FieldPlainEditor';
@@ -115,17 +116,19 @@ export const EntryFieldEditor = ({
       </Select>
     );
   }
+  if (control?.type === 'date' || control?.type === 'dateTime') {
+    return (
+      <DateInput
+        id={id}
+        value={value}
+        dateTime={control.type === 'dateTime'}
+        disabled={pending}
+        onChange={onChange}
+      />
+    );
+  }
 
-  const type =
-    control?.type === 'url'
-      ? 'url'
-      : control?.type === 'date'
-        ? 'date'
-        : control?.type === 'time'
-          ? 'time'
-          : control?.type === 'dateTime'
-            ? 'datetime-local'
-            : 'text';
+  const type = control?.type === 'url' ? 'url' : control?.type === 'time' ? 'time' : 'text';
   return type === 'text' ? (
     <FieldPlainEditor
       id={id}
