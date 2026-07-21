@@ -18,6 +18,7 @@ import {
   IconEyeOff,
   IconRefreshCw,
   IconSparkles,
+  IconZap,
 } from '@/icons';
 import { useId, useState } from 'react';
 
@@ -199,14 +200,14 @@ export const PasswordGenerator = ({
         render={
           <Button
             type="button"
-            variant="outline"
-            size="icon"
+            variant="ghost"
+            size="icon-xs"
             aria-label={`Generate ${name}`}
             disabled={disabled}
           />
         }
       >
-        <IconSparkles />
+        <IconZap />
       </PopoverTrigger>
       <PopoverContent className="w-auto max-w-[calc(100vw-2rem)]" align="end">
         <PopoverHeader className='flex flex-row justify-between items-center'>

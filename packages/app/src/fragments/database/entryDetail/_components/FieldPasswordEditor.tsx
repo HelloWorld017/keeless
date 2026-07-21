@@ -4,6 +4,7 @@ import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
 import { useProtectedReveal } from '../_hooks/useProtectedReveal';
 import { PasswordGenerator } from './PasswordGenerator';
 import type { DatabaseNodeId } from '@keeless/schema';
+import {InputGroup, InputGroupAddon, InputGroupInput} from '@/components/input-group';
 
 export const FieldPasswordEditor = ({
   id,
@@ -39,16 +40,23 @@ export const FieldPasswordEditor = ({
   return (
     <>
       <div className="flex items-start gap-2">
-        <Input
-          id={id}
-          type={existing || revealed ? 'text' : 'password'}
-          value={value}
-          placeholder={existing && !revealed ? '(unchanged)' : undefined}
-          autoComplete="new-password"
-          aria-label={`${name} value`}
-          disabled={disabled}
-          onChange={event => onChange(event.target.value)}
-        />
+        <InputGroup>
+          <InputGroupInput
+            id={id}
+            type={revealed ? 'text' : 'password'}
+            value={value}
+            placeholder={existing && !revealed ? '(unchanged)' : undefined}
+            autoComplete="new-password"
+            aria-label={`${name} value`}
+            disabled={disabled}
+            onChange={event => onChange(event.target.value)}
+          />
+
+          <InputGroupAddon align="inline-end">
+            <PasswordGenerator name={name} disabled={disabled} onConfirm={onChange} />
+          </InputGroupAddon>
+        </InputGroup>
+
         <Button
           type="button"
           variant="outline"
@@ -66,7 +74,6 @@ export const FieldPasswordEditor = ({
             <IconEye />
           )}
         </Button>
-        <PasswordGenerator name={name} disabled={disabled} onConfirm={onChange} />
       </div>
       {prompt}
       {error && !promptOpen && (
