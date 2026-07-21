@@ -68,7 +68,7 @@ pub(super) fn read_entry<R: std::io::BufRead>(
                             Vec::new()
                         } else {
                             value
-                                .split(';')
+                                .split([';', ','])
                                 .map(|tag| tag.trim().to_string())
                                 .filter(|tag| !tag.is_empty())
                                 .collect()

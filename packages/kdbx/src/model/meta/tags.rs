@@ -23,11 +23,11 @@ impl std::fmt::Display for Tag {
     }
 }
 
-/// Parse tags from a semicolon-separated string.
-/// KeePass convention: tags are separated by ";"
+/// Parse tags from a semicolon- or comma-separated string.
+/// KeePass convention uses ";"; commas are accepted for compatibility.
 pub fn parse_tags(tag_string: &str) -> Vec<Tag> {
     tag_string
-        .split(';')
+        .split([';', ','])
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(Tag::new)
@@ -40,4 +40,22 @@ pub fn serialize_tags(tags: &[Tag]) -> String {
         .map(|t| t.name.as_str())
         .collect::<Vec<_>>()
         .join(";")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_semicolon_and_comma_separated_tags() {
+        assert_eq!(
+            parse_tags("work, personal; shared, ,archive"),
+            [
+                Tag::new("work"),
+                Tag::new("personal"),
+                Tag::new("shared"),
+                Tag::new("archive"),
+            ]
+        );
+    }
 }

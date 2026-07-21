@@ -71,6 +71,19 @@ mod tests {
     }
 
     #[test]
+    fn test_entry_tags_accept_semicolon_and_comma_separators() {
+        let xml = r#"<KeePassFile><Meta></Meta><Root><Group><UUID>obLD1OX2eJCrze8SNFZ4kA</UUID><Entry><UUID>ERERESIiMzNERFVVVVVVVQ</UUID><Tags>work, personal; shared, ,archive</Tags></Entry></Group></Root></KeePassFile>"#;
+        let mut stream = Salsa20InnerStream::new(b"mixed-tag-separators").unwrap();
+
+        let db = KdbxXmlReader::read(xml, &mut stream).unwrap();
+
+        assert_eq!(
+            db.entries.values().next().unwrap().tags,
+            ["work", "personal", "shared", "archive"]
+        );
+    }
+
+    #[test]
     fn test_protected_field_roundtrip() {
         let db = make_test_db();
         let key = b"key_for_protected";
