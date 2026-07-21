@@ -61,6 +61,8 @@ export const EditContent = ({
   ].toSorted((left, right) => left.order - right.order);
   const internal = ordered.filter(item => item.type === 'draft' && item.draft.isInternal);
   const visible = ordered.filter(item => item.type !== 'draft' || !item.draft.isInternal);
+  const hasExpiry = fields.some(field => field.type === 'expiry');
+  const hasTags = fields.some(field => field.type === 'tags');
 
   const renderItem = (item: OrderedItem) => {
     if (item.type === 'template') {
@@ -222,6 +224,37 @@ export const EditContent = ({
         <IconPlus />
         Add field
       </Button>
+      {(!hasExpiry || !hasTags) && (
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold">Additional properties</h2>
+          <FieldGroup className="gap-5">
+            {!hasExpiry && (
+              <ExpiryEditor
+                id="additional-expiry"
+                label="Expires"
+                control={{ type: 'date' }}
+                properties={properties}
+                pending={pending}
+                onChange={onPropertiesChange}
+              />
+            )}
+            {!hasTags && (
+              <Field>
+                <FieldLabel htmlFor="additional-tags">Tags</FieldLabel>
+                <Input
+                  id="additional-tags"
+                  value={properties.tags}
+                  placeholder="Comma-separated tags"
+                  disabled={pending}
+                  onChange={event =>
+                    onPropertiesChange({ tags: event.target.value, tagsChanged: true })
+                  }
+                />
+              </Field>
+            )}
+          </FieldGroup>
+        </section>
+      )}
     </div>
   );
 };

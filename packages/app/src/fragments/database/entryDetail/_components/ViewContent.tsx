@@ -1,6 +1,6 @@
 import { Button } from '@/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
-import { IconChevronRight } from '@/icons';
+import { IconChevronRight, IconInfo } from '@/icons';
 import { cn } from '@/utils/css';
 import { useState, type ReactNode } from 'react';
 import { ExpiryValue } from '../_layout/ExpiryValue';
@@ -15,6 +15,7 @@ import type {
   EntryDetailResult,
   EntryFieldInformation,
 } from '@keeless/schema';
+import {Alert, AlertDescription, AlertTitle} from '@/components/alert';
 
 const DetailSection = ({
   title,
@@ -129,6 +130,15 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
 
   return (
     <div className="w-full max-w-3xl space-y-8 p-4 sm:p-6">
+      {detail.isTemplate && (
+        <Alert>
+          <IconInfo />
+          <AlertTitle>This is a template</AlertTitle>
+          <AlertDescription>
+            Changes can affect the layout and behavior of entries that use this template.
+          </AlertDescription>
+        </Alert>
+      )}
       <DetailSection title="Fields">
         <dl className="divide-y rounded-lg border">{visibleFields.map(fieldValue)}</dl>
         {internalFields.length > 0 && (
