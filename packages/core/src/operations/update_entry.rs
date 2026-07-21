@@ -1,5 +1,8 @@
-use keeless_kdbx::{CompositeKey, DatabaseError, EntryFieldUpdate as KdbxFieldUpdate};
-use keeless_schema::{EmptyResult, OperationSuccess, UpdateEntryArgs};
+use keeless_kdbx::{
+    CompositeKey, DatabaseError, EntryFieldUpdate as KdbxFieldUpdate,
+    EntryPropertiesUpdate as KdbxPropertiesUpdate,
+};
+use keeless_schema::{EmptyResult, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::model::parse_node_id;
@@ -9,6 +12,7 @@ pub(crate) fn run(
     core: &mut KeelessCore,
     entry_id: keeless_schema::DatabaseNodeId,
     fields: Vec<keeless_schema::EntryFieldUpdate>,
+    properties: Option<EntryPropertiesUpdate>,
     password: Option<&[u8]>,
 ) -> Result<EmptyResult> {
     core.enforce_auto_lock();
@@ -51,11 +55,19 @@ pub(crate) fn run(
             is_protected: field.is_protected,
         });
     }
+    let properties = properties.map(|properties| KdbxPropertiesUpdate {
+        override_url: properties.override_url,
+        tags: properties.tags,
+        expires: properties.expires,
+        expiry_time_ms: properties.expiry_time_ms,
+    });
     let changed = core
         .handle
         .as_mut()
         .ok_or(CoreError::DatabaseLocked)?
-        .apply_update(|database| database.update_entry_fields(&key, &entry_id, &converted))
+        .apply_update(|database| {
+            database.update_entry(&key, &entry_id, &converted, properties.as_ref())
+        })
         .map_err(|error| match error {
             DatabaseError::InvalidFormat(_) => CoreError::InvalidEntryUpdate,
             error => CoreError::from(error),
@@ -78,6 +90,7 @@ pub(super) fn execute(
         core,
         args.entry_id,
         args.fields,
+        args.properties,
         password.as_ref().map(|password| password.as_slice()),
     )?))
 }

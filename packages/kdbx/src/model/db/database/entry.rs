@@ -5,6 +5,7 @@ use crate::model::db::composite_key::CompositeKey;
 use crate::model::entry::{memory_field, Entry, EntryFieldId};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 use crate::model::meta::DeletedObject;
+use crate::model::meta::{ETM_PREFIX, ETM_TEMPLATE_UUID};
 
 use super::Database;
 
@@ -155,6 +156,55 @@ impl Database {
         let mut unlock = composite_key.map(MemoryUnlockSession::new);
         entry.prepare_duplicate(id, unlock.as_mut())?;
         Ok(self.add_entry(entry, parent_group_id).then_some(id))
+    }
+
+    /// Instantiate an ETM template with a fresh identity.
+    ///
+    /// Protected values are rebound when credentials are supplied and redacted otherwise,
+    /// matching [`Self::duplicate_entry`]. ETM definition fields are replaced by a child link.
+    pub fn instantiate_etm_template(
+        &mut self,
+        source_entry_id: &NodeId,
+        parent_group_id: &NodeId,
+        composite_key: Option<&CompositeKey>,
+    ) -> DatabaseResult<Option<NodeId>> {
+        if !self.groups.contains_key(parent_group_id) {
+            return Ok(None);
+        }
+        let Some(source) = self.entries.get(source_entry_id) else {
+            return Ok(None);
+        };
+        if source.id != *source_entry_id {
+            return Ok(None);
+        }
+        let Some(source_uuid) = source.id.as_uuid().copied() else {
+            return Ok(None);
+        };
+        if !source.is_etm_template() {
+            return Ok(None);
+        }
+
+        let mut entry = source.clone();
+        let id = NodeId::new_uuid();
+        let mut unlock = composite_key.map(MemoryUnlockSession::new);
+        entry.prepare_duplicate(id, unlock.as_mut())?;
+        entry.retain_custom_fields(|field| !field.name().starts_with(ETM_PREFIX));
+        entry.add_custom_field(
+            ETM_TEMPLATE_UUID,
+            crate::model::core::ProtectedString::new_plain(
+                &source_uuid.simple().to_string().to_ascii_uppercase(),
+            ),
+        );
+
+        Ok(self.add_entry(entry, parent_group_id).then_some(id))
+    }
+
+    /// Resolve the strict ETM template link of an entry.
+    pub fn resolve_etm_template(&self, entry: &Entry) -> Option<&Entry> {
+        let id = NodeId::from_uuid(entry.etm_template_uuid()?);
+        self.entries
+            .get(&id)
+            .filter(|template| template.is_etm_template())
     }
 
     /// Remove an entry from the database.

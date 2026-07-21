@@ -139,6 +139,65 @@ pub struct EntryAttachmentInformation {
     pub is_protected: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EtmLayout {
+    pub template_id: String,
+    pub items: Vec<EtmLayoutItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EtmLayoutItem {
+    pub label: String,
+    pub target: EtmLayoutTarget,
+    pub control: EtmLayoutControl,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum EtmLayoutTarget {
+    Field {
+        #[serde(rename = "fieldId", deserialize_with = "deserialize_nullable")]
+        field_id: Option<String>,
+        #[serde(rename = "fieldName")]
+        field_name: String,
+    },
+    PasswordConfirmation {
+        #[serde(rename = "passwordFieldId")]
+        password_field_id: String,
+    },
+    OverrideUrl,
+    Expiry,
+    Tags,
+    Divider,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum EtmLayoutControl {
+    Text { protected: bool, lines: u8 },
+    Url,
+    Popout { protected: bool },
+    RichText { lines: u8 },
+    Date,
+    Time,
+    DateTime,
+    Checkbox,
+    Select { options: Vec<String> },
+    Divider,
+}
+
 fn deserialize_present_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -256,11 +315,24 @@ pub struct EntryFieldUpdate {
     pub is_protected: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryPropertiesUpdate {
+    pub override_url: String,
+    pub tags: Vec<String>,
+    pub expires: bool,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub expiry_time_ms: Option<i64>,
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateEntryArgs {
     pub entry_id: DatabaseNodeId,
     pub fields: Vec<EntryFieldUpdate>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub properties: Option<EntryPropertiesUpdate>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     #[specta(optional = true)]
     pub password: Option<String>,
@@ -437,6 +509,8 @@ pub struct TagsResult {
 pub struct EntryDetailResult {
     pub id: DatabaseNodeId,
     pub icon: IconReference,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub layout: Option<EtmLayout>,
     pub tags: Vec<String>,
     pub fields: Vec<EntryFieldInformation>,
     pub background_color: String,

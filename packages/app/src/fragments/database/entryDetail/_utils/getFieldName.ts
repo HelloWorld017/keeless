@@ -1,3 +1,4 @@
-import {EntryFieldKind} from "@keeless/schema";
+import type { EntryFieldKind } from '@keeless/schema';
 
-export const getFieldName = (kind: EntryFieldKind, name: string) => (kind === 'userName' ? 'Username' : name);
+export const getFieldName = (kind: EntryFieldKind, name: string) =>
+  kind === 'userName' ? 'Username' : name;

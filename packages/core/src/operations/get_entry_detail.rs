@@ -11,11 +11,11 @@ pub(crate) fn run(core: &mut KeelessCore, args: GetEntryDetailArgs) -> Result<En
     let entry_id = parse_node_id(args.entry_id)?;
     let result = {
         let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
-        let entry = handle
-            .database()
+        let database = handle.database();
+        let entry = database
             .get_entry(&entry_id)
             .ok_or(CoreError::EntryNotFound)?;
-        entry_detail(entry)
+        entry_detail(database, entry)
     };
     core.touch_activity();
     Ok(result)

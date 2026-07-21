@@ -1,5 +1,6 @@
 import { formatBytes, formatDate } from '../_utils/format';
 import { getFieldName } from '../_utils/getFieldName';
+import { FieldEtmView } from './FieldEtmView';
 import { FieldNote } from './FieldNote';
 import { FieldPassword } from './FieldPassword';
 import { FieldPlain } from './FieldPlain';
@@ -46,35 +47,53 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
     detail.backgroundColor && ['Background color', detail.backgroundColor],
     detail.foregroundColor && ['Foreground color', detail.foregroundColor],
   ].filter((row): row is string[] => Boolean(row));
+  const referencedFieldIds = new Set(
+    detail.layout?.items.flatMap(item =>
+      item.target.type === 'field' && item.target.fieldId ? [item.target.fieldId] : [],
+    ) ?? [],
+  );
+  const unreferencedFields = detail.layout
+    ? detail.fields.filter(field => !referencedFieldIds.has(field.fieldId))
+    : detail.fields;
+  const genericField = (field: EntryDetailResult['fields'][number]) =>
+    field.kind === 'notes' ? (
+      <FieldNote
+        key={`${detail.id}:${field.fieldId}`}
+        entryId={detail.id}
+        fieldId={field.fieldId}
+        name={getFieldName(field.kind, field.name)}
+        value={field.value}
+        isProtected={field.isProtected}
+      />
+    ) : field.isProtected ? (
+      <FieldPassword
+        key={`${detail.id}:${field.fieldId}`}
+        entryId={detail.id}
+        fieldId={field.fieldId}
+        name={getFieldName(field.kind, field.name)}
+      />
+    ) : (
+      <FieldPlain
+        key={`${detail.id}:${field.fieldId}`}
+        name={getFieldName(field.kind, field.name)}
+        value={field.value}
+      />
+    );
   return (
     <div className="w-full max-w-3xl space-y-8 p-4 sm:p-6">
       <DetailSection title="Fields">
         <dl className="divide-y rounded-lg border">
-          {detail.fields.map(field =>
-            field.kind === 'notes' ? (
-              <FieldNote
-                key={`${detail.id}:${field.fieldId}`}
-                entryId={detail.id}
-                fieldId={field.fieldId}
-                name={getFieldName(field.kind, field.name)}
-                value={field.value}
-                isProtected={field.isProtected}
-              />
-            ) : field.isProtected ? (
-              <FieldPassword
-                key={`${detail.id}:${field.fieldId}`}
-                entryId={detail.id}
-                fieldId={field.fieldId}
-                name={getFieldName(field.kind, field.name)}
-              />
-            ) : (
-              <FieldPlain
-                key={`${detail.id}:${field.fieldId}`}
-                name={getFieldName(field.kind, field.name)}
-                value={field.value}
-              />
-            ),
-          )}
+          {detail.layout?.items.map((item, index) => (
+            <FieldEtmView
+              key={`${item.target.type}:${index}`}
+              item={item}
+              detail={detail}
+              field={detail.fields.find(
+                field => item.target.type === 'field' && field.fieldId === item.target.fieldId,
+              )}
+            />
+          ))}
+          {unreferencedFields.map(genericField)}
         </dl>
       </DetailSection>
       {detail.tags.length > 0 && (

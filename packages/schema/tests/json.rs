@@ -251,6 +251,7 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
                         is_protected: false,
                     },
                 ],
+                properties: None,
                 password: None,
             }),
         },
@@ -260,6 +261,7 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
             "args": {
                 "entryId": 42,
                 "password": null,
+                "properties": null,
                 "fields": [
                     { "fieldId": "standard:Password", "name": "Password", "value": null, "isProtected": true },
                     { "fieldId": null, "name": "Account", "value": "value", "isProtected": false }
@@ -375,6 +377,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                         standard_id: 1,
                         custom_uuid: None,
                     },
+                    layout: None,
                     tags: vec!["work".into()],
                     fields: vec![EntryFieldInformation {
                         field_id: "standard:Password".into(),
@@ -408,6 +411,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
             "result": {
                 "id": 7,
                 "icon": { "standardId": 1, "customUuid": null },
+                "layout": null,
                 "tags": ["work"],
                 "fields": [{ "fieldId": "standard:Password", "kind": "password", "name": "Password", "value": null, "isProtected": true }],
                 "backgroundColor": "#000000",
@@ -422,6 +426,120 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                 "usageCount": 2,
                 "attachments": [{ "name": "key.txt", "size": 12, "isProtected": true }]
             }
+        }),
+    );
+}
+
+#[test]
+fn etm_layout_and_entry_properties_roundtrip() {
+    assert_roundtrip(
+        EtmLayout {
+            template_id: "template:bank-account".into(),
+            items: vec![
+                EtmLayoutItem {
+                    label: "Account number".into(),
+                    target: EtmLayoutTarget::Field {
+                        field_id: Some("field:account-number".into()),
+                        field_name: "Account Number".into(),
+                    },
+                    control: EtmLayoutControl::Text {
+                        protected: false,
+                        lines: 1,
+                    },
+                },
+                EtmLayoutItem {
+                    label: "Account type".into(),
+                    target: EtmLayoutTarget::Field {
+                        field_id: None,
+                        field_name: "Account Type".into(),
+                    },
+                    control: EtmLayoutControl::Select {
+                        options: vec!["Checking".into(), "Savings".into()],
+                    },
+                },
+                EtmLayoutItem {
+                    label: "Confirm password".into(),
+                    target: EtmLayoutTarget::PasswordConfirmation {
+                        password_field_id: "standard:Password".into(),
+                    },
+                    control: EtmLayoutControl::Popout { protected: true },
+                },
+                EtmLayoutItem {
+                    label: "Website".into(),
+                    target: EtmLayoutTarget::OverrideUrl,
+                    control: EtmLayoutControl::Url,
+                },
+                EtmLayoutItem {
+                    label: "Expires".into(),
+                    target: EtmLayoutTarget::Expiry,
+                    control: EtmLayoutControl::DateTime,
+                },
+                EtmLayoutItem {
+                    label: "Tags".into(),
+                    target: EtmLayoutTarget::Tags,
+                    control: EtmLayoutControl::RichText { lines: 2 },
+                },
+                EtmLayoutItem {
+                    label: String::new(),
+                    target: EtmLayoutTarget::Divider,
+                    control: EtmLayoutControl::Divider,
+                },
+            ],
+        },
+        json!({
+            "templateId": "template:bank-account",
+            "items": [
+                {
+                    "label": "Account number",
+                    "target": { "type": "field", "fieldId": "field:account-number", "fieldName": "Account Number" },
+                    "control": { "type": "text", "protected": false, "lines": 1 }
+                },
+                {
+                    "label": "Account type",
+                    "target": { "type": "field", "fieldId": null, "fieldName": "Account Type" },
+                    "control": { "type": "select", "options": ["Checking", "Savings"] }
+                },
+                {
+                    "label": "Confirm password",
+                    "target": { "type": "passwordConfirmation", "passwordFieldId": "standard:Password" },
+                    "control": { "type": "popout", "protected": true }
+                },
+                {
+                    "label": "Website",
+                    "target": { "type": "overrideUrl" },
+                    "control": { "type": "url" }
+                },
+                {
+                    "label": "Expires",
+                    "target": { "type": "expiry" },
+                    "control": { "type": "dateTime" }
+                },
+                {
+                    "label": "Tags",
+                    "target": { "type": "tags" },
+                    "control": { "type": "richText", "lines": 2 }
+                },
+                {
+                    "label": "",
+                    "target": { "type": "divider" },
+                    "control": { "type": "divider" }
+                }
+            ]
+        }),
+    );
+
+    assert_roundtrip(
+        EntryPropertiesUpdate {
+            override_url: "https://example.test/login".into(),
+            tags: vec!["finance".into(), "personal".into()],
+            expires: true,
+            expiry_time_ms: Some(1_900_000_000_000),
+        },
+        json!({
+            "overrideUrl": "https://example.test/login",
+            "tags": ["finance", "personal"],
+            "expires": true,
+            "expiryTimeMs": 1900000000000_i64
         }),
     );
 }

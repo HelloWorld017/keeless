@@ -7,5 +7,6 @@ export type FieldDraft = {
   name: string;
   value: string | null;
   isProtected: boolean;
+  originalIsProtected: boolean;
   valueChanged: boolean;
 };

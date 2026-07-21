@@ -17,6 +17,7 @@ pub(crate) fn run(core: &mut KeelessCore) -> Result<EntriesResult> {
                 database
                     .get_entries_in_group(&group_id)
                     .into_iter()
+                    .filter(|entry| entry.is_etm_template())
                     .map(entry_summary)
                     .collect()
             })

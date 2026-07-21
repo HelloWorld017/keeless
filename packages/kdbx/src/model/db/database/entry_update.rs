@@ -11,6 +11,7 @@ use crate::model::core::security::ProtectedString;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::entry::{memory_field, EntryField, EntryFieldId, EntryFields, StandardField};
 use crate::model::exception::{DatabaseError, DatabaseResult};
+use crate::model::meta::ETM_PREFIX;
 
 use super::Database;
 
@@ -31,6 +32,15 @@ impl Drop for EntryFieldUpdate {
     }
 }
 
+/// Complete desired update for entry properties stored outside string fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryPropertiesUpdate {
+    pub override_url: String,
+    pub tags: Vec<String>,
+    pub expires: bool,
+    pub expiry_time_ms: Option<i64>,
+}
+
 impl Database {
     /// Atomically replace the complete ordered field list.
     /// Returns `false` when the requested representation is semantically unchanged.
@@ -40,6 +50,18 @@ impl Database {
         entry_id: &NodeId,
         fields: &[EntryFieldUpdate],
     ) -> DatabaseResult<bool> {
+        self.update_entry(composite_key, entry_id, fields, None)
+    }
+
+    /// Atomically replace all client-visible fields and optionally update entry properties.
+    /// Reserved ETM fields are retained unchanged and cannot be submitted by clients.
+    pub fn update_entry(
+        &mut self,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+        fields: &[EntryFieldUpdate],
+        properties: Option<&EntryPropertiesUpdate>,
+    ) -> DatabaseResult<bool> {
         let original = self
             .entries
             .get(entry_id)
@@ -47,11 +69,21 @@ impl Database {
         let mut source_ids = HashSet::new();
         let mut standard_seen = HashSet::new();
         for field in fields {
+            if field.name.starts_with(ETM_PREFIX) {
+                return Err(DatabaseError::InvalidFormat(
+                    "reserved entry fields cannot be updated".into(),
+                ));
+            }
             match field.field_id {
                 Some(id) if source_ids.insert(id) => {
-                    if !original.fields.0.contains_key(&id) {
+                    let Some(source) = original.fields.0.get(&id) else {
                         return Err(DatabaseError::InvalidFormat(
                             "entry field ID is invalid".into(),
+                        ));
+                    };
+                    if source.name.starts_with(ETM_PREFIX) {
+                        return Err(DatabaseError::InvalidFormat(
+                            "reserved entry fields cannot be updated".into(),
                         ));
                     }
                     match id {
@@ -112,7 +144,13 @@ impl Database {
             .iter()
             .filter_map(|field| field.field_id)
             .collect::<Vec<_>>();
-        let original_ids = original.fields.0.keys().copied().collect::<Vec<_>>();
+        let original_ids = original
+            .fields
+            .0
+            .iter()
+            .filter(|(_, field)| !field.name.starts_with(ETM_PREFIX))
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
         let mut changed =
             requested_ids != original_ids || fields.iter().any(|field| field.field_id.is_none());
         let mut unlock = MemoryUnlockSession::new(composite_key);
@@ -146,7 +184,7 @@ impl Database {
         }
 
         let mut updated = original.clone();
-        let mut updated_fields = IndexMap::with_capacity(fields.len());
+        let mut visible_fields = IndexMap::with_capacity(fields.len());
         unlock.with_root(&context, |root| {
             for (requested, plaintext) in fields.iter().zip(&plaintexts) {
                 let id = requested
@@ -204,11 +242,40 @@ impl Database {
                     )?;
                     EntryField::new(requested.name.clone(), target)
                 };
-                updated_fields.insert(id, field);
+                visible_fields.insert(id, field);
             }
             Ok(())
         })?;
+
+        let mut visible_fields = visible_fields.into_iter();
+        let mut updated_fields = IndexMap::with_capacity(original.fields.0.len() + fields.len());
+        for (id, field) in &original.fields.0 {
+            if field.name.starts_with(ETM_PREFIX) {
+                updated_fields.insert(*id, field.clone());
+            } else if let Some((id, field)) = visible_fields.next() {
+                updated_fields.insert(id, field);
+            }
+        }
+        updated_fields.extend(visible_fields);
         updated.fields = EntryFields(updated_fields);
+
+        if let Some(properties) = properties {
+            changed |= updated.override_url != properties.override_url
+                || updated.tags != properties.tags
+                || updated.expires != properties.expires
+                || updated.expiry_time
+                    != properties
+                        .expiry_time_ms
+                        .map(DateInstant::EpochMillis)
+                        .unwrap_or_else(DateInstant::never);
+            updated.override_url.clone_from(&properties.override_url);
+            updated.tags.clone_from(&properties.tags);
+            updated.expires = properties.expires;
+            updated.expiry_time = properties
+                .expiry_time_ms
+                .map(DateInstant::EpochMillis)
+                .unwrap_or_else(DateInstant::never);
+        }
 
         if !changed {
             return Ok(false);

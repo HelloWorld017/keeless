@@ -32,6 +32,10 @@ fn generate() -> String {
     export::<EntryFieldKind>(&mut output);
     export::<EntryFieldInformation>(&mut output);
     export::<EntryAttachmentInformation>(&mut output);
+    export::<EtmLayout>(&mut output);
+    export::<EtmLayoutItem>(&mut output);
+    export::<EtmLayoutTarget>(&mut output);
+    export::<EtmLayoutControl>(&mut output);
     export::<OpenArgs>(&mut output);
     export::<CreateArgs>(&mut output);
     export::<UnlockArgs>(&mut output);
@@ -48,6 +52,7 @@ fn generate() -> String {
     export_empty("GetTagsArgs", &mut output);
     export::<GetEntryDetailArgs>(&mut output);
     export::<EntryFieldUpdate>(&mut output);
+    export::<EntryPropertiesUpdate>(&mut output);
     export::<UpdateEntryArgs>(&mut output);
     export::<DeleteEntryArgs>(&mut output);
     export::<SaveDatabaseArgs>(&mut output);

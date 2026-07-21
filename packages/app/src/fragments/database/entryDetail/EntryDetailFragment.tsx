@@ -25,8 +25,14 @@ import { ItemIcon } from '../_components/ItemIcon';
 import { EditContent } from './_components/EditContent';
 import { PasswordPrompt } from './_components/PasswordPrompt';
 import { ViewContent } from './_components/ViewContent';
+import type { EntryPropertiesDraft } from './_types/EntryPropertiesDraft';
 import type { FieldDraft } from './_types/FieldDraft';
-import type { EntryDetailResult, EntryFieldUpdate, EntrySummary } from '@keeless/schema';
+import type {
+  EntryDetailResult,
+  EntryFieldUpdate,
+  EntryPropertiesUpdate,
+  EntrySummary,
+} from '@keeless/schema';
 
 const REFRESH_OPERATIONS = [
   'getEntries',
@@ -50,16 +56,51 @@ const needsPassword = (error: unknown) =>
   error instanceof CoreRequestError &&
   (error.code === 'password_required' || error.code === 'invalid_credentials');
 
-const createDrafts = (detail: EntryDetailResult): FieldDraft[] =>
-  detail.fields.map(field => ({
+const createDrafts = (detail: EntryDetailResult): FieldDraft[] => {
+  const drafts: FieldDraft[] = detail.fields.map(field => ({
     key: field.fieldId,
     fieldId: field.fieldId,
     kind: field.kind,
     name: field.name,
     value: field.isProtected ? null : (field.value ?? ''),
     isProtected: field.isProtected,
+    originalIsProtected: field.isProtected,
     valueChanged: false,
   }));
+  detail.layout?.items.forEach((item, index) => {
+    if (item.target.type !== 'field') {
+      return;
+    }
+    const protectedByTemplate =
+      (item.control.type === 'text' || item.control.type === 'popout') && item.control.protected;
+    if (item.target.fieldId !== null) {
+      const draft = drafts.find(candidate => candidate.fieldId === item.target.fieldId);
+      if (draft) {
+        draft.isProtected = protectedByTemplate;
+      }
+      return;
+    }
+    drafts.push({
+      key: `layout-${index}`,
+      fieldId: null,
+      kind: 'custom',
+      name: item.target.fieldName,
+      value: '',
+      isProtected: protectedByTemplate,
+      originalIsProtected: false,
+      valueChanged: true,
+    });
+  });
+  return drafts;
+};
+
+const createPropertiesDraft = (detail: EntryDetailResult): EntryPropertiesDraft => ({
+  overrideUrl: detail.overrideUrl,
+  tags: detail.tags.join(', '),
+  tagsChanged: false,
+  expires: detail.expires,
+  expiryTimeMs: detail.expiryTimeMs,
+});
 
 const EntryDetailSkeleton = ({ pending }: { pending: boolean }) => {
   const visible = useDebouncedValue(pending, 150, false);
@@ -109,6 +150,15 @@ const EntryDetailQuery = ({
   const [editing, setEditing] = useState(false);
   const [drafts, setDrafts] = useState<FieldDraft[]>([]);
   const [fieldErrors, setFieldErrors] = useState(new Set<string>());
+  const [properties, setProperties] = useState<EntryPropertiesDraft>({
+    overrideUrl: '',
+    tags: '',
+    tagsChanged: false,
+    expires: false,
+    expiryTimeMs: null,
+  });
+  const [confirmations, setConfirmations] = useState<Record<string, string>>({});
+  const [confirmationErrors, setConfirmationErrors] = useState(new Set<string>());
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -220,6 +270,9 @@ const EntryDetailQuery = ({
     }
 
     setDrafts(createDrafts(detail.data));
+    setProperties(createPropertiesDraft(detail.data));
+    setConfirmations({});
+    setConfirmationErrors(new Set());
     setFieldErrors(new Set());
     setError(undefined);
     setEditing(true);
@@ -228,6 +281,8 @@ const EntryDetailQuery = ({
   const clearEditing = () => {
     setEditing(false);
     setDrafts([]);
+    setConfirmations({});
+    setConfirmationErrors(new Set());
     setFieldErrors(new Set());
     setError(undefined);
   };
@@ -241,7 +296,20 @@ const EntryDetailQuery = ({
     );
     setFieldErrors(invalid);
 
-    if (invalid.size) {
+    const invalidConfirmations = new Set<string>();
+    detail.data?.layout?.items.forEach(item => {
+      const target = item.target;
+      if (target.type !== 'passwordConfirmation') {
+        return;
+      }
+      const password = drafts.find(field => field.fieldId === target.passwordFieldId);
+      if (password?.valueChanged && confirmations[target.passwordFieldId] !== password.value) {
+        invalidConfirmations.add(target.passwordFieldId);
+      }
+    });
+    setConfirmationErrors(invalidConfirmations);
+
+    if (invalid.size || invalidConfirmations.size) {
       return;
     }
 
@@ -249,9 +317,22 @@ const EntryDetailQuery = ({
     const fields: EntryFieldUpdate[] = drafts.map(field => ({
       fieldId: field.fieldId,
       name: field.kind === 'custom' ? field.name.trim() : field.name,
-      value: field.isProtected && !field.valueChanged ? null : field.value,
+      value: field.originalIsProtected && !field.valueChanged ? null : field.value,
       isProtected: field.isProtected,
     }));
+    const propertiesUpdate: EntryPropertiesUpdate | undefined = detail.data?.layout
+      ? {
+          overrideUrl: properties.overrideUrl,
+          tags: properties.tagsChanged
+            ? properties.tags
+                .split(',')
+                .map(tag => tag.trim())
+                .filter(Boolean)
+            : (detail.data?.tags ?? []),
+          expires: properties.expires,
+          expiryTimeMs: properties.expires ? properties.expiryTimeMs : null,
+        }
+      : undefined;
 
     setPending(true);
     setError(undefined);
@@ -259,7 +340,12 @@ const EntryDetailQuery = ({
     try {
       const updated = await requestWithPassword(
         password =>
-          requestClient.data!.request('updateEntry', { entryId: entry.id, fields, password }),
+          requestClient.data!.request('updateEntry', {
+            entryId: entry.id,
+            fields,
+            properties: propertiesUpdate,
+            password,
+          }),
         operation,
       );
 
@@ -369,9 +455,7 @@ const EntryDetailQuery = ({
                 </Button>
               </>
             )}
-            {!detail.data && (
-              <div className='h-9' />
-            )}
+            {!detail.data && <div className="h-9" />}
           </div>
         </div>
         <div className="flex min-w-0 flex-1 items-center gap-3 text-xl md:text-2xl 2xl:justify-center lg:text-3xl">
@@ -416,6 +500,10 @@ const EntryDetailQuery = ({
               <EditContent
                 entryId={entry.id}
                 drafts={drafts}
+                layout={detail.data?.layout ?? null}
+                properties={properties}
+                confirmations={confirmations}
+                confirmationErrors={confirmationErrors}
                 errors={fieldErrors}
                 pending={pending}
                 onLoad={(key, value) =>
@@ -435,6 +523,7 @@ const EntryDetailQuery = ({
                       name: '',
                       value: '',
                       isProtected: false,
+                      originalIsProtected: false,
                       valueChanged: true,
                     },
                   ])
@@ -453,6 +542,15 @@ const EntryDetailQuery = ({
                   }
                 }}
                 onDelete={key => setDrafts(current => current.filter(field => field.key !== key))}
+                onPropertiesChange={patch => setProperties(current => ({ ...current, ...patch }))}
+                onConfirmationChange={(fieldId, value) => {
+                  setConfirmations(current => ({ ...current, [fieldId]: value }));
+                  setConfirmationErrors(current => {
+                    const next = new Set(current);
+                    next.delete(fieldId);
+                    return next;
+                  });
+                }}
               />
             ) : (
               <ViewContent detail={detail.data} />

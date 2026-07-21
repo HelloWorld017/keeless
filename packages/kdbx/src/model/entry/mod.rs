@@ -12,6 +12,7 @@ use crate::model::core::node::{Node, NodeId, NodeType};
 use crate::model::core::security::ProtectedString;
 use crate::model::db::EntryFieldSelector;
 use crate::model::meta::custom_data::CustomData;
+use crate::model::meta::etm::{parse_template_uuid, ETM_TEMPLATE};
 use crate::model::meta::icon::IconImage;
 use crate::model::xml::{EntryXmlExtensions, PreservedXmlElement};
 use indexmap::IndexMap;
@@ -331,6 +332,22 @@ impl Entry {
     pub fn custom_fields(&self) -> impl Iterator<Item = (EntryFieldId, &EntryField)> {
         self.fields()
             .filter(|(id, _)| matches!(id, EntryFieldId::Custom(_)))
+    }
+
+    /// Whether this entry has exactly one unprotected `_etm_template=1` marker.
+    pub fn is_etm_template(&self) -> bool {
+        let mut markers = self
+            .custom_fields()
+            .filter(|(_, field)| field.name == ETM_TEMPLATE);
+        let Some((_, marker)) = markers.next() else {
+            return false;
+        };
+        markers.next().is_none() && !marker.value.is_protected() && marker.value.as_str() == "1"
+    }
+
+    /// UUID of this entry's ETM template, when the link is unique and unprotected.
+    pub fn etm_template_uuid(&self) -> Option<Uuid> {
+        parse_template_uuid(self)
     }
 
     pub fn add_custom_field(

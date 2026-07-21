@@ -12,6 +12,7 @@ export const FieldPasswordEditor = ({
   value,
   existing,
   disabled,
+  onLoad,
   onChange,
 }: {
   id?: string;
@@ -21,6 +22,7 @@ export const FieldPasswordEditor = ({
   value: string;
   existing: boolean;
   disabled: boolean;
+  onLoad?: (value: string) => void;
   onChange: (value: string) => void;
 }) => {
   const { pending, error, revealed, toggleReveal, prompt, promptOpen } = useProtectedReveal({
@@ -28,7 +30,7 @@ export const FieldPasswordEditor = ({
     fieldId,
     onReveal: nextValue => {
       if (existing && !value && nextValue) {
-        onChange(nextValue);
+        (onLoad ?? onChange)(nextValue);
       }
     },
   });

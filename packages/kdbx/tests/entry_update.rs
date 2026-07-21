@@ -1,7 +1,7 @@
 use keeless_kdbx::{
     open_database, save_database, ChangeTracker, CompositeKey, Database, DatabaseError,
-    DatabaseVersion, DateInstant, Entry, EntryFieldId, EntryFieldUpdate, Group, NodeId,
-    ProtectedString,
+    DatabaseVersion, DateInstant, Entry, EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate,
+    Group, NodeId, ProtectedString,
 };
 
 fn loaded_database() -> (Database, CompositeKey, NodeId) {
@@ -73,6 +73,19 @@ fn standard_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
             is_protected: true,
         },
     ]
+}
+
+fn unchanged_visible_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
+    entry
+        .fields()
+        .filter(|(_, field)| !field.name().starts_with("_etm_"))
+        .map(|(id, field)| EntryFieldUpdate {
+            field_id: Some(id),
+            name: field.name().to_string(),
+            value: (!field.value().is_protected()).then(|| field.value().as_str().to_string()),
+            is_protected: field.value().is_protected(),
+        })
+        .collect()
 }
 
 #[test]
@@ -265,4 +278,104 @@ fn deleting_trailing_or_all_custom_fields_is_a_change() {
         assert_eq!(entry.history.len(), 1);
         assert!(database.data_modified);
     }
+}
+
+#[test]
+fn reserved_etm_fields_are_preserved_and_cannot_be_submitted() {
+    let (mut database, key, entry_id) = loaded_database();
+    let reserved_id = database.get_entry_mut(&entry_id).unwrap().add_custom_field(
+        "_etm_template_uuid",
+        ProtectedString::new_plain("00112233445566778899AABBCCDDEEFF"),
+    );
+    database.data_modified = false;
+    let before = database.get_entry(&entry_id).unwrap().clone();
+    let fields = unchanged_visible_fields(&before);
+
+    assert!(!database
+        .update_entry_fields(&key, &entry_id, &fields)
+        .unwrap());
+    let reserved = database
+        .get_entry(&entry_id)
+        .unwrap()
+        .field(reserved_id)
+        .unwrap();
+    assert_eq!(reserved.name(), "_etm_template_uuid");
+    assert_eq!(
+        reserved.value().as_str(),
+        "00112233445566778899AABBCCDDEEFF"
+    );
+    assert!(!reserved.value().is_protected());
+    assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
+    assert!(!database.data_modified);
+
+    let mut reserved_name = fields.clone();
+    reserved_name.push(EntryFieldUpdate {
+        field_id: None,
+        name: "_etm_client_value".into(),
+        value: Some("forbidden".into()),
+        is_protected: false,
+    });
+    assert!(matches!(
+        database.update_entry_fields(&key, &entry_id, &reserved_name),
+        Err(DatabaseError::InvalidFormat(_))
+    ));
+
+    let mut reserved_id_submission = fields;
+    reserved_id_submission.push(EntryFieldUpdate {
+        field_id: Some(reserved_id),
+        name: "Ordinary".into(),
+        value: Some("forbidden".into()),
+        is_protected: false,
+    });
+    assert!(matches!(
+        database.update_entry_fields(&key, &entry_id, &reserved_id_submission),
+        Err(DatabaseError::InvalidFormat(_))
+    ));
+    assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
+    assert!(!database.data_modified);
+}
+
+#[test]
+fn fields_and_properties_commit_with_one_history_snapshot() {
+    let (mut database, key, entry_id) = loaded_database();
+    let original = database.get_entry_mut(&entry_id).unwrap();
+    original.override_url = "old-override".into();
+    original.tags = vec!["old".into()];
+    original.expires = false;
+    original.expiry_time = DateInstant::EpochMillis(1234);
+    database.data_modified = false;
+
+    let before = database.get_entry(&entry_id).unwrap().clone();
+    let mut fields = unchanged_visible_fields(&before);
+    fields
+        .iter_mut()
+        .find(|field| field.name == "Title")
+        .unwrap()
+        .value = Some("Updated".into());
+    let properties = EntryPropertiesUpdate {
+        override_url: "new-override".into(),
+        tags: vec!["one".into(), "two".into()],
+        expires: true,
+        expiry_time_ms: None,
+    };
+
+    assert!(database
+        .update_entry(&key, &entry_id, &fields, Some(&properties))
+        .unwrap());
+    let updated = database.get_entry(&entry_id).unwrap();
+    assert_eq!(updated.title().as_str(), "Updated");
+    assert_eq!(updated.override_url, "new-override");
+    assert_eq!(updated.tags, ["one", "two"]);
+    assert!(updated.expires);
+    assert_eq!(updated.expiry_time, DateInstant::never());
+    assert_eq!(updated.history.len(), 1);
+    assert_eq!(updated.history[0].title().as_str(), "Old");
+    assert_eq!(updated.history[0].override_url, "old-override");
+    assert_eq!(updated.history[0].tags, ["old"]);
+    assert!(!updated.history[0].expires);
+    assert_eq!(
+        updated.history[0].expiry_time,
+        DateInstant::EpochMillis(1234)
+    );
+    assert!(database.data_modified);
 }

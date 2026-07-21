@@ -6,15 +6,17 @@ use std::sync::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
 use keeless_kdbx::{
-    Database, DatabaseVersion, Entry, EntryBinary, EntryFieldSelector, Group, IconImageCustom,
-    IconImageStandard, NodeId, ProtectedString, save_database,
+    Database, DatabaseVersion, ETM_PREFIX, ETM_TEMPLATE, ETM_TEMPLATE_UUID, Entry, EntryBinary,
+    EntryFieldSelector, Group, IconImageCustom, IconImageStandard, NodeId, ProtectedString,
+    save_database,
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
     DeleteEntryArgs, DeleteGroupArgs, EntryFieldUpdate as SchemaEntryFieldUpdate,
-    GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
-    GetTagEntriesArgs, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome, OperationRequest,
-    OperationResponse, OperationSuccess, RenameGroupArgs,
+    EntryPropertiesUpdate, EtmLayoutControl, EtmLayoutTarget, GetDatabaseStatusArgs,
+    GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, MoveEntryArgs,
+    MoveGroupArgs, Operation, OperationOutcome, OperationRequest, OperationResponse,
+    OperationSuccess, RenameGroupArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -920,12 +922,26 @@ async fn template_queries_are_direct_and_excluded_from_regular_results() {
         let mut direct = Entry::new(direct_template_id);
         direct.set_title("Direct Template");
         direct.tags = vec!["template-only".into()];
+        direct.add_custom_field(ETM_TEMPLATE, ProtectedString::new_plain("1"));
         assert!(database.add_entry(direct, &templates_id));
 
         let mut nested = Entry::new(nested_template_id);
         nested.set_title("Nested Template");
         nested.tags = vec!["template-only".into()];
+        nested.add_custom_field(ETM_TEMPLATE, ProtectedString::new_plain("1"));
         assert!(database.add_entry(nested, &nested_group_id));
+        for (offset, marker) in [None, Some("true"), Some("0"), Some(" 1")]
+            .into_iter()
+            .enumerate()
+        {
+            let id = NodeId::from_uuid(Uuid::from_u128(34 + offset as u128));
+            let mut entry = Entry::new(id);
+            entry.set_title("Not a template");
+            if let Some(marker) = marker {
+                entry.add_custom_field(ETM_TEMPLATE, ProtectedString::new_plain(marker));
+            }
+            assert!(database.add_entry(entry, &templates_id));
+        }
         database.entry_templates_uuid = Some(templates_uuid);
     }
 
@@ -983,7 +999,8 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
         ];
         template.history.push(Entry::new(template_id));
         template.usage_count = 9;
-        template.is_template = true;
+        template.add_custom_field(ETM_TEMPLATE, ProtectedString::new_plain("1"));
+        template.add_custom_field("_etm_title_UserName", ProtectedString::new_plain("User"));
         assert!(database.add_entry(template, &templates_id));
         database.entry_templates_uuid = Some(templates_uuid);
         database.protect_entry_strings(&key).unwrap();
@@ -1028,7 +1045,15 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
         assert_eq!(copied.binaries.len(), 2);
         assert!(copied.history.is_empty());
         assert_eq!(copied.usage_count, 0);
-        assert!(!copied.is_template);
+        assert!(database.get_entry(&template_id).unwrap().is_etm_template());
+        assert_eq!(
+            copied
+                .custom_fields()
+                .filter(|(_, field)| field.name().starts_with(ETM_PREFIX))
+                .map(|(_, field)| field.name())
+                .collect::<Vec<_>>(),
+            [ETM_TEMPLATE_UUID]
+        );
     }
 
     core.credential = None;
@@ -1462,9 +1487,189 @@ async fn entry_detail_redacts_protected_values_and_binary_contents() {
 }
 
 #[tokio::test]
+async fn entry_detail_resolves_etm_layout_and_ignores_invalid_links() {
+    let (mut core, ids) = query_core().await;
+    let template_uuid = Uuid::from_u128(50);
+    let template_id = NodeId::from_uuid(template_uuid);
+    {
+        let database = core.handle.as_mut().unwrap().database_mut();
+        let mut template = Entry::new(template_id);
+        template.add_custom_field(ETM_TEMPLATE, ProtectedString::new_plain("1"));
+        for (storage, label, field_type, position, options) in [
+            ("Title", "Name", "Inline", 1, "2"),
+            ("Password", "Secret", "Protected Inline", 2, "1"),
+            ("URL", "Site", "Inline URL", 3, ""),
+            ("Public", "Kind", "Listbox", 4, "one, two"),
+            ("section", "Details", "Divider", 5, ""),
+            ("@confirm", "Confirm", "Protected Inline", 6, "1"),
+            ("@override", "Override", "Inline URL", 7, ""),
+            ("@exp_date", "Expires", "Date", 8, ""),
+            ("@tags", "Tags", "Inline", 9, "1"),
+            ("@future", "Future", "Inline", 10, "1"),
+        ] {
+            template.add_custom_field(
+                &format!("_etm_title_{storage}"),
+                ProtectedString::new_plain(label),
+            );
+            template.add_custom_field(
+                &format!("_etm_type_{storage}"),
+                ProtectedString::new_plain(field_type),
+            );
+            template.add_custom_field(
+                &format!("_etm_position_{storage}"),
+                ProtectedString::new_plain(&position.to_string()),
+            );
+            template.add_custom_field(
+                &format!("_etm_options_{storage}"),
+                ProtectedString::new_plain(options),
+            );
+        }
+        assert!(database.add_entry(template, &NodeId::from_uuid(ids.root_group)));
+        database
+            .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
+            .unwrap()
+            .add_custom_field(
+                ETM_TEMPLATE_UUID,
+                ProtectedString::new_plain(&template_uuid.to_string()),
+            );
+        database
+            .get_entry_mut(&NodeId::from_uuid(ids.child_entry))
+            .unwrap()
+            .add_custom_field(ETM_TEMPLATE_UUID, ProtectedString::new_plain("malformed"));
+        database
+            .get_entry_mut(&NodeId::from_uuid(ids.nested_entry))
+            .unwrap()
+            .add_custom_field(
+                ETM_TEMPLATE_UUID,
+                ProtectedString::new_plain(&Uuid::from_u128(999).to_string()),
+            );
+    }
+
+    let detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: schema_id(ids.root_entry),
+        },
+    )
+    .unwrap();
+    assert!(
+        detail
+            .fields
+            .iter()
+            .all(|field| !field.name.starts_with(ETM_PREFIX))
+    );
+    let public_id = detail
+        .fields
+        .iter()
+        .find(|field| field.name == "Public")
+        .unwrap()
+        .field_id
+        .clone();
+    let layout = detail.layout.unwrap();
+    assert_eq!(layout.template_id, template_uuid.to_string());
+    assert_eq!(
+        layout
+            .items
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "Name", "Secret", "Site", "Kind", "Details", "Confirm", "Override", "Expires", "Tags"
+        ]
+    );
+    assert_eq!(
+        layout
+            .items
+            .iter()
+            .map(|item| item.control.clone())
+            .collect::<Vec<_>>(),
+        [
+            EtmLayoutControl::Text {
+                protected: false,
+                lines: 2,
+            },
+            EtmLayoutControl::Text {
+                protected: true,
+                lines: 1,
+            },
+            EtmLayoutControl::Url,
+            EtmLayoutControl::Select {
+                options: vec!["one".into(), "two".into()],
+            },
+            EtmLayoutControl::Divider,
+            EtmLayoutControl::Text {
+                protected: true,
+                lines: 1,
+            },
+            EtmLayoutControl::Url,
+            EtmLayoutControl::Date,
+            EtmLayoutControl::Text {
+                protected: false,
+                lines: 1,
+            },
+        ]
+    );
+    assert_eq!(
+        layout
+            .items
+            .into_iter()
+            .map(|item| item.target)
+            .collect::<Vec<_>>(),
+        [
+            EtmLayoutTarget::Field {
+                field_id: Some("standard:Title".into()),
+                field_name: "Title".into(),
+            },
+            EtmLayoutTarget::Field {
+                field_id: Some("standard:Password".into()),
+                field_name: "Password".into(),
+            },
+            EtmLayoutTarget::Field {
+                field_id: Some("standard:URL".into()),
+                field_name: "URL".into(),
+            },
+            EtmLayoutTarget::Field {
+                field_id: Some(public_id),
+                field_name: "Public".into(),
+            },
+            EtmLayoutTarget::Divider,
+            EtmLayoutTarget::PasswordConfirmation {
+                password_field_id: "standard:Password".into(),
+            },
+            EtmLayoutTarget::OverrideUrl,
+            EtmLayoutTarget::Expiry,
+            EtmLayoutTarget::Tags,
+        ]
+    );
+    for entry_id in [ids.child_entry, ids.nested_entry] {
+        assert_eq!(
+            operations::get_entry_detail::run(
+                &mut core,
+                GetEntryDetailArgs {
+                    entry_id: schema_id(entry_id),
+                },
+            )
+            .unwrap()
+            .layout,
+            None
+        );
+    }
+}
+
+#[tokio::test]
 async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_secrets() {
     let (mut core, ids) = query_core().await;
     let entry_id = schema_id(ids.root_entry);
+    core.handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .get_entry_mut(&model_id(entry_id.clone()))
+        .unwrap()
+        .add_custom_field(
+            ETM_TEMPLATE_UUID,
+            ProtectedString::new_plain(&Uuid::from_u128(50).to_string()),
+        );
     let detail = operations::get_entry_detail::run(
         &mut core,
         GetEntryDetailArgs {
@@ -1540,7 +1745,19 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             is_protected: true,
         },
     ];
-    operations::update_entry::run(&mut core, entry_id.clone(), fields, None).unwrap();
+    operations::update_entry::run(
+        &mut core,
+        entry_id.clone(),
+        fields,
+        Some(EntryPropertiesUpdate {
+            override_url: "https://override.test".into(),
+            tags: vec!["updated".into()],
+            expires: true,
+            expiry_time_ms: Some(123_456),
+        }),
+        None,
+    )
+    .unwrap();
 
     let entry = core
         .handle
@@ -1550,6 +1767,20 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         .get_entry(&model_id(entry_id.clone()))
         .unwrap();
     assert_eq!(entry.history.len(), old.history.len() + 1);
+    assert_eq!(entry.override_url, "https://override.test");
+    assert_eq!(entry.tags, ["updated"]);
+    assert!(entry.expires);
+    assert_eq!(entry.expiry_time.as_millis(), Some(123_456));
+    assert_eq!(
+        entry
+            .custom_fields()
+            .find(|(_, field)| field.name() == ETM_TEMPLATE_UUID)
+            .unwrap()
+            .1
+            .value()
+            .as_str(),
+        Uuid::from_u128(50).to_string()
+    );
     assert_eq!(
         entry.history.last().unwrap().last_modification_time,
         old.last_modification_time
@@ -1557,6 +1788,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
     assert_eq!(
         entry
             .custom_fields()
+            .filter(|(_, field)| !field.name().starts_with(ETM_PREFIX))
             .map(|(_, field)| field.name())
             .collect::<Vec<_>>(),
         ["Renamed", "Duplicate", "Added"]
@@ -1606,6 +1838,12 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
                 value: Some("bad".into()),
                 is_protected: false
             }],
+            Some(EntryPropertiesUpdate {
+                override_url: "must-not-apply".into(),
+                tags: vec![],
+                expires: false,
+                expiry_time_ms: None,
+            }),
             None,
         ),
         Err(CoreError::InvalidEntryUpdate)
@@ -1651,6 +1889,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             schema_id(ids.root_entry),
             current_fields.clone(),
             None,
+            None,
         ),
         Err(CoreError::PasswordRequired)
     ));
@@ -1658,6 +1897,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         &mut core,
         schema_id(ids.root_entry),
         current_fields,
+        None,
         Some(b"correct"),
     )
     .unwrap();

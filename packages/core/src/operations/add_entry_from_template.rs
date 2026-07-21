@@ -28,14 +28,17 @@ pub(crate) fn run(
         .entry_templates_uuid
         .map(NodeId::from_uuid)
         .and_then(|group_id| database.get_group(&group_id))
-        .is_some_and(|group| group.child_entry_ids.contains(&template_entry_id));
+        .is_some_and(|group| group.child_entry_ids.contains(&template_entry_id))
+        && database
+            .get_entry(&template_entry_id)
+            .is_some_and(|entry| entry.is_etm_template());
     if !is_direct_template {
         return Err(CoreError::EntryNotFound);
     }
 
     let id = handle
         .database_mut()
-        .duplicate_entry(&template_entry_id, &parent_group_id, key.as_ref())?
+        .instantiate_etm_template(&template_entry_id, &parent_group_id, key.as_ref())?
         .ok_or(CoreError::EntryNotFound)?;
     core.touch_activity();
     Ok(AddEntryResult { id: node_id(id) })
