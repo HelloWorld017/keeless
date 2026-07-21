@@ -18,9 +18,7 @@ pub fn is_template(database: &Database, entry_id: &NodeId) -> bool {
 
 fn template_entry<'a>(database: &'a Database, entry_id: &NodeId) -> Option<&'a Entry> {
     entry_id.as_uuid()?;
-    let Some(group_id) = database.entry_templates_uuid.map(NodeId::from_uuid) else {
-        return None;
-    };
+    let group_id = database.entry_templates_uuid.map(NodeId::from_uuid)?;
     if !database
         .get_group(&group_id)?
         .child_entry_ids

@@ -150,16 +150,18 @@ pub(super) fn parse(entry: &Entry) -> Option<Vec<Field>> {
         } else {
             1
         };
-        let list_options = (field_type == Some(FieldType::Listbox))
-            .then(|| {
-                options
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|option| !option.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
+
+        let list_options = if field_type == Some(FieldType::Listbox) {
+            options
+                .split(',')
+                .map(str::trim)
+                .filter(|option| !option.is_empty())
+                .map(str::to_string)
+                .collect()
+        } else {
+            Default::default()
+        };
+
         fields.push(Field {
             title: field.value().as_str().to_string(),
             storage_name: storage_name.to_string(),
