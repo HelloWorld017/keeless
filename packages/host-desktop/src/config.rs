@@ -5,6 +5,8 @@ use keeless_core::{ConfigProvider, CoreError, HostFuture};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub const MAX_CONFIG_SIZE: usize = 1024 * 1024;
+pub const CORE_SETTINGS_FILE: &str = "core-settings.json";
+pub const WIRE_STATE_FILE: &str = "wire-state.json";
 
 #[derive(Debug)]
 pub struct DesktopConfig {
@@ -12,10 +14,10 @@ pub struct DesktopConfig {
 }
 
 impl DesktopConfig {
-    pub fn project() -> io::Result<Self> {
+    pub fn project(file_name: &str) -> io::Result<Self> {
         let dirs = ProjectDirs::from("dev", "nenw", "keeless")
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no user config directory"))?;
-        Ok(Self::at(dirs.data_dir().join("core-config.json")))
+        Ok(Self::at(dirs.data_dir().join(file_name)))
     }
 
     pub fn at(path: PathBuf) -> Self {
@@ -89,6 +91,27 @@ impl ConfigProvider for DesktopConfig {
                 let _ = tokio::fs::remove_file(&temporary).await;
             }
             result.map_err(Self::host_error)
+        })
+    }
+}
+
+impl keeless_lesswire::StateStore for DesktopConfig {
+    fn load(&self) -> keeless_lesswire::WireFuture<'_, keeless_lesswire::Result<Option<Vec<u8>>>> {
+        Box::pin(async move {
+            ConfigProvider::load(self)
+                .await
+                .map_err(|error| keeless_lesswire::Error::Host(error.to_string()))
+        })
+    }
+
+    fn save<'a>(
+        &'a self,
+        state: &'a [u8],
+    ) -> keeless_lesswire::WireFuture<'a, keeless_lesswire::Result<()>> {
+        Box::pin(async move {
+            ConfigProvider::save(self, state)
+                .await
+                .map_err(|error| keeless_lesswire::Error::Host(error.to_string()))
         })
     }
 }
@@ -173,6 +196,14 @@ mod tests {
             .unwrap()
             .count();
         assert_eq!(entries, 1);
+    }
+
+    #[test]
+    fn core_and_wire_use_distinct_new_file_names() {
+        assert_eq!(CORE_SETTINGS_FILE, "core-settings.json");
+        assert_eq!(WIRE_STATE_FILE, "wire-state.json");
+        assert_ne!(CORE_SETTINGS_FILE, WIRE_STATE_FILE);
+        assert!(![CORE_SETTINGS_FILE, WIRE_STATE_FILE].contains(&"core-config.json"));
     }
 
     #[tokio::test]

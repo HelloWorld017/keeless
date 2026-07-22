@@ -5,9 +5,8 @@ use std::sync::{
 };
 
 use eframe::egui;
-use keeless_core::{
-    ClientApprovalProvider, CoreError, HostFuture, PasswordInputMode, PasswordInputProvider,
-};
+use keeless_core::{CoreError, HostFuture, PasswordInputMode, PasswordInputProvider};
+use keeless_lesswire::{ApprovalProvider, WireFuture};
 use sha2::{Digest, Sha256};
 use tokio::sync::oneshot;
 use zeroize::{Zeroize, Zeroizing};
@@ -42,8 +41,8 @@ impl UiBridge {
     }
 }
 
-impl ClientApprovalProvider for UiBridge {
-    fn approve(&self, public_key_bundle: &str) -> HostFuture<'_, keeless_core::Result<bool>> {
+impl ApprovalProvider for UiBridge {
+    fn approve(&self, public_key_bundle: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
         let bundle = public_key_bundle.to_owned();
         Box::pin(async move {
             let (sender, receiver) = oneshot::channel();
@@ -52,10 +51,10 @@ impl ClientApprovalProvider for UiBridge {
                     bundle,
                     response: sender,
                 })
-                .map_err(|_| CoreError::Host("desktop UI is unavailable".into()))?;
+                .map_err(|_| keeless_lesswire::Error::Host("desktop UI is unavailable".into()))?;
             receiver
                 .await
-                .map_err(|_| CoreError::Host("desktop approval was cancelled".into()))
+                .map_err(|_| keeless_lesswire::Error::Host("desktop approval was cancelled".into()))
         })
     }
 }
