@@ -99,6 +99,44 @@ async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
     );
 }
 
+#[tokio::test]
+async fn dynamic_runtime_approval_is_validated_and_not_persisted() {
+    let store = Arc::new(MemoryStore::default());
+    let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
+    let identity = Identity::from_secrets([31; 32], [33; 32]);
+    let mut client = Client::new(identity, None, clock.clone()).unwrap();
+    let mut server = Server::new(ServerHost {
+        store: store.clone(),
+        approval_provider: Arc::new(Approval(AtomicBool::new(false))),
+        clock,
+        runtime_approved_clients: Vec::new(),
+    })
+    .await
+    .unwrap();
+
+    assert!(server.add_runtime_approval("invalid").is_err());
+    server
+        .add_runtime_approval(&client.public_key_bundle())
+        .unwrap();
+    let response = server
+        .handle_frame(&client.handshake_frame().unwrap(), |_| async {
+            Ok::<_, ()>(None)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    client.accept_handshake(&response).unwrap();
+
+    let state: serde_json::Value =
+        serde_json::from_slice(store.0.lock().unwrap().as_ref().unwrap()).unwrap();
+    assert!(
+        state["approvedClientBundles"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn rejects_weak_signing_and_noncanonical_bundles() {
     let weak = format!(

@@ -118,6 +118,9 @@ async fn run_server(
                 });
             }
             _ = tick.tick() => {
+                if let Ok(mut state) = state.try_lock() {
+                    state.core.tick();
+                }
                 if shutdown.load(Ordering::Relaxed) {
                     return Ok(());
                 }

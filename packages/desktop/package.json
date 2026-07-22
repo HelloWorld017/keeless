@@ -6,7 +6,7 @@
   "license": "AGPL-3.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "pnpm run stage:daemon && tauri dev",
     "dev:ui": "vite",
     "build": "pnpm run stage:daemon:release && tauri build",
     "build:ui": "vite build",
@@ -27,7 +27,7 @@
   "dependencies": {
     "@keeless/app": "workspace:*",
     "@keeless/host-desktop": "workspace:*",
-    "@keeless/schema": "workspace:*",
+    "@keeless/lesswire": "workspace:*",
     "@tauri-apps/api": "^2.8.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

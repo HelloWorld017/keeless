@@ -7,6 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub const MAX_CONFIG_SIZE: usize = 1024 * 1024;
 pub const CORE_SETTINGS_FILE: &str = "core-settings.json";
 pub const WIRE_STATE_FILE: &str = "wire-state.json";
+pub const DESKTOP_WIRE_STATE_FILE: &str = "desktop-wire-state.json";
 
 #[derive(Debug)]
 pub struct DesktopConfig {
@@ -204,6 +205,7 @@ mod tests {
         assert_eq!(WIRE_STATE_FILE, "wire-state.json");
         assert_ne!(CORE_SETTINGS_FILE, WIRE_STATE_FILE);
         assert!(![CORE_SETTINGS_FILE, WIRE_STATE_FILE].contains(&"core-config.json"));
+        assert_ne!(DESKTOP_WIRE_STATE_FILE, WIRE_STATE_FILE);
     }
 
     #[tokio::test]

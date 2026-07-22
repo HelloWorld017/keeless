@@ -161,9 +161,9 @@ importers:
       '@keeless/host-desktop':
         specifier: workspace:*
         version: link:../host-desktop
-      '@keeless/schema':
+      '@keeless/lesswire':
         specifier: workspace:*
-        version: link:../schema
+        version: link:../lesswire
       '@tauri-apps/api':
         specifier: ^2.8.0
         version: 2.11.1

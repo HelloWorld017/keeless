@@ -26,6 +26,7 @@ export interface ClientStore {
 }
 
 const FRAME_TIMESTAMP_TOLERANCE_MS = 500;
+const NONCE_CACHE_CAPACITY = 2048;
 const FRAME_TRANSCRIPT_PREFIX = 'keeless-frame-v1';
 const PAYLOAD_HEADER_PREFIX = 'keeless-payload-header-v1';
 const PAYLOAD_HKDF_INFO = new TextEncoder().encode('keeless-payload-v1');
@@ -46,26 +47,34 @@ const randomBytes = (length: number) => crypto.getRandomValues(new Uint8Array(le
 
 const encodeBase64Url = (value: Uint8Array) => {
   let binary = '';
-  for (const byte of value) binary += String.fromCharCode(byte);
+  for (const byte of value) {
+    binary += String.fromCharCode(byte);
+  }
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
 };
 
 const decodeBase64Url = (value: string) => {
-  if (!/^[A-Za-z0-9_-]*$/u.test(value)) throw new Error('Invalid base64url value');
+  if (!/^[A-Za-z0-9_-]*$/u.test(value)) {
+    throw new Error('Invalid base64url value');
+  }
   const padded = value
     .replaceAll('-', '+')
     .replaceAll('_', '/')
     .padEnd(Math.ceil(value.length / 4) * 4, '=');
   const bytes = Uint8Array.from(atob(padded), character => character.charCodeAt(0));
-  if (encodeBase64Url(bytes) !== value) throw new Error('Non-canonical base64url value');
+  if (encodeBase64Url(bytes) !== value) {
+    throw new Error('Non-canonical base64url value');
+  }
   return bytes;
 };
 
 const parseBundle = (value: string): PublicKeyBundle => {
   const parts = value.split('.');
-  if (parts.length !== 3 || parts[0] !== 'v1') throw new Error('Invalid public key bundle');
-  const signing = decodeBase64Url(parts[1]!);
-  const encryption = decodeBase64Url(parts[2]!);
+  if (parts.length !== 3 || parts[0] !== 'v1') {
+    throw new Error('Invalid public key bundle');
+  }
+  const signing = decodeBase64Url(parts[1]);
+  const encryption = decodeBase64Url(parts[2]);
   if (signing.length !== 32 || encryption.length !== 32 || encryption.every(byte => byte === 0)) {
     throw new Error('Invalid public key bundle');
   }
@@ -95,7 +104,9 @@ const verifyFrame = (frame: MessageFrame, expectedBundle?: string) => {
   ) {
     throw new Error('Relay returned an invalid or stale message frame');
   }
-  if (expectedBundle && frame.publicKey !== expectedBundle) throw new Error('Server identity changed');
+  if (expectedBundle && frame.publicKey !== expectedBundle) {
+    throw new Error('Server identity changed');
+  }
   const bundle = parseBundle(frame.publicKey);
   const signature = decodeBase64Url(frame.signature);
   if (
@@ -124,6 +135,7 @@ const deriveIdentity = async (store: ClientStore): Promise<Identity> => {
 
 export class Client {
   private queue: Promise<void> = Promise.resolve();
+  private readonly responseNonces = new Map<string, number>();
 
   private constructor(
     private readonly relay: Relay,
@@ -153,7 +165,9 @@ export class Client {
     }
     const trusted = await store.loadTrustedServer(relay.id);
     verifyFrame(response, trusted);
-    if (!trusted) await store.saveTrustedServer(relay.id, response.publicKey);
+    if (!trusted) {
+      await store.saveTrustedServer(relay.id, response.publicKey);
+    }
     return new Client(relay, identity, response.publicKey, parseBundle(response.publicKey));
   }
 
@@ -192,8 +206,22 @@ export class Client {
       key.fill(0);
     }
     const response = await this.relay.send(frame);
-    if (!response?.payload || !response.ephemeralPublicKey) throw new Error('Server rejected the request');
+    if (!response?.payload || !response.ephemeralPublicKey) {
+      throw new Error('Server rejected the request');
+    }
     verifyFrame(response, this.serverBundle);
+    const acceptedAt = performance.now();
+    for (const [cachedNonce, observedAt] of this.responseNonces) {
+      if (acceptedAt - observedAt > FRAME_TIMESTAMP_TOLERANCE_MS) {
+        this.responseNonces.delete(cachedNonce);
+      }
+    }
+    if (
+      this.responseNonces.has(response.nonce) ||
+      this.responseNonces.size >= NONCE_CACHE_CAPACITY
+    ) {
+      throw new Error('Server returned a replayed message frame');
+    }
     const responseNonce = decodeBase64Url(response.nonce);
     const responseEphemeral = decodeBase64Url(response.ephemeralPublicKey);
     const responseShared = x25519.getSharedSecret(
@@ -202,11 +230,13 @@ export class Client {
     );
     const responseKey = hkdf(sha256, responseShared, responseNonce, PAYLOAD_HKDF_INFO, 32);
     try {
-      return xchacha20poly1305(
+      const plaintext = xchacha20poly1305(
         responseKey,
         responseNonce,
         encoder.encode(headerTranscript(response)),
       ).decrypt(decodeBase64Url(response.payload));
+      this.responseNonces.set(response.nonce, acceptedAt);
+      return plaintext;
     } finally {
       responseNonce.fill(0);
       responseEphemeral.fill(0);
@@ -236,7 +266,9 @@ export class IndexedDbClientStore implements ClientStore {
 
   async loadDeviceKey() {
     const existing = await this.read<ArrayBuffer>(DEVICE_KEY);
-    if (existing?.byteLength === 32) return new Uint8Array(existing);
+    if (existing?.byteLength === 32) {
+      return new Uint8Array(existing);
+    }
     const key = randomBytes(32);
     await this.write(DEVICE_KEY, key.buffer.slice(0));
     return key;
@@ -266,8 +298,10 @@ export class IndexedDbClientStore implements ClientStore {
       const transaction = database.transaction(STORE_NAME, 'readwrite');
       transaction.objectStore(STORE_NAME).put(value, key);
       transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error ?? new Error('Failed to write wire storage'));
-      transaction.onabort = () => reject(transaction.error ?? new Error('Wire storage write was aborted'));
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error('Failed to write wire storage'));
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error('Wire storage write was aborted'));
     });
   }
 }

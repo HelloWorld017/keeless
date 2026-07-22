@@ -276,6 +276,16 @@ impl Server {
         self.identity.public_key_bundle()
     }
 
+    /// Adds a validated approval for this server process without persisting it.
+    pub fn add_runtime_approval(&mut self, bundle: &str) -> Result<()> {
+        let bundle = PublicKeyBundle::parse(bundle)
+            .ok_or_else(|| Error::InvalidState("invalid approved client bundle".into()))?;
+        if !self.is_approved(bundle.as_str()) {
+            self.runtime_approved.push(bundle.as_str().to_owned());
+        }
+        Ok(())
+    }
+
     pub async fn handle_frame<F, Fut, E>(
         &mut self,
         frame: &MessageFrame,

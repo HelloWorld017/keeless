@@ -4,19 +4,21 @@
   "private": true,
   "description": "Authenticated encrypted wire protocol for Keeless",
   "license": "MIT",
+  "files": [
+    "src"
+  ],
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": [
-    "src"
-  ],
   "scripts": {
     "check": "pnpm run '/^check:.*/'",
-    "check:format": "cargo fmt --check",
+    "check:format": "cargo fmt --check && oxfmt --check",
+    "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
-    "format": "cargo fmt",
+    "format": "cargo fmt && oxfmt",
+    "lint": "cargo clippy -p keeless_lesswire --all-targets -- -D warnings && oxlint",
     "test": "cargo test -p keeless_lesswire",
     "typecheck": "tsgo --project tsconfig.json"
   },

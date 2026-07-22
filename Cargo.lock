@@ -3313,11 +3313,12 @@ name = "keeless_desktop"
 version = "0.0.0"
 dependencies = [
  "keeless_host_desktop",
- "keeless_schema",
+ "keeless_lesswire",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "tauri-plugin-single-instance",
  "tokio",
 ]
 
@@ -3348,11 +3349,13 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "keeless_core",
+ "keeless_lesswire",
  "keeless_sync",
  "libc",
  "postcard",
  "rfd",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.18",
@@ -6294,6 +6297,22 @@ dependencies = [
  "syn 2.0.119",
  "tauri-codegen",
  "tauri-utils",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3214becf9ef5783c0ae99a3bb25adf5353a7a16ebf53e74b909e29205735c6c"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "windows-sys 0.60.2",
+ "zbus",
 ]
 
 [[package]]

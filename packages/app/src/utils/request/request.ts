@@ -46,11 +46,15 @@ export class RequestClient {
     }
     try {
       const response = JSON.parse(decoder.decode(responseBytes)) as OperationResponse;
-      if (response.requestId !== requestId) throw new Error('Server returned a mismatched request ID');
+      if (response.requestId !== requestId) {
+        throw new Error('Server returned a mismatched request ID');
+      }
       if (response.status === 'error') {
         throw new CoreRequestError(response.error.code, response.error.message);
       }
-      if (response.op !== op) throw new Error('Server returned a mismatched operation');
+      if (response.op !== op) {
+        throw new Error('Server returned a mismatched operation');
+      }
       return response.result as OperationResult<TName>;
     } finally {
       responseBytes.fill(0);

@@ -15,6 +15,8 @@
     },
     "windows": [
       {
+        "label": "main",
+        "create": false,
         "title": "keeless",
         "width": 1120,
         "height": 760,

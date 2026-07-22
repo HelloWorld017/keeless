@@ -1,5 +1,5 @@
-import type { StorageDescriptor } from '@keeless/schema';
 import type { MessageFrame } from '@keeless/lesswire';
+import type { StorageDescriptor } from '@keeless/schema';
 import type { ComponentType, ReactNode } from 'react';
 
 export type HostKind = 'desktop' | 'extension' | 'browser';
