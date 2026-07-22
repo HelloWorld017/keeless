@@ -13,14 +13,20 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "check": "pnpm run '/^check:.*/'",
+    "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check && oxfmt --check",
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
-    "format": "cargo fmt && oxfmt",
-    "lint": "cargo clippy -p keeless_lesswire --all-targets -- -D warnings && oxlint",
+    "format": "pnpm run \"/^format:.*/\"",
+    "format:rust": "cargo fmt",
+    "format:ts": "oxfmt",
+    "lint": "pnpm run \"/^lint:.*/\"",
+    "lint:rust": "cargo clippy -p keeless_lesswire --all-targets -- -D warnings",
+    "lint:ts": "oxlint",
     "test": "cargo test -p keeless_lesswire",
-    "typecheck": "tsgo --project tsconfig.json"
+    "typecheck": "pnpm run \"/^typecheck:.*/\"",
+    "typecheck:rust": "cargo check -p keeless_lesswire",
+    "typecheck:ts": "tsgo --project tsconfig.json"
   },
   "dependencies": {
     "@noble/ciphers": "^2.2.0",

@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "cargo build --release -p keeless_kdbx_debug",
-    "check": "pnpm run '/^check:.*/'",
+    "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",

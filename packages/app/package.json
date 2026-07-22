@@ -22,10 +22,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run '/^build:.*$/'",
+    "build": "pnpm run \"/^build:.*$/\"",
     "build:web": "vite build --outDir dist/web",
     "build:lib": "vite build --mode lib --outDir dist/lib",
-    "check": "pnpm run '/^check:.*$/'",
+    "check": "pnpm run \"/^check:.*$/\"",
     "check:lint": "pnpm run lint",
     "check:format": "pnpm run format --check",
     "check:type": "pnpm run typecheck",
