@@ -333,9 +333,13 @@ async fn accept_platform(
 ) -> Result<tokio::net::windows::named_pipe::NamedPipeServer> {
     let server = listener
         .pending
-        .take()
+        .as_ref()
         .ok_or_else(|| IpcError::Protocol("named-pipe listener is unavailable".into()))?;
     server.connect().await?;
+    let server = listener
+        .pending
+        .take()
+        .ok_or_else(|| IpcError::Protocol("named-pipe listener is unavailable".into()))?;
     listener.pending = Some(new_pipe(false)?);
     Ok(server)
 }
