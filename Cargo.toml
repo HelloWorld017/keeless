@@ -2,10 +2,9 @@
 resolver = "3"
 members = [
   "packages/core",
-  "packages/desktop/crates/keeless_daemon",
-  "packages/desktop/crates/keeless_desktop_ipc",
-  "packages/desktop/src-tauri",
+  "packages/desktop",
   "packages/host-browser",
+  "packages/host-desktop",
   "packages/kdbx",
   "packages/kdbx-debug",
   "packages/schema",

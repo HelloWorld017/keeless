@@ -164,6 +164,9 @@ importers:
       '@keeless/app':
         specifier: workspace:*
         version: link:../app
+      '@keeless/host-desktop':
+        specifier: workspace:*
+        version: link:../host-desktop
       '@keeless/schema':
         specifier: workspace:*
         version: link:../schema
@@ -208,6 +211,15 @@ importers:
   packages/extension: {}
 
   packages/host-browser:
+    dependencies:
+      '@keeless/core':
+        specifier: workspace:*
+        version: link:../core
+      '@keeless/sync':
+        specifier: workspace:*
+        version: link:../sync
+
+  packages/host-desktop:
     dependencies:
       '@keeless/core':
         specifier: workspace:*

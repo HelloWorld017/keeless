@@ -1,0 +1,23 @@
+{
+  "name": "@keeless/host-desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "native desktop host for keeless",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "scripts": {
+    "build": "cargo build --release -p keeless_host_desktop",
+    "check": "pnpm run '/^check:.*/'",
+    "check:format": "cargo fmt --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_host_desktop --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_host_desktop",
+    "typecheck": "cargo check -p keeless_host_desktop --all-targets"
+  },
+  "dependencies": {
+    "@keeless/core": "workspace:*",
+    "@keeless/sync": "workspace:*"
+  }
+}

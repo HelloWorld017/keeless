@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use keeless_desktop_ipc::{Client, PickMode as IpcPickMode};
+use keeless_host_desktop::ipc::{Client, PickMode as IpcPickMode};
 use keeless_schema::MessageFrame;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -76,8 +76,10 @@ async fn ensure_daemon(
     _default_approved_bundle: String,
 ) -> Result<EnsureDaemonResult, String> {
     let _startup = state.startup.lock().await;
+    println!("[Keeless] Loading daemon...");
 
     if Client::ping().await.is_ok() {
+        println!("[Keeless] Found living daemon.");
         state.has_connected.store(true, Ordering::Release);
         return Ok(EnsureDaemonResult::Connected);
     }
@@ -85,20 +87,33 @@ async fn ensure_daemon(
     // Another desktop process may win the startup race, so a spawn error is not
     // final until all connection retries have also failed.
     let spawn_error = start_daemon(&app).err();
+    println!("[Keeless] Starting daemon...");
+
     let mut last_error = None;
     for _ in 0..CONNECT_ATTEMPTS {
         sleep(CONNECT_DELAY).await;
         match Client::ping().await {
             Ok(()) => {
                 let was_connected = state.has_connected.swap(true, Ordering::AcqRel);
+                println!("[Keeless] Started daemon.");
+
                 return Ok(if was_connected {
                     EnsureDaemonResult::Restarted
                 } else {
                     EnsureDaemonResult::Started
                 });
             }
-            Err(error) => last_error = Some(error),
+            Err(error) => last_error = Some(error.to_string()),
         }
+    }
+
+    println!("[Keeless] Failed to start daemon.");
+    if let Some(ref err) = spawn_error {
+      println!("{}", err);
+    }
+
+    if let Some(ref err) = last_error {
+      println!("{}", err);
     }
 
     Err(spawn_error
@@ -107,9 +122,7 @@ async fn ensure_daemon(
 }
 
 #[tauri::command]
-async fn relay_frame(
-    frame: MessageFrame,
-) -> Result<Option<MessageFrame>, String> {
+async fn relay_frame(frame: MessageFrame) -> Result<Option<MessageFrame>, String> {
     let bytes = serde_json::to_vec(&frame).map_err(|error| error.to_string())?;
     Client::handle_frame(bytes)
         .await
@@ -119,15 +132,13 @@ async fn relay_frame(
 }
 
 #[tauri::command]
-async fn pick_local_file(
-    mode: PickMode,
-) -> Result<Option<String>, String> {
+async fn pick_local_file(mode: PickMode) -> Result<Option<String>, String> {
     Client::pick_local_file(match mode {
         PickMode::Open => IpcPickMode::Open,
         PickMode::Create => IpcPickMode::Create,
     })
-        .await
-        .map_err(|error| error.to_string())
+    .await
+    .map_err(|error| error.to_string())
 }
 
 pub fn run() {

@@ -3313,49 +3313,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "keeless_daemon"
-version = "0.0.0"
-dependencies = [
- "directories",
- "eframe",
- "fs2",
- "getrandom 0.2.17",
- "hex",
- "keeless_core",
- "keeless_desktop_ipc",
- "keeless_sync",
- "libc",
- "rfd",
- "sha2 0.10.9",
- "tempfile",
- "tokio",
- "windows-sys 0.59.0",
- "zeroize",
-]
-
-[[package]]
 name = "keeless_desktop"
 version = "0.0.0"
 dependencies = [
- "keeless_desktop_ipc",
+ "keeless_host_desktop",
  "keeless_schema",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tokio",
-]
-
-[[package]]
-name = "keeless_desktop_ipc"
-version = "0.0.0"
-dependencies = [
- "libc",
- "postcard",
- "serde",
- "thiserror 2.0.18",
- "tokio",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3371,6 +3338,29 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "keeless_host_desktop"
+version = "0.0.0"
+dependencies = [
+ "directories",
+ "eframe",
+ "fs2",
+ "getrandom 0.2.17",
+ "hex",
+ "keeless_core",
+ "keeless_sync",
+ "libc",
+ "postcard",
+ "rfd",
+ "serde",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "windows-sys 0.59.0",
+ "zeroize",
 ]
 
 [[package]]

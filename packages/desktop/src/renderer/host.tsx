@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { LocalFileSetup } from './local-file-setup';
+import { LocalFileSetup } from './components/LocalFileSetup';
 import type { Host, HostStorage } from '@keeless/app';
 import type { MessageFrame } from '@keeless/schema';
 

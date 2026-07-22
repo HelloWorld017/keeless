@@ -11,8 +11,12 @@ use std::{
 
 use fs2::FileExt;
 use keeless_core::{KeelessCore, KeelessHost, StorageProvider, SystemClock};
-use keeless_daemon::{config::DesktopConfig, storage::LocalFileStorage, ui::UiBridge};
-use keeless_desktop_ipc::{PickMode, Request, Response, ServerListener};
+use keeless_host_desktop::{
+    config::DesktopConfig,
+    ipc::{self, PickMode, Request, Response, ServerListener},
+    storage::LocalFileStorage,
+    ui::UiBridge,
+};
 use tokio::sync::Mutex;
 
 const IDLE_EXIT: Duration = Duration::from_secs(15 * 60);
@@ -52,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui_result?;
 
     #[cfg(unix)]
-    let _ = std::fs::remove_file(keeless_desktop_ipc::endpoint_path());
+    let _ = std::fs::remove_file(ipc::endpoint_path());
     Ok(())
 }
 
@@ -176,7 +180,7 @@ fn protect_directory(_: &std::path::Path) -> io::Result<()> {
 
 #[cfg(unix)]
 fn remove_stale_socket() -> io::Result<()> {
-    match std::fs::remove_file(keeless_desktop_ipc::endpoint_path()) {
+    match std::fs::remove_file(ipc::endpoint_path()) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),

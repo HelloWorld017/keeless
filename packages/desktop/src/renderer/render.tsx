@@ -1,5 +1,5 @@
-import { App } from '@keeless/app';
 import '@keeless/app/styles.css';
+import { App } from '@keeless/app';
 import { createRoot } from 'react-dom/client';
 import { desktopHost } from './host';
 import type { AppIntegration } from '@keeless/app';

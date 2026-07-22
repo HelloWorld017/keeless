@@ -341,7 +341,7 @@ async fn accept_platform(
 }
 
 #[cfg(not(any(unix, windows)))]
-compile_error!("keeless_desktop_ipc supports Unix and Windows only");
+compile_error!("keeless_host_desktop supports Unix and Windows only");
 
 #[cfg(test)]
 mod tests {

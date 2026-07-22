@@ -1,0 +1,36 @@
+[package]
+name = "keeless_host_desktop"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0"
+description = "Native desktop host for Keeless"
+
+[dependencies]
+directories = "6"
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+fs2 = "0.4"
+getrandom = "0.2"
+hex = "0.4"
+keeless_core = { path = "../core" }
+keeless_sync = { path = "../sync", default-features = false }
+postcard = { version = "1", features = ["use-std"] }
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+zeroize = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Pipes"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "keeless-daemon"
+path = "src/main.rs"

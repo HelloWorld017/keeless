@@ -6,7 +6,7 @@
   "license": "AGPL-3.0",
   "type": "module",
   "scripts": {
-    "dev": "pnpm run stage:daemon && tauri dev",
+    "dev": "tauri dev",
     "dev:ui": "vite",
     "build": "pnpm run stage:daemon:release && tauri build",
     "build:ui": "vite build",
@@ -15,9 +15,9 @@
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
     "typecheck": "tsc --project tsconfig.json",
-    "format": "oxfmt",
+    "format": "oxfmt '!gen/**'",
     "lint": "oxlint",
-    "test": "cargo test -p keeless_desktop -p keeless_daemon -p keeless_desktop_ipc",
+    "test": "cargo test -p keeless_desktop",
     "stage:daemon": "node scripts/stage-daemon.mjs",
     "stage:daemon:release": "node scripts/stage-daemon.mjs --release",
     "tauri": "tauri",
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@keeless/app": "workspace:*",
+    "@keeless/host-desktop": "workspace:*",
     "@keeless/schema": "workspace:*",
     "@tauri-apps/api": "^2.8.0",
     "react": "^19.2.7",

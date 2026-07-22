@@ -3,7 +3,7 @@ import { dts as rolldownDts } from 'rolldown-plugin-dts';
 import simplei18n from '@simplei18n/core/vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, esmExternalRequirePlugin } from 'vite';
 
 const dts = (...args: Parameters<typeof rolldownDts>) =>
   rolldownDts(...args).map(
@@ -21,10 +21,6 @@ export default defineConfig(({ mode }) => ({
         cssFileName: 'styles',
         formats: ['es'],
       },
-
-      rolldownOptions: {
-        external: ['react', 'react-dom'],
-      },
     }),
   },
 
@@ -37,9 +33,13 @@ export default defineConfig(({ mode }) => ({
       '@': resolve(__dirname, 'src'),
     },
   },
+
   plugins: [
     ...(mode === 'lib' ? [
-      dts({ generator: 'tsgo' })
+      dts({ generator: 'tsgo' }),
+      esmExternalRequirePlugin({
+        external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/],
+      }),
     ] : []),
     react(),
     tailwindcss(),
