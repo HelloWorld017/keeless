@@ -4,7 +4,6 @@ use chacha20poly1305::{
 };
 use keeless_kdbx::CompositeKey;
 use keeless_secure_types::{SecureArray, SecureBytes};
-use keeless_sync::{FileHandle, SyncReport};
 use zeroize::Zeroizing;
 
 use crate::{CoreError, Result, random_array};
@@ -40,11 +39,6 @@ impl CredentialVault {
             nonce,
             ciphertext: SecureBytes::from_vec(ciphertext)?,
         })
-    }
-
-    pub async fn sync(&self, handle: &mut FileHandle) -> Result<SyncReport> {
-        let key = self.restore_key()?;
-        Ok(handle.sync(&key).await?)
     }
 
     pub(crate) fn restore_key(&self) -> Result<CompositeKey> {

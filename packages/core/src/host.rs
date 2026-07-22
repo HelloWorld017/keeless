@@ -1,6 +1,7 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use keeless_sync::StorageProvider;
+use zeroize::Zeroizing;
 
 use crate::Result;
 
@@ -28,6 +29,21 @@ pub trait ConfigProvider: HostProviderRequirements {
 
 pub trait ClientApprovalProvider: HostProviderRequirements {
     fn approve(&self, public_key_bundle: &str) -> HostFuture<'_, Result<bool>>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PasswordInputMode {
+    Create,
+    Unlock,
+    Reveal,
+    Save,
+}
+
+pub trait PasswordInputProvider: HostProviderRequirements {
+    fn request_password(
+        &self,
+        mode: PasswordInputMode,
+    ) -> HostFuture<'_, Result<Option<Zeroizing<Vec<u8>>>>>;
 }
 
 pub trait Clock: HostProviderRequirements {
@@ -70,6 +86,7 @@ pub struct KeelessHost {
     pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
     pub config_provider: Arc<dyn ConfigProvider>,
     pub approval_provider: Arc<dyn ClientApprovalProvider>,
+    pub password_input: Option<Arc<dyn PasswordInputProvider>>,
     pub clock: Arc<dyn Clock>,
 }
 
@@ -78,6 +95,7 @@ impl std::fmt::Debug for KeelessHost {
         f.debug_struct("KeelessHost")
             .field("default_approved_keys", &self.default_approved_keys)
             .field("storage_provider_names", &self.storage_providers.keys())
+            .field("has_password_input", &self.password_input.is_some())
             .finish_non_exhaustive()
     }
 }

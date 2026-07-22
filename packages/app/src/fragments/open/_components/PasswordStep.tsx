@@ -5,13 +5,12 @@ import { Label } from '@/components/label';
 import { IconArrowRight, IconLoaderCircle } from '@/icons';
 import { SetupLayout } from './SetupLayout';
 import { StepError } from './StepError';
-import type { PasswordInputMode } from '@/types/AppIntegration';
 import type { RefObject, SubmitEvent } from 'react';
 
 export type PasswordStepProps = {
   isPending: boolean;
   error?: string;
-  usesSecurePrompt: boolean;
+  hasNativePasswordInput: boolean;
   passwordRef: RefObject<HTMLInputElement | null>;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 };
@@ -20,10 +19,10 @@ export const PasswordStep = ({
   mode,
   isPending,
   error,
-  usesSecurePrompt,
+  hasNativePasswordInput,
   passwordRef,
   onSubmit,
-}: PasswordStepProps & { mode: PasswordInputMode }) => {
+}: PasswordStepProps & { mode: 'create' | 'unlock' }) => {
   const isCreate = mode === 'create';
 
   return (
@@ -36,7 +35,7 @@ export const PasswordStep = ({
       }
     >
       <form onSubmit={onSubmit} className="space-y-4">
-        {!usesSecurePrompt && (
+        {!hasNativePasswordInput && (
           <div className="space-y-2">
             <Label htmlFor="master-password">Master password</Label>
             <Field orientation="horizontal" className="mt-4">
@@ -63,7 +62,7 @@ export const PasswordStep = ({
             </Field>
           </div>
         )}
-        {usesSecurePrompt && (
+        {hasNativePasswordInput && (
           <Button type="submit" size="lg" disabled={isPending}>
             {isPending && <IconLoaderCircle className="animate-spin" />}
             Enter master password

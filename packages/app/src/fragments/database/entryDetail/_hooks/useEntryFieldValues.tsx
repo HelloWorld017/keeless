@@ -1,4 +1,4 @@
-import { usePasswordInput } from '@/fragments/_providers/HostProvider';
+import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { CoreRequestError } from '@/utils/request';
@@ -36,7 +36,7 @@ const fieldError = (error: unknown) =>
 
 export const useEntryFieldValues = (entryId: DatabaseNodeId) => {
   const requestClient = useRequestClient();
-  const onPasswordInput = usePasswordInput();
+  const hasNativePasswordInput = useHasNativePasswordInput();
   const showToast = useShowToast();
   const [values, setValues] = useState<Record<string, string>>({});
   const [pendingFieldIds, setPendingFieldIds] = useState(new Set<string>());
@@ -80,11 +80,10 @@ export const useEntryFieldValues = (entryId: DatabaseNodeId) => {
         cached !== undefined
           ? cached
           : (
-              await requestClient.data.request('revealEntryField', {
-                entryId,
-                fieldId,
-                password,
-              })
+              await requestClient.data.request(
+                'revealEntryField',
+                hasNativePasswordInput ? { entryId, fieldId } : { entryId, fieldId, password },
+              )
             ).value;
     }
     if (operation !== operationRef.current) {
@@ -111,16 +110,7 @@ export const useEntryFieldValues = (entryId: DatabaseNodeId) => {
         return;
       }
       if (error instanceof CoreRequestError && error.code === 'password_required') {
-        if (onPasswordInput) {
-          const password = await onPasswordInput('reveal');
-          if (password && operation === operationRef.current) {
-            try {
-              await execute(action, operation, password);
-            } catch (passwordFailure) {
-              showToast({ kind: 'destructive', message: fieldError(passwordFailure) });
-            }
-          }
-        } else {
+        if (!hasNativePasswordInput) {
           setPendingAction({ action, operation });
         }
       } else {

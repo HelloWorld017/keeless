@@ -100,9 +100,9 @@ export type FieldControl =
 
 export type OpenArgs = { storage: StorageDescriptor };
 
-export type CreateArgs = { password: string };
+export type CreateArgs = { password?: string | null };
 
-export type UnlockArgs = { password: string };
+export type UnlockArgs = { password?: string | null };
 
 export type LockArgs = Record<string, never>;
 

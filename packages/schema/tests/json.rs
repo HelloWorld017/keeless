@@ -93,7 +93,7 @@ fn create_request_and_response_have_stable_shapes() {
         OperationRequest {
             request_id: "create-1".into(),
             operation: Operation::Create(CreateArgs {
-                password: "secret".into(),
+                password: Some("secret".into()),
             }),
         },
         json!({ "requestId": "create-1", "op": "create", "args": { "password": "secret" } }),
@@ -106,6 +106,29 @@ fn create_request_and_response_have_stable_shapes() {
             },
         },
         json!({ "requestId": "create-1", "status": "success", "op": "create", "result": {} }),
+    );
+}
+
+#[test]
+fn create_and_unlock_passwords_are_optional_and_nullable() {
+    for (operation, expected) in [
+        (
+            Operation::Create(CreateArgs { password: None }),
+            json!({ "op": "create", "args": { "password": null } }),
+        ),
+        (
+            Operation::Unlock(UnlockArgs { password: None }),
+            json!({ "op": "unlock", "args": { "password": null } }),
+        ),
+    ] {
+        assert_roundtrip(operation, expected);
+    }
+
+    assert!(
+        serde_json::from_value::<CreateArgs>(json!({})).unwrap() == CreateArgs { password: None }
+    );
+    assert!(
+        serde_json::from_value::<UnlockArgs>(json!({})).unwrap() == UnlockArgs { password: None }
     );
 }
 

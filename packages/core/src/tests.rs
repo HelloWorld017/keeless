@@ -25,6 +25,7 @@ use keeless_sync::{
 };
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
+use zeroize::Zeroizing;
 
 use super::*;
 use crate::protocol::{decrypt_frame, encrypt_frame, handshake_frame, public_key_bundle};
@@ -112,6 +113,37 @@ struct Approval(AtomicBool);
 impl ClientApprovalProvider for Approval {
     fn approve(&self, _: &str) -> HostFuture<'_, Result<bool>> {
         Box::pin(async { Ok(self.0.load(Ordering::Relaxed)) })
+    }
+}
+
+struct PasswordInput {
+    password: Option<Vec<u8>>,
+    modes: Mutex<Vec<PasswordInputMode>>,
+}
+
+impl PasswordInput {
+    fn new(password: &[u8]) -> Self {
+        Self {
+            password: Some(password.to_vec()),
+            modes: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn cancelled() -> Self {
+        Self {
+            password: None,
+            modes: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl PasswordInputProvider for PasswordInput {
+    fn request_password(
+        &self,
+        mode: PasswordInputMode,
+    ) -> HostFuture<'_, Result<Option<Zeroizing<Vec<u8>>>>> {
+        self.modes.lock().unwrap().push(mode);
+        Box::pin(async { Ok(self.password.clone().map(Zeroizing::new)) })
     }
 }
 
@@ -381,6 +413,7 @@ fn host(
         storage_providers: HashMap::new(),
         config_provider: config,
         approval_provider: approval,
+        password_input: None,
         clock,
     }
 }
@@ -583,6 +616,7 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         .await
         .unwrap();
     clock.set(110);
+    core.tick();
     assert_eq!(
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Locked
@@ -591,6 +625,185 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
     assert_eq!(
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Locked
+    );
+}
+
+#[tokio::test]
+async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage);
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval(AtomicBool::new(true))),
+            Arc::new(FakeClock::new(100)),
+        )
+    })
+    .await
+    .unwrap();
+    operations::open::run(
+        &mut core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "vault.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        operations::execute(
+            &mut core,
+            Operation::Unlock(keeless_schema::UnlockArgs { password: None }),
+        )
+        .await,
+        Err(CoreError::PasswordRequired)
+    ));
+
+    let cancelled = Arc::new(PasswordInput::cancelled());
+    core.password_input = Some(cancelled.clone());
+    assert!(matches!(
+        operations::execute(
+            &mut core,
+            Operation::Unlock(keeless_schema::UnlockArgs { password: None }),
+        )
+        .await,
+        Err(CoreError::PasswordRequired)
+    ));
+    assert_eq!(
+        cancelled.modes.lock().unwrap().as_slice(),
+        &[PasswordInputMode::Unlock]
+    );
+
+    let input = Arc::new(PasswordInput::new(b"correct"));
+    core.password_input = Some(input.clone());
+    assert!(matches!(
+        operations::execute(
+            &mut core,
+            Operation::Unlock(keeless_schema::UnlockArgs {
+                password: Some("wrong".into())
+            }),
+        )
+        .await,
+        Err(CoreError::InvalidCredentials)
+    ));
+    assert!(input.modes.lock().unwrap().is_empty());
+
+    operations::execute(
+        &mut core,
+        Operation::Unlock(keeless_schema::UnlockArgs { password: None }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        input.modes.lock().unwrap().as_slice(),
+        &[PasswordInputMode::Unlock]
+    );
+}
+
+#[tokio::test]
+async fn password_provider_receives_create_reveal_and_save_modes() {
+    let create_input = Arc::new(PasswordInput::new(b"correct"));
+    let storage = Arc::new(MemoryStorage(Mutex::new(None)));
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage);
+    let mut create_host = host(
+        Arc::new(MemoryConfig::default()),
+        Arc::new(Approval(AtomicBool::new(true))),
+        Arc::new(FakeClock::new(100)),
+    );
+    create_host.storage_providers = providers;
+    create_host.password_input = Some(create_input.clone());
+    let mut create_core = KeelessCore::new(create_host).await.unwrap();
+    operations::open::run(
+        &mut create_core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "new.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+    operations::execute(
+        &mut create_core,
+        Operation::Create(keeless_schema::CreateArgs { password: None }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        create_input.modes.lock().unwrap().as_slice(),
+        &[PasswordInputMode::Create]
+    );
+
+    let (mut core, ids) = query_core().await;
+    let input = Arc::new(PasswordInput::new(b"correct"));
+    core.password_input = Some(input.clone());
+    let entry_id = schema_id(ids.root_entry);
+    let detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap();
+    let password_id = detail
+        .fields
+        .iter()
+        .filter_map(detail_field)
+        .find(|field| field.name == "Password")
+        .unwrap()
+        .field_id
+        .unwrap()
+        .to_owned();
+    let fields = detail
+        .fields
+        .into_iter()
+        .filter_map(|field| match field {
+            EntryFieldInformation::Field {
+                field_id,
+                name,
+                value,
+                is_protected,
+                ..
+            } => Some(SchemaEntryFieldUpdate {
+                field_id,
+                name,
+                value,
+                is_protected,
+            }),
+            _ => None,
+        })
+        .collect();
+    operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None)
+        .await
+        .unwrap();
+    assert!(input.modes.lock().unwrap().is_empty());
+    operations::set_config::run(
+        &mut core,
+        KeelessConfigPatch {
+            auto_lock_timeout_ms: None,
+            paranoia_mode: Some(true),
+        },
+    )
+    .await
+    .unwrap();
+
+    operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id, None)
+        .await
+        .unwrap();
+    let _ = core.sync(None).await;
+    operations::update_entry::run(&mut core, entry_id, fields, None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        input.modes.lock().unwrap().as_slice(),
+        &[
+            PasswordInputMode::Reveal,
+            PasswordInputMode::Save,
+            PasswordInputMode::Save,
+        ]
     );
 }
 
@@ -2062,6 +2275,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         }),
         None,
     )
+    .await
     .unwrap();
 
     let entry = core
@@ -2131,6 +2345,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             .to_string();
         assert_eq!(
             operations::reveal_entry_field::run(&mut core, entry_id.clone(), field_id, None)
+                .await
                 .unwrap()
                 .value,
             expected
@@ -2163,7 +2378,8 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
                 icon: None,
             }),
             None,
-        ),
+        )
+        .await,
         Err(CoreError::InvalidEntryUpdate)
     ));
     assert_eq!(
@@ -2217,7 +2433,8 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             current_fields.clone(),
             None,
             None,
-        ),
+        )
+        .await,
         Err(CoreError::PasswordRequired)
     ));
     operations::update_entry::run(
@@ -2227,6 +2444,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         None,
         Some(b"correct"),
     )
+    .await
     .unwrap();
 }
 
@@ -2453,28 +2671,32 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
 
     assert_eq!(
         operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None)
+            .await
             .unwrap()
             .value,
         "password-secret"
     );
     assert_eq!(
         operations::reveal_entry_field::run(&mut core, entry_id.clone(), duplicate_first_id, None)
+            .await
             .unwrap()
             .value,
         "duplicate-first"
     );
     assert_eq!(
         operations::reveal_entry_field::run(&mut core, entry_id.clone(), duplicate_second_id, None)
+            .await
             .unwrap()
             .value,
         "duplicate-second"
     );
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), public_id, None),
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), public_id, None).await,
         Err(CoreError::InvalidEntryField)
     ));
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), "invalid".into(), None),
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), "invalid".into(), None)
+            .await,
         Err(CoreError::InvalidEntryField)
     ));
     assert_eq!(
@@ -2487,7 +2709,8 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
             schema_id(Uuid::from_u128(999)),
             password_id.clone(),
             None,
-        ),
+        )
+        .await,
         Err(CoreError::EntryNotFound)
     ));
 
@@ -2501,7 +2724,8 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
     .await
     .unwrap();
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None),
+        operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None)
+            .await,
         Err(CoreError::PasswordRequired)
     ));
     assert!(matches!(
@@ -2510,7 +2734,8 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
             entry_id.clone(),
             password_id.clone(),
             Some(b"wrong"),
-        ),
+        )
+        .await,
         Err(CoreError::InvalidCredentials)
     ));
     assert_eq!(
@@ -2520,6 +2745,7 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
             notes_id,
             Some(b"correct")
         )
+        .await
         .unwrap()
         .value,
         "notes-secret"
@@ -2532,7 +2758,8 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
             DatabaseNodeId::Uuid("invalid".into()),
             password_id,
             Some(b"correct"),
-        ),
+        )
+        .await,
         Err(CoreError::DatabaseLocked)
     ));
 }

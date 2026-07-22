@@ -44,7 +44,7 @@ const [HostContextProvider, useHostContext] = buildContext(
       hosts,
       isLoading,
       isOverride: Boolean(hostOverride),
-      onPasswordInput: integration.onPasswordInput,
+      hasNativePasswordInput: Boolean(integration.hasNativePasswordInput),
       selectHost,
     };
   },
@@ -55,5 +55,6 @@ export const useHost = () => useHostContext(state => state.host);
 export const useHosts = () => useHostContext(state => state.hosts);
 export const useHostsLoading = () => useHostContext(state => state.isLoading);
 export const useHostOverride = () => useHostContext(state => state.isOverride);
-export const usePasswordInput = () => useHostContext(state => state.onPasswordInput);
+export const useHasNativePasswordInput = () =>
+  useHostContext(state => state.hasNativePasswordInput);
 export const useSelectHost = () => useHostContext(state => state.selectHost);

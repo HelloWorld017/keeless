@@ -23,7 +23,8 @@ use zeroize::{Zeroize, Zeroizing};
 
 pub use error::{CoreError, Result};
 pub use host::{
-    ClientApprovalProvider, Clock, ConfigProvider, HostFuture, KeelessHost, SystemClock,
+    ClientApprovalProvider, Clock, ConfigProvider, HostFuture, KeelessHost, PasswordInputMode,
+    PasswordInputProvider, SystemClock,
 };
 pub use keeless_schema;
 pub use keeless_schema::{
@@ -45,6 +46,7 @@ struct Selection {
 pub struct KeelessCore {
     config_provider: Arc<dyn ConfigProvider>,
     approval_provider: Arc<dyn ClientApprovalProvider>,
+    password_input: Option<Arc<dyn PasswordInputProvider>>,
     clock: Arc<dyn Clock>,
     storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
     settings: KeelessConfig,
@@ -120,6 +122,7 @@ impl KeelessCore {
         let core = Self {
             config_provider: host.config_provider,
             approval_provider: host.approval_provider,
+            password_input: host.password_input,
             clock: host.clock,
             storage_providers: host.storage_providers,
             settings,
@@ -139,18 +142,33 @@ impl KeelessCore {
 
     pub async fn sync(&mut self, password: Option<&[u8]>) -> Result<SyncReport> {
         self.enforce_auto_lock();
-        let handle = self.handle.as_mut().ok_or(CoreError::DatabaseLocked)?;
-        let report = if let Some(password) = password {
+        if self.handle.is_none() {
+            return Err(CoreError::DatabaseLocked);
+        }
+        let key = if let Some(password) = password {
             let key = CompositeKey::new().with_password(password)?;
-            handle.verify_credentials(&key)?;
-            handle.sync(&key).await?
-        } else {
-            let credential = self
-                .credential
+            self.handle
                 .as_ref()
-                .ok_or(CoreError::PasswordRequired)?;
-            credential.sync(handle).await?
+                .ok_or(CoreError::DatabaseLocked)?
+                .verify_credentials(&key)?;
+            key
+        } else if let Some(credential) = &self.credential {
+            credential.restore_key()?
+        } else {
+            let password = self.request_password(PasswordInputMode::Save).await?;
+            let key = CompositeKey::new().with_password(&password)?;
+            self.handle
+                .as_ref()
+                .ok_or(CoreError::DatabaseLocked)?
+                .verify_credentials(&key)?;
+            key
         };
+        let report = self
+            .handle
+            .as_mut()
+            .ok_or(CoreError::DatabaseLocked)?
+            .sync(&key)
+            .await?;
         self.last_activity_ms = Some(self.clock.monotonic_millis());
         Ok(report)
     }
@@ -163,7 +181,10 @@ impl KeelessCore {
         self.storage_providers.insert(name.into(), provider);
     }
 
-    // FIXME ai slop, lock with own ticking, not from each methods
+    pub fn tick(&mut self) {
+        self.enforce_auto_lock();
+    }
+
     fn enforce_auto_lock(&mut self) {
         let Some(timeout) = self.settings.auto_lock_timeout_ms else {
             return;
@@ -180,6 +201,17 @@ impl KeelessCore {
         if self.handle.is_some() {
             self.last_activity_ms = Some(self.clock.monotonic_millis());
         }
+    }
+
+    async fn request_password(&self, mode: PasswordInputMode) -> Result<Zeroizing<Vec<u8>>> {
+        let provider = self
+            .password_input
+            .as_ref()
+            .ok_or(CoreError::PasswordRequired)?;
+        provider
+            .request_password(mode)
+            .await?
+            .ok_or(CoreError::PasswordRequired)
     }
 
     async fn persist(&self) -> Result<()> {

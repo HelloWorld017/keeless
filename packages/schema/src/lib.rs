@@ -235,13 +235,17 @@ pub struct OpenArgs {
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UnlockArgs {
-    pub password: String,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub password: Option<String>,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateArgs {
-    pub password: String,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub password: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]

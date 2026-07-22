@@ -43,6 +43,7 @@ impl BrowserCore {
             storage_providers,
             config_provider: Arc::new(BrowserConfig { idb }),
             approval_provider: Arc::new(BrowserApproval),
+            password_input: None,
             clock: Arc::new(BrowserClock),
         };
         let core = KeelessCore::new(host).await.map_err(js_error)?;

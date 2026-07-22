@@ -8,7 +8,7 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::model::{parse_icon_reference, parse_node_id};
 use crate::{CoreError, KeelessCore, Result};
 
-pub(crate) fn run(
+pub(crate) async fn run(
     core: &mut KeelessCore,
     entry_id: keeless_schema::DatabaseNodeId,
     fields: Vec<keeless_schema::EntryFieldUpdate>,
@@ -20,20 +20,16 @@ pub(crate) fn run(
         return Err(CoreError::DatabaseLocked);
     }
     let entry_id = parse_node_id(entry_id)?;
-    let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
-    if handle.database().get_entry(&entry_id).is_none() {
+    if core
+        .handle
+        .as_ref()
+        .ok_or(CoreError::DatabaseLocked)?
+        .database()
+        .get_entry(&entry_id)
+        .is_none()
+    {
         return Err(CoreError::EntryNotFound);
     }
-    let key = if let Some(password) = password {
-        let key = CompositeKey::new().with_password(password)?;
-        handle.verify_credentials(&key)?;
-        key
-    } else {
-        core.credential
-            .as_ref()
-            .ok_or(CoreError::PasswordRequired)?
-            .restore_key()?
-    };
     let field_count = fields.len();
     let mut fields = fields.into_iter();
     let mut converted = Vec::with_capacity(field_count);
@@ -60,7 +56,15 @@ pub(crate) fn run(
             let icon = properties
                 .icon
                 .as_ref()
-                .map(|icon| parse_icon_reference(handle.database(), icon))
+                .map(|icon| {
+                    parse_icon_reference(
+                        core.handle
+                            .as_ref()
+                            .ok_or(CoreError::DatabaseLocked)?
+                            .database(),
+                        icon,
+                    )
+                })
                 .transpose()?;
             Ok::<_, CoreError>(KdbxPropertiesUpdate {
                 override_url: properties.override_url,
@@ -71,6 +75,26 @@ pub(crate) fn run(
             })
         })
         .transpose()?;
+    let key = if let Some(password) = password {
+        let key = CompositeKey::new().with_password(password)?;
+        core.handle
+            .as_ref()
+            .ok_or(CoreError::DatabaseLocked)?
+            .verify_credentials(&key)?;
+        key
+    } else if let Some(credential) = &core.credential {
+        credential.restore_key()?
+    } else {
+        let password = core
+            .request_password(crate::PasswordInputMode::Save)
+            .await?;
+        let key = CompositeKey::new().with_password(&password)?;
+        core.handle
+            .as_ref()
+            .ok_or(CoreError::DatabaseLocked)?
+            .verify_credentials(&key)?;
+        key
+    };
     let changed = core
         .handle
         .as_mut()
@@ -88,7 +112,7 @@ pub(crate) fn run(
     Ok(EmptyResult {})
 }
 
-pub(super) fn execute(
+pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: UpdateEntryArgs,
 ) -> Result<OperationSuccess> {
@@ -96,11 +120,14 @@ pub(super) fn execute(
         .password
         .take()
         .map(|password| Zeroizing::new(password.into_bytes()));
-    Ok(OperationSuccess::UpdateEntry(run(
-        core,
-        args.entry_id,
-        args.fields,
-        args.properties,
-        password.as_ref().map(|password| password.as_slice()),
-    )?))
+    Ok(OperationSuccess::UpdateEntry(
+        run(
+            core,
+            args.entry_id,
+            args.fields,
+            args.properties,
+            password.as_ref().map(|password| password.as_slice()),
+        )
+        .await?,
+    ))
 }

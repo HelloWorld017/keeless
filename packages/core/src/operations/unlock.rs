@@ -60,7 +60,13 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: UnlockArgs,
 ) -> Result<OperationSuccess> {
-    let password = Zeroizing::new(std::mem::take(&mut args.password).into_bytes());
+    let password = match args.password.take() {
+        Some(password) => Zeroizing::new(password.into_bytes()),
+        None => {
+            core.request_password(crate::PasswordInputMode::Unlock)
+                .await?
+        }
+    };
     run(core, &password).await?;
     Ok(OperationSuccess::Unlock(EmptyResult {}))
 }

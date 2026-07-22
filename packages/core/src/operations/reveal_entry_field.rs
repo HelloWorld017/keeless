@@ -5,7 +5,7 @@ use zeroize::Zeroizing;
 use crate::model::parse_node_id;
 use crate::{CoreError, KeelessCore, Result};
 
-pub(crate) fn run(
+pub(crate) async fn run(
     core: &mut KeelessCore,
     entry_id: keeless_schema::DatabaseNodeId,
     field_id: String,
@@ -28,25 +28,37 @@ pub(crate) fn run(
     if !field.value().is_protected() {
         return Err(CoreError::InvalidEntryField);
     }
-
     let key = if let Some(password) = password {
         let key = CompositeKey::new().with_password(password)?;
-        handle.verify_credentials(&key)?;
-        key
-    } else {
-        core.credential
+        core.handle
             .as_ref()
-            .ok_or(CoreError::PasswordRequired)?
-            .restore_key()?
+            .ok_or(CoreError::DatabaseLocked)?
+            .verify_credentials(&key)?;
+        key
+    } else if let Some(credential) = &core.credential {
+        credential.restore_key()?
+    } else {
+        let password = core
+            .request_password(crate::PasswordInputMode::Reveal)
+            .await?;
+        let key = CompositeKey::new().with_password(&password)?;
+        core.handle
+            .as_ref()
+            .ok_or(CoreError::DatabaseLocked)?
+            .verify_credentials(&key)?;
+        key
     };
-    let value = handle
+    let value = core
+        .handle
+        .as_ref()
+        .ok_or(CoreError::DatabaseLocked)?
         .database()
         .with_entry_field_id(&key, &entry_id, field_id, str::to_owned)?;
     core.touch_activity();
     Ok(RevealEntryFieldResult { value })
 }
 
-pub(super) fn execute(
+pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: RevealEntryFieldArgs,
 ) -> Result<OperationSuccess> {
@@ -54,10 +66,13 @@ pub(super) fn execute(
         .password
         .take()
         .map(|password| Zeroizing::new(password.into_bytes()));
-    Ok(OperationSuccess::RevealEntryField(run(
-        core,
-        args.entry_id,
-        args.field_id,
-        password.as_ref().map(|password| password.as_slice()),
-    )?))
+    Ok(OperationSuccess::RevealEntryField(
+        run(
+            core,
+            args.entry_id,
+            args.field_id,
+            password.as_ref().map(|password| password.as_slice()),
+        )
+        .await?,
+    ))
 }

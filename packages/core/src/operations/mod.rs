@@ -56,7 +56,7 @@ pub(crate) async fn execute(
         Operation::GetTrashEntries(args) => get_trash_entries::execute(core, args),
         Operation::GetTags(args) => get_tags::execute(core, args),
         Operation::GetEntryDetail(args) => get_entry_detail::execute(core, args),
-        Operation::UpdateEntry(args) => update_entry::execute(core, args),
+        Operation::UpdateEntry(args) => update_entry::execute(core, args).await,
         Operation::DeleteEntry(args) => delete_entry::execute(core, args),
         Operation::SaveDatabase(args) => save_database::execute(core, args).await,
         Operation::GetCustomIcons(args) => get_custom_icons::execute(core, args),
@@ -71,6 +71,6 @@ pub(crate) async fn execute(
         Operation::UpdateGroup(args) => update_group::execute(core, args),
         Operation::UpdateTagStyle(args) => update_tag_style::execute(core, args),
         Operation::DeleteTag(args) => delete_tag::execute(core, args),
-        Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args),
+        Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args).await,
     }
 }

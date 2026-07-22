@@ -1,10 +1,10 @@
 import BackgroundImage from '@/assets/images/background.webp';
 import {
+  useHasNativePasswordInput,
   useHost,
   useHostOverride,
   useHosts,
   useHostsLoading,
-  usePasswordInput,
   useSelectHost,
 } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
@@ -17,13 +17,12 @@ import { CreateStep } from './_components/CreateStep';
 import { SelectStep } from './_components/SelectStep';
 import { SetupLayout } from './_components/SetupLayout';
 import { UnlockStep } from './_components/UnlockStep';
-import type { PasswordInputMode } from '@/types/AppIntegration';
 import type { HostStorage, StorageDescriptorGetter } from '@/types/Host';
 import type { DatabaseStatus } from '@keeless/schema';
 import type { SubmitEvent } from 'react';
 
 type SetupStep = 'select' | 'storage' | 'create' | 'unlock' | 'checking';
-type SetupPasswordInputMode = Exclude<PasswordInputMode, 'reveal' | 'save'>;
+type SetupPasswordInputMode = 'create' | 'unlock';
 
 const errorMessage = (error: unknown) => {
   if (error instanceof CoreRequestError) {
@@ -46,7 +45,7 @@ const OpenFragmentContents = () => {
   const hosts = useHosts();
   const hostsLoading = useHostsLoading();
   const isHostOverride = useHostOverride();
-  const onPasswordInput = usePasswordInput();
+  const hasNativePasswordInput = useHasNativePasswordInput();
   const selectHost = useSelectHost();
   const requestClient = useRequestClient();
   const navigate = useNavigate();
@@ -131,14 +130,8 @@ const OpenFragmentContents = () => {
     void openStorage(nextStorage.setup.getDefaultDescriptor);
   };
 
-  const requestPassword = async (
-    mode: SetupPasswordInputMode,
-    form?: HTMLFormElement,
-  ): Promise<string | null> => {
-    if (onPasswordInput) {
-      return onPasswordInput(mode);
-    }
-    const input = form?.elements.namedItem('master-password');
+  const requestPassword = (form: HTMLFormElement): string | null => {
+    const input = form.elements.namedItem('master-password');
     if (!(input instanceof HTMLInputElement) || !input.value) {
       setError('Enter the master password for this database.');
       passwordRef.current?.focus();
@@ -161,13 +154,24 @@ const OpenFragmentContents = () => {
     setIsPending(true);
     setError(undefined);
     try {
-      const password = await requestPassword(mode, event.currentTarget);
-      if (!password) {
-        return;
+      if (hasNativePasswordInput) {
+        await requestClient.data.request(mode, {});
+      } else {
+        const password = requestPassword(event.currentTarget);
+        if (!password) {
+          return;
+        }
+        await requestClient.data.request(mode, { password });
       }
-      await requestClient.data.request(mode, { password });
       navigate(buildRoute('database'), { replace: true });
     } catch (nextError) {
+      if (
+        hasNativePasswordInput &&
+        nextError instanceof CoreRequestError &&
+        nextError.code === 'password_required'
+      ) {
+        return;
+      }
       if (
         mode === 'create' &&
         nextError instanceof CoreRequestError &&
@@ -240,7 +244,7 @@ const OpenFragmentContents = () => {
       <CreateStep
         isPending={isPending}
         error={error}
-        usesSecurePrompt={Boolean(onPasswordInput)}
+        hasNativePasswordInput={hasNativePasswordInput}
         passwordRef={passwordRef}
         onSubmit={event => void submitPassword('create', event)}
       />
@@ -252,7 +256,7 @@ const OpenFragmentContents = () => {
       <UnlockStep
         isPending={isPending}
         error={error}
-        usesSecurePrompt={Boolean(onPasswordInput)}
+        hasNativePasswordInput={hasNativePasswordInput}
         passwordRef={passwordRef}
         onSubmit={event => void submitPassword('unlock', event)}
       />

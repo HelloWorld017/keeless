@@ -1,4 +1,4 @@
-import { usePasswordInput } from '@/fragments/_providers/HostProvider';
+import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { CoreRequestError } from '@/utils/request';
 import { useEffect, useRef, useState } from 'react';
@@ -48,7 +48,7 @@ export const useProtectedReveal = ({
   );
 
   const requestClient = useRequestClient();
-  const onPasswordInput = usePasswordInput();
+  const hasNativePasswordInput = useHasNativePasswordInput();
 
   useEffect(() => {
     if (!autoReveal || fieldId === null || !requestClient.data) {
@@ -92,7 +92,10 @@ export const useProtectedReveal = ({
   }
 
   const reveal = (password?: string) =>
-    requestClient.data!.request('revealEntryField', { entryId, fieldId, password });
+    requestClient.data!.request(
+      'revealEntryField',
+      hasNativePasswordInput ? { entryId, fieldId } : { entryId, fieldId, password },
+    );
 
   const toggleReveal = async () => {
     if (revealed) {
@@ -114,18 +117,7 @@ export const useProtectedReveal = ({
       }
 
       if (nextError instanceof CoreRequestError && nextError.code === 'password_required') {
-        if (onPasswordInput) {
-          const password = await onPasswordInput('reveal');
-          if (password && operation === operationRef.current) {
-            try {
-              acceptValue((await reveal(password)).value, operation);
-            } catch (passwordError) {
-              if (operation === operationRef.current) {
-                setError(revealError(passwordError));
-              }
-            }
-          }
-        } else {
+        if (!hasNativePasswordInput) {
           setPromptOpen(true);
         }
       } else {
