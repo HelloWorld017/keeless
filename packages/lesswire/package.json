@@ -2,17 +2,22 @@
   "name": "@keeless/lesswire",
   "version": "0.0.0",
   "private": true,
-  "description": "Authenticated encrypted wire protocol for Keeless",
+  "description": "wire protocol for keeless",
   "license": "MIT",
-  "files": [
-    "src"
-  ],
+  "files": ["dist"],
   "type": "module",
-  "types": "./src/index.ts",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
   },
   "scripts": {
+    "build": "pnpm run \"/^build:.*$/\"",
+    "build:rust": "cargo build --release -p keeless_lesswire",
+    "build:lib": "tsdown",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check && oxfmt --check",
     "check:lint": "pnpm run lint",
@@ -32,5 +37,8 @@
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0"
+  },
+  "devDependencies": {
+    "tsdown": "^0.22.13"
   }
 }

@@ -60,14 +60,15 @@ An approval dialog ensures that only explicitly authorized devices can establish
 ## FAQ
 > Not actually "frequently asked", but rather what I expect to be "frequently asked".
 
-* **Why did you create this?**
+* **Why did you create this?**  
   Why not?  
   When I looked at existing desktop KeePass clients, it turned out that KeeWeb has way too outdated electron (which does not supports wayland),
   and KeePassXC does not have WebDAV support (+ it just didn't look very nice for me, in terms of aesthetics, honestly).  
   Plus, as GPT-5.6 Sol gave me many resets (Thank you Tibo), I really wanted to give this whole vibe-coding thing a try.
 
-* **I like the design/features, but I'm not sure about the results of vibe coding.**
+* **I like the design/features, but I'm not sure about the results of vibe coding.**  
   In fact, most of the architectural design was done by me, so it is not actually 100% vibe coded.  
-  But anyway if you don't want those, that's where the open-source comes into play.  
+  But anyway if you don't want those, that's where the open-source comes into play.
   As the backend and the frontend are strictly separated, you can freely fork and create your own frontend/backend implementation.  
   If you rewrite the backend, please let me know so I can use your implementation.
+

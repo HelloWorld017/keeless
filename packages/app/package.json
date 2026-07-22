@@ -4,15 +4,10 @@
   "private": true,
   "description": "keeless: minimal password manager",
   "license": "AGPL-3.0",
-  "files": [
-    "dist",
-    "src",
-    "index.d.ts"
-  ],
+  "files": ["dist"],
   "type": "module",
   "main": "./dist/lib/index.js",
-  "module": "./dist/lib/index.js",
-  "types": "./index.d.ts",
+  "types": "./dist/lib/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/lib/index.d.ts",
@@ -23,8 +18,8 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm run \"/^build:.*$/\"",
-    "build:web": "vite build --outDir dist/web",
-    "build:lib": "vite build --mode lib --outDir dist/lib",
+    "build:web": "vite build",
+    "build:lib": "vite build --mode lib",
     "check": "pnpm run \"/^check:.*$/\"",
     "check:lint": "pnpm run lint",
     "check:format": "pnpm run format --check",
