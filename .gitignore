@@ -1,4 +1,5 @@
 node_modules
+packages/desktop/src-tauri/binaries/
 dist
 target
 *.log

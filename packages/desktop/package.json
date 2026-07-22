@@ -5,7 +5,41 @@
   "description": "desktop application for keeless",
   "license": "AGPL-3.0",
   "type": "module",
+  "scripts": {
+    "dev": "pnpm run stage:daemon && tauri dev",
+    "dev:ui": "vite",
+    "build": "pnpm run stage:daemon:release && tauri build",
+    "build:ui": "vite build",
+    "check": "pnpm run '/^check:.*$/'",
+    "check:format": "pnpm run format --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "typecheck": "tsc --project tsconfig.json",
+    "format": "oxfmt",
+    "lint": "oxlint",
+    "test": "cargo test -p keeless_desktop -p keeless_daemon -p keeless_desktop_ipc",
+    "stage:daemon": "node scripts/stage-daemon.mjs",
+    "stage:daemon:release": "node scripts/stage-daemon.mjs --release",
+    "tauri": "tauri",
+    "tauri:dev": "pnpm run dev",
+    "tauri:build": "pnpm run build"
+  },
   "dependencies": {
-    "@keeless/app": "workspace:*"
+    "@keeless/app": "workspace:*",
+    "@keeless/schema": "workspace:*",
+    "@tauri-apps/api": "^2.8.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "oxfmt": "^0.56.0",
+    "oxlint": "1.71.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
   }
 }
