@@ -21,6 +21,5 @@
     "allowJs": true,
     "skipLibCheck": true,
     "noEmit": true
-  },
-  "include": ["packages/**/*.ts", "packages/**/*.tsx", "oxfmt.config.ts", "oxlint.config.ts"]
+  }
 }
