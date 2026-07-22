@@ -9,9 +9,8 @@ import { getRoute } from '@/utils/route';
 import { StrictMode } from 'react';
 import { Redirect, Route, Switch } from 'wouter';
 import type { AppIntegration } from '@/types/AppIntegration';
-import type { ReactNode } from 'react';
 
-export const App = () => (
+export const AppContents = () => (
   <Switch>
     <Route path={getRoute('open')} component={OpenFragment} />
     <Route path={getRoute('search')} component={DatabaseFragment} />
@@ -23,18 +22,18 @@ export const App = () => (
   </Switch>
 );
 
-export const AppFrame = ({
-  children,
-  integration,
-}: {
-  children: ReactNode;
+type AppProps = {
   integration: AppIntegration;
-}) => (
+};
+
+export const App = ({ integration }: AppProps) => (
   <StrictMode>
     <HostProvider integration={integration}>
       <QueryProvider>
         <ToastProvider>
-          <RouterProvider fallback="open">{children}</RouterProvider>
+          <RouterProvider fallback="open">
+            <AppContents />
+          </RouterProvider>
           <ToastList />
         </ToastProvider>
       </QueryProvider>
