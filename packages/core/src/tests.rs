@@ -3,20 +3,17 @@ use std::sync::{
     atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
 };
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use ed25519_dalek::SigningKey;
 use keeless_kdbx::kdbx::template;
 use keeless_kdbx::{
     Database, DatabaseVersion, Entry, EntryBinary, EntryFieldSelector, Group, IconImageCustom,
     IconImageStandard, NodeId, ProtectedString, save_database,
 };
 use keeless_schema::{
-    AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DatabaseStatusResult,
-    DeleteEntryArgs, DeleteGroupArgs, DeleteTagArgs, EntryFieldInformation,
+    AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DeleteEntryArgs,
+    DeleteGroupArgs, DeleteTagArgs, EntryFieldInformation,
     EntryFieldUpdate as SchemaEntryFieldUpdate, EntryPropertiesUpdate, FieldControl,
-    GetDatabaseStatusArgs, GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs,
-    GetTagEntriesArgs, IconReference, MoveEntryArgs, MoveGroupArgs, Operation, OperationOutcome,
-    OperationRequest, OperationResponse, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,
+    GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, IconReference,
+    MoveEntryArgs, MoveGroupArgs, Operation, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,
     TagStyle, UpdateGroupArgs, UpdateTagStyleArgs,
 };
 use keeless_sync::{
@@ -24,11 +21,9 @@ use keeless_sync::{
     WriteCondition, WriteOutcome,
 };
 use uuid::Uuid;
-use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroizing;
 
 use super::*;
-use crate::protocol::{decrypt_frame, encrypt_frame, handshake_frame, public_key_bundle};
 
 struct DetailField<'a> {
     order: u64,
@@ -108,13 +103,7 @@ impl ConfigProvider for FailingConfig {
     }
 }
 
-struct Approval(AtomicBool);
-
-impl ClientApprovalProvider for Approval {
-    fn approve(&self, _: &str) -> HostFuture<'_, Result<bool>> {
-        Box::pin(async { Ok(self.0.load(Ordering::Relaxed)) })
-    }
-}
+struct Approval;
 
 struct PasswordInput {
     password: Option<Vec<u8>>,
@@ -357,7 +346,7 @@ async fn query_core() -> (KeelessCore, QueryIds) {
         storage_providers: providers,
         ..host(
             Arc::new(MemoryConfig::default()),
-            Arc::new(Approval(AtomicBool::new(true))),
+            Arc::new(Approval),
             Arc::new(FakeClock::new(100)),
         )
     })
@@ -405,53 +394,15 @@ fn model_id(id: DatabaseNodeId) -> NodeId {
 
 fn host(
     config: Arc<dyn ConfigProvider>,
-    approval: Arc<Approval>,
+    _approval: Arc<Approval>,
     clock: Arc<FakeClock>,
 ) -> KeelessHost {
     KeelessHost {
-        default_approved_keys: Vec::new(),
         storage_providers: HashMap::new(),
         config_provider: config,
-        approval_provider: approval,
         password_input: None,
         clock,
     }
-}
-
-fn client_identity() -> (SigningKey, StaticSecret, String) {
-    let signing = SigningKey::from_bytes(&[7; 32]);
-    let encryption = StaticSecret::from([9; 32]);
-    let bundle = public_key_bundle(&signing, &PublicKey::from(&encryption));
-    (signing, encryption, bundle)
-}
-
-#[test]
-fn public_key_bundles_reject_weak_signing_keys() {
-    let weak_bundle = format!(
-        "v1.{}.{}",
-        URL_SAFE_NO_PAD.encode([0; 32]),
-        URL_SAFE_NO_PAD.encode([9; 32])
-    );
-    assert!(parse_public_key_bundle(&weak_bundle).is_none());
-}
-
-#[tokio::test]
-async fn generates_and_reloads_identity_without_exposing_secrets_in_debug() {
-    let config = Arc::new(MemoryConfig::default());
-    let approval = Arc::new(Approval(AtomicBool::new(true)));
-    let clock = Arc::new(FakeClock::new(1000));
-    let core = KeelessCore::new(host(config.clone(), approval.clone(), clock.clone()))
-        .await
-        .unwrap();
-    let bundle = core.public_key_bundle().unwrap();
-    let debug = format!("{core:?}");
-    assert!(debug.contains("REDACTED"));
-    assert!(!debug.contains(&bundle));
-
-    let reloaded = KeelessCore::new(host(config, approval, clock))
-        .await
-        .unwrap();
-    assert_eq!(reloaded.public_key_bundle().unwrap(), bundle);
 }
 
 #[tokio::test]
@@ -459,7 +410,7 @@ async fn config_patch_is_deep_and_paranoia_is_persisted() {
     let config = Arc::new(MemoryConfig::default());
     let mut core = KeelessCore::new(host(
         config.clone(),
-        Arc::new(Approval(AtomicBool::new(true))),
+        Arc::new(Approval),
         Arc::new(FakeClock::new(0)),
     ))
     .await
@@ -495,10 +446,31 @@ async fn config_patch_is_deep_and_paranoia_is_persisted() {
 }
 
 #[tokio::test]
-async fn failed_persistence_rolls_back_settings_and_client_approval() {
+async fn plaintext_payload_dispatches_and_rejects_invalid_requests() {
+    let mut core = KeelessCore::new(host(
+        Arc::new(MemoryConfig::default()),
+        Arc::new(Approval),
+        Arc::new(FakeClock::new(0)),
+    ))
+    .await
+    .unwrap();
+    let response = core
+        .handle_payload(br#"{"requestId":"request-1","op":"getDatabaseStatus","args":{}}"#)
+        .await
+        .unwrap()
+        .unwrap();
+    let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+    assert_eq!(response["requestId"], "request-1");
+    assert_eq!(response["status"], "success");
+    assert_eq!(response["result"]["status"], "not_exist");
+    assert!(core.handle_payload(b"not json").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn failed_persistence_rolls_back_settings() {
     let config = Arc::new(FailingConfig::default());
     let clock = Arc::new(FakeClock::new(1000));
-    let approval = Arc::new(Approval(AtomicBool::new(true)));
+    let approval = Arc::new(Approval);
     let mut core = KeelessCore::new(host(config.clone(), approval, clock))
         .await
         .unwrap();
@@ -516,14 +488,6 @@ async fn failed_persistence_rolls_back_settings_and_client_approval() {
         Err(CoreError::Host(_))
     ));
     assert_eq!(core.settings, KeelessConfig::default());
-
-    let (signing, _, bundle) = client_identity();
-    let frame = handshake_frame(1000, bundle.clone(), &signing).unwrap();
-    assert!(matches!(
-        core.handle_frame(&frame).await,
-        Err(CoreError::Host(_))
-    ));
-    assert!(!core.approved_clients.contains(&bundle));
 }
 
 #[tokio::test]
@@ -535,11 +499,7 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
     providers.insert("memory".into(), storage);
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
-        ..host(
-            config,
-            Arc::new(Approval(AtomicBool::new(true))),
-            clock.clone(),
-        )
+        ..host(config, Arc::new(Approval), clock.clone())
     })
     .await
     .unwrap();
@@ -637,7 +597,7 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
         storage_providers: providers,
         ..host(
             Arc::new(MemoryConfig::default()),
-            Arc::new(Approval(AtomicBool::new(true))),
+            Arc::new(Approval),
             Arc::new(FakeClock::new(100)),
         )
     })
@@ -711,7 +671,7 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
     providers.insert("memory".into(), storage);
     let mut create_host = host(
         Arc::new(MemoryConfig::default()),
-        Arc::new(Approval(AtomicBool::new(true))),
+        Arc::new(Approval),
         Arc::new(FakeClock::new(100)),
     );
     create_host.storage_providers = providers;
@@ -816,7 +776,7 @@ async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
         storage_providers: providers,
         ..host(
             Arc::new(MemoryConfig::default()),
-            Arc::new(Approval(AtomicBool::new(true))),
+            Arc::new(Approval),
             Arc::new(FakeClock::new(100)),
         )
     })
@@ -901,52 +861,6 @@ async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
 }
 
 #[tokio::test]
-async fn handshake_approves_persists_and_replay_is_dropped() {
-    let config = Arc::new(MemoryConfig::default());
-    let clock = Arc::new(FakeClock::new(10_000));
-    let mut core = KeelessCore::new(host(
-        config.clone(),
-        Arc::new(Approval(AtomicBool::new(true))),
-        clock,
-    ))
-    .await
-    .unwrap();
-    let (signing, _, bundle) = client_identity();
-    let frame = handshake_frame(10_000, bundle.clone(), &signing).unwrap();
-    let response = core.handle_frame(&frame).await.unwrap().unwrap();
-    assert!(response.payload.is_none());
-    assert!(response.ephemeral_public_key.is_none());
-    assert!(core.handle_frame(&frame).await.unwrap().is_none());
-    let saved: serde_json::Value =
-        serde_json::from_slice(&config.0.lock().unwrap().clone().unwrap()).unwrap();
-    assert!(
-        saved["approvedClientBundles"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|v| v == &bundle)
-    );
-}
-
-#[tokio::test]
-async fn denied_handshakes_consume_the_bounded_nonce_pool() {
-    let mut core = KeelessCore::new(host(
-        Arc::new(MemoryConfig::default()),
-        Arc::new(Approval(AtomicBool::new(false))),
-        Arc::new(FakeClock::new(10_000)),
-    ))
-    .await
-    .unwrap();
-    let (signing, _, bundle) = client_identity();
-    let frame = handshake_frame(10_000, bundle, &signing).unwrap();
-
-    assert!(core.handle_frame(&frame).await.unwrap().is_none());
-    assert_eq!(core.nonce_cache.len(), 1);
-    assert!(core.handle_frame(&frame).await.unwrap().is_none());
-    assert_eq!(core.nonce_cache.len(), 1);
-}
-
-#[tokio::test]
 async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
     let clock = Arc::new(FakeClock::new(100));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
@@ -954,11 +868,7 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
     providers.insert("memory".into(), storage.clone());
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
-        ..host(
-            Arc::new(MemoryConfig::default()),
-            Arc::new(Approval(AtomicBool::new(true))),
-            clock,
-        )
+        ..host(Arc::new(MemoryConfig::default()), Arc::new(Approval), clock)
     })
     .await
     .unwrap();
@@ -984,71 +894,6 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Unlocked
     );
-}
-
-#[tokio::test]
-async fn handshake_rejects_non_contributory_client_encryption_key() {
-    let clock = Arc::new(FakeClock::new(10_000));
-    let mut core = KeelessCore::new(host(
-        Arc::new(MemoryConfig::default()),
-        Arc::new(Approval(AtomicBool::new(true))),
-        clock,
-    ))
-    .await
-    .unwrap();
-    let signing = SigningKey::from_bytes(&[7; 32]);
-    let mut low_order = [0; 32];
-    low_order[0] = 1;
-    let bundle = format!(
-        "v1.{}.{}",
-        URL_SAFE_NO_PAD.encode(signing.verifying_key().as_bytes()),
-        URL_SAFE_NO_PAD.encode(low_order)
-    );
-    let frame = handshake_frame(10_000, bundle, &signing).unwrap();
-
-    assert!(core.handle_frame(&frame).await.unwrap().is_none());
-}
-
-#[tokio::test]
-async fn encrypted_status_round_trip_and_tampering_drop() {
-    let config = Arc::new(MemoryConfig::default());
-    let clock = Arc::new(FakeClock::new(5000));
-    let (client_signing, client_secret, client_bundle) = client_identity();
-    let mut core = KeelessCore::new(KeelessHost {
-        default_approved_keys: vec![client_bundle.clone()],
-        ..host(config, Arc::new(Approval(AtomicBool::new(false))), clock)
-    })
-    .await
-    .unwrap();
-    let request = OperationRequest {
-        request_id: "request-1".into(),
-        operation: Operation::GetDatabaseStatus(GetDatabaseStatusArgs {}),
-    };
-    let core_bundle = parse_public_key_bundle(&core.public_key_bundle().unwrap()).unwrap();
-    let frame = encrypt_frame(
-        5000,
-        &serde_json::to_vec(&request).unwrap(),
-        client_bundle,
-        &client_signing,
-        &core_bundle.encryption,
-    )
-    .unwrap();
-    let response = core.handle_frame(&frame).await.unwrap().unwrap();
-    let plaintext = decrypt_frame(&response, &client_secret).unwrap();
-    let response: OperationResponse = serde_json::from_slice(&plaintext).unwrap();
-    assert_eq!(response.request_id, "request-1");
-    assert!(matches!(
-        response.outcome,
-        OperationOutcome::Success {
-            success: OperationSuccess::GetDatabaseStatus(DatabaseStatusResult {
-                status: DatabaseStatus::NotExist
-            })
-        }
-    ));
-
-    let mut tampered = frame;
-    tampered.nonce = URL_SAFE_NO_PAD.encode([1; 24]);
-    assert!(core.handle_frame(&tampered).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -2836,48 +2681,6 @@ async fn database_query_operations_report_lookup_errors_and_require_unlock() {
         ),
         Err(CoreError::DatabaseLocked)
     ));
-}
-
-#[tokio::test]
-async fn timestamp_boundaries_and_nonce_expiry_are_inclusive() {
-    let config = Arc::new(MemoryConfig::default());
-    let clock = Arc::new(FakeClock::new(1000));
-    let mut core = KeelessCore::new(host(
-        config,
-        Arc::new(Approval(AtomicBool::new(true))),
-        clock.clone(),
-    ))
-    .await
-    .unwrap();
-    let (signing, _, bundle) = client_identity();
-    let boundary = handshake_frame(500, bundle.clone(), &signing).unwrap();
-    assert!(core.handle_frame(&boundary).await.unwrap().is_some());
-    let stale = handshake_frame(499, bundle.clone(), &signing).unwrap();
-    assert!(core.handle_frame(&stale).await.unwrap().is_none());
-
-    clock.set(1501);
-    let fresh = handshake_frame(1501, bundle, &signing).unwrap();
-    assert!(core.handle_frame(&fresh).await.unwrap().is_some());
-    assert_eq!(core.nonce_cache.len(), 1);
-}
-
-#[tokio::test]
-async fn full_nonce_cache_rejects_without_eviction() {
-    let clock = Arc::new(FakeClock::new(2000));
-    let mut core = KeelessCore::new(host(
-        Arc::new(MemoryConfig::default()),
-        Arc::new(Approval(AtomicBool::new(true))),
-        clock,
-    ))
-    .await
-    .unwrap();
-    for index in 0..NONCE_CACHE_CAPACITY {
-        core.nonce_cache.insert(format!("nonce-{index}"), 2000);
-    }
-    let (signing, _, bundle) = client_identity();
-    let frame = handshake_frame(2000, bundle, &signing).unwrap();
-    assert!(core.handle_frame(&frame).await.unwrap().is_none());
-    assert_eq!(core.nonce_cache.len(), NONCE_CACHE_CAPACITY);
 }
 
 #[test]

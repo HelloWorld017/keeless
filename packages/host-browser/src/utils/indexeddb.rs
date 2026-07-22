@@ -8,7 +8,8 @@ use wasm_bindgen::JsValue;
 const DATABASE_NAME: &str = "keeless";
 pub(crate) const CONFIG_STORE: &str = "config";
 pub(crate) const ENTRY_STORE: &str = "entries";
-pub(crate) const CONFIG_KEY: &str = "core";
+pub(crate) const CORE_CONFIG_KEY: &str = "core-settings-v1";
+pub(crate) const WIRE_CONFIG_KEY: &str = "lesswire-server-v1";
 
 pub(crate) fn js_error(error: impl std::fmt::Display) -> JsValue {
     js_sys::Error::new(&error.to_string()).into()

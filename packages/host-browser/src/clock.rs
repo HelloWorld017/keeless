@@ -14,3 +14,13 @@ impl Clock for BrowserClock {
             .max(0.0) as u64
     }
 }
+
+impl keeless_lesswire::Clock for BrowserClock {
+    fn now_millis(&self) -> i64 {
+        <Self as Clock>::now_millis(self)
+    }
+
+    fn monotonic_millis(&self) -> u64 {
+        <Self as Clock>::monotonic_millis(self)
+    }
+}

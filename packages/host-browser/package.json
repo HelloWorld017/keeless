@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@keeless/core": "workspace:*",
+    "@keeless/lesswire": "workspace:*",
     "@keeless/sync": "workspace:*"
   }
 }

@@ -23,12 +23,8 @@ impl<T: ?Sized> HostProviderRequirements for T {}
 
 pub trait ConfigProvider: HostProviderRequirements {
     fn load(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>>;
-    /// Persist the versioned core configuration, which contains private identity keys.
+    /// Persist the versioned core settings.
     fn save<'a>(&'a self, config: &'a [u8]) -> HostFuture<'a, Result<()>>;
-}
-
-pub trait ClientApprovalProvider: HostProviderRequirements {
-    fn approve(&self, public_key_bundle: &str) -> HostFuture<'_, Result<bool>>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,10 +78,8 @@ impl Clock for SystemClock {
 }
 
 pub struct KeelessHost {
-    pub default_approved_keys: Vec<String>,
     pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
     pub config_provider: Arc<dyn ConfigProvider>,
-    pub approval_provider: Arc<dyn ClientApprovalProvider>,
     pub password_input: Option<Arc<dyn PasswordInputProvider>>,
     pub clock: Arc<dyn Clock>,
 }
@@ -93,7 +87,6 @@ pub struct KeelessHost {
 impl std::fmt::Debug for KeelessHost {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeelessHost")
-            .field("default_approved_keys", &self.default_approved_keys)
             .field("storage_provider_names", &self.storage_providers.keys())
             .field("has_password_input", &self.password_input.is_some())
             .finish_non_exhaustive()

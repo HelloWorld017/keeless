@@ -1,0 +1,120 @@
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, AtomicI64, Ordering},
+};
+
+use super::*;
+
+#[derive(Default)]
+struct MemoryStore(Mutex<Option<Vec<u8>>>);
+impl StateStore for MemoryStore {
+    fn load(&self) -> WireFuture<'_, Result<Option<Vec<u8>>>> {
+        Box::pin(async { Ok(self.0.lock().unwrap().clone()) })
+    }
+    fn save<'a>(&'a self, state: &'a [u8]) -> WireFuture<'a, Result<()>> {
+        Box::pin(async move {
+            *self.0.lock().unwrap() = Some(state.to_vec());
+            Ok(())
+        })
+    }
+}
+struct Approval(AtomicBool);
+impl ApprovalProvider for Approval {
+    fn approve(&self, _: &str) -> WireFuture<'_, Result<bool>> {
+        Box::pin(async { Ok(self.0.load(Ordering::Relaxed)) })
+    }
+}
+struct TestClock(AtomicI64);
+impl Clock for TestClock {
+    fn now_millis(&self) -> i64 {
+        self.0.load(Ordering::Relaxed)
+    }
+    fn monotonic_millis(&self) -> u64 {
+        self.now_millis() as u64
+    }
+}
+
+#[tokio::test]
+async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
+    let store = Arc::new(MemoryStore::default());
+    let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
+    let client_identity = Identity::from_secrets([7; 32], [9; 32]);
+    let runtime_bundle = Identity::from_secrets([11; 32], [13; 32]).public_key_bundle();
+    let mut client = Client::new(client_identity, None, clock.clone()).unwrap();
+    let mut server = Server::new(ServerHost {
+        store: store.clone(),
+        approval_provider: Arc::new(Approval(AtomicBool::new(true))),
+        clock: clock.clone(),
+        runtime_approved_clients: vec![runtime_bundle.clone()],
+    })
+    .await
+    .unwrap();
+
+    let handshake = client.handshake_frame().unwrap();
+    let response = server
+        .handle_frame(&handshake, |_| async { Ok::<_, ()>(None) })
+        .await
+        .unwrap()
+        .unwrap();
+    let trusted = client.accept_handshake(&response).unwrap().unwrap();
+    assert_eq!(trusted, server.public_key_bundle());
+    assert!(
+        server
+            .handle_frame(&handshake, |_| async { Ok::<_, ()>(None) })
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let request = client.encrypt(b"secret request").unwrap();
+    let response = server
+        .handle_frame(&request, |plaintext| async move {
+            assert_eq!(&*plaintext, b"secret request");
+            Ok::<_, ()>(Some(b"secret response".to_vec()))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        &*client.decrypt(&response).unwrap().unwrap(),
+        b"secret response"
+    );
+    assert!(client.decrypt(&response).unwrap().is_none());
+
+    let state: serde_json::Value =
+        serde_json::from_slice(store.0.lock().unwrap().as_ref().unwrap()).unwrap();
+    assert!(
+        state["approvedClientBundles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == client.public_key_bundle().as_str())
+    );
+    assert!(
+        !state["approvedClientBundles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == runtime_bundle.as_str())
+    );
+}
+
+#[test]
+fn rejects_weak_signing_and_noncanonical_bundles() {
+    let weak = format!(
+        "v1.{}.{}",
+        URL_SAFE_NO_PAD.encode([0; 32]),
+        URL_SAFE_NO_PAD.encode([9; 32])
+    );
+    assert!(PublicKeyBundle::parse(&weak).is_none());
+    assert!(PublicKeyBundle::parse("v1.AA==.AA").is_none());
+}
+
+#[test]
+fn identity_round_trips_without_debugging_secrets() {
+    let identity = Identity::from_secrets([21; 32], [22; 32]);
+    let bytes = identity.to_bytes();
+    let restored = Identity::from_bytes(&bytes[..]).unwrap();
+    assert_eq!(restored.public_key_bundle(), identity.public_key_bundle());
+    assert_eq!(format!("{identity:?}"), "Identity([REDACTED])");
+}

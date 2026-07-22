@@ -3,20 +3,6 @@ use specta::Type;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MessageFrame {
-    pub version: u8,
-    pub timestamp: i64,
-    pub nonce: String,
-    #[serde(deserialize_with = "deserialize_nullable")]
-    pub ephemeral_public_key: Option<String>,
-    pub public_key: String,
-    #[serde(deserialize_with = "deserialize_nullable")]
-    pub payload: Option<String>,
-    pub signature: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StorageDescriptor {
     pub provider: String,
     pub path: String,

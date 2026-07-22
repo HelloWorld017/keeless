@@ -11,30 +11,6 @@ where
 }
 
 #[test]
-fn message_frame_uses_camel_case_and_nullable_fields() {
-    assert_roundtrip(
-        MessageFrame {
-            version: 1,
-            timestamp: 123,
-            nonce: "nonce".into(),
-            ephemeral_public_key: None,
-            public_key: "public".into(),
-            payload: Some("ciphertext".into()),
-            signature: "signature".into(),
-        },
-        json!({
-            "version": 1,
-            "timestamp": 123,
-            "nonce": "nonce",
-            "ephemeralPublicKey": null,
-            "publicKey": "public",
-            "payload": "ciphertext",
-            "signature": "signature"
-        }),
-    );
-}
-
-#[test]
 fn config_defaults_and_patch_preserve_three_states() {
     assert_eq!(
         KeelessConfig::default(),
@@ -865,15 +841,6 @@ fn success_response_is_flat_and_operation_specific() {
 
 #[test]
 fn required_nullable_and_empty_types_reject_ambiguous_shapes() {
-    let missing_ephemeral = json!({
-        "version": 1,
-        "timestamp": 123,
-        "nonce": "nonce",
-        "publicKey": "public",
-        "payload": null,
-        "signature": "signature"
-    });
-    assert!(serde_json::from_value::<MessageFrame>(missing_ephemeral).is_err());
     assert!(serde_json::from_value::<LockArgs>(json!({ "ignored": true })).is_err());
     assert!(serde_json::from_value::<StorageDescriptorResult>(json!({})).is_err());
 }

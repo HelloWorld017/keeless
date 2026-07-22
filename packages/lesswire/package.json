@@ -1,0 +1,28 @@
+{
+  "name": "@keeless/lesswire",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Authenticated encrypted wire protocol for Keeless",
+  "license": "MIT",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "check": "pnpm run '/^check:.*/'",
+    "check:format": "cargo fmt --check",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "test": "cargo test -p keeless_lesswire",
+    "typecheck": "tsgo --project tsconfig.json"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^2.2.0",
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0"
+  }
+}

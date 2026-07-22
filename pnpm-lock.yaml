@@ -49,21 +49,15 @@ importers:
       '@keeless/host-browser':
         specifier: workspace:*
         version: link:../host-browser
+      '@keeless/lesswire':
+        specifier: workspace:*
+        version: link:../lesswire
       '@keeless/schema':
         specifier: workspace:*
         version: link:../schema
       '@mesh-gradient/react':
         specifier: ^2.0.2
         version: 2.0.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      '@noble/ciphers':
-        specifier: ^2.2.0
-        version: 2.2.0
-      '@noble/curves':
-        specifier: ^2.2.0
-        version: 2.2.0
-      '@noble/hashes':
-        specifier: ^2.2.0
-        version: 2.2.0
       '@simplei18n/core':
         specifier: ^0.1.4
         version: 0.1.4(@types/react@19.2.17)(react@19.2.7)(typescript@6.0.3)
@@ -215,6 +209,9 @@ importers:
       '@keeless/core':
         specifier: workspace:*
         version: link:../core
+      '@keeless/lesswire':
+        specifier: workspace:*
+        version: link:../lesswire
       '@keeless/sync':
         specifier: workspace:*
         version: link:../sync
@@ -239,6 +236,18 @@ importers:
       '@keeless/kdbx':
         specifier: workspace:*
         version: link:../kdbx
+
+  packages/lesswire:
+    dependencies:
+      '@noble/ciphers':
+        specifier: ^2.2.0
+        version: 2.2.0
+      '@noble/curves':
+        specifier: ^2.2.0
+        version: 2.2.0
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
 
   packages/schema: {}
 

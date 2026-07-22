@@ -3,7 +3,7 @@ import { LocalFileSetup } from './_components/LocalFileSetup';
 import { WebDavSetup } from './_components/WebDavSetup';
 import type { Host, HostStorage } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';
-import type { MessageFrame } from '@keeless/schema';
+import type { MessageFrame } from '@keeless/lesswire';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder(undefined, { fatal: true });

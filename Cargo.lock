@@ -3295,20 +3295,16 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "chacha20poly1305",
- "ed25519-dalek",
  "getrandom 0.2.17",
- "hkdf",
  "keeless_kdbx",
  "keeless_schema",
  "keeless_secure_types",
  "keeless_sync",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
- "x25519-dalek",
  "zeroize",
 ]
 
@@ -3332,8 +3328,10 @@ dependencies = [
  "futures",
  "js-sys",
  "keeless_core",
+ "keeless_lesswire",
  "keeless_sync",
  "rexie",
+ "serde_json",
  "sha2 0.10.9",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3417,6 +3415,25 @@ dependencies = [
  "rpassword",
  "serde",
  "serde_json",
+ "zeroize",
+]
+
+[[package]]
+name = "keeless_lesswire"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "hkdf",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "specta",
+ "thiserror 2.0.18",
+ "tokio",
+ "x25519-dalek",
  "zeroize",
 ]
 
