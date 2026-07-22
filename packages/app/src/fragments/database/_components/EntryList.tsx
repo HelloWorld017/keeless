@@ -116,7 +116,7 @@ const VirtualEntryList = ({
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => getEntryItemSize(entries[index]) + 8,
+    estimateSize: index => getEntryItemSize(entries[index]) + 8,
     getItemKey: index => entryDndId(entries[index].id),
     overscan: 4,
   });

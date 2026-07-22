@@ -1,0 +1,22 @@
+{
+  "name": "@keeless/kdbx-debug",
+  "version": "0.0.0",
+  "private": true,
+  "description": "kdbx debugging util for keeless",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "cargo build --release -p keeless_kdbx_debug",
+    "check": "pnpm run '/^check:.*/'",
+    "check:format": "cargo fmt --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_kdbx_debug --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_kdbx_debug",
+    "typecheck": "cargo check -p keeless_kdbx_debug"
+  },
+  "dependencies": {
+    "@keeless/kdbx": "workspace:*"
+  }
+}

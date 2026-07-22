@@ -141,7 +141,20 @@ importers:
         specifier: ^1.0.0
         version: 1.1.0
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@keeless/kdbx':
+        specifier: workspace:*
+        version: link:../kdbx
+      '@keeless/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@keeless/secure-types':
+        specifier: workspace:*
+        version: link:../secure-types
+      '@keeless/sync':
+        specifier: workspace:*
+        version: link:../sync
 
   packages/desktop:
     dependencies:
@@ -151,13 +164,26 @@ importers:
 
   packages/extension: {}
 
-  packages/host-browser: {}
+  packages/host-browser:
+    dependencies:
+      '@keeless/core':
+        specifier: workspace:*
+        version: link:../core
+      '@keeless/sync':
+        specifier: workspace:*
+        version: link:../sync
 
   packages/kdbx:
     dependencies:
       '@keeless/secure-types':
         specifier: workspace:*
         version: link:../secure-types
+
+  packages/kdbx-debug:
+    dependencies:
+      '@keeless/kdbx':
+        specifier: workspace:*
+        version: link:../kdbx
 
   packages/schema: {}
 

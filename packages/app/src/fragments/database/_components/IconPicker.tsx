@@ -12,8 +12,8 @@ import { useRequest } from '@/fragments/_providers/QueryProvider';
 import { IconCheck } from '@/icons';
 import { cn } from '@/utils/css';
 import { useState } from 'react';
-import { ItemIcon } from './ItemIcon';
 import { standardIcons } from '../_constants/icons';
+import { ItemIcon } from './ItemIcon';
 import type { IconReference } from '@keeless/schema';
 import type { ComponentProps } from 'react';
 
@@ -30,7 +30,14 @@ const sameIcon = (left: IconReference, right: IconReference) =>
   left.standardId === right.standardId &&
   (left.customUuid ?? '').toLowerCase() === (right.customUuid ?? '').toLowerCase();
 
-export const IconPicker = ({ value, iconClassName, onChange, disabled, fallback, render }: IconPickerProps) => {
+export const IconPicker = ({
+  value,
+  iconClassName,
+  onChange,
+  disabled,
+  fallback,
+  render,
+}: IconPickerProps) => {
   const [open, setOpen] = useState(false);
   const customIcons = useRequest('getCustomIcons', {});
   const select = (icon: IconReference) => {

@@ -297,6 +297,7 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
     );
 }
 
+#[allow(clippy::bool_assert_comparison)]
 #[test]
 fn get_entries_excludes_trash_by_default_and_accepts_explicit_false() {
     assert_eq!(GetEntriesArgs::default().exclude_trash, true);

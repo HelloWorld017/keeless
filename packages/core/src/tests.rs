@@ -1806,19 +1806,19 @@ async fn entry_detail_resolves_layout_and_ignores_invalid_links() {
             ("@future", "Future", "Inline", 10, "1"),
         ] {
             template.add_custom_field(
-                &format!("_etm_title_{storage}"),
+                format!("_etm_title_{storage}"),
                 ProtectedString::new_plain(label),
             );
             template.add_custom_field(
-                &format!("_etm_type_{storage}"),
+                format!("_etm_type_{storage}"),
                 ProtectedString::new_plain(field_type),
             );
             template.add_custom_field(
-                &format!("_etm_position_{storage}"),
+                format!("_etm_position_{storage}"),
                 ProtectedString::new_plain(&position.to_string()),
             );
             template.add_custom_field(
-                &format!("_etm_options_{storage}"),
+                format!("_etm_options_{storage}"),
                 ProtectedString::new_plain(options),
             );
         }

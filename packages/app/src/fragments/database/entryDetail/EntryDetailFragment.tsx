@@ -406,7 +406,7 @@ const EntryDetailQuery = ({
               fallback="entry"
               disabled={pending}
               onChange={icon => editor.changeProperties({ icon })}
-              iconClassName='size-7.5'
+              iconClassName="size-7.5"
               render={
                 <Button
                   type="button"

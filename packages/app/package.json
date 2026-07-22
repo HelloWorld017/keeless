@@ -8,6 +8,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check": "pnpm run '/^check:.*$/'",
+    "check:lint": "pnpm run lint",
+    "check:format": "pnpm run format --check",
+    "check:type": "pnpm run typecheck",
     "lint": "oxlint",
     "format": "oxfmt",
     "generate": "simplei18n generate -D && oxfmt ./src/i18n",

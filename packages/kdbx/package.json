@@ -8,11 +8,15 @@
   "scripts": {
     "build": "cargo build --release -p keeless_kdbx",
     "check": "pnpm run '/^check:.*/'",
+    "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",
-    "check:wasm": "cargo check -p keeless_kdbx --lib --target wasm32-unknown-unknown",
+    "check:type": "pnpm run typecheck",
     "format": "cargo fmt",
     "lint": "cargo clippy -p keeless_kdbx --all-targets -- -D warnings",
-    "test": "cargo test -p keeless_kdbx"
+    "test": "cargo test -p keeless_kdbx",
+    "typecheck": "pnpm run '/^typecheck:.*/'",
+    "typecheck:native": "cargo check -p keeless_kdbx --lib",
+    "typecheck:wasm": "cargo check -p keeless_kdbx --lib --target wasm32-unknown-unknown"
   },
   "dependencies": {
     "@keeless/secure-types": "workspace:*"

@@ -1,5 +1,6 @@
-import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/item';
+import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
 import { cn, cx } from '@/utils/css';
+import { joinComponent } from '@/utils/joinComponent';
 import { ItemIcon } from './ItemIcon';
 import { Tag } from './Tag';
 import type { EntrySummary, TagSummary } from '@keeless/schema';
@@ -18,7 +19,7 @@ export const getEntryItemSize = (entry: EntrySummary) => {
     height += 6;
   }
 
-  return Math.max(height, 12) * 4;
+  return Math.max(height, 16) * 4;
 };
 
 export const EntryItem = ({
@@ -37,7 +38,10 @@ export const EntryItem = ({
   const title = getEntryTitle(entry);
   const username = entry.username || (entry.usernameIsProtected ? 'Protected username' : undefined);
   const url = entry.url || (entry.urlIsProtected ? 'Protected URL' : undefined);
-  const description = [username, url].filter(Boolean).join(' | ');
+  const description = joinComponent(
+    [username, url].filter(Boolean),
+    <span className="inline-block align-[-0.1cap] w-0.5 h-[1.2cap] mx-2 rounded-full bg-[currentColor] opacity-30 rotate-30" />,
+  );
 
   return (
     <Item
@@ -51,28 +55,33 @@ export const EntryItem = ({
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className={cx(selected && 'text-primary-foreground')}>{title}</ItemTitle>
-        {description && (
-          <ItemDescription className="flex h-5.5 items-center gap-1 overflow-hidden">
+        <ItemDescription className="flex flex-col gap-0.5 min-h-5.5">
+          {description && (
+            <div className="flex h-5.5 items-center gap-1 overflow-hidden">
               <span
-                className={cx('min-w-0 truncate break-all', selected && 'text-primary-foreground/75')}
+                className={cx(
+                  'min-w-0 truncate break-all',
+                  selected && 'text-primary-foreground/75',
+                )}
               >
                 {description}
               </span>
-          </ItemDescription>
-        )}
-        {!!entry.tags.length && (
-          <ItemDescription className="flex h-5.5 items-center gap-1 overflow-hidden">
+            </div>
+          )}
+          {!!entry.tags.length && (
+            <div className="flex h-5.5 items-center gap-1 overflow-hidden">
               {entry.tags.map(name => (
                 <Tag
                   key={name}
                   name={name}
                   tagStyle={tagCatalog.find(tag => tag.name === name)?.style}
                   variant={selected ? 'transparent' : 'default'}
-                  className='max-w-24'
+                  className="max-w-24"
                 />
               ))}
-          </ItemDescription>
-        )}
+            </div>
+          )}
+        </ItemDescription>
       </ItemContent>
     </Item>
   );
