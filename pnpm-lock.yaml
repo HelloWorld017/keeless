@@ -253,6 +253,15 @@ importers:
         specifier: ^0.22.13
         version: 0.22.13(@emnapi/core@1.11.1)(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@6.0.3)
 
+  packages/native-ui:
+    dependencies:
+      '@keeless/lesswire':
+        specifier: workspace:*
+        version: link:../lesswire
+      '@keeless/secure-types':
+        specifier: workspace:*
+        version: link:../secure-types
+
   packages/schema: {}
 
   packages/secure-types: {}

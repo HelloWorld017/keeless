@@ -1,0 +1,32 @@
+[package]
+name = "keeless_native_ui"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "AGPL-3.0"
+description = "One-shot encrypted native dialogs for Keeless"
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+hex = "0.4"
+keeless_lesswire = { path = "../lesswire" }
+rfd = { version = "0.15", default-features = false, features = ["tokio", "xdg-portal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
+thiserror = "2"
+zeroize = "1"
+
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+keeless_secure_types = { path = "../secure-types", features = ["use_os"] }
+
+[target.'cfg(not(any(target_os = "linux", target_os = "windows")))'.dependencies]
+keeless_secure_types = { path = "../secure-types" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[[bin]]
+name = "keeless-native-ui"
+path = "src/main.rs"

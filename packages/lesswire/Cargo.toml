@@ -25,3 +25,7 @@ getrandom = { version = "0.2", features = ["js"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
+
+[[bin]]
+name = "lesswire-debug"
+path = "src/bin/lesswire-debug.rs"

@@ -1,0 +1,23 @@
+{
+  "name": "@keeless/native-ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "encrypted native dialogs for keeless",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "scripts": {
+    "build": "cargo build --release -p keeless_native_ui",
+    "check": "pnpm run \"/^check:.*/\"",
+    "check:format": "cargo fmt --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_native_ui --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_native_ui",
+    "typecheck": "cargo check -p keeless_native_ui --all-targets"
+  },
+  "dependencies": {
+    "@keeless/lesswire": "workspace:*",
+    "@keeless/secure-types": "workspace:*"
+  }
+}
