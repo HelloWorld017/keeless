@@ -65,7 +65,7 @@ An approval dialog ensures that only explicitly authorized devices can establish
 
 * **Why did you create this?**  
   Why not?  
-  When I looked at existing desktop KeePass clients, it turned out that KeeWeb has way too outdated electron (which does not supports wayland),
+  When I looked at existing desktop KeePass clients, it turned out that KeeWeb has way too outdated electron (which does not support wayland),
   and KeePassXC does not have WebDAV support (+ it just didn't look very nice for me, in terms of aesthetics, honestly).  
   Plus, as GPT-5.6 Sol gave me many resets (Thank you Tibo), I really wanted to give this whole vibe-coding thing a try.
 
@@ -77,10 +77,14 @@ An approval dialog ensures that only explicitly authorized devices can establish
 
 * **Why are you using Electron? Electron is heavy and &#35;&#36;&#33;&#35;&#36;&#35;&#36;&#64;**  
   The initial version was built using Tauri but I had a hard time with WebkitGTK.  
-  Sorry Windows users, you were sacrificed for the Linux users. Also, you can always fork!
+  Sorry Windows users, you were sacrificed for the Linux users. Though, as always, you can fork!
 
 * **Can I contribute using AI?**  
-  In Korea, there's a term "naeronambul", which rougly translates to "For me, it's romance. For you, it's cheating".
+  In Korea, there's a term "naeronambul", which roughly translates to "For me, it's romance. For you, it's cheating".
   So, basically, no.  
   Buuuuut, if you have a < 1.5k LOC diff and if you can write the description in your own words, you can give it a shot.
   However, if I smell any slop in the code, I can close it without any further comments.
+
+* **Can you guarantee that the memory protection thing works well?**
+  No, I can not. But I tested for a few basic smoke tests manually on Windows.
+  If you are concerned about it, just test it yourself and share the results with me via issues.
