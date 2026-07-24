@@ -17,6 +17,9 @@ use tokio::{
 };
 use zeroize::Zeroizing;
 
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
 use crate::ipc::PickMode;
 
 const MAX_STDOUT_BYTES: usize = 64 * 1024;
@@ -86,13 +89,12 @@ impl NativeUi {
             ResponseStatus::Error(error) => Err(error),
             ResponseStatus::Selected => {
                 let response: PasswordSelected<'_> = decode_response(&plaintext)?;
+                let password = Zeroizing::new(response.result.password.into_bytes());
                 validate_selected(response.version, response.kind, response.status, "password")?;
-                if response.result.password.len() > 4096 {
+                if password.len() > 4096 {
                     return Err("native UI returned an oversized password".into());
                 }
-                Ok(Some(Zeroizing::new(
-                    response.result.password.as_bytes().to_vec(),
-                )))
+                Ok(Some(password))
             }
         }
     }
@@ -244,6 +246,8 @@ fn native_ui_command(path: &Path, public_key: &str, kind: &str, arguments: &str)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
     command
 }
 
@@ -399,8 +403,7 @@ struct ResponseHeader<'a> {
 struct ResponseError<'a> {
     #[serde(borrow)]
     code: &'a str,
-    #[serde(borrow)]
-    message: &'a str,
+    message: String,
 }
 
 #[derive(Deserialize)]
@@ -411,15 +414,13 @@ struct PasswordSelected<'a> {
     kind: &'a str,
     #[serde(borrow)]
     status: &'a str,
-    #[serde(borrow)]
-    result: PasswordResult<'a>,
+    result: PasswordResult,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PasswordResult<'a> {
-    #[serde(borrow)]
-    password: &'a str,
+struct PasswordResult {
+    password: String,
 }
 
 #[derive(Deserialize)]
@@ -430,15 +431,13 @@ struct FileSelected<'a> {
     kind: &'a str,
     #[serde(borrow)]
     status: &'a str,
-    #[serde(borrow)]
-    result: FileResult<'a>,
+    result: FileResult,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct FileResult<'a> {
-    #[serde(borrow)]
-    path: &'a str,
+struct FileResult {
+    path: String,
 }
 
 #[derive(Deserialize)]
@@ -499,5 +498,28 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn decodes_escaped_response_strings() {
+        let file: FileSelected<'_> = decode_response(
+            br#"{"version":1,"kind":"file","status":"selected","result":{"path":"C:\\path\\to\\example.kdbx"}}"#,
+        )
+        .unwrap();
+        assert_eq!(file.result.path, r"C:\path\to\example.kdbx");
+
+        let password: PasswordSelected<'_> = decode_response(
+            br#"{"version":1,"kind":"password","status":"selected","result":{"password":"a\\b\"c"}}"#,
+        )
+        .unwrap();
+        assert_eq!(password.result.password, r#"a\b"c"#);
+
+        assert!(matches!(
+            response_status(
+                br#"{"version":1,"kind":"file","status":"error","error":{"code":"invalid_path","message":"C:\\bad\\path"}}"#,
+                "file"
+            ),
+            Ok(ResponseStatus::Error(error)) if error == r"native UI invalid_path: C:\bad\path"
+        ));
     }
 }
