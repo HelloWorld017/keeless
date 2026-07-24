@@ -60,7 +60,7 @@ An approval dialog ensures that only explicitly authorized devices can establish
 ## FAQ
 > Not actually "frequently asked", but rather what I expect to be frequently asked.
 
-* **Is it safe?**
+* **Is it safe?**  
   At least I roughly audited the code myself, but you have no reason to trust me, so read the source, Luke.
 
 * **Why did you create this?**  
@@ -70,17 +70,17 @@ An approval dialog ensures that only explicitly authorized devices can establish
   Plus, as GPT-5.6 Sol gave me many resets (Thank you Tibo), I really wanted to give this whole vibe-coding thing a try.
 
 * **I like the design/features, but I'm not sure about the results of vibe coding.**  
-  In fact, most of the architectural design was done by me, so it is not actually 100% vibe coded.  
+  In fact, most of the architectural design was done by me, so it is not actually 100% vibe coded.
   But anyway if you don't want those, that's where the open-source comes into play.
   As the backend and the frontend are strictly separated, you can freely fork and create your own frontend/backend implementation.  
   If you rewrite the backend, please let me know so I can use your implementation.
 
-* **Why are you using Electron? Electron is heavy and &#35;&#36;&#33;&#35;&#36;&#35;&#36;&#64;**
+* **Why are you using Electron? Electron is heavy and &#35;&#36;&#33;&#35;&#36;&#35;&#36;&#64;**  
   The initial version was built using Tauri but I had a hard time with WebkitGTK.  
   Sorry Windows users, you were sacrificed for the Linux users. Also, you can always fork!
 
-* **Can I contribute using AI?**
-  In Korea, there's a term "naeronambul", which rougly translates to "For me, it's romance. For you, it's cheating".  
+* **Can I contribute using AI?**  
+  In Korea, there's a term "naeronambul", which rougly translates to "For me, it's romance. For you, it's cheating".
   So, basically, no.  
   Buuuuut, if you have a < 1.5k LOC diff and if you can write the description in your own words, you can give it a shot.
   However, if I smell any slop in the code, I can close it without any further comments.

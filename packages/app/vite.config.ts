@@ -1,14 +1,40 @@
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { dts as rolldownDts } from 'rolldown-plugin-dts';
 import simplei18n from '@simplei18n/core/vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, esmExternalRequirePlugin } from 'vite';
+import type { Plugin } from 'vite';
+import {readFile} from 'node:fs/promises';
 
 const dts = (...args: Parameters<typeof rolldownDts>) =>
   rolldownDts(...args).map(
     (plugin) => plugin.name.endsWith("fake-js") ? { ...plugin, enforce: "pre" } : plugin
   );
+
+const asset = (): Plugin => {
+  return {
+    name: 'vite-plugin-emit-asset',
+    enforce: 'pre',
+
+    async load(id) {
+      if (!id.endsWith('?asset')) {
+        return null;
+      }
+
+      const file = id.replace(/\?.*$/, '');
+      const referenceId = this.emitFile({
+        type: 'asset',
+        name: basename(file),
+        source: await readFile(file),
+      });
+
+      return `
+        export default import.meta.ROLLUP_FILE_URL_${referenceId};
+      `;
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => ({
   build: {
@@ -28,6 +54,12 @@ export default defineConfig(({ mode }) => ({
     exclude: [/\.js$/, /\.d\.[cm]?ts$/],
   },
 
+  define: {
+    ...(mode !== 'lib' && {
+      __KEELESS_BROWSER_HOST_DISABLED__: 'false',
+    }),
+  },
+
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -36,6 +68,7 @@ export default defineConfig(({ mode }) => ({
 
   plugins: [
     ...(mode === 'lib' ? [
+      asset(),
       dts({ generator: 'tsgo' }),
       esmExternalRequirePlugin({
         external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/],

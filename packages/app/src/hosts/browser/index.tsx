@@ -15,6 +15,13 @@ const isBrowserAvailable = () =>
 export const createBrowserHost = (): Host => {
   let core: BrowserCore | undefined;
 
+  if (
+    typeof __KEELESS_BROWSER_HOST_DISABLED__ !== 'undefined' &&
+    __KEELESS_BROWSER_HOST_DISABLED__ === true
+  ) {
+    throw new Error('browser host is disabled!');
+  }
+
   const requireCore = () => {
     if (!core) {
       throw new Error('Browser host is not connected');

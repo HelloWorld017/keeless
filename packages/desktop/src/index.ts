@@ -79,7 +79,7 @@ const createWindow = async () => {
     show: false,
     icon: iconPath(),
     webPreferences: {
-      preload: join(dirname, '../renderer/preload.js'),
+      preload: join(dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

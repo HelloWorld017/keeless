@@ -93,43 +93,51 @@ const asset = (): Plugin => ({
   }
 });
 
-export default defineConfig(({ isSsrBuild }) => ({
-  build: {
-    rolldownOptions: {
-      input: isSsrBuild ? './src/index.ts' : {
-        index: './index.html',
-        preload: './src/renderer/preload.ts',
+export default defineConfig(({ mode, isSsrBuild }) => {
+  const isMain = !!isSsrBuild;
+  const isPreload = !isMain && mode === 'preload';
+
+  return {
+    build: {
+      lib: isPreload && {
+        entry: './src/renderer/preload.ts',
+        fileName: 'index',
+        formats: ['cjs'],
       },
-      output: {
-        ...(isSsrBuild && { assetFileNames: 'assets/[name][extname]' })
+      rolldownOptions: {
+        ...(isMain && { input: './src/index.ts' }),
+        output: {
+          ...(isMain && { assetFileNames: 'assets/[name][extname]' })
+        },
+        external: ['electron'],
       },
+      ssrEmitAssets: true,
+      outDir: isMain ? 'dist/main' : isPreload ? 'dist/preload' : 'dist/renderer',
+    },
+
+    define: {
+      __ENV__: JSON.stringify(env),
+      __PLATFORM__: JSON.stringify(platform),
+      __KEELESS_BROWSER_HOST_DISABLED__: 'true',
+      'process.env.NODE_ENV': env
+    },
+
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src')
+      },
+      conditions: ['node'],
+    },
+
+    ssr: {
+      target: 'node',
       external: ['electron'],
+      noExternal: true,
     },
-    ssrEmitAssets: true,
-    outDir: isSsrBuild ? 'dist/main' : 'dist/renderer',
-  },
 
-  define: {
-    __PLATFORM__: JSON.stringify(platform),
-    __ENV__: JSON.stringify(env),
-    'process.env.NODE_ENV': env
-  },
-
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src')
-    },
-    conditions: ['node'],
-  },
-
-  ssr: {
-    target: 'node',
-    external: ['electron'],
-    noExternal: true,
-  },
-
-  plugins: [
-    react(),
-    ...(isSsrBuild ? [asset(), napi(), binary()] : []),
-  ],
-}));
+    plugins: [
+      react(),
+      ...(isMain ? [asset(), napi(), binary()] : []),
+    ],
+  };
+});

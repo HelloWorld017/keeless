@@ -26,6 +26,8 @@ declare global {
   interface Window {
     showOpenFilePicker?(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>;
   }
+
+  declare const __KEELESS_BROWSER_HOST_DISABLED__: boolean | undefined;
 }
 
 export {};
