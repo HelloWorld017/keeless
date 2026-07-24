@@ -60,10 +60,9 @@ parent may approve the `publicKey` in that frame only for this response because
 the frame came directly from the stdout pipe of the child it spawned.
 
 `--public-key` provides response confidentiality; it does not authenticate the
-process that launched the dialog. The native host must spawn this binary itself,
-keep stdin/stdout private, and bind child lifetime to the host process. Parent
-death monitoring and stronger inherited-channel authentication belong in that
-spawn integration rather than in the standalone dialog protocol.
+process that launched the dialog. The native host must spawn this binary itself
+and keep stdin/stdout private. The host keeps the child's piped stdin open for
+the duration of the request; EOF closes the helper when its parent exits.
 
 ## Password handling
 

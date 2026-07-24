@@ -5,13 +5,12 @@
   "description": "Rust/WASM browser host for Keeless",
   "license": "AGPL-3.0",
   "type": "module",
-  "files": [
-    "dist",
-    "index.d.ts"
-  ],
+  "main": "./dist/keeless_host_browser.js",
+  "types": "./dist/keeless_host_browser.d.ts",
+  "files": ["dist"],
   "exports": {
     ".": {
-      "types": "./index.d.ts",
+      "types": "./dist/keeless_host_browser.d.ts",
       "import": "./dist/keeless_host_browser.js"
     }
   },

@@ -22,16 +22,8 @@
         wayland
       ];
       desktopBuildInputs = with pkgs; (libBuildInputs ++ [
-        dbus
-        glib
-        gtk3
-        libappindicator-gtk3
-        librsvg
-        libsoup_3
-        openssl
-        webkitgtk_4_1
+        electron
       ]);
-      desktopNativeBuildInputs = with pkgs; [ pkg-config wrapGAppsHook3 ];
       packageFor = cargoPackage:
         craneLib.buildPackage {
           pname = cargoPackage;
@@ -39,8 +31,6 @@
           src = craneLib.cleanCargoSource ./.;
           strictDeps = true;
           cargoExtraArgs = "--package ${cargoPackage}";
-          buildInputs = desktopBuildInputs;
-          nativeBuildInputs = desktopNativeBuildInputs;
           meta.mainProgram = cargoPackage;
         };
     in {
@@ -49,8 +39,11 @@
       };
 
       devShells.default = craneLib.devShell {
-        packages = [ pkgs.lld pkgs.wasm-pack ] ++ desktopBuildInputs ++ desktopNativeBuildInputs;
+        packages = [ pkgs.lld pkgs.wasm-pack ] ++ desktopBuildInputs;
+
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libBuildInputs;
+        ELECTRON_OVERRIDE_DIST_PATH = "${pkgs.electron_42}/bin";
+        ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
       };
     });
 }

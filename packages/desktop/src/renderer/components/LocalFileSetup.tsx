@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useState } from 'react';
 import type { StorageSetupComponentProps } from '@keeless/app';
 
@@ -21,7 +20,7 @@ export const LocalFileSetup = ({
     setIsPicking(true);
     setPickerError(undefined);
     try {
-      const capabilityToken = await invoke<string | null>('pick_local_file', { mode });
+      const capabilityToken = await window.keelessDesktop.pickLocalFile(mode);
       if (capabilityToken) {
         await onOpen(() => ({ provider: 'local-file', path: capabilityToken }));
       }

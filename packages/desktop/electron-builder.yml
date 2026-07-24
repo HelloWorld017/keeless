@@ -1,0 +1,23 @@
+appId: dev.nenw.keeless
+productName: keeless
+directories:
+  output: release
+  buildResources: icons
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - assets/*.node
+extraResources:
+  - from: resources/bin
+    to: bin
+  - from: icons
+    to: icons
+linux:
+  icon: icons/icon.png
+  target:
+    - AppImage
+win:
+  icon: icons/icon.ico
+  target:
+    - nsis

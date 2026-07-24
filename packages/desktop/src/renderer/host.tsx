@@ -1,7 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
 import { LocalFileSetup } from './components/LocalFileSetup';
 import type { Host, HostStorage } from '@keeless/app';
-import type { MessageFrame } from '@keeless/lesswire';
 
 const FileIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -30,6 +28,6 @@ export const desktopHost: Host = {
   label: 'Desktop',
   storages,
   isAvailable: async () => true,
-  connect: bundle => invoke('register_client', { bundle }),
-  send: frame => invoke<MessageFrame | null>('relay_frame', { frame }),
+  connect: bundle => window.keelessDesktop.registerClient(bundle),
+  send: frame => window.keelessDesktop.relayFrame(frame),
 };

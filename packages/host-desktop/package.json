@@ -5,8 +5,25 @@
   "description": "native desktop host for keeless",
   "license": "AGPL-3.0",
   "type": "module",
+  "main": "./dist/keeless_host_desktop.node",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": "./dist/keeless_host_desktop.node"
+    }
+  },
+  "napi": {
+    "binaryName": "keeless_host_desktop",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
   "scripts": {
-    "build": "cargo build --release -p keeless_host_desktop",
+    "build": "napi build --release -o dist",
+    "build:debug": "napi build -o dist",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",
@@ -19,5 +36,8 @@
   "dependencies": {
     "@keeless/core": "workspace:*",
     "@keeless/sync": "workspace:*"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.4.0"
   }
 }

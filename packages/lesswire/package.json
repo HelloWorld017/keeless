@@ -34,11 +34,11 @@
     "typecheck:ts": "tsgo --project tsconfig.json"
   },
   "dependencies": {
-    "@noble/ciphers": "^2.2.0",
-    "@noble/curves": "^2.2.0",
-    "@noble/hashes": "^2.2.0"
+    "@noble/ciphers": "2.2.0",
+    "@noble/curves": "2.2.0",
+    "@noble/hashes": "2.2.0"
   },
   "devDependencies": {
-    "tsdown": "^0.22.13"
+    "tsdown": "0.22.13"
   }
 }

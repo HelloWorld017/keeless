@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
   "packages/core",
-  "packages/desktop",
   "packages/host-browser",
   "packages/host-desktop",
   "packages/kdbx",
