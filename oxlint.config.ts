@@ -44,6 +44,7 @@ export default defineConfig({
     'class-methods-use-this': 'off',
     'curly': ['error', 'all'],
     'no-console': ['error', { allow: ['warn', 'error', 'info'] }],
+    'no-underscore-dangle': 'off',
     'prefer-const': 'off',
     'prefer-promise-reject-errors': 'off',
   },

@@ -17,7 +17,7 @@ export const createBrowserHost = (): Host => {
 
   if (
     typeof __KEELESS_BROWSER_HOST_DISABLED__ !== 'undefined' &&
-    __KEELESS_BROWSER_HOST_DISABLED__ === true
+    __KEELESS_BROWSER_HOST_DISABLED__
   ) {
     throw new Error('browser host is disabled!');
   }

@@ -30,6 +30,7 @@ const napi = (): Plugin => ({
         `,
       };
     }
+
     return null;
   },
 });
@@ -41,10 +42,12 @@ const binary = (): Plugin => ({
     if (source.startsWith(binaryPrefix)) {
       return `\x00${source}`;
     }
+
+    return null;
   },
   async load(id) {
     if (!id.startsWith(`\x00${binaryPrefix}`)) {
-      return;
+      return null;
     }
 
     const name = id.slice(binaryPrefix.length + 1);
@@ -73,10 +76,12 @@ const asset = (): Plugin => ({
     if (source.endsWith('?asset')) {
       return `\x00${assetPrefix}${source.slice(0, -6)}`;
     }
+
+    return null;
   },
   async load(id) {
     if (!id.startsWith(`\x00${assetPrefix}`)) {
-      return;
+      return null;
     }
 
     const path = id.slice(assetPrefix.length + 1);
