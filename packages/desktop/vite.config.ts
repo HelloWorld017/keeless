@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { chmod, readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -36,37 +36,50 @@ const napi = (): Plugin => ({
 });
 
 const binaryPrefix = 'binary:';
-const binary = (): Plugin => ({
-  name: 'vite-plugin-binary',
-  async resolveId(source) {
-    if (source.startsWith(binaryPrefix)) {
-      return `\x00${source}`;
-    }
+const binary = (): Plugin => {
+  const emittedBinaries = new Map<string, string>();
+  return {
+    name: 'vite-plugin-binary',
+    async resolveId(source) {
+      if (source.startsWith(binaryPrefix)) {
+        return `\x00${source}`;
+      }
 
-    return null;
-  },
-  async load(id) {
-    if (!id.startsWith(`\x00${binaryPrefix}`)) {
       return null;
+    },
+    async load(id) {
+      if (!id.startsWith(`\x00${binaryPrefix}`)) {
+        return null;
+      }
+
+      const name = id.slice(binaryPrefix.length + 1);
+      const profile = env === 'production' ? 'release' : 'debug';
+      const executableSuffix = platform === 'win32' ? '.exe' : '';
+      const assetPath = resolve(dirname, `../../target/${profile}/${name}${executableSuffix}`);
+
+      const referenceId = this.emitFile({
+        type: 'asset',
+        name: `${name}${executableSuffix}`,
+        source: await readFile(assetPath),
+      });
+
+      emittedBinaries.set(referenceId, `${name}${executableSuffix}`);
+
+      return ts`
+        import { fileURLToPath } from 'node:url';
+        export default fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
+      `;
+    },
+    async writeBundle(options) {
+      const outputDir = options.dir || resolve(options.file ? resolve(options.file, '..') : 'dist');
+      for (const [referenceId] of emittedBinaries) {
+        const fileName = this.getFileName(referenceId);
+        const fullPath = resolve(outputDir, fileName);
+        await chmod(fullPath, 0o755);
+      }
     }
-
-    const name = id.slice(binaryPrefix.length + 1);
-    const profile = env === 'production' ? 'release' : 'debug';
-    const executableSuffix = platform === 'win32' ? '.exe' : '';
-    const assetPath = resolve(dirname, `../../target/${profile}/${name}${executableSuffix}`);
-
-    const referenceId = this.emitFile({
-      type: 'asset',
-      name: `${name}${executableSuffix}`,
-      source: await readFile(assetPath),
-    });
-
-    return ts`
-      import { fileURLToPath } from 'node:url';
-      export default fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
-    `;
-  },
-});
+  };
+};
 
 const assetPrefix = 'asset:';
 const asset = (): Plugin => ({
@@ -90,7 +103,6 @@ const asset = (): Plugin => ({
       name: basename(path),
       source: await readFile(path),
     });
-
     return ts`
       import { fileURLToPath } from 'node:url';
       export default fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
