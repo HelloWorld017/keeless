@@ -1,6 +1,6 @@
 use keeless_schema::{DeleteTagArgs, EmptyResult, OperationSuccess};
 
-use crate::tag_styles;
+use crate::features::tag_styles;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore, args: DeleteTagArgs) -> Result<EmptyResult> {

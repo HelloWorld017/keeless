@@ -3,11 +3,11 @@
 mod config;
 mod credential;
 mod error;
+mod features;
 mod host;
 mod model;
 mod network;
 mod operations;
-mod tag_styles;
 
 use std::{collections::HashMap, sync::Arc};
 

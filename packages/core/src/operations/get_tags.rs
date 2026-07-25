@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use keeless_kdbx::TagQuery;
 use keeless_schema::{GetTagsArgs, OperationSuccess, TagSummary, TagsResult};
 
+use crate::features::tag_styles;
 use crate::model::all_entries;
-use crate::tag_styles;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Result<TagsResult> {
