@@ -40,9 +40,9 @@
 - [ ] desktop용 cache + journal로 저장하는 storage wrapper
 - [ ] vhid 구현
 - [ ] extension + native messaging host 구현
-- [ ] CompositeKey Argon 풀어둔채로 저장하기
 - [ ] 화면 캡쳐 방어
 - [ ] SetSecurityInfo (메인 프로세스 / 렌더러 프로세스 원격 스레드, 덤프 차단)
+- [ ] auto save 및 dirty status 보여주기
 
 ## Installation
 
