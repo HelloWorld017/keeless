@@ -10,7 +10,6 @@ description = "One-shot encrypted native dialogs for Keeless"
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 hex = "0.4"
 keeless_lesswire = { path = "../lesswire" }
-rfd = { version = "0.15", default-features = false, features = ["tokio", "xdg-portal"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

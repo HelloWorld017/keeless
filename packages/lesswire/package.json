@@ -4,7 +4,9 @@
   "private": true,
   "description": "wire protocol for keeless",
   "license": "MIT",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

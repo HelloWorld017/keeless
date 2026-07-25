@@ -27,7 +27,7 @@ declare global {
     showOpenFilePicker?(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>;
   }
 
-  declare const __KEELESS_BROWSER_HOST_DISABLED__: boolean | undefined;
+  const __KEELESS_BROWSER_HOST_DISABLED__: boolean | undefined;
 }
 
 export {};

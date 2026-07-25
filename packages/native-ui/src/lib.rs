@@ -13,7 +13,7 @@ use thiserror::Error;
 use zeroize::Zeroizing;
 
 use crate::{
-    dialogs::{pick_file, prompt_connection, prompt_password},
+    dialogs::{prompt_connection, prompt_password},
     protocol::{Arguments, PlaintextResponse, UiRequest},
 };
 
@@ -47,7 +47,6 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), Error> {
             Ok(password) => PlaintextResponse::password(password),
             Err(error) => PlaintextResponse::error("password", "ui_unavailable", error),
         },
-        UiRequest::File(request) => PlaintextResponse::file(pick_file(&request)),
         UiRequest::Connection(request) => match prompt_connection(request) {
             Ok(allowed) => PlaintextResponse::connection(allowed),
             Err(error) => PlaintextResponse::error("connection", "ui_unavailable", error),

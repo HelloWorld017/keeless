@@ -1,13 +1,10 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    protocol::{ConnectionRequest, FileMode, FileRequest, PasswordMode, PasswordRequest},
+    protocol::{ConnectionRequest, PasswordMode, PasswordRequest},
     secure_text_edit::{SecureTextBuffer, SecureTextEditState, secure_text_edit},
 };
 
@@ -40,26 +37,6 @@ pub fn prompt_connection(request: ConnectionRequest) -> DialogResult<bool> {
     };
     run_dialog(title, [500.0, 240.0], app)?;
     take_result(&result)
-}
-
-pub fn pick_file(request: &FileRequest) -> Option<PathBuf> {
-    let mut dialog = rfd::FileDialog::new();
-    if let Some(title) = &request.title {
-        dialog = dialog.set_title(title);
-    }
-    if let Some(directory) = &request.directory {
-        dialog = dialog.set_directory(directory);
-    }
-    if let Some(file_name) = &request.file_name {
-        dialog = dialog.set_file_name(file_name);
-    }
-    for filter in &request.filters {
-        dialog = dialog.add_filter(&filter.name, &filter.extensions);
-    }
-    match request.mode {
-        FileMode::Open => dialog.pick_file(),
-        FileMode::Save => dialog.save_file(),
-    }
 }
 
 fn run_dialog(title: &str, size: [f32; 2], app: impl eframe::App + 'static) -> Result<(), String> {

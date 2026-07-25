@@ -1,12 +1,12 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
-import keeless from '@keeless/host-desktop';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import iconIco from '@/assets/icons/icon.ico?asset';
 import iconPng from '@/assets/icons/icon.png?asset';
+import keeless from '@keeless/host-desktop';
 import nativeUiPath from 'binary:keeless-native-ui';
-import type { MessageFrame } from '@keeless/lesswire';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
 import type { DesktopHost as DesktopHostType } from '@keeless/host-desktop';
+import type { MessageFrame } from '@keeless/lesswire';
 
 const dirname = fileURLToPath(new URL('.', import.meta.url));
 const minimized = process.argv.slice(1).includes('--minimized');
@@ -18,12 +18,17 @@ let host: DesktopHostType | undefined;
 let quitting = false;
 let shutdownComplete = false;
 
-const iconPath = () =>
-  __PLATFORM__ === 'win32' ? iconIco : iconPng;
+const iconPath = () => (__PLATFORM__ === 'win32' ? iconIco : iconPng);
+
+const databaseFilters = [{ name: 'KeePass database', extensions: ['kdbx'] }];
 
 const showWindow = () => {
-  if (!browserWindow) return;
-  if (browserWindow.isMinimized()) browserWindow.restore();
+  if (!browserWindow) {
+    return;
+  }
+  if (browserWindow.isMinimized()) {
+    browserWindow.restore();
+  }
   browserWindow.show();
   browserWindow.focus();
 };
@@ -51,7 +56,9 @@ const waitForOnline = (url: string) => {
 const installIpc = () => {
   ipcMain.handle('desktop:register-client', async (event, bundle: unknown) => {
     assertSender(event);
-    if (typeof bundle !== 'string') throw new Error('Invalid client bundle');
+    if (typeof bundle !== 'string') {
+      throw new Error('Invalid client bundle');
+    }
     await host?.registerClient(bundle);
   });
 
@@ -64,8 +71,30 @@ const installIpc = () => {
 
   ipcMain.handle('desktop:pick-local-file', async (event, mode: unknown) => {
     assertSender(event);
-    if (mode !== 'open' && mode !== 'create') throw new Error('Invalid file picker mode');
-    return host?.pickLocalFile(mode);
+    if (mode !== 'open' && mode !== 'create') {
+      throw new Error('Invalid file picker mode');
+    }
+    if (!browserWindow || !host) {
+      throw new Error('Desktop host is unavailable');
+    }
+
+    const path =
+      mode === 'open'
+        ? await dialog
+            .showOpenDialog(browserWindow, {
+              title: 'Choose a KeePass database',
+              filters: databaseFilters,
+              properties: ['openFile'],
+            })
+            .then(result => result.filePaths[0])
+        : await dialog
+            .showSaveDialog(browserWindow, {
+              title: 'Choose a KeePass database',
+              filters: databaseFilters,
+            })
+            .then(result => result.filePath);
+
+    return path ? host.grantLocalFile(path) : null;
   });
 };
 
@@ -94,7 +123,9 @@ const createWindow = async () => {
   });
 
   browserWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://')) void shell.openExternal(url);
+    if (url.startsWith('https://')) {
+      void shell.openExternal(url);
+    }
     return { action: 'deny' };
   });
 
@@ -107,7 +138,9 @@ const createWindow = async () => {
     await browserWindow.loadFile(join(dirname, '../renderer/index.html'));
   }
 
-  if (!minimized) showWindow();
+  if (!minimized) {
+    showWindow();
+  }
 };
 
 const createTray = () => {

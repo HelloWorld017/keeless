@@ -25,7 +25,7 @@ use tokio::{
 
 use crate::{
     config::{CORE_SETTINGS_FILE, DesktopConfig, WIRE_STATE_FILE},
-    ipc::{PickMode, Request, Response, ServerListener},
+    ipc::{Request, Response, ServerListener},
     native_ui::NativeUi,
     storage::LocalFileStorage,
 };
@@ -33,7 +33,6 @@ use crate::{
 struct HostState {
     inner: Mutex<InnerState>,
     storage: Arc<LocalFileStorage>,
-    native_ui: Arc<NativeUi>,
 }
 
 struct InnerState {
@@ -99,7 +98,6 @@ impl DesktopHost {
         let state = Arc::new(HostState {
             inner: Mutex::new(InnerState { core, server }),
             storage,
-            native_ui,
         });
         let listener = bind_listener().map_err(|error| napi_error(error.to_string()))?;
         let tasks = vec![
@@ -138,16 +136,17 @@ impl DesktopHost {
             .map_err(napi_error)
     }
 
-    #[napi(js_name = "pickLocalFile")]
-    pub async fn pick_local_file(&self, mode: String) -> napi::Result<Option<String>> {
+    #[napi(js_name = "grantLocalFile")]
+    pub fn grant_local_file(&self, path: String) -> napi::Result<String> {
         self.ensure_open()?;
-        let mode = match mode.as_str() {
-            "open" => PickMode::Open,
-            "create" => PickMode::Create,
-            _ => return Err(napi_error("invalid file picker mode")),
-        };
-        pick_local_file(&self.runtime.state, mode)
-            .await
+        let path = PathBuf::from(path);
+        if !path.is_absolute() {
+            return Err(napi_error("local file path must be absolute"));
+        }
+        self.runtime
+            .state
+            .storage
+            .grant_picker_path(path)
             .map_err(napi_error)
     }
 
@@ -202,26 +201,11 @@ async fn handle_frame(state: &HostState, bytes: &[u8]) -> Result<Option<Vec<u8>>
         .transpose()
 }
 
-async fn pick_local_file(state: &HostState, mode: PickMode) -> Result<Option<String>, String> {
-    let path = state.native_ui.pick_file(mode).await?;
-    path.map(|path| {
-        state
-            .storage
-            .grant_picker_path(path)
-            .map_err(|error| error.to_string())
-    })
-    .transpose()
-}
-
 async fn handle_request(request: Request, state: &HostState) -> Response {
     match request {
         Request::Ping => Response::Pong,
         Request::HandleFrame(bytes) => match handle_frame(state, &bytes).await {
             Ok(frame) => Response::Frame(frame),
-            Err(error) => Response::Error(error),
-        },
-        Request::PickLocalFile(mode) => match pick_local_file(state, mode).await {
-            Ok(token) => Response::LocalFile(token),
             Err(error) => Response::Error(error),
         },
     }

@@ -15,24 +15,16 @@ pub const NAMESPACE: &str = "dev.nenw.keeless";
 pub const MAX_MESSAGE_SIZE: usize = 2 * 1024 * 1024;
 const PROTOCOL_VERSION: u8 = 1;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum PickMode {
-    Open,
-    Create,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Request {
     Ping,
     HandleFrame(Vec<u8>),
-    PickLocalFile(PickMode),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Response {
     Pong,
     Frame(Option<Vec<u8>>),
-    LocalFile(Option<String>),
     Error(String),
 }
 
@@ -82,13 +74,6 @@ impl Client {
         match Self::request(Request::HandleFrame(frame)).await? {
             Response::Frame(frame) => Ok(frame),
             _ => Err(IpcError::Protocol("unexpected frame response".into())),
-        }
-    }
-
-    pub async fn pick_local_file(mode: PickMode) -> Result<Option<String>> {
-        match Self::request(Request::PickLocalFile(mode)).await? {
-            Response::LocalFile(token) => Ok(token),
-            _ => Err(IpcError::Protocol("unexpected file-picker response".into())),
         }
     }
 }

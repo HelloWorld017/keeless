@@ -28,6 +28,22 @@
 **`Working On My Machine™`**  
 > If you intend to use this, please backup your database and expect data loss.
 
+## TODO
+- [ ] 엔트리 검색 로직 러스트로 일원화 [skim](https://github.com/skim-rs/skim)사용, `tag:` 쿼리, `in:` 쿼리
+- [ ] WebDAV 싱크 테스트 하기
+- [ ] DB 내보내기 기능
+- [ ] 설정 UI
+- [ ] Attachment 다운로드 가능
+- [ ] setuplayout에서 위에 <- Back으로 하게, router로 이동하게
+- [ ] enforce_auto_lock을 dispatch 시에 구현하지말고 자체 timeout으로 작업하게
+- [ ] per-database config store
+- [ ] desktop용 cache + journal로 저장하는 storage wrapper
+- [ ] vhid 구현
+- [ ] extension + native messaging host 구현
+- [ ] CompositeKey Argon 풀어둔채로 저장하기
+- [ ] 화면 캡쳐 방어
+- [ ] SetSecurityInfo (메인 프로세스 / 렌더러 프로세스 원격 스레드, 덤프 차단)
+
 ## Installation
 
 ## Screenshot

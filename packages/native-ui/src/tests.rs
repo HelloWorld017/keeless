@@ -20,10 +20,6 @@ fn parses_each_ui_kind() {
     for (kind, json) in [
         ("password", r#"{"mode":"unlock"}"#),
         (
-            "file",
-            r#"{"mode":"open","filters":[{"name":"KeePass","extensions":["kdbx"]}]}"#,
-        ),
-        (
             "connection",
             &format!(r#"{{"publicKey":"{key}","name":"Browser extension"}}"#),
         ),
@@ -31,15 +27,13 @@ fn parses_each_ui_kind() {
         let arguments = Arguments::parse(arguments(&key, kind, json)).unwrap();
         assert!(matches!(
             (kind, arguments.request),
-            ("password", UiRequest::Password(_))
-                | ("file", UiRequest::File(_))
-                | ("connection", UiRequest::Connection(_))
+            ("password", UiRequest::Password(_)) | ("connection", UiRequest::Connection(_))
         ));
     }
 }
 
 #[test]
-fn rejects_unknown_fields_and_invalid_filters() {
+fn rejects_unknown_fields_and_unsafe_labels() {
     let key = Identity::generate().unwrap().public_key_bundle();
     let unknown = Arguments::parse(arguments(
         &key,
@@ -47,20 +41,6 @@ fn rejects_unknown_fields_and_invalid_filters() {
         r#"{"mode":"unlock","secret":"value"}"#,
     ));
     assert!(matches!(unknown, Err(Error::InvalidRequest(_))));
-
-    let invalid_filter = Arguments::parse(arguments(
-        &key,
-        "file",
-        r#"{"mode":"open","filters":[{"name":"All","extensions":["../*"]}]}"#,
-    ));
-    assert!(matches!(invalid_filter, Err(Error::InvalidRequest(_))));
-
-    let nul_directory = Arguments::parse(arguments(
-        &key,
-        "file",
-        r#"{"mode":"open","directory":"bad\u0000path"}"#,
-    ));
-    assert!(matches!(nul_directory, Err(Error::InvalidRequest(_))));
 
     let bidi_name = Arguments::parse(arguments(
         &key,
@@ -118,7 +98,7 @@ async fn encrypted_response_round_trips_through_lesswire_server() {
     .await
     .unwrap();
     let recipient = keeless_lesswire::PublicKeyBundle::parse(&server.public_key_bundle()).unwrap();
-    let plaintext = br#"{"version":1,"kind":"file","status":"cancelled"}"#;
+    let plaintext = br#"{"version":1,"kind":"password","status":"cancelled"}"#;
     let frame = encrypt(&recipient, plaintext).unwrap();
     server.add_runtime_approval(&frame.public_key).unwrap();
 

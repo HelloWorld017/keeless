@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
-import {fileURLToPath} from 'node:url';
 
 const dirname = fileURLToPath(new URL('.', import.meta.url));
 const platform = process.env.PLATFORM ?? process.platform;
@@ -31,7 +31,7 @@ const napi = (): Plugin => ({
       };
     }
     return null;
-  }
+  },
 });
 
 const binaryPrefix = 'binary:';
@@ -62,7 +62,7 @@ const binary = (): Plugin => ({
       import { fileURLToPath } from 'node:url';
       export default fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
     `;
-  }
+  },
 });
 
 const assetPrefix = 'asset:';
@@ -90,7 +90,7 @@ const asset = (): Plugin => ({
       import { fileURLToPath } from 'node:url';
       export default fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
     `;
-  }
+  },
 });
 
 export default defineConfig(({ mode, isSsrBuild }) => {
@@ -107,7 +107,7 @@ export default defineConfig(({ mode, isSsrBuild }) => {
       rolldownOptions: {
         ...(isMain && { input: './src/index.ts' }),
         output: {
-          ...(isMain && { assetFileNames: 'assets/[name][extname]' })
+          ...(isMain && { assetFileNames: 'assets/[name][extname]' }),
         },
         external: ['electron'],
       },
@@ -116,15 +116,15 @@ export default defineConfig(({ mode, isSsrBuild }) => {
     },
 
     define: {
-      __ENV__: JSON.stringify(env),
-      __PLATFORM__: JSON.stringify(platform),
-      __KEELESS_BROWSER_HOST_DISABLED__: 'true',
-      'process.env.NODE_ENV': JSON.stringify(env)
+      '__ENV__': JSON.stringify(env),
+      '__PLATFORM__': JSON.stringify(platform),
+      '__KEELESS_BROWSER_HOST_DISABLED__': 'true',
+      'process.env.NODE_ENV': JSON.stringify(env),
     },
 
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src')
+        '@': resolve(__dirname, 'src'),
       },
       conditions: ['node'],
     },
@@ -135,9 +135,6 @@ export default defineConfig(({ mode, isSsrBuild }) => {
       noExternal: true,
     },
 
-    plugins: [
-      react(),
-      ...(isMain ? [asset(), napi(), binary()] : []),
-    ],
+    plugins: [react(), ...(isMain ? [asset(), napi(), binary()] : [])],
   };
 });

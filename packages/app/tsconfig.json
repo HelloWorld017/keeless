@@ -6,9 +6,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": [
-    "src/**/*.tsx",
-    "src/**/*.ts",
-    "vite.config.ts",
-  ]
+  "include": ["src/**/*.tsx", "src/**/*.ts", "vite.config.ts"]
 }

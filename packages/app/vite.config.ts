@@ -1,15 +1,15 @@
+import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
-import { dts as rolldownDts } from 'rolldown-plugin-dts';
 import simplei18n from '@simplei18n/core/vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { dts as rolldownDts } from 'rolldown-plugin-dts';
 import { defineConfig, esmExternalRequirePlugin } from 'vite';
 import type { Plugin } from 'vite';
-import {readFile} from 'node:fs/promises';
 
 const dts = (...args: Parameters<typeof rolldownDts>) =>
-  rolldownDts(...args).map(
-    (plugin) => plugin.name.endsWith("fake-js") ? { ...plugin, enforce: "pre" } : plugin
+  rolldownDts(...args).map(plugin =>
+    plugin.name.endsWith('fake-js') ? { ...plugin, enforce: 'pre' } : plugin,
   );
 
 const asset = (): Plugin => {
@@ -34,7 +34,7 @@ const asset = (): Plugin => {
       `;
     },
   };
-}
+};
 
 export default defineConfig(({ mode }) => ({
   build: {
@@ -67,13 +67,15 @@ export default defineConfig(({ mode }) => ({
   },
 
   plugins: [
-    ...(mode === 'lib' ? [
-      asset(),
-      dts({ generator: 'tsgo' }),
-      esmExternalRequirePlugin({
-        external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/],
-      }),
-    ] : []),
+    ...(mode === 'lib'
+      ? [
+          asset(),
+          dts({ generator: 'tsgo' }),
+          esmExternalRequirePlugin({
+            external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/],
+          }),
+        ]
+      : []),
     react(),
     tailwindcss(),
     simplei18n(),

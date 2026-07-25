@@ -22,7 +22,7 @@ impl LocalFileStorage {
         Self::default()
     }
 
-    /// The daemon calls this only with a path returned by the native picker.
+    /// The desktop host calls this only with a path returned by the Electron picker.
     pub fn grant_picker_path(&self, path: PathBuf) -> io::Result<String> {
         let mut random = [0_u8; 32];
         getrandom::getrandom(&mut random).map_err(io::Error::other)?;

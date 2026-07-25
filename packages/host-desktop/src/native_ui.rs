@@ -20,8 +20,6 @@ use zeroize::Zeroizing;
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
-use crate::ipc::PickMode;
-
 const MAX_STDOUT_BYTES: usize = 64 * 1024;
 const MAX_STDERR_BYTES: usize = 16 * 1024;
 const UI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -38,35 +36,6 @@ impl NativeUi {
             executable,
             dialog: Mutex::new(()),
             shutdown,
-        }
-    }
-
-    pub async fn pick_file(&self, mode: PickMode) -> Result<Option<PathBuf>, String> {
-        let request = FileRequest {
-            mode: match mode {
-                PickMode::Open => "open",
-                PickMode::Create => "save",
-            },
-            title: "Choose a KeePass database",
-            filters: [FileFilter {
-                name: "KeePass database",
-                extensions: ["kdbx"],
-            }],
-        };
-        let arguments = serde_json::to_string(&request).map_err(|error| error.to_string())?;
-        let plaintext = self.invoke("file", &arguments).await?;
-        match response_status(&plaintext, "file")? {
-            ResponseStatus::Cancelled => Ok(None),
-            ResponseStatus::Error(error) => Err(error),
-            ResponseStatus::Selected => {
-                let response: FileSelected<'_> = decode_response(&plaintext)?;
-                validate_selected(response.version, response.kind, response.status, "file")?;
-                let path = PathBuf::from(response.result.path);
-                if !path.is_absolute() {
-                    return Err("native UI returned a non-absolute file path".into());
-                }
-                Ok(Some(path))
-            }
         }
     }
 
@@ -326,19 +295,6 @@ struct ConnectionRequest<'a> {
     public_key: &'a str,
 }
 
-#[derive(Serialize)]
-struct FileRequest {
-    mode: &'static str,
-    title: &'static str,
-    filters: [FileFilter; 1],
-}
-
-#[derive(Serialize)]
-struct FileFilter {
-    name: &'static str,
-    extensions: [&'static str; 1],
-}
-
 enum ResponseStatus {
     Selected,
     Cancelled,
@@ -425,23 +381,6 @@ struct PasswordResult {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct FileSelected<'a> {
-    version: u8,
-    #[serde(borrow)]
-    kind: &'a str,
-    #[serde(borrow)]
-    status: &'a str,
-    result: FileResult,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct FileResult {
-    path: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ConnectionSelected<'a> {
     version: u8,
     #[serde(borrow)]
@@ -486,15 +425,15 @@ mod tests {
     fn validates_response_kind_and_status() {
         assert!(matches!(
             response_status(
-                br#"{"version":1,"kind":"file","status":"cancelled"}"#,
-                "file"
+                br#"{"version":1,"kind":"password","status":"cancelled"}"#,
+                "password"
             ),
             Ok(ResponseStatus::Cancelled)
         ));
         assert!(
             response_status(
                 br#"{"version":1,"kind":"connection","status":"cancelled"}"#,
-                "file"
+                "password"
             )
             .is_err()
         );
@@ -502,12 +441,6 @@ mod tests {
 
     #[test]
     fn decodes_escaped_response_strings() {
-        let file: FileSelected<'_> = decode_response(
-            br#"{"version":1,"kind":"file","status":"selected","result":{"path":"C:\\path\\to\\example.kdbx"}}"#,
-        )
-        .unwrap();
-        assert_eq!(file.result.path, r"C:\path\to\example.kdbx");
-
         let password: PasswordSelected<'_> = decode_response(
             br#"{"version":1,"kind":"password","status":"selected","result":{"password":"a\\b\"c"}}"#,
         )
@@ -516,10 +449,10 @@ mod tests {
 
         assert!(matches!(
             response_status(
-                br#"{"version":1,"kind":"file","status":"error","error":{"code":"invalid_path","message":"C:\\bad\\path"}}"#,
-                "file"
+                br#"{"version":1,"kind":"connection","status":"error","error":{"code":"ui_unavailable","message":"display unavailable"}}"#,
+                "connection"
             ),
-            Ok(ResponseStatus::Error(error)) if error == r"native UI invalid_path: C:\bad\path"
+            Ok(ResponseStatus::Error(error)) if error == "native UI ui_unavailable: display unavailable"
         ));
     }
 }
