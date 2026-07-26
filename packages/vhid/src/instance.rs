@@ -3,10 +3,13 @@
 //! Two daemons would present two virtual devices and race for the same consent
 //! prompts, so the second one exits instead.
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
+
+use keeless_host_client::fs;
 
 /// Held for the lifetime of the daemon; the lock is released when it drops.
 pub struct InstanceLock {
@@ -19,8 +22,20 @@ impl InstanceLock {
         let path = lock_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
+            // Without XDG_RUNTIME_DIR this lives under a world-writable /tmp,
+            // where another user could have created the directory first.
+            fs::set_directory_permissions(parent)?;
         }
-        let file = File::create(&path)?;
+        // O_NOFOLLOW so a symlink planted at this path cannot redirect the
+        // truncating open onto a file of the attacker's choosing.
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&path)?;
         // A lock held by an open file descriptor is released even if the process
         // is killed, so a crashed daemon never blocks the next one.
         let locked = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };

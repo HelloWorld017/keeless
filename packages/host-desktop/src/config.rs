@@ -39,13 +39,17 @@ impl DesktopConfig {
 impl ConfigProvider for DesktopConfig {
     fn load(&self) -> HostFuture<'_, keeless_core::Result<Option<Vec<u8>>>> {
         Box::pin(async move {
-            self.store.load(MAX_CONFIG_SIZE).await.map_err(|error| {
-                if error.kind() == io::ErrorKind::InvalidData {
-                    CoreError::InvalidConfig("configuration is too large".into())
-                } else {
-                    Self::host_error(error)
-                }
-            })
+            self.store
+                .load(MAX_CONFIG_SIZE)
+                .await
+                .map(|config| config.map(|bytes| bytes.to_vec()))
+                .map_err(|error| {
+                    if error.kind() == io::ErrorKind::InvalidData {
+                        CoreError::InvalidConfig("configuration is too large".into())
+                    } else {
+                        Self::host_error(error)
+                    }
+                })
         })
     }
 

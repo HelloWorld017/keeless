@@ -178,7 +178,23 @@ impl Authenticator {
         request: GetAssertionRequest,
         progress: &Progress,
     ) -> Result<Vec<u8>, CtapError> {
-        self.ensure_unlocked(progress).await?;
+        if request.user_presence {
+            self.ensure_unlocked(progress).await?;
+        } else {
+            // A silent request exists to confirm credentials a platform already
+            // holds identifiers for. Answering one with no allow list would let
+            // any process that can reach the device enumerate every site the
+            // user has an account at, without anyone approving anything.
+            if request.allow_credential_ids.is_empty() {
+                return Err(CtapStatus::NoCredentials.into());
+            }
+            // Nor may a silent request raise the master-password prompt: a page
+            // can send one on load, and a prompt nobody asked for is exactly
+            // what a fake prompt needs the user to be used to.
+            if !self.is_unlocked().await? {
+                return Err(CtapStatus::NoCredentials.into());
+            }
+        }
         let mut candidates = self.passkeys(Some(&request.rp_id)).await?;
         if !request.allow_credential_ids.is_empty() {
             let allowed: Vec<String> = request
@@ -240,13 +256,7 @@ impl Authenticator {
     /// The unlock prompt belongs to the app, not this daemon, so the transport is
     /// told to expect the user to be busy for a while.
     async fn ensure_unlocked(&mut self, progress: &Progress) -> Result<(), CtapError> {
-        let status = self
-            .request(Operation::GetDatabaseStatus(GetDatabaseStatusArgs {}))
-            .await?;
-        let OperationSuccess::GetDatabaseStatus(status) = status else {
-            return Err(CtapStatus::Other.into());
-        };
-        match status.status {
+        match self.database_status().await? {
             DatabaseStatus::Unlocked => Ok(()),
             // With no database selected there is nothing to unlock, and no
             // prompt would help.
@@ -260,6 +270,20 @@ impl Authenticator {
                 unlocked.map(|_| ())
             }
         }
+    }
+
+    async fn is_unlocked(&mut self) -> Result<bool, CtapError> {
+        Ok(self.database_status().await? == DatabaseStatus::Unlocked)
+    }
+
+    async fn database_status(&mut self) -> Result<DatabaseStatus, CtapError> {
+        let status = self
+            .request(Operation::GetDatabaseStatus(GetDatabaseStatusArgs {}))
+            .await?;
+        let OperationSuccess::GetDatabaseStatus(status) = status else {
+            return Err(CtapStatus::Other.into());
+        };
+        Ok(status.status)
     }
 
     async fn passkeys(&mut self, rp_id: Option<&str>) -> Result<Vec<PasskeySummary>, CtapError> {

@@ -27,8 +27,8 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-/// Where to find the dialog helper when the caller does not say.
-const DEFAULT_NATIVE_UI: &str = "keeless-native-ui";
+/// The dialog helper's file name, looked for beside this executable.
+const NATIVE_UI_NAME: &str = "keeless-native-ui";
 
 #[derive(Debug, Error)]
 pub enum VhidError {
@@ -116,9 +116,23 @@ impl Options {
             }
         }
         Ok(Self {
-            native_ui: native_ui.unwrap_or_else(|| PathBuf::from(DEFAULT_NATIVE_UI)),
+            native_ui: native_ui.map(Ok).unwrap_or_else(default_native_ui)?,
         })
     }
+}
+
+/// The dialog helper installed beside this executable.
+///
+/// Resolved from the daemon's own location rather than looked up on `PATH`: the
+/// helper is the only thing standing between a web page and a signature, and a
+/// `PATH` entry the user can write to is a place anyone can put a program that
+/// approves everything.
+fn default_native_ui() -> Result<PathBuf> {
+    let executable = std::env::current_exe().map_err(VhidError::Device)?;
+    let directory = executable.parent().ok_or_else(|| {
+        VhidError::Usage("cannot locate the directory holding keeless-vhid".into())
+    })?;
+    Ok(directory.join(NATIVE_UI_NAME))
 }
 
 fn block_on<T>(future: impl Future<Output = Result<T>>) -> Result<T> {
@@ -188,7 +202,8 @@ fn run_command(options: Options) -> Result<()> {
         .map_err(VhidError::Device)?
         .block_on(async move {
             let session = session::Session::load().await?;
-            let consent = consent::ConsentPrompt::new(options.native_ui);
+            let consent =
+                consent::ConsentPrompt::new(options.native_ui).map_err(VhidError::Device)?;
             let authenticator = authenticator::Authenticator::new(session, consent);
             daemon::run(authenticator, shutdown_signal())
                 .await
@@ -237,11 +252,15 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_finding_the_dialog_helper_on_the_path() {
+    fn looks_for_the_dialog_helper_beside_this_executable() {
+        let default = options(&[]).unwrap().native_ui;
+        assert!(default.is_absolute(), "a bare name would be found on PATH");
+        assert_eq!(default.file_name().unwrap(), NATIVE_UI_NAME);
         assert_eq!(
-            options(&[]).unwrap().native_ui,
-            PathBuf::from(DEFAULT_NATIVE_UI)
+            default.parent().unwrap(),
+            std::env::current_exe().unwrap().parent().unwrap()
         );
+
         assert_eq!(
             options(&["--native-ui", "/opt/keeless/ui"])
                 .unwrap()

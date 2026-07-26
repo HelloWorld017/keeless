@@ -33,7 +33,12 @@ pub(crate) async fn run(
         user_verification: passkeys::user_verification(args.user_verified),
     })?;
 
-    core.touch_activity();
+    // Auto-lock measures the user's activity, and a silent assertion is by
+    // definition not that: it exists so a platform can look before it asks
+    // anyone anything, so it must not keep the database open.
+    if args.user_present {
+        core.touch_activity();
+    }
     Ok(AssertPasskeyResult {
         credential_id: passkeys::encode(&response.credential_id),
         authenticator_data: passkeys::encode(&response.authenticator_data),

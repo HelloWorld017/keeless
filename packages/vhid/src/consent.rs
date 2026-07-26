@@ -92,11 +92,29 @@ pub struct ConsentPrompt {
 }
 
 impl ConsentPrompt {
-    pub fn new(executable: PathBuf) -> Self {
-        Self {
+    /// Bind to the dialog helper, refusing anything but an existing file at an
+    /// absolute path.
+    ///
+    /// A relative path would be resolved against `PATH` or the working
+    /// directory at spawn time, either of which lets another process decide
+    /// which program gets to approve signatures.
+    pub fn new(executable: PathBuf) -> std::io::Result<Self> {
+        if !executable.is_absolute() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("the consent prompt needs an absolute path, not {executable:?}"),
+            ));
+        }
+        if !std::fs::metadata(&executable)?.is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{executable:?} is not a file"),
+            ));
+        }
+        Ok(Self {
             executable,
             prompt: Mutex::new(()),
-        }
+        })
     }
 
     /// Ask the user to approve a ceremony, returning the account they chose.
@@ -305,6 +323,45 @@ struct DenyApproval;
 impl ApprovalProvider for DenyApproval {
     fn approve(&self, _: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
         Box::pin(async { Ok(false) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refuses_a_helper_that_another_process_could_choose() {
+        // A bare name is resolved through PATH at spawn time, and any writable
+        // PATH entry is somewhere an attacker can leave an auto-approving program.
+        assert!(ConsentPrompt::new("keeless-native-ui".into()).is_err());
+        assert!(ConsentPrompt::new("./keeless-native-ui".into()).is_err());
+        assert!(ConsentPrompt::new("/does/not/exist".into()).is_err());
+        // A directory is not a program either.
+        assert!(ConsentPrompt::new("/tmp".into()).is_err());
+    }
+
+    #[test]
+    fn labels_lose_what_could_forge_a_prompt() {
+        assert_eq!(sanitize("alice"), "alice");
+        assert_eq!(sanitize("alice\nbob"), "alice bob");
+        assert_eq!(sanitize("safe\u{202e}evil"), "safe evil");
+        assert_eq!(sanitize("  padded  "), "padded");
+        assert_eq!(sanitize(""), "(unnamed)");
+        assert_eq!(sanitize("\u{200f}"), "(unnamed)");
+        assert_eq!(sanitize(&"x".repeat(300)).len(), MAX_LABEL_BYTES);
+    }
+
+    #[test]
+    fn a_sanitized_label_is_one_the_prompt_accepts() {
+        // The helper validates independently and refuses the whole request on a
+        // bad label, so sanitize must never produce one it would reject.
+        for value in ["", "\n\n", "\u{202e}", &"한".repeat(200), "ok"] {
+            let cleaned = sanitize(value);
+            assert!(!cleaned.is_empty());
+            assert!(cleaned.len() <= MAX_LABEL_BYTES);
+            assert!(!cleaned.chars().any(char::is_control));
+        }
     }
 }
 

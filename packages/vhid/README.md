@@ -7,7 +7,7 @@ Keeless as an ordinary security key with no extension or patched build.
 ## Requirements
 
 - Linux with the `uhid` driver (`CONFIG_UHID`), which mainstream distributions ship
-- Write access to `/dev/uhid`, which is root-owned by default
+- Membership of a group with write access to `/dev/uhid`, which `setup` explains
 - The Keeless desktop app running, since it owns the database
 
 ## Setup
@@ -19,9 +19,12 @@ commands with:
 keeless-vhid setup
 ```
 
-They install a rule tagging `uhid` for session access, make sure the driver is
-loaded at boot, and reload udev. Run them as root, then log out and back in so
-the new access applies. Check the result any time with:
+Read them before running them. Write access to `/dev/uhid` is the ability to
+create virtual input devices of any kind — a keyboard among them — so whoever
+holds it can type into your session. The printed rule therefore grants it to a
+`keeless-uhid` group you join, rather than to every user who logs in at the
+console. Run the commands as root, then log out and back in. Check the result
+any time with:
 
 ```sh
 keeless-vhid doctor
@@ -33,11 +36,14 @@ by the app, and whether the app is reachable.
 ## Running
 
 ```sh
-keeless-vhid run --native-ui /path/to/keeless-native-ui
+keeless-vhid run
 ```
 
-`--native-ui` may be omitted when the helper is on `PATH`. The daemon serves
-requests until it is stopped; only one instance runs at a time.
+The consent dialog helper is expected beside the `keeless-vhid` executable;
+`--native-ui` names it elsewhere, and must be an absolute path. It is never
+searched for on `PATH`, because whatever answers that prompt decides which
+signatures get made. The daemon serves requests until it is stopped; only one
+instance runs at a time.
 
 The first request asks the desktop app to approve this daemon, the same dialog
 any new local client gets. The app's key is then pinned, so a replaced app is

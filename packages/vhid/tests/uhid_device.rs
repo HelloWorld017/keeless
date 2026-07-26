@@ -22,9 +22,9 @@ async fn a_host_can_initialize_a_channel_and_read_the_authenticator_info() {
     let (shutdown, stop) = tokio::sync::oneshot::channel::<()>();
     let daemon = tokio::spawn(async move {
         let session = Session::load().await.expect("load the daemon state");
-        // getInfo needs neither the app nor a prompt, so an unreachable helper
-        // path is enough for this exchange.
-        let consent = ConsentPrompt::new("/nonexistent".into());
+        // getInfo needs neither the app nor a prompt, so any real file is
+        // enough to satisfy the helper check for this exchange.
+        let consent = ConsentPrompt::new("/bin/true".into()).expect("bind the consent prompt");
         keeless_vhid::daemon::run(Authenticator::new(session, consent), async {
             let _ = stop.await;
         })

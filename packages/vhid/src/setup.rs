@@ -10,12 +10,23 @@ use std::path::Path;
 pub const UDEV_RULE_PATH: &str = "/etc/udev/rules.d/70-keeless-uhid.rules";
 pub const MODULE_CONFIG_PATH: &str = "/etc/modules-load.d/keeless-uhid.conf";
 
-/// Grants the user of the active local session access to `/dev/uhid`.
+/// Group the rule grants `/dev/uhid` to.
+pub const ACCESS_GROUP: &str = "keeless-uhid";
+
+/// Grants members of [`ACCESS_GROUP`] access to `/dev/uhid`.
 ///
-/// `static_node` covers the case where uhid is built in rather than loaded as a
-/// module, when no add event ever fires to apply the rule.
-pub const UDEV_RULE: &str =
-    "KERNEL==\"uhid\", SUBSYSTEM==\"misc\", TAG+=\"uaccess\", OPTIONS+=\"static_node=uhid\"\n";
+/// Deliberately a named group rather than `TAG+="uaccess"`. Writing to
+/// `/dev/uhid` creates arbitrary virtual input devices, including keyboards, so
+/// it is a keystroke-injection primitive — `uaccess` would hand that to every
+/// process of every user who logs in at the console, forever. A group makes the
+/// grant explicit and revocable.
+///
+/// `static_node` applies the mode when uhid is built into the kernel, where no
+/// device event ever fires to trigger the rule.
+pub const UDEV_RULE: &str = concat!(
+    "KERNEL==\"uhid\", SUBSYSTEM==\"misc\", GROUP=\"keeless-uhid\", MODE=\"0660\", ",
+    "OPTIONS+=\"static_node=uhid\"\n"
+);
 
 pub const MODULE_CONFIG: &str = "uhid\n";
 
@@ -59,7 +70,14 @@ pub fn readiness() -> Readiness {
 /// business: the user sees exactly what will be written before it happens, and
 /// packaging formats without an install step still have a documented path.
 pub fn print_instructions() {
-    println!("keeless-vhid needs access to /dev/uhid. Run, as root:\n");
+    println!("keeless-vhid needs access to /dev/uhid.\n");
+    println!("Be aware of what that grants: writing to /dev/uhid creates virtual");
+    println!("input devices of any kind, keyboards included, so anyone holding it");
+    println!("can type into your session. The commands below limit it to members");
+    println!("of the {ACCESS_GROUP} group rather than to every logged-in user.\n");
+    println!("Run, as root:\n");
+    println!("  groupadd -f {ACCESS_GROUP}");
+    println!("  gpasswd -a \"$USER\" {ACCESS_GROUP}");
     println!("  install -m 0644 /dev/stdin {UDEV_RULE_PATH} <<'RULE'");
     print!("{UDEV_RULE}");
     println!("RULE");
@@ -69,8 +87,8 @@ pub fn print_instructions() {
     println!("  modprobe uhid");
     println!("  udevadm control --reload-rules");
     println!("  udevadm trigger --name-match=uhid");
-    println!("\nThen log out and back in, or replug your session, so the new");
-    println!("access rule applies. Check it with `keeless-vhid doctor`.");
+    println!("\nThen log out and back in so the new group membership applies.");
+    println!("Check the result with `keeless-vhid doctor`.");
 }
 
 #[cfg(test)]
@@ -78,10 +96,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_udev_rule_tags_uhid_for_session_access() {
+    fn the_udev_rule_grants_uhid_to_one_group_and_nothing_else() {
         assert!(UDEV_RULE.contains("KERNEL==\"uhid\""));
-        assert!(UDEV_RULE.contains("TAG+=\"uaccess\""));
+        assert!(UDEV_RULE.contains("SUBSYSTEM==\"misc\""));
+        assert!(UDEV_RULE.contains(&format!("GROUP=\"{ACCESS_GROUP}\"")));
+        assert!(UDEV_RULE.contains("MODE=\"0660\""));
         assert!(UDEV_RULE.contains("static_node=uhid"));
+        assert!(
+            !UDEV_RULE.contains("uaccess"),
+            "uaccess would hand virtual-keyboard creation to every console user"
+        );
+        assert!(
+            !UDEV_RULE.contains("0666"),
+            "the device must not be world-writable"
+        );
         assert!(UDEV_RULE.ends_with('\n'));
     }
 

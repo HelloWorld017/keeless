@@ -7,7 +7,7 @@ use directories::ProjectDirs;
 use keeless_lesswire::{Identity, StateStore, WireFuture};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::fs;
 
@@ -46,13 +46,13 @@ impl FileStore {
     ///
     /// Reads at most `limit` bytes and fails past it, so a corrupt or hostile file
     /// cannot force an unbounded allocation.
-    pub async fn load(&self, limit: usize) -> io::Result<Option<Vec<u8>>> {
+    pub async fn load(&self, limit: usize) -> io::Result<Option<Zeroizing<Vec<u8>>>> {
         let file = match tokio::fs::File::open(&self.path).await {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error),
         };
-        let mut bytes = Vec::new();
+        let mut bytes = Zeroizing::new(Vec::new());
         file.take((limit + 1) as u64)
             .read_to_end(&mut bytes)
             .await?;
@@ -97,6 +97,7 @@ impl StateStore for FileStore {
         Box::pin(async move {
             FileStore::load(self, MAX_STATE_SIZE)
                 .await
+                .map(|state| state.map(|bytes| bytes.to_vec()))
                 .map_err(|error| keeless_lesswire::Error::Host(error.to_string()))
         })
     }
@@ -110,14 +111,17 @@ impl StateStore for FileStore {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+/// Holds the identity in hex, so it is wiped rather than left in the heap.
+#[derive(Deserialize, Serialize, Zeroize, ZeroizeOnDrop)]
 #[serde(rename_all = "camelCase")]
 struct PersistedClientState {
+    #[zeroize(skip)]
     version: u8,
     /// The client's own lesswire identity, base16 of its 64 secret bytes.
     identity: String,
     /// The host key this client pinned on first contact, absent until paired.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[zeroize(skip)]
     trusted_server: Option<String>,
 }
 
@@ -151,7 +155,7 @@ impl ClientState {
             return Ok(Self {
                 store,
                 identity: Zeroizing::new(identity),
-                trusted_server: persisted.trusted_server,
+                trusted_server: persisted.trusted_server.clone(),
             });
         }
 
