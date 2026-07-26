@@ -53,6 +53,14 @@ pub enum CoreError {
     TagStyleNotFound,
     #[error("tag is used by an entry")]
     TagInUse,
+    #[error("passkey request is invalid: {0}")]
+    InvalidPasskeyRequest(keeless_kdbx::PasskeyError),
+    #[error("passkey algorithm is not supported")]
+    PasskeyUnsupportedAlgorithm,
+    #[error("an excluded passkey already exists")]
+    PasskeyExcluded,
+    #[error("passkey does not exist")]
+    PasskeyNotFound,
     #[error("cryptographic operation failed")]
     Crypto,
     #[error("mutation journal is invalid")]
@@ -81,6 +89,19 @@ impl From<keeless_kdbx::DatabaseError> for CoreError {
             keeless_kdbx::DatabaseError::InvalidCredentials => Self::InvalidCredentials,
             keeless_kdbx::DatabaseError::SecureMemory(_) => Self::SecureMemory,
             _ => Self::Crypto,
+        }
+    }
+}
+
+impl From<keeless_kdbx::PasskeyError> for CoreError {
+    fn from(error: keeless_kdbx::PasskeyError) -> Self {
+        match error {
+            keeless_kdbx::PasskeyError::UnsupportedAlgorithm => Self::PasskeyUnsupportedAlgorithm,
+            keeless_kdbx::PasskeyError::CredentialExcluded => Self::PasskeyExcluded,
+            keeless_kdbx::PasskeyError::CredentialNotAllowed
+            | keeless_kdbx::PasskeyError::RpIdMismatch => Self::PasskeyNotFound,
+            keeless_kdbx::PasskeyError::ProtectedFieldAccess => Self::Crypto,
+            error => Self::InvalidPasskeyRequest(error),
         }
     }
 }
@@ -149,6 +170,17 @@ impl From<&CoreError> for OperationError {
             }
             CoreError::TagStyleNotFound => ("tag_style_not_found", "Tag style does not exist"),
             CoreError::TagInUse => ("tag_in_use", "Tag is used by an entry"),
+            CoreError::InvalidPasskeyRequest(_) => {
+                ("invalid_passkey_request", "Passkey request is invalid")
+            }
+            CoreError::PasskeyUnsupportedAlgorithm => (
+                "passkey_unsupported_algorithm",
+                "Passkey algorithm is not supported",
+            ),
+            CoreError::PasskeyExcluded => {
+                ("passkey_excluded", "An excluded passkey already exists")
+            }
+            CoreError::PasskeyNotFound => ("passkey_not_found", "Passkey does not exist"),
             CoreError::Storage(_) | CoreError::Sync(_) => {
                 ("storage_error", "Storage operation failed")
             }

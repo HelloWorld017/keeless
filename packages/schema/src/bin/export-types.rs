@@ -68,6 +68,9 @@ fn generate() -> String {
     export::<UpdateTagStyleArgs>(&mut output);
     export::<DeleteTagArgs>(&mut output);
     export::<RevealEntryFieldArgs>(&mut output);
+    export::<GetPasskeysArgs>(&mut output);
+    export::<RegisterPasskeyArgs>(&mut output);
+    export::<AssertPasskeyArgs>(&mut output);
     export::<Operation>(&mut output);
     export::<OperationRequest>(&mut output);
     export_empty("EmptyResult", &mut output);
@@ -82,6 +85,10 @@ fn generate() -> String {
     export::<AddEntryResult>(&mut output);
     export::<AddGroupResult>(&mut output);
     export::<RevealEntryFieldResult>(&mut output);
+    export::<PasskeySummary>(&mut output);
+    export::<PasskeysResult>(&mut output);
+    export::<RegisterPasskeyResult>(&mut output);
+    export::<AssertPasskeyResult>(&mut output);
     export::<OperationSuccess>(&mut output);
     export::<OperationError>(&mut output);
     output.push_str(

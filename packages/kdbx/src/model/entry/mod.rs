@@ -45,7 +45,8 @@ impl StandardField {
         Self::Notes,
     ];
 
-    pub(crate) const fn name(self) -> &'static str {
+    /// Canonical KDBX name of the field, as stored and as used in field updates.
+    pub const fn name(self) -> &'static str {
         match self {
             Self::Title => "Title",
             Self::UserName => "UserName",

@@ -1,3 +1,7 @@
+pub(crate) mod add_entry;
+pub(crate) mod add_entry_from_template;
+pub(crate) mod add_group;
+pub(crate) mod assert_passkey;
 pub(crate) mod create;
 pub(crate) mod get_config;
 pub(crate) mod get_custom_icons;
@@ -7,6 +11,7 @@ pub(crate) mod get_entry_detail;
 pub(crate) mod get_entry_templates;
 pub(crate) mod get_group_entries;
 pub(crate) mod get_group_hierarchy;
+pub(crate) mod get_passkeys;
 pub(crate) mod get_storage_descriptor;
 pub(crate) mod get_tag_entries;
 pub(crate) mod get_tags;
@@ -14,6 +19,8 @@ pub(crate) mod get_trash_entries;
 pub(crate) mod lock;
 pub(crate) mod mutations;
 pub(crate) mod open;
+pub(crate) mod register_passkey;
+pub(crate) mod rename_group;
 pub(crate) mod reveal_entry_field;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;
@@ -63,5 +70,8 @@ pub(crate) async fn execute(
         Operation::UpdateTagStyle(args) => mutations::update_tag_style::execute(core, args).await,
         Operation::DeleteTag(args) => mutations::delete_tag::execute(core, args).await,
         Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args).await,
+        Operation::GetPasskeys(args) => get_passkeys::execute(core, args).await,
+        Operation::RegisterPasskey(args) => register_passkey::execute(core, args).await,
+        Operation::AssertPasskey(args) => assert_passkey::execute(core, args).await,
     }
 }

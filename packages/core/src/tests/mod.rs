@@ -25,6 +25,8 @@ use zeroize::Zeroizing;
 
 use super::*;
 
+mod passkeys;
+
 pub(super) struct DetailField<'a> {
     pub(super) order: u64,
     pub(super) field_id: Option<&'a str>,

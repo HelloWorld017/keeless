@@ -132,11 +132,11 @@ pub(super) fn assertion_authenticator_data(
 
 pub(super) fn assertion_signature_message(
     authenticator_data: &[u8],
-    client_data_json: &[u8],
+    client_data_hash: &[u8],
 ) -> Vec<u8> {
-    let mut result = Vec::with_capacity(authenticator_data.len() + 32);
+    let mut result = Vec::with_capacity(authenticator_data.len() + client_data_hash.len());
     result.extend_from_slice(authenticator_data);
-    result.extend_from_slice(&Sha256::digest(client_data_json));
+    result.extend_from_slice(client_data_hash);
     result
 }
 

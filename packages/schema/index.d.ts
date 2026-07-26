@@ -185,6 +185,32 @@ export type RevealEntryFieldArgs = {
   password?: string | null;
 };
 
+export type GetPasskeysArgs = { rpId?: string | null };
+
+/**
+ * Registration inputs from a CTAP2 `authenticatorMakeCredential` request.
+ */
+export type RegisterPasskeyArgs = {
+  rpId: string;
+  rpName?: string | null;
+  userName: string;
+  userHandle: string;
+  clientDataHash: string;
+  algorithms: number[];
+  excludeCredentialIds: string[];
+  userVerified: boolean;
+};
+
+/**
+ * Assertion inputs from a CTAP2 `authenticatorGetAssertion` request.
+ */
+export type AssertPasskeyArgs = {
+  entryId: DatabaseNodeId;
+  rpId: string;
+  clientDataHash: string;
+  userVerified: boolean;
+};
+
 export type Operation =
   | { op: 'open'; args: OpenArgs }
   | { op: 'create'; args: CreateArgs }
@@ -217,7 +243,10 @@ export type Operation =
   | { op: 'updateGroup'; args: UpdateGroupArgs }
   | { op: 'updateTagStyle'; args: UpdateTagStyleArgs }
   | { op: 'deleteTag'; args: DeleteTagArgs }
-  | { op: 'revealEntryField'; args: RevealEntryFieldArgs };
+  | { op: 'revealEntryField'; args: RevealEntryFieldArgs }
+  | { op: 'getPasskeys'; args: GetPasskeysArgs }
+  | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
+  | { op: 'assertPasskey'; args: AssertPasskeyArgs };
 
 export type OperationRequest = (
   | { op: 'open'; args: OpenArgs }
@@ -252,6 +281,9 @@ export type OperationRequest = (
   | { op: 'updateTagStyle'; args: UpdateTagStyleArgs }
   | { op: 'deleteTag'; args: DeleteTagArgs }
   | { op: 'revealEntryField'; args: RevealEntryFieldArgs }
+  | { op: 'getPasskeys'; args: GetPasskeysArgs }
+  | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
+  | { op: 'assertPasskey'; args: AssertPasskeyArgs }
 ) & { requestId: string };
 
 export type EmptyResult = Record<string, never>;
@@ -305,6 +337,33 @@ export type AddGroupResult = { id: DatabaseNodeId };
 
 export type RevealEntryFieldResult = { value: string };
 
+/**
+ * One stored passkey, as much as can be shown without signing anything.
+ */
+export type PasskeySummary = {
+  entryId: DatabaseNodeId;
+  credentialId: string;
+  rpId: string;
+  username: string;
+  userHandle: string;
+  algorithm: number;
+};
+
+export type PasskeysResult = { credentials: PasskeySummary[] };
+
+export type RegisterPasskeyResult = {
+  entryId: DatabaseNodeId;
+  credentialId: string;
+  authenticatorData: string;
+};
+
+export type AssertPasskeyResult = {
+  credentialId: string;
+  authenticatorData: string;
+  signature: string;
+  userHandle: string;
+};
+
 export type OperationSuccess =
   | { op: 'open'; result: EmptyResult }
   | { op: 'create'; result: EmptyResult }
@@ -337,7 +396,10 @@ export type OperationSuccess =
   | { op: 'updateGroup'; result: EmptyResult }
   | { op: 'updateTagStyle'; result: EmptyResult }
   | { op: 'deleteTag'; result: EmptyResult }
-  | { op: 'revealEntryField'; result: RevealEntryFieldResult };
+  | { op: 'revealEntryField'; result: RevealEntryFieldResult }
+  | { op: 'getPasskeys'; result: PasskeysResult }
+  | { op: 'registerPasskey'; result: RegisterPasskeyResult }
+  | { op: 'assertPasskey'; result: AssertPasskeyResult };
 
 export type OperationError = { code: string; message: string };
 

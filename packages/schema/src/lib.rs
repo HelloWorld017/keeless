@@ -462,6 +462,50 @@ pub struct RevealEntryFieldArgs {
     pub password: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetPasskeysArgs {
+    /// Limits the result to one relying party when set.
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub rp_id: Option<String>,
+}
+
+/// Registration inputs from a CTAP2 `authenticatorMakeCredential` request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RegisterPasskeyArgs {
+    pub rp_id: String,
+    /// Relying-party display name, used as the entry title. Falls back to `rpId`.
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub rp_name: Option<String>,
+    pub user_name: String,
+    /// User handle, base64url without padding.
+    pub user_handle: String,
+    /// SHA-256 of the client data, base64url without padding.
+    pub client_data_hash: String,
+    /// COSE algorithm identifiers in relying-party preference order.
+    pub algorithms: Vec<i32>,
+    /// Credential IDs from the CTAP2 `excludeList`, base64url without padding.
+    pub exclude_credential_ids: Vec<String>,
+    /// Whether the caller completed its user-verification ceremony.
+    pub user_verified: bool,
+}
+
+/// Assertion inputs from a CTAP2 `authenticatorGetAssertion` request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssertPasskeyArgs {
+    /// Entry holding the credential, chosen from a prior `getPasskeys`.
+    pub entry_id: DatabaseNodeId,
+    pub rp_id: String,
+    /// SHA-256 of the client data, base64url without padding.
+    pub client_data_hash: String,
+    /// Whether the caller completed its user-verification ceremony.
+    pub user_verified: bool,
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "args", rename_all = "camelCase")]
 pub enum Operation {
@@ -497,6 +541,9 @@ pub enum Operation {
     UpdateTagStyle(UpdateTagStyleArgs),
     DeleteTag(DeleteTagArgs),
     RevealEntryField(RevealEntryFieldArgs),
+    GetPasskeys(GetPasskeysArgs),
+    RegisterPasskey(RegisterPasskeyArgs),
+    AssertPasskey(AssertPasskeyArgs),
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -606,6 +653,50 @@ pub struct RevealEntryFieldResult {
     pub value: String,
 }
 
+/// One stored passkey, as much as can be shown without signing anything.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasskeySummary {
+    pub entry_id: DatabaseNodeId,
+    /// Credential ID, base64url without padding.
+    pub credential_id: String,
+    pub rp_id: String,
+    pub username: String,
+    /// User handle, base64url without padding.
+    pub user_handle: String,
+    /// COSE algorithm identifier of the credential key.
+    pub algorithm: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasskeysResult {
+    pub credentials: Vec<PasskeySummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RegisterPasskeyResult {
+    pub entry_id: DatabaseNodeId,
+    /// Credential ID, base64url without padding.
+    pub credential_id: String,
+    /// Authenticator data to place in the attestation object, base64url without padding.
+    pub authenticator_data: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssertPasskeyResult {
+    /// Credential ID, base64url without padding.
+    pub credential_id: String,
+    /// Signed authenticator data, base64url without padding.
+    pub authenticator_data: String,
+    /// Assertion signature, base64url without padding.
+    pub signature: String,
+    /// User handle, base64url without padding.
+    pub user_handle: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "op", content = "result", rename_all = "camelCase")]
 pub enum OperationSuccess {
@@ -641,6 +732,9 @@ pub enum OperationSuccess {
     UpdateTagStyle(EmptyResult),
     DeleteTag(EmptyResult),
     RevealEntryField(RevealEntryFieldResult),
+    GetPasskeys(PasskeysResult),
+    RegisterPasskey(RegisterPasskeyResult),
+    AssertPasskey(AssertPasskeyResult),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
