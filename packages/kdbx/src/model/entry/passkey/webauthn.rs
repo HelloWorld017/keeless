@@ -5,7 +5,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
 
-use super::{PasskeyError, UserVerification};
+use super::{PasskeyError, UserPresence, UserVerification};
 
 /// Stable AAGUID assigned to the Keeless software authenticator.
 pub const KEELESS_AAGUID: [u8; 16] = [
@@ -99,6 +99,7 @@ pub(super) fn registration_authenticator_data(
     let mut result = Vec::with_capacity(55 + credential_id.len() + public_key_cose.len());
     result.extend_from_slice(&Sha256::digest(rp_id.as_bytes()));
     result.push(flags(
+        UserPresence::Present,
         user_verification,
         backup_eligible,
         backup_state,
@@ -114,6 +115,7 @@ pub(super) fn registration_authenticator_data(
 
 pub(super) fn assertion_authenticator_data(
     rp_id: &str,
+    user_presence: UserPresence,
     user_verification: UserVerification,
     backup_eligible: bool,
     backup_state: bool,
@@ -121,6 +123,7 @@ pub(super) fn assertion_authenticator_data(
     let mut result = Vec::with_capacity(37);
     result.extend_from_slice(&Sha256::digest(rp_id.as_bytes()));
     result.push(flags(
+        user_presence,
         user_verification,
         backup_eligible,
         backup_state,
@@ -155,12 +158,16 @@ pub(super) fn none_attestation(authenticator_data: &[u8]) -> Result<Vec<u8>, Pas
 }
 
 fn flags(
+    user_presence: UserPresence,
     user_verification: UserVerification,
     backup_eligible: bool,
     backup_state: bool,
     attested_credential_data: bool,
 ) -> u8 {
-    let mut result = FLAG_UP;
+    let mut result = 0;
+    if user_presence == UserPresence::Present {
+        result |= FLAG_UP;
+    }
     if user_verification == UserVerification::Verified {
         result |= FLAG_UV;
     }

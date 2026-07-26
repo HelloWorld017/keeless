@@ -154,6 +154,7 @@ async fn passkey_operations_register_enumerate_and_assert() {
                 "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "userPresent": true,
                 "userVerified": true,
             },
         }),
@@ -176,6 +177,35 @@ async fn passkey_operations_register_enumerate_and_assert() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn a_silent_assertion_signs_without_the_user_presence_flag() {
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let mut core = passkey_core(storage).await;
+    let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
+    let entry_id = registered["result"]["entryId"].as_str().unwrap().to_string();
+
+    let asserted = dispatch_json(
+        &mut core,
+        serde_json::json!({
+            "requestId": "request-2",
+            "op": "assertPasskey",
+            "args": {
+                "entryId": entry_id,
+                "rpId": "example.com",
+                "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "userPresent": false,
+                "userVerified": false,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(asserted["status"], "success", "{asserted}");
+    let authenticator_data = URL_SAFE_NO_PAD
+        .decode(asserted["result"]["authenticatorData"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(authenticator_data[32], 0x18);
 }
 
 #[tokio::test]
@@ -237,6 +267,7 @@ async fn passkey_operations_reject_invalid_requests() {
                 "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 16]),
+                "userPresent": true,
                 "userVerified": true,
             },
         }),
@@ -253,6 +284,7 @@ async fn passkey_operations_reject_invalid_requests() {
                 "entryId": entry_id,
                 "rpId": "example.net",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "userPresent": true,
                 "userVerified": true,
             },
         }),
@@ -269,6 +301,7 @@ async fn passkey_operations_reject_invalid_requests() {
                 "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "userPresent": true,
                 "userVerified": true,
             }),
         };
@@ -355,6 +388,7 @@ async fn registered_passkey_survives_journal_replay() {
                 "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "userPresent": true,
                 "userVerified": true,
             },
         }),

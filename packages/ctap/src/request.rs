@@ -43,11 +43,28 @@ pub struct MakeCredentialRequest {
     pub exclude_credential_ids: Vec<Vec<u8>>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GetAssertionRequest {
     pub rp_id: String,
     pub client_data_hash: Vec<u8>,
     pub allow_credential_ids: Vec<Vec<u8>>,
+    /// False when the platform asked for a silent assertion.
+    ///
+    /// Platforms use this to find out which of a relying party's credentials
+    /// this authenticator holds before deciding whether to prompt at all, so
+    /// refusing it would make every such sign-in look like it had no credentials.
+    pub user_presence: bool,
+}
+
+impl Default for GetAssertionRequest {
+    fn default() -> Self {
+        Self {
+            rp_id: String::new(),
+            client_data_hash: Vec::new(),
+            allow_credential_ids: Vec::new(),
+            user_presence: true,
+        }
+    }
 }
 
 /// Parse a CTAPHID CBOR payload: one command byte followed by its parameter map.
@@ -81,6 +98,7 @@ fn parse_make_credential(parameters: &[u8]) -> Result<MakeCredentialRequest> {
     let mut seen_rp = false;
     let mut seen_user = false;
     let mut seen_algorithms = false;
+    let mut pin_auth = PinAuth::default();
 
     for _ in 0..map_length(&mut decoder)? {
         match decoder.u32().map_err(cbor_error)? {
@@ -111,13 +129,26 @@ fn parse_make_credential(parameters: &[u8]) -> Result<MakeCredentialRequest> {
                 seen_algorithms = true;
             }
             0x05 => request.exclude_credential_ids = parse_credential_list(&mut decoder)?,
-            0x07 => reject_unsupported_options(&mut decoder)?,
-            // pinUvAuthParam: this authenticator implements no PIN protocol.
-            0x08 => return Err(CtapStatus::PinAuthInvalid.into()),
+            0x07 => {
+                // Creating a credential the user never approved is not something
+                // this authenticator offers, whatever the platform asks for.
+                if parse_options(&mut decoder)?.user_presence == Some(false) {
+                    return Err(CtapStatus::InvalidOption.into());
+                }
+            }
+            0x08 => {
+                pin_auth.token = true;
+                decoder.skip().map_err(cbor_error)?;
+            }
+            0x09 => {
+                pin_auth.protocol = true;
+                decoder.skip().map_err(cbor_error)?;
+            }
             _ => decoder.skip().map_err(cbor_error)?,
         }
     }
 
+    pin_auth.reject()?;
     if !(seen_hash && seen_rp && seen_user && seen_algorithms) {
         return Err(CtapStatus::MissingParameter.into());
     }
@@ -129,6 +160,7 @@ fn parse_get_assertion(parameters: &[u8]) -> Result<GetAssertionRequest> {
     let mut request = GetAssertionRequest::default();
     let mut seen_rp = false;
     let mut seen_hash = false;
+    let mut pin_auth = PinAuth::default();
 
     for _ in 0..map_length(&mut decoder)? {
         match decoder.u32().map_err(cbor_error)? {
@@ -141,16 +173,48 @@ fn parse_get_assertion(parameters: &[u8]) -> Result<GetAssertionRequest> {
                 seen_hash = true;
             }
             0x03 => request.allow_credential_ids = parse_credential_list(&mut decoder)?,
-            0x05 => reject_unsupported_options(&mut decoder)?,
-            0x06 => return Err(CtapStatus::PinAuthInvalid.into()),
+            0x05 => {
+                request.user_presence = parse_options(&mut decoder)?.user_presence.unwrap_or(true);
+            }
+            0x06 => {
+                pin_auth.token = true;
+                decoder.skip().map_err(cbor_error)?;
+            }
+            0x07 => {
+                pin_auth.protocol = true;
+                decoder.skip().map_err(cbor_error)?;
+            }
             _ => decoder.skip().map_err(cbor_error)?,
         }
     }
 
+    pin_auth.reject()?;
     if !(seen_rp && seen_hash) {
         return Err(CtapStatus::MissingParameter.into());
     }
     Ok(request)
+}
+
+/// Whether the request carried PIN/UV authentication this authenticator has none of.
+#[derive(Default)]
+struct PinAuth {
+    token: bool,
+    protocol: bool,
+}
+
+impl PinAuth {
+    /// Refuse a PIN-authenticated request with the status its shape calls for.
+    ///
+    /// A token names a protocol version, and every version is unsupported here,
+    /// so a token with a version is an invalid parameter while a token without
+    /// one is simply incomplete.
+    fn reject(&self) -> Result<()> {
+        match (self.token, self.protocol) {
+            (true, true) => Err(CtapStatus::InvalidParameter.into()),
+            (true, false) => Err(CtapStatus::MissingParameter.into()),
+            _ => Ok(()),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -238,20 +302,26 @@ fn parse_credential_list(decoder: &mut Decoder<'_>) -> Result<Vec<Vec<u8>>> {
     Ok(credentials)
 }
 
-/// Reject option combinations this authenticator cannot honour.
+/// The option keys a request may carry.
 ///
-/// Only `up: false` is refused: it asks for a silent assertion, which requires a
-/// PIN/UV token. `rk` and `uv` are accepted as advisory because every credential
-/// here is discoverable and every ceremony is user-verified.
-fn reject_unsupported_options(decoder: &mut Decoder<'_>) -> Result<()> {
+/// Only `up` changes what the authenticator does. `rk` and `uv` are read and
+/// ignored: every credential here is discoverable, and every ceremony that
+/// prompts is user-verified by the database's own password.
+#[derive(Default)]
+struct Options {
+    user_presence: Option<bool>,
+}
+
+fn parse_options(decoder: &mut Decoder<'_>) -> Result<Options> {
+    let mut options = Options::default();
     for _ in 0..map_length(decoder)? {
         let key = decoder.str().map_err(cbor_error)?;
         let value = decoder.bool().map_err(cbor_error)?;
-        if key == "up" && !value {
-            return Err(CtapStatus::InvalidOption.into());
+        if key == "up" {
+            options.user_presence = Some(value);
         }
     }
-    Ok(())
+    Ok(options)
 }
 
 /// CTAP2 mandates definite lengths, so an indefinite map is malformed.

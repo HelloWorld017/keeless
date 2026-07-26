@@ -222,6 +222,7 @@ fn ctap_registration_and_assertion_roundtrip_for_all_algorithms() {
                 client_data_hash: CTAP_CLIENT_DATA_HASH,
                 rp_id: "EXAMPLE.com",
                 allowed_credential_ids: &allowed,
+                user_presence: UserPresence::Present,
                 user_verification: UserVerification::Verified,
             })
             .expect("CTAP authentication should succeed");
@@ -264,6 +265,7 @@ fn ctap_requests_reject_malformed_hashes_and_relying_parties() {
                 client_data_hash: &short_hash,
                 rp_id: "example.com",
                 allowed_credential_ids: &[],
+                user_presence: UserPresence::Present,
                 user_verification: UserVerification::Verified,
             })
             .unwrap_err(),
@@ -277,6 +279,7 @@ fn ctap_requests_reject_malformed_hashes_and_relying_parties() {
                 client_data_hash: CTAP_CLIENT_DATA_HASH,
                 rp_id: "example.net",
                 allowed_credential_ids: &[],
+                user_presence: UserPresence::Present,
                 user_verification: UserVerification::Verified,
             })
             .unwrap_err(),
@@ -291,6 +294,7 @@ fn ctap_requests_reject_malformed_hashes_and_relying_parties() {
                 client_data_hash: CTAP_CLIENT_DATA_HASH,
                 rp_id: "example.com",
                 allowed_credential_ids: &other_id,
+                user_presence: UserPresence::Present,
                 user_verification: UserVerification::Verified,
             })
             .unwrap_err(),
@@ -326,6 +330,33 @@ fn ctap_requests_reject_malformed_hashes_and_relying_parties() {
 }
 
 #[test]
+fn a_silent_assertion_clears_the_user_presence_flag() {
+    let result = PasskeyAuthenticator::create_ctap(&ctap_registration_request(&[-7])).unwrap();
+    let assertion = result
+        .credential
+        .authenticate_ctap(&CtapAuthenticationRequest {
+            client_data_hash: CTAP_CLIENT_DATA_HASH,
+            rp_id: "example.com",
+            allowed_credential_ids: &[],
+            user_presence: UserPresence::NotPresent,
+            user_verification: UserVerification::NotVerified,
+        })
+        .unwrap();
+    // Backup flags only: no user presence, no user verification.
+    assert_eq!(assertion.authenticator_data[32], 0x18);
+
+    // The signature is still valid over the data it claims, so a relying party
+    // rejects it for the missing flag rather than for a broken signature.
+    let message = signed_message(&assertion.authenticator_data, CTAP_CLIENT_DATA_HASH);
+    verify_signature(
+        PasskeyAlgorithm::Es256,
+        &result.response.public_key_spki,
+        &message,
+        &assertion.signature,
+    );
+}
+
+#[test]
 fn ctap_assertion_reports_user_verification_in_flags() {
     let result = PasskeyAuthenticator::create_ctap(&CtapRegistrationRequest {
         user_verification: UserVerification::NotVerified,
@@ -340,6 +371,7 @@ fn ctap_assertion_reports_user_verification_in_flags() {
             client_data_hash: CTAP_CLIENT_DATA_HASH,
             rp_id: "example.com",
             allowed_credential_ids: &[],
+            user_presence: UserPresence::Present,
             user_verification: UserVerification::NotVerified,
         })
         .unwrap();

@@ -13,6 +13,9 @@ const INIT_PAYLOAD_SIZE: usize = REPORT_SIZE - 7;
 const CONT_PAYLOAD_SIZE: usize = REPORT_SIZE - 5;
 const INIT_MARKER: u8 = 0x80;
 
+/// Length of the nonce an INIT request carries, which its response echoes.
+pub const INIT_NONCE_SIZE: usize = 8;
+
 /// How long a partially received message may sit before the channel is reset.
 const TRANSACTION_TIMEOUT: Duration = Duration::from_millis(3000);
 
@@ -111,7 +114,7 @@ struct Partial {
 
 /// What the caller should do with a report.
 pub enum Accepted {
-    /// Still waiting for continuation packets.
+    /// Nothing to do: more fragments are expected, or the report was spurious.
     Incomplete,
     Message(Message),
     /// Answer the channel with a transport error.
@@ -143,6 +146,11 @@ impl Assembler {
         }
 
         let command = Command::from_u8(report[4] & !INIT_MARKER);
+        // The broadcast channel exists so a client can ask for one of its own;
+        // anything else there has no allocated channel to answer on.
+        if channel == BROADCAST_CHANNEL && command != Command::Init {
+            return Accepted::Error(channel, TransportError::InvalidChannel);
+        }
         let expected = usize::from(u16::from_be_bytes([report[5], report[6]]));
         if expected > MAX_PAYLOAD_SIZE {
             self.partials.remove(&channel);
@@ -151,6 +159,9 @@ impl Assembler {
         // An initialization packet always abandons any partial on its channel,
         // which is how the spec lets a client recover from a lost fragment.
         self.partials.remove(&channel);
+        if command == Command::Init && expected != INIT_NONCE_SIZE {
+            return Accepted::Error(channel, TransportError::InvalidLength);
+        }
         if command == Command::Cancel {
             return Accepted::Message(Message {
                 channel,
@@ -182,8 +193,10 @@ impl Assembler {
 
     fn accept_continuation(&mut self, channel: u32, report: &[u8]) -> Accepted {
         let Some(partial) = self.partials.get_mut(&channel) else {
-            // A continuation for a channel with nothing in progress is spurious.
-            return Accepted::Error(channel, TransportError::InvalidSequence);
+            // A continuation with nothing in progress is spurious, and the spec
+            // asks for silence: answering would turn one dropped fragment into
+            // an error for every fragment that follows it.
+            return Accepted::Incomplete;
         };
         let sequence = report[4];
         if sequence != partial.next_sequence {
@@ -336,14 +349,15 @@ mod tests {
     }
 
     #[test]
-    fn rejects_out_of_order_and_orphan_continuations() {
+    fn rejects_out_of_order_continuations_and_ignores_orphans() {
         let mut assembler = Assembler::new();
         let now = Instant::now();
         let reports = encode(9, Command::Cbor, &[1_u8; 200]);
 
+        // Nothing in progress: silence rather than an error storm.
         assert!(matches!(
             assembler.accept(&reports[1], now),
-            Accepted::Error(9, TransportError::InvalidSequence)
+            Accepted::Incomplete
         ));
 
         assert!(matches!(
@@ -356,10 +370,39 @@ mod tests {
             assembler.accept(&wrong, now),
             Accepted::Error(9, TransportError::InvalidSequence)
         ));
-        // The channel was reset, so the next continuation is an orphan too.
+        // The channel was reset, so the remaining fragments are orphans.
         assert!(matches!(
             assembler.accept(&reports[2], now),
-            Accepted::Error(9, TransportError::InvalidSequence)
+            Accepted::Incomplete
+        ));
+    }
+
+    #[test]
+    fn only_init_is_accepted_on_the_broadcast_channel() {
+        let mut assembler = Assembler::new();
+        let now = Instant::now();
+
+        let init = encode(BROADCAST_CHANNEL, Command::Init, &[0; INIT_NONCE_SIZE]);
+        assert!(matches!(
+            assembler.accept(&init[0], now),
+            Accepted::Message(_)
+        ));
+
+        let cbor = encode(BROADCAST_CHANNEL, Command::Cbor, &[0x04]);
+        assert!(matches!(
+            assembler.accept(&cbor[0], now),
+            Accepted::Error(BROADCAST_CHANNEL, TransportError::InvalidChannel)
+        ));
+    }
+
+    #[test]
+    fn rejects_an_init_whose_nonce_is_the_wrong_length() {
+        let mut assembler = Assembler::new();
+        let now = Instant::now();
+        let short = encode(BROADCAST_CHANNEL, Command::Init, &[0; 4]);
+        assert!(matches!(
+            assembler.accept(&short[0], now),
+            Accepted::Error(BROADCAST_CHANNEL, TransportError::InvalidLength)
         ));
     }
 
@@ -403,10 +446,10 @@ mod tests {
             panic!("expected the new message to complete");
         };
         assert_eq!(message.payload, b"restart");
-        // The abandoned message's continuations are now orphans.
+        // The abandoned message's continuations are orphans, and ignored.
         assert!(matches!(
             assembler.accept(&long[1], now),
-            Accepted::Error(3, TransportError::InvalidSequence)
+            Accepted::Incomplete
         ));
     }
 
@@ -422,7 +465,7 @@ mod tests {
         let later = started + TRANSACTION_TIMEOUT + Duration::from_millis(1);
         assert!(matches!(
             assembler.accept(&reports[1], later),
-            Accepted::Error(2, TransportError::InvalidSequence)
+            Accepted::Incomplete
         ));
     }
 

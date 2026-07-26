@@ -208,6 +208,7 @@ export type AssertPasskeyArgs = {
   entryId: DatabaseNodeId;
   rpId: string;
   clientDataHash: string;
+  userPresent: boolean;
   userVerified: boolean;
 };
 

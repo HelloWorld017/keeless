@@ -190,26 +190,86 @@ fn rejects_a_make_credential_missing_required_parameters() {
 }
 
 #[test]
-fn rejects_silent_assertions_and_pin_tokens() {
+fn accepts_a_silent_get_assertion_but_never_a_silent_registration() {
+    // Platforms probe with up=false to learn which credentials exist before
+    // deciding whether to prompt; refusing it makes every such sign-in look
+    // like the authenticator held nothing.
     let silent = get_assertion_payload(1, |encoder| {
         encoder.u8(0x05).unwrap();
         encoder.map(1).unwrap();
         encoder.str("up").unwrap();
         encoder.bool(false).unwrap();
     });
+    let Command::GetAssertion(request) = parse_command(&silent).unwrap() else {
+        panic!("expected getAssertion");
+    };
+    assert!(!request.user_presence);
+
+    // Absent or true means the user is asked.
+    let Command::GetAssertion(request) = parse_command(&get_assertion_payload(0, |_| {})).unwrap()
+    else {
+        panic!("expected getAssertion");
+    };
+    assert!(request.user_presence);
+
+    let silent_registration = payload(0x01, |encoder| {
+        encoder.map(5).unwrap();
+        encoder.u8(0x01).unwrap();
+        encoder.bytes(&CLIENT_DATA_HASH).unwrap();
+        encoder.u8(0x02).unwrap();
+        encoder.map(1).unwrap();
+        encoder.str("id").unwrap();
+        encoder.str("example.com").unwrap();
+        encoder.u8(0x03).unwrap();
+        encoder.map(1).unwrap();
+        encoder.str("id").unwrap();
+        encoder.bytes(&[1]).unwrap();
+        encoder.u8(0x04).unwrap();
+        credential_parameters(encoder, &[-7]);
+        encoder.u8(0x07).unwrap();
+        encoder.map(1).unwrap();
+        encoder.str("up").unwrap();
+        encoder.bool(false).unwrap();
+    });
     assert_eq!(
-        parse_command(&silent).unwrap_err().status,
+        parse_command(&silent_registration).unwrap_err().status,
         CtapStatus::InvalidOption
     );
+}
 
-    let pinned = get_assertion_payload(1, |encoder| {
+#[test]
+fn rejects_pin_authenticated_requests_by_what_they_are_missing() {
+    // A token naming a protocol: every protocol is unsupported here.
+    let versioned = get_assertion_payload(2, |encoder| {
+        encoder.u8(0x06).unwrap();
+        encoder.bytes(&[0xaa, 0xbb]).unwrap();
+        encoder.u8(0x07).unwrap();
+        encoder.u8(1).unwrap();
+    });
+    assert_eq!(
+        parse_command(&versioned).unwrap_err().status,
+        CtapStatus::InvalidParameter
+    );
+
+    // A token naming none is incomplete rather than unsupported.
+    let unversioned = get_assertion_payload(1, |encoder| {
         encoder.u8(0x06).unwrap();
         encoder.bytes(&[0xaa, 0xbb]).unwrap();
     });
     assert_eq!(
-        parse_command(&pinned).unwrap_err().status,
-        CtapStatus::PinAuthInvalid
+        parse_command(&unversioned).unwrap_err().status,
+        CtapStatus::MissingParameter
     );
+
+    // A protocol number with no token is meaningless, not an error.
+    let bare = get_assertion_payload(1, |encoder| {
+        encoder.u8(0x07).unwrap();
+        encoder.u8(1).unwrap();
+    });
+    assert!(matches!(
+        parse_command(&bare).unwrap(),
+        Command::GetAssertion(_)
+    ));
 }
 
 #[test]
@@ -337,7 +397,8 @@ fn encodes_a_get_assertion_response() {
         authenticator_data: &[0x42; 37],
         signature: &[9, 9, 9],
         user_id: &[4, 5],
-        user_name: "alice",
+        user_name: Some("alice"),
+        user_selected: false,
     })
     .unwrap();
     assert_eq!(encoded[0], 0x00);
@@ -364,6 +425,54 @@ fn encodes_a_get_assertion_response() {
 }
 
 #[test]
+fn a_silent_assertion_names_nobody_and_claims_no_selection() {
+    let encoded = response::get_assertion(&Assertion {
+        credential_id: &[1],
+        authenticator_data: &[0x42; 37],
+        signature: &[9],
+        user_id: &[4, 5],
+        user_name: None,
+        user_selected: false,
+    })
+    .unwrap();
+
+    let mut decoder = minicbor::Decoder::new(&encoded[1..]);
+    assert_eq!(decoder.map().unwrap(), Some(4));
+    for _ in 0..3 {
+        decoder.u8().unwrap();
+        decoder.skip().unwrap();
+    }
+    assert_eq!(decoder.u8().unwrap(), 0x04);
+    assert_eq!(decoder.map().unwrap(), Some(1), "only the user handle");
+    assert_eq!(decoder.str().unwrap(), "id");
+    assert_eq!(decoder.bytes().unwrap(), &[4, 5]);
+    assert_eq!(decoder.position(), encoded.len() - 1);
+}
+
+#[test]
+fn an_authenticator_chosen_credential_reports_user_selected() {
+    let encoded = response::get_assertion(&Assertion {
+        credential_id: &[1],
+        authenticator_data: &[0x42; 37],
+        signature: &[9],
+        user_id: &[4],
+        user_name: Some("alice"),
+        user_selected: true,
+    })
+    .unwrap();
+
+    let mut decoder = minicbor::Decoder::new(&encoded[1..]);
+    assert_eq!(decoder.map().unwrap(), Some(5));
+    for _ in 0..4 {
+        decoder.u8().unwrap();
+        decoder.skip().unwrap();
+    }
+    assert_eq!(decoder.u8().unwrap(), 0x06);
+    assert!(decoder.bool().unwrap());
+    assert_eq!(decoder.position(), encoded.len() - 1);
+}
+
+#[test]
 fn encodes_get_info_without_a_client_pin_option() {
     let encoded = response::get_info(&AuthenticatorInfo {
         aaguid: &AAGUID,
@@ -376,9 +485,12 @@ fn encodes_get_info_without_a_client_pin_option() {
     let mut decoder = minicbor::Decoder::new(&encoded[1..]);
     assert_eq!(decoder.map().unwrap(), Some(8));
     assert_eq!(decoder.u8().unwrap(), 0x01);
-    assert_eq!(decoder.array().unwrap(), Some(2));
+    assert_eq!(
+        decoder.array().unwrap(),
+        Some(1),
+        "only the version whose mandatory features are implemented"
+    );
     assert_eq!(decoder.str().unwrap(), "FIDO_2_0");
-    assert_eq!(decoder.str().unwrap(), "FIDO_2_1");
     assert_eq!(decoder.u8().unwrap(), 0x03);
     assert_eq!(decoder.bytes().unwrap(), AAGUID);
     assert_eq!(decoder.u8().unwrap(), 0x04);

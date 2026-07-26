@@ -82,7 +82,7 @@ pub use model::entry::passkey::{
     CtapAuthenticationRequest, CtapAuthenticationResponse, CtapRegistrationRequest,
     CtapRegistrationResponse, CtapRegistrationResult, PasskeyAlgorithm, PasskeyAuthenticator,
     PasskeyCredential, PasskeyError, PasskeyFieldValue, RegistrationRequest, RegistrationResponse,
-    RegistrationResult, UserVerification, KEELESS_AAGUID,
+    RegistrationResult, UserPresence, UserVerification, KEELESS_AAGUID,
 };
 
 // ─── Repair ───────────────────────────────────────────────────────────

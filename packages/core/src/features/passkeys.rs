@@ -7,7 +7,9 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use keeless_kdbx::{CompositeKey, NodeId, PasskeyCredential, PasskeyError, UserVerification};
+use keeless_kdbx::{
+    CompositeKey, NodeId, PasskeyCredential, PasskeyError, UserPresence, UserVerification,
+};
 use keeless_schema::PasskeySummary;
 use std::collections::HashSet;
 use zeroize::Zeroizing;
@@ -31,6 +33,14 @@ pub(crate) fn user_verification(user_verified: bool) -> UserVerification {
         UserVerification::Verified
     } else {
         UserVerification::NotVerified
+    }
+}
+
+pub(crate) fn user_presence(user_present: bool) -> UserPresence {
+    if user_present {
+        UserPresence::Present
+    } else {
+        UserPresence::NotPresent
     }
 }
 

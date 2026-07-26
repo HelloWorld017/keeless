@@ -185,8 +185,12 @@ enum Event {
 fn parse_event(bytes: &[u8]) -> Option<Event> {
     let kind = u32::from_ne_bytes(bytes.get(..4)?.try_into().ok()?);
     match kind {
-        event::START | event::OPEN => Some(Event::Started),
-        event::STOP | event::CLOSE => Some(Event::Stopped),
+        event::START => Some(Event::Started),
+        event::STOP => Some(Event::Stopped),
+        // Reader lifecycle, not device lifecycle: these say whether anyone is
+        // currently reading the device, which changes every time a browser
+        // finishes a ceremony. Treating a close as a stop would end the daemon.
+        event::OPEN | event::CLOSE => None,
         event::OUTPUT => {
             // struct uhid_output_req { u8 data[4096]; u16 size; u8 rtype; }
             let size = u16::from_ne_bytes(bytes.get(4 + DATA_MAX..6 + DATA_MAX)?.try_into().ok()?);
@@ -334,6 +338,26 @@ mod tests {
             panic!("expected an output report");
         };
         assert_eq!(report, vec![0xcd; REPORT_SIZE]);
+    }
+
+    #[test]
+    fn a_reader_closing_the_device_is_not_a_failure() {
+        // UHID_CLOSE arrives every time a browser finishes with the device, so
+        // treating it as a stop would end the daemon after one ceremony.
+        for kind in [event::OPEN, event::CLOSE] {
+            assert!(
+                parse_event(&kind.to_ne_bytes()).is_none(),
+                "reader events say nothing about the device"
+            );
+        }
+        assert!(matches!(
+            parse_event(&event::START.to_ne_bytes()),
+            Some(Event::Started)
+        ));
+        assert!(matches!(
+            parse_event(&event::STOP.to_ne_bytes()),
+            Some(Event::Stopped)
+        ));
     }
 
     #[test]

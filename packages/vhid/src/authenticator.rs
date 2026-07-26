@@ -11,13 +11,16 @@ use keeless_ctap::response::{self, Assertion, AuthenticatorInfo};
 use keeless_ctap::{KEELESS_AAGUID, parse_command};
 use keeless_host_client::ClientError;
 use keeless_schema::{
-    AssertPasskeyArgs, GetPasskeysArgs, Operation, OperationSuccess, PasskeySummary,
-    RegisterPasskeyArgs, UnlockArgs,
+    AssertPasskeyArgs, DatabaseStatus, GetDatabaseStatusArgs, GetPasskeysArgs, Operation,
+    OperationSuccess, PasskeySummary, RegisterPasskeyArgs, UnlockArgs,
 };
 
-use crate::consent::{Account, Ceremony, ConsentPrompt};
+use crate::consent::{Account, Ceremony, ConsentError, ConsentPrompt};
 use crate::ctaphid::KeepaliveStatus;
 use crate::session::Session;
+
+/// Most accounts the consent prompt will list, matching what its dialog accepts.
+const MAX_PROMPT_ACCOUNTS: usize = 32;
 
 /// Progress a running command reports, so the transport can keep the host informed.
 ///
@@ -96,10 +99,7 @@ impl Authenticator {
             progress,
             Ceremony::Assert,
             "this device",
-            &[Account {
-                id: "selection".into(),
-                username: "Use Keeless".into(),
-            }],
+            &[Account::new("selection".into(), "Use Keeless")],
         )
         .await?;
         Ok(response::status(CtapStatus::Success))
@@ -110,6 +110,15 @@ impl Authenticator {
         request: MakeCredentialRequest,
         progress: &Progress,
     ) -> Result<Vec<u8>, CtapError> {
+        // Refused before the prompt, so the user is never asked to approve a
+        // ceremony that cannot succeed.
+        if !request
+            .algorithms
+            .iter()
+            .any(|algorithm| response::SUPPORTED_ALGORITHMS.contains(algorithm))
+        {
+            return Err(CtapStatus::UnsupportedAlgorithm.into());
+        }
         self.ensure_unlocked(progress).await?;
         let existing = self.passkeys(Some(&request.rp_id)).await?;
 
@@ -121,16 +130,16 @@ impl Authenticator {
                 .iter()
                 .any(|excluded| encode(excluded) == credential.credential_id)
         }) {
-            self.confirm(
-                progress,
-                Ceremony::Register,
-                &request.rp_id,
-                &[Account {
-                    id: "excluded".into(),
-                    username: request.user_name.clone(),
-                }],
-            )
-            .await?;
+            // The answer is the same whether or not the user approves, so a
+            // decline cannot be used to tell "excluded" apart from "denied".
+            let _ = self
+                .confirm(
+                    progress,
+                    Ceremony::Register,
+                    &request.rp_id,
+                    &[Account::new("excluded".into(), &request.user_name)],
+                )
+                .await;
             return Err(CtapStatus::CredentialExcluded.into());
         }
 
@@ -138,10 +147,7 @@ impl Authenticator {
             progress,
             Ceremony::Register,
             &request.rp_id,
-            &[Account {
-                id: "register".into(),
-                username: request.user_name.clone(),
-            }],
+            &[Account::new("register".into(), &request.user_name)],
         )
         .await?;
 
@@ -186,30 +192,29 @@ impl Authenticator {
             return Err(CtapStatus::NoCredentials.into());
         }
 
-        let accounts: Vec<Account> = candidates
-            .iter()
-            .enumerate()
-            .map(|(index, credential)| Account {
-                id: index.to_string(),
-                username: credential.username.clone(),
-            })
-            .collect();
-        let chosen = self
-            .confirm(progress, Ceremony::Assert, &request.rp_id, &accounts)
-            .await?;
-        let chosen = chosen
-            .parse::<usize>()
-            .ok()
-            .and_then(|index| candidates.get(index))
-            .ok_or(CtapError::new(CtapStatus::Other))?
-            .clone();
+        // A silent assertion answers "does a credential exist" without asking
+        // anyone. Its user presence flag is clear, so a relying party rejects it.
+        let (chosen, user_selected) = if request.user_presence {
+            let accounts = prompt_accounts(&candidates);
+            let chosen = self
+                .confirm(progress, Ceremony::Assert, &request.rp_id, &accounts)
+                .await?;
+            let index = accounts
+                .iter()
+                .position(|account| account.id == chosen)
+                .ok_or(CtapError::new(CtapStatus::Other))?;
+            (candidates[index].clone(), candidates.len() > 1)
+        } else {
+            (candidates.remove(0), false)
+        };
 
         let result = self
             .request(Operation::AssertPasskey(AssertPasskeyArgs {
                 entry_id: chosen.entry_id,
                 rp_id: request.rp_id,
                 client_data_hash: encode(&request.client_data_hash),
-                user_verified: true,
+                user_present: request.user_presence,
+                user_verified: request.user_presence,
             }))
             .await?;
         let OperationSuccess::AssertPasskey(result) = result else {
@@ -220,18 +225,33 @@ impl Authenticator {
             authenticator_data: &decode(&result.authenticator_data)?,
             signature: &decode(&result.signature)?,
             user_id: &decode(&result.user_handle)?,
-            user_name: &chosen.username,
+            // A name is only meaningful once someone has approved seeing it.
+            user_name: request.user_presence.then_some(chosen.username.as_str()),
+            user_selected,
         })
     }
 
     /// Make sure the database is open before a ceremony needs it.
     ///
-    /// An unlock prompt is shown by the app, not by this daemon, so the transport
-    /// is told to expect the user to be busy for a while.
+    /// Asks for the status rather than reading credentials: the status needs no
+    /// key, so it neither decrypts the database nor triggers the password prompt
+    /// that paranoia mode puts in front of every read.
+    ///
+    /// The unlock prompt belongs to the app, not this daemon, so the transport is
+    /// told to expect the user to be busy for a while.
     async fn ensure_unlocked(&mut self, progress: &Progress) -> Result<(), CtapError> {
-        match self.passkeys(None).await {
-            Ok(_) => Ok(()),
-            Err(error) if error.status == CtapStatus::OperationDenied => {
+        let status = self
+            .request(Operation::GetDatabaseStatus(GetDatabaseStatusArgs {}))
+            .await?;
+        let OperationSuccess::GetDatabaseStatus(status) = status else {
+            return Err(CtapStatus::Other.into());
+        };
+        match status.status {
+            DatabaseStatus::Unlocked => Ok(()),
+            // With no database selected there is nothing to unlock, and no
+            // prompt would help.
+            DatabaseStatus::NotExist => Err(CtapStatus::NoCredentials.into()),
+            DatabaseStatus::Locked => {
                 progress.waiting_for_user(true);
                 let unlocked = self
                     .request(Operation::Unlock(UnlockArgs { password: None }))
@@ -239,7 +259,6 @@ impl Authenticator {
                 progress.waiting_for_user(false);
                 unlocked.map(|_| ())
             }
-            Err(error) => Err(error),
         }
     }
 
@@ -268,8 +287,10 @@ impl Authenticator {
         progress.waiting_for_user(false);
         match chosen {
             Ok(Some(id)) => Ok(id),
-            Ok(None) => Err(CtapStatus::OperationDenied.into()),
-            Err(_) => Err(CtapStatus::Other.into()),
+            // A prompt the user closed and one that timed out both mean the
+            // ceremony was not authorized.
+            Ok(None) | Err(ConsentError::TimedOut) => Err(CtapStatus::OperationDenied.into()),
+            Err(ConsentError::Failed(_)) => Err(CtapStatus::Other.into()),
         }
     }
 
@@ -300,6 +321,19 @@ fn client_error(error: ClientError) -> CtapError {
         _ => CtapStatus::Other,
     }
     .into()
+}
+
+/// Labels for the picker, one per candidate.
+///
+/// Capped at what the prompt will display, so a database with an unusual number
+/// of credentials for one relying party still produces a usable dialog.
+fn prompt_accounts(candidates: &[PasskeySummary]) -> Vec<Account> {
+    candidates
+        .iter()
+        .take(MAX_PROMPT_ACCOUNTS)
+        .enumerate()
+        .map(|(index, credential)| Account::new(index.to_string(), &credential.username))
+        .collect()
 }
 
 fn encode(value: &[u8]) -> String {

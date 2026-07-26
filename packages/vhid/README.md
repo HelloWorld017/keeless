@@ -56,6 +56,11 @@ visible rather than silently trusted. `keeless-vhid reset-pairing` forgets it.
 
 If the browser withdraws the request, the prompt closes with it.
 
+Browsers also ask, without prompting anyone, which of a site's credentials this
+authenticator holds — that is how they decide whether to offer Keeless at all.
+Those answers carry no user-presence flag, so a relying party rejects them, and
+they name no accounts. They do require the database to be unlocked.
+
 ## Limitations
 
 - The app must be running. Requests that arrive while it is closed are refused

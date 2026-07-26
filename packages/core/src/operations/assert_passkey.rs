@@ -29,6 +29,7 @@ pub(crate) async fn run(
         client_data_hash: &client_data_hash,
         rp_id: &args.rp_id,
         allowed_credential_ids: &[],
+        user_presence: passkeys::user_presence(args.user_present),
         user_verification: passkeys::user_verification(args.user_verified),
     })?;
 

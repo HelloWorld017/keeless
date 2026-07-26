@@ -69,6 +69,17 @@ pub enum UserVerification {
     Verified,
 }
 
+/// Whether a user approved this specific ceremony.
+///
+/// A silent assertion has no approval: platforms use one to discover which
+/// credentials exist before prompting, and relying parties reject the result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UserPresence {
+    NotPresent,
+    #[default]
+    Present,
+}
+
 /// Inputs needed to create a resident passkey.
 pub struct RegistrationRequest<'a> {
     pub client_data_json: &'a [u8],
@@ -132,6 +143,8 @@ pub struct CtapAuthenticationRequest<'a> {
     pub rp_id: &'a str,
     /// Empty means any discoverable credential is allowed.
     pub allowed_credential_ids: &'a [&'a [u8]],
+    /// Whether the user approved this ceremony.
+    pub user_presence: UserPresence,
     /// Result of the host's verification ceremony, not the RP preference.
     pub user_verification: UserVerification,
 }
@@ -356,6 +369,7 @@ impl PasskeyCredential {
         let response = self.sign_assertion(
             &Sha256::digest(request.client_data_json),
             request.allowed_credential_ids,
+            UserPresence::Present,
             request.user_verification,
         )?;
 
@@ -380,6 +394,7 @@ impl PasskeyCredential {
         self.sign_assertion(
             request.client_data_hash,
             request.allowed_credential_ids,
+            request.user_presence,
             request.user_verification,
         )
     }
@@ -408,6 +423,7 @@ impl PasskeyCredential {
         &self,
         client_data_hash: &[u8],
         allowed_credential_ids: &[&[u8]],
+        user_presence: UserPresence,
         user_verification: UserVerification,
     ) -> Result<CtapAuthenticationResponse, PasskeyError> {
         if !allowed_credential_ids.is_empty()
@@ -420,6 +436,7 @@ impl PasskeyCredential {
 
         let authenticator_data = webauthn::assertion_authenticator_data(
             &self.rp_id,
+            user_presence,
             user_verification,
             self.backup_eligible,
             self.backup_state,

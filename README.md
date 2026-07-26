@@ -38,7 +38,8 @@
 - [ ] enforce_auto_lock을 dispatch 시에 구현하지말고 자체 timeout으로 작업하게
 - [ ] per-database config store
 - [ ] desktop용 cache + journal로 저장하는 storage wrapper
-- [ ] vhid 구현
+- [x] vhid 구현 (Linux)
+- [ ] Windows WebAuthn plugin authenticator 구현
 - [ ] extension + native messaging host 구현
 - [ ] 화면 캡쳐 방어
 - [ ] SetSecurityInfo (메인 프로세스 / 렌더러 프로세스 원격 스레드, 덤프 차단)

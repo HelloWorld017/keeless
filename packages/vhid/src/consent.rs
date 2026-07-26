@@ -33,6 +33,52 @@ pub struct Account {
     pub username: String,
 }
 
+impl Account {
+    /// Build a label the prompt will accept from a stored username.
+    ///
+    /// Stored names come from relying parties and from other password managers,
+    /// so one with a newline or an empty value must not be able to take a whole
+    /// relying party's sign-in down with it.
+    pub fn new(id: String, username: &str) -> Self {
+        Self {
+            id,
+            username: sanitize(username),
+        }
+    }
+}
+
+/// Longest label the prompt accepts, in bytes.
+const MAX_LABEL_BYTES: usize = 256;
+
+/// Replace what the prompt refuses: control and bidi characters, and emptiness.
+fn sanitize(value: &str) -> String {
+    let mut cleaned: String = value
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(character,
+                    '\u{061c}' | '\u{200e}' | '\u{200f}'
+                    | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+            {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        return "(unnamed)".into();
+    }
+    if trimmed.len() != cleaned.len() {
+        cleaned = trimmed.to_string();
+    }
+    while cleaned.len() > MAX_LABEL_BYTES {
+        cleaned.pop();
+    }
+    cleaned
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ceremony {
     Register,
@@ -63,59 +109,61 @@ impl ConsentPrompt {
         ceremony: Ceremony,
         rp_id: &str,
         accounts: &[Account],
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<String>, ConsentError> {
         let _guard = self.prompt.lock().await;
         let arguments = serde_json::to_string(&PasskeyRequest {
             mode: match ceremony {
                 Ceremony::Register => "register",
                 Ceremony::Assert => "assert",
             },
-            rp_id,
+            rp_id: &sanitize(rp_id),
             accounts,
         })
-        .map_err(|error| error.to_string())?;
+        .map_err(ConsentError::failed)?;
 
         let plaintext = self.invoke(&arguments).await?;
-        let response: PasskeyResponse = serde_json::from_slice(&plaintext)
-            .map_err(|error| format!("consent prompt returned invalid JSON: {error}"))?;
+        let response: PasskeyResponse =
+            serde_json::from_slice(&plaintext).map_err(ConsentError::failed)?;
         if response.version != 1 || response.kind != "passkey" {
-            return Err("consent prompt returned an unexpected response".into());
+            return Err(ConsentError::failed("unexpected response"));
         }
         match response.status {
             "selected" => Ok(Some(
                 response
                     .result
-                    .ok_or("consent prompt selected nothing")?
+                    .ok_or_else(|| ConsentError::failed("nothing was selected"))?
                     .account_id,
             )),
             "cancelled" => Ok(None),
-            "error" => Err(response
-                .error
-                .map(|error| error.message)
-                .unwrap_or_else(|| "consent prompt failed".into())),
-            status => Err(format!("consent prompt returned status {status}")),
+            "error" => Err(ConsentError::failed(
+                response
+                    .error
+                    .map(|error| error.message)
+                    .unwrap_or_else(|| "the prompt failed".into()),
+            )),
+            status => Err(ConsentError::failed(format!("status {status}"))),
         }
     }
 
-    async fn invoke(&self, arguments: &str) -> Result<Vec<u8>, String> {
-        let mut recipient = one_shot_server().await?;
+    async fn invoke(&self, arguments: &str) -> Result<Vec<u8>, ConsentError> {
+        let mut recipient = one_shot_server().await.map_err(ConsentError::failed)?;
         let mut child = prompt_command(&self.executable, &recipient.public_key_bundle(), arguments)
             .spawn()
-            .map_err(|error| format!("failed to start the consent prompt: {error}"))?;
+            .map_err(|error| ConsentError::failed(format!("cannot start the prompt: {error}")))?;
 
         // Held open so the child sees EOF, and exits, if this daemon dies.
         let _stdin = child
             .stdin
             .take()
-            .ok_or("consent prompt stdin was not piped")?;
+            .ok_or_else(|| ConsentError::failed("stdin was not piped"))?;
         let stdout = child
             .stdout
             .take()
-            .ok_or("consent prompt stdout was not piped")?;
+            .ok_or_else(|| ConsentError::failed("stdout was not piped"))?;
         let stderr = child
             .stderr
             .take()
-            .ok_or("consent prompt stderr was not piped")?;
+            .ok_or_else(|| ConsentError::failed("stderr was not piped"))?;
 
         let output = async {
             let (stdout, stderr, status) = tokio::join!(
@@ -131,29 +179,29 @@ impl ConsentPrompt {
             ))
         };
         let (stdout, stderr, status) = match tokio::time::timeout(PROMPT_TIMEOUT, output).await {
-            Ok(result) => result?,
+            Ok(result) => result.map_err(ConsentError::Failed)?,
             Err(_) => {
                 let _ = child.kill().await;
-                return Err("consent prompt timed out".into());
+                return Err(ConsentError::TimedOut);
             }
         };
         if !status.success() {
             let detail = String::from_utf8_lossy(&stderr);
             let detail = detail.trim();
-            return Err(if detail.is_empty() {
-                format!("consent prompt exited with {status}")
+            return Err(ConsentError::failed(if detail.is_empty() {
+                format!("the prompt exited with {status}")
             } else {
-                format!("consent prompt exited with {status}: {detail}")
-            });
+                format!("the prompt exited with {status}: {detail}")
+            }));
         }
 
-        let frame: MessageFrame = serde_json::from_slice(stdout.trim_ascii())
-            .map_err(|error| format!("consent prompt returned an invalid frame: {error}"))?;
+        let frame: MessageFrame =
+            serde_json::from_slice(stdout.trim_ascii()).map_err(ConsentError::failed)?;
         // The frame came off this child's own stdout pipe, so its sender key is
         // trusted for this one response and nothing else.
         recipient
             .add_runtime_approval(&frame.public_key)
-            .map_err(|error| error.to_string())?;
+            .map_err(ConsentError::failed)?;
         let captured = Arc::new(StdMutex::new(None));
         let output = captured.clone();
         recipient
@@ -162,12 +210,28 @@ impl ConsentPrompt {
                 async { Ok::<Option<Vec<u8>>, String>(None) }
             })
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(ConsentError::failed)?;
         captured
             .lock()
-            .map_err(|_| "consent output lock was poisoned".to_owned())?
+            .map_err(|_| ConsentError::failed("the output lock was poisoned"))?
             .take()
-            .ok_or_else(|| "consent prompt returned an unauthenticated response".into())
+            .ok_or_else(|| ConsentError::failed("the response was unauthenticated"))
+    }
+}
+
+/// Why a prompt produced no answer.
+#[derive(Debug, thiserror::Error)]
+pub enum ConsentError {
+    /// Nobody answered in time, which is a refusal rather than a malfunction.
+    #[error("the consent prompt timed out")]
+    TimedOut,
+    #[error("the consent prompt failed: {0}")]
+    Failed(String),
+}
+
+impl ConsentError {
+    fn failed(detail: impl std::fmt::Display) -> Self {
+        Self::Failed(detail.to_string())
     }
 }
 

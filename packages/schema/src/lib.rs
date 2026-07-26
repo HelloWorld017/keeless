@@ -502,6 +502,10 @@ pub struct AssertPasskeyArgs {
     pub rp_id: String,
     /// SHA-256 of the client data, base64url without padding.
     pub client_data_hash: String,
+    /// Whether the user approved this ceremony. A silent assertion, which a
+    /// platform uses to discover credentials before prompting, sets this false
+    /// and produces an assertion relying parties reject.
+    pub user_present: bool,
     /// Whether the caller completed its user-verification ceremony.
     pub user_verified: bool,
 }

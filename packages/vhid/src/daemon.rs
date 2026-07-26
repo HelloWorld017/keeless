@@ -125,9 +125,13 @@ async fn handle_message(
             let allocated = if message.channel == ctaphid::BROADCAST_CHANNEL {
                 assembler.allocate_channel()
             } else {
-                // A client re-initializing its own channel keeps it and only
-                // asks for its pending transaction to be dropped.
+                // A client re-initializing its own channel keeps it and asks for
+                // everything pending on it to be abandoned. That is a client's
+                // only way to recover from a request it can no longer answer for,
+                // so it has to reach the running command, not just the reassembly
+                // buffer.
                 assembler.cancel(message.channel);
+                abandon(state, message.channel);
                 message.channel
             };
             let report =
@@ -144,16 +148,9 @@ async fn handle_message(
 
         Command::Cancel => {
             assembler.cancel(message.channel);
-            let State::Busy(command) = state else {
-                return Ok(());
-            };
-            if command.channel != message.channel || command.answered {
+            if !abandon(state, message.channel) {
                 return Ok(());
             }
-            // Dropping the sender drops the command's future, which takes down
-            // the consent prompt with it.
-            command.cancel = None;
-            command.answered = true;
             let payload = response::status(CtapStatus::KeepaliveCancel);
             for report in ctaphid::encode(message.channel, Command::Cbor, &payload) {
                 device.write_report(&report).await?;
@@ -236,6 +233,24 @@ fn spawn_command(
             })
             .await;
     });
+}
+
+/// Abandon the command running on `channel`, if any.
+///
+/// Returns whether a command was abandoned, which is also whether the channel
+/// still owes an answer. Dropping the cancel sender drops the command's future,
+/// taking any consent prompt down with it; the authenticator comes back through
+/// the completion channel, and its response is discarded.
+fn abandon(state: &mut State, channel: u32) -> bool {
+    let State::Busy(command) = state else {
+        return false;
+    };
+    if command.channel != channel || command.answered {
+        return false;
+    }
+    command.cancel = None;
+    command.answered = true;
+    true
 }
 
 /// Stand-in used only while the authenticator is moved out of `State`.

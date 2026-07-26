@@ -4,6 +4,10 @@
 //! transports map their failures onto this type rather than inventing their own.
 
 /// A CTAP2 status byte, as defined by the CTAP 2.1 error-response table.
+///
+/// The values are the wire encoding, so they must match the specification's
+/// table exactly: a platform reads them to decide whether to retry, to prompt,
+/// or to move on to another authenticator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CtapStatus {
@@ -25,8 +29,8 @@ pub enum CtapStatus {
     UserActionTimeout = 0x2f,
     NotAllowed = 0x30,
     PinAuthInvalid = 0x33,
-    RequestTooLarge = 0x35,
-    ActionTimeout = 0x36,
+    RequestTooLarge = 0x39,
+    ActionTimeout = 0x3a,
     UserVerificationInvalid = 0x3f,
     Other = 0x7f,
 }
