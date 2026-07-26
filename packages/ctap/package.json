@@ -1,0 +1,18 @@
+{
+  "name": "@keeless/ctap",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CTAP2 command codec shared by the keeless authenticator transports",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "check": "pnpm run \"/^check:.*/\"",
+    "check:format": "cargo fmt --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_ctap --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_ctap",
+    "typecheck": "cargo check -p keeless_ctap --lib"
+  }
+}

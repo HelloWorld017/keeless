@@ -2270,6 +2270,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "keeless_ctap"
+version = "0.0.0"
+dependencies = [
+ "minicbor",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "keeless_host_browser"
 version = "0.0.0"
 dependencies = [

@@ -1,0 +1,11 @@
+[package]
+name = "keeless_ctap"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "CTAP2 command codec shared by the Keeless authenticator transports"
+
+[dependencies]
+minicbor = { version = "=0.25.1", features = ["alloc"] }
+thiserror = "2"
