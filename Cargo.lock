@@ -2472,6 +2472,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "keeless_vhid"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "keeless_ctap",
+ "keeless_host_client",
+ "keeless_kdbx",
+ "keeless_lesswire",
+ "keeless_schema",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "keepass"
 version = "0.13.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"

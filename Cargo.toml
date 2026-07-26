@@ -12,5 +12,6 @@ members = [
   "packages/native-ui",
   "packages/schema",
   "packages/secure-types",
-  "packages/sync"
+  "packages/sync",
+  "packages/vhid"
 ]

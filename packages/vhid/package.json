@@ -1,0 +1,19 @@
+{
+  "name": "@keeless/vhid",
+  "version": "0.0.0",
+  "private": true,
+  "description": "virtual FIDO2 authenticator serving keeless passkeys on linux",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "cargo build --release -p keeless_vhid",
+    "check": "pnpm run \"/^check:.*/\"",
+    "check:format": "cargo fmt --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_vhid --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_vhid",
+    "typecheck": "cargo check -p keeless_vhid --lib"
+  }
+}

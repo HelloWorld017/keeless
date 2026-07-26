@@ -1,0 +1,29 @@
+[package]
+name = "keeless_vhid"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "Virtual FIDO2 authenticator serving Keeless passkeys on Linux"
+
+[dependencies]
+base64 = "0.22"
+keeless_ctap = { path = "../ctap" }
+keeless_host_client = { path = "../host-client" }
+keeless_lesswire = { path = "../lesswire" }
+keeless_schema = { path = "../schema" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+keeless_kdbx = { path = "../kdbx" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[bin]]
+name = "keeless-vhid"
+path = "src/main.rs"

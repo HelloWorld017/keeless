@@ -4,9 +4,8 @@ use crate::error::CtapStatus;
 use crate::request::{Command, parse_command};
 use crate::response::{self, Assertion, AuthenticatorInfo};
 
-const AAGUID: [u8; 16] = [
-    0x89, 0xec, 0x85, 0x72, 0xca, 0xec, 0x48, 0xc2, 0xa5, 0x29, 0xeb, 0x4a, 0x87, 0xe1, 0xbf, 0xf0,
-];
+use crate::KEELESS_AAGUID as AAGUID;
+
 const CLIENT_DATA_HASH: [u8; 32] = [7; 32];
 
 /// Build a CTAP payload: the command byte followed by an encoded parameter map.
