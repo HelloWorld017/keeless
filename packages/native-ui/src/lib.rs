@@ -13,7 +13,7 @@ use thiserror::Error;
 use zeroize::Zeroizing;
 
 use crate::{
-    dialogs::{prompt_connection, prompt_password},
+    dialogs::{prompt_connection, prompt_passkey, prompt_password},
     protocol::{Arguments, PlaintextResponse, UiRequest},
 };
 
@@ -50,6 +50,10 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), Error> {
         UiRequest::Connection(request) => match prompt_connection(request) {
             Ok(allowed) => PlaintextResponse::connection(allowed),
             Err(error) => PlaintextResponse::error("connection", "ui_unavailable", error),
+        },
+        UiRequest::Passkey(request) => match prompt_passkey(request) {
+            Ok(account_id) => PlaintextResponse::passkey(account_id),
+            Err(error) => PlaintextResponse::error("passkey", "ui_unavailable", error),
         },
     };
 

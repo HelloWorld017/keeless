@@ -4,7 +4,10 @@ use eframe::egui;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    protocol::{ConnectionRequest, PasswordMode, PasswordRequest},
+    protocol::{
+        ConnectionRequest, PasskeyAccount, PasskeyMode, PasskeyRequest, PasswordMode,
+        PasswordRequest,
+    },
     secure_text_edit::{SecureTextBuffer, SecureTextEditState, secure_text_edit},
 };
 
@@ -36,6 +39,24 @@ pub fn prompt_connection(request: ConnectionRequest) -> DialogResult<bool> {
         result: result.clone(),
     };
     run_dialog(title, [500.0, 240.0], app)?;
+    take_result(&result)
+}
+
+pub fn prompt_passkey(request: PasskeyRequest) -> DialogResult<String> {
+    let result = Arc::new(Mutex::new(None));
+    let title = match request.mode {
+        PasskeyMode::Register => "Keeless passkey creation",
+        PasskeyMode::Assert => "Keeless passkey sign-in",
+    };
+    let height = 200.0 + 24.0 * request.accounts.len().saturating_sub(1) as f32;
+    let app = PasskeyApp {
+        mode: request.mode,
+        rp_id: request.rp_id,
+        accounts: request.accounts,
+        selected: 0,
+        result: result.clone(),
+    };
+    run_dialog(title, [500.0, height.min(560.0)], app)?;
     take_result(&result)
 }
 
@@ -266,6 +287,93 @@ impl eframe::App for ConnectionApp {
 }
 
 impl Drop for ConnectionApp {
+    fn drop(&mut self) {
+        if let Ok(mut slot) = self.result.lock()
+            && slot.is_none()
+        {
+            *slot = Some(Ok(None));
+        }
+    }
+}
+
+struct PasskeyApp {
+    mode: PasskeyMode,
+    rp_id: String,
+    accounts: Vec<PasskeyAccount>,
+    selected: usize,
+    result: Arc<Mutex<Option<DialogResult<String>>>>,
+}
+
+impl PasskeyApp {
+    fn finish(&self, context: &egui::Context, result: DialogResult<String>) {
+        if let Ok(mut slot) = self.result.lock()
+            && slot.is_none()
+        {
+            *slot = Some(result);
+        }
+        context.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    fn approve(&self, context: &egui::Context) {
+        let Some(account) = self.accounts.get(self.selected) else {
+            self.finish(context, Ok(None));
+            return;
+        };
+        self.finish(context, Ok(Some(account.id.clone())));
+    }
+}
+
+impl eframe::App for PasskeyApp {
+    fn update(&mut self, context: &egui::Context, _: &mut eframe::Frame) {
+        if context.input(|input| input.viewport().close_requested())
+            || context.input(|input| input.key_pressed(egui::Key::Escape))
+        {
+            self.finish(context, Ok(None));
+            return;
+        }
+        egui::CentralPanel::default().show(context, |ui| {
+            match self.mode {
+                PasskeyMode::Register => {
+                    ui.heading("Create a passkey?");
+                    ui.add_space(8.0);
+                    ui.label("A site asked Keeless to create a passkey for:");
+                }
+                PasskeyMode::Assert => {
+                    ui.heading("Sign in with a passkey?");
+                    ui.add_space(8.0);
+                    ui.label("A site asked Keeless to sign in to:");
+                }
+            }
+            ui.monospace(&self.rp_id);
+            ui.add_space(12.0);
+
+            if self.accounts.len() == 1 {
+                ui.label(format!("Account: {}", self.accounts[0].username));
+            } else {
+                ui.label("Choose an account:");
+                egui::ScrollArea::vertical()
+                    .max_height(240.0)
+                    .show(ui, |ui| {
+                        for (index, account) in self.accounts.iter().enumerate() {
+                            ui.radio_value(&mut self.selected, index, &account.username);
+                        }
+                    });
+            }
+
+            ui.add_space(16.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Approve").clicked() {
+                    self.approve(context);
+                }
+                if ui.button("Deny").clicked() {
+                    self.finish(context, Ok(None));
+                }
+            });
+        });
+    }
+}
+
+impl Drop for PasskeyApp {
     fn drop(&mut self) {
         if let Ok(mut slot) = self.result.lock()
             && slot.is_none()

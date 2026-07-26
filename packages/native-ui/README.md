@@ -15,6 +15,7 @@ Examples:
 ```sh
 keeless-native-ui --public-key "$KEY" password '{"mode":"unlock"}'
 keeless-native-ui --public-key "$KEY" connection '{"publicKey":"v1...","name":"Browser extension"}'
+keeless-native-ui --public-key "$KEY" passkey '{"mode":"assert","rpId":"example.com","accounts":[{"id":"entry-1","username":"alice"}]}'
 ```
 
 Supported requests:
@@ -28,6 +29,13 @@ type ConnectionArgs = {
   publicKey: string;
   name?: string;
 };
+
+type PasskeyArgs = {
+  mode: 'register' | 'assert';
+  rpId: string;
+  // Exactly one account when registering; 1 to 32 to choose between when signing in.
+  accounts: { id: string; username: string }[];
+};
 ```
 
 The public key must use the lesswire `v1.<Ed25519>.<X25519>` bundle format.
@@ -37,6 +45,7 @@ The frame payload is one of:
 ```json
 {"version":1,"kind":"password","status":"selected","result":{"password":"..."}}
 {"version":1,"kind":"connection","status":"selected","result":{"allowed":true}}
+{"version":1,"kind":"passkey","status":"selected","result":{"accountId":"entry-1"}}
 {"version":1,"kind":"password","status":"error","error":{"code":"ui_unavailable","message":"..."}}
 ```
 

@@ -17,17 +17,21 @@ use crate::{
 fn parses_each_ui_kind() {
     let identity = Identity::generate().unwrap();
     let key = identity.public_key_bundle();
+    let connection = format!(r#"{{"publicKey":"{key}","name":"Browser extension"}}"#);
     for (kind, json) in [
         ("password", r#"{"mode":"unlock"}"#),
+        ("connection", connection.as_str()),
         (
-            "connection",
-            &format!(r#"{{"publicKey":"{key}","name":"Browser extension"}}"#),
+            "passkey",
+            r#"{"mode":"assert","rpId":"example.com","accounts":[{"id":"1","username":"alice"}]}"#,
         ),
     ] {
         let arguments = Arguments::parse(arguments(&key, kind, json)).unwrap();
         assert!(matches!(
             (kind, arguments.request),
-            ("password", UiRequest::Password(_)) | ("connection", UiRequest::Connection(_))
+            ("password", UiRequest::Password(_))
+                | ("connection", UiRequest::Connection(_))
+                | ("passkey", UiRequest::Passkey(_))
         ));
     }
 }
@@ -48,6 +52,43 @@ fn rejects_unknown_fields_and_unsafe_labels() {
         &format!(r#"{{"publicKey":"{key}","name":"safe\u202eevil"}}"#),
     ));
     assert!(matches!(bidi_name, Err(Error::InvalidRequest(_))));
+
+    let bidi_rp = Arguments::parse(arguments(
+        &key,
+        "passkey",
+        r#"{"mode":"assert","rpId":"safe\u202eevil.com","accounts":[{"id":"1","username":"a"}]}"#,
+    ));
+    assert!(matches!(bidi_rp, Err(Error::InvalidRequest(_))));
+}
+
+#[test]
+fn rejects_passkey_account_counts_the_dialog_cannot_show() {
+    let key = Identity::generate().unwrap().public_key_bundle();
+    for json in [
+        // A registration prompt names exactly the account being created.
+        r#"{"mode":"register","rpId":"example.com","accounts":[]}"#,
+        r#"{"mode":"register","rpId":"example.com","accounts":[{"id":"1","username":"a"},{"id":"2","username":"b"}]}"#,
+        // A sign-in prompt needs at least one account to choose from.
+        r#"{"mode":"assert","rpId":"example.com","accounts":[]}"#,
+    ] {
+        assert!(matches!(
+            Arguments::parse(arguments(&key, "passkey", json)),
+            Err(Error::InvalidRequest(_))
+        ));
+    }
+
+    let many = (0..33)
+        .map(|index| format!(r#"{{"id":"{index}","username":"user{index}"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert!(matches!(
+        Arguments::parse(arguments(
+            &key,
+            "passkey",
+            &format!(r#"{{"mode":"assert","rpId":"example.com","accounts":[{many}]}}"#),
+        )),
+        Err(Error::InvalidRequest(_))
+    ));
 }
 
 #[test]
@@ -71,6 +112,20 @@ fn serializes_cancelled_and_denied_results() {
         )
         .unwrap(),
         r#"{"version":1,"kind":"connection","status":"selected","result":{"allowed":false}}"#
+    );
+    assert_eq!(
+        String::from_utf8(PlaintextResponse::passkey(None).to_json().unwrap().to_vec()).unwrap(),
+        r#"{"version":1,"kind":"passkey","status":"cancelled"}"#
+    );
+    assert_eq!(
+        String::from_utf8(
+            PlaintextResponse::passkey(Some("entry-1".into()))
+                .to_json()
+                .unwrap()
+                .to_vec()
+        )
+        .unwrap(),
+        r#"{"version":1,"kind":"passkey","status":"selected","result":{"accountId":"entry-1"}}"#
     );
 }
 

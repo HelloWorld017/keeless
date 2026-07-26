@@ -41,6 +41,7 @@ impl Arguments {
         let request = match kind.as_str() {
             "password" => parse_request(&json).map(UiRequest::Password),
             "connection" => parse_request(&json).map(UiRequest::Connection),
+            "passkey" => parse_request(&json).map(UiRequest::Passkey),
             _ => return Err(Error::Usage(format!("unknown UI kind: {kind}"))),
         }?;
         request.validate()?;
@@ -68,6 +69,7 @@ fn parse_request<T: for<'de> Deserialize<'de>>(json: &str) -> Result<T, Error> {
 pub enum UiRequest {
     Password(PasswordRequest),
     Connection(ConnectionRequest),
+    Passkey(PasskeyRequest),
 }
 
 impl UiRequest {
@@ -75,6 +77,7 @@ impl UiRequest {
         match self {
             Self::Password(_) => Ok(()),
             Self::Connection(request) => request.validate(),
+            Self::Passkey(request) => request.validate(),
         }
     }
 }
@@ -113,6 +116,61 @@ impl ConnectionRequest {
     }
 }
 
+/// Largest number of accounts a passkey prompt will list.
+///
+/// Matches what the CTAP layer will send at most, and keeps an unbounded list
+/// from producing a dialog the user cannot dismiss.
+const MAX_PASSKEY_ACCOUNTS: usize = 32;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum PasskeyMode {
+    /// Confirm creating a new passkey for a relying party.
+    Register,
+    /// Confirm signing in, choosing among the accounts for a relying party.
+    Assert,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasskeyRequest {
+    pub mode: PasskeyMode,
+    pub rp_id: String,
+    pub accounts: Vec<PasskeyAccount>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasskeyAccount {
+    /// Opaque handle the caller uses to identify the chosen account.
+    pub id: String,
+    pub username: String,
+}
+
+impl PasskeyRequest {
+    fn validate(&self) -> Result<(), Error> {
+        validate_label(Some(&self.rp_id), "rpId")?;
+        let expected = match self.mode {
+            PasskeyMode::Register => self.accounts.len() == 1,
+            PasskeyMode::Assert => (1..=MAX_PASSKEY_ACCOUNTS).contains(&self.accounts.len()),
+        };
+        if !expected {
+            return Err(Error::InvalidRequest(format!(
+                "passkey accounts must contain {} entries",
+                match self.mode {
+                    PasskeyMode::Register => "exactly 1".to_string(),
+                    PasskeyMode::Assert => format!("1 to {MAX_PASSKEY_ACCOUNTS}"),
+                }
+            )));
+        }
+        for account in &self.accounts {
+            validate_label(Some(&account.id), "account id")?;
+            validate_label(Some(&account.username), "account username")?;
+        }
+        Ok(())
+    }
+}
+
 fn validate_label(value: Option<&str>, field: &str) -> Result<(), Error> {
     if value.is_some_and(|value| {
         value.is_empty()
@@ -139,6 +197,8 @@ fn validate_label(value: Option<&str>, field: &str) -> Result<(), Error> {
 pub enum PlaintextResponse {
     Password(Option<SecureTextBuffer>),
     Connection(Option<bool>),
+    /// The chosen account's ID, or `None` when the user refused.
+    Passkey(Option<String>),
     Error {
         kind: &'static str,
         code: &'static str,
@@ -153,6 +213,10 @@ impl PlaintextResponse {
 
     pub fn connection(value: Option<bool>) -> Self {
         Self::Connection(value)
+    }
+
+    pub fn passkey(value: Option<String>) -> Self {
+        Self::Passkey(value)
     }
 
     pub fn error(kind: &'static str, code: &'static str, message: impl ToString) -> Self {
@@ -187,6 +251,17 @@ impl PlaintextResponse {
             Self::Connection(None) => serialize_json(&StatusResponse {
                 version: 1,
                 kind: "connection",
+                status: "cancelled",
+            }),
+            Self::Passkey(Some(account_id)) => serialize_json(&SelectedResponse {
+                version: 1,
+                kind: "passkey",
+                status: "selected",
+                result: PasskeyResult { account_id },
+            }),
+            Self::Passkey(None) => serialize_json(&StatusResponse {
+                version: 1,
+                kind: "passkey",
                 status: "cancelled",
             }),
             Self::Error {
@@ -241,6 +316,12 @@ struct PasswordResult<T> {
 #[derive(Serialize)]
 struct ConnectionResult {
     allowed: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PasskeyResult<'a> {
+    account_id: &'a str,
 }
 
 #[derive(Serialize)]
