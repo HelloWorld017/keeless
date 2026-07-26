@@ -4,7 +4,6 @@ use crate::model::all_entry_summaries;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore, args: GetEntriesArgs) -> Result<EntriesResult> {
-    core.enforce_auto_lock();
     let entries = {
         let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
         all_entry_summaries(handle.database(), args.exclude_trash)

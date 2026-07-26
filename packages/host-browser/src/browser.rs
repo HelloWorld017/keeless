@@ -1,10 +1,12 @@
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use futures::lock::Mutex;
-use keeless_core::{KeelessCore, KeelessHost, StorageProvider};
+use gloo_timers::future::TimeoutFuture;
+use keeless_core::{HostFuture, KeelessCore, KeelessHost, StorageProvider, TaskSpawner};
 use keeless_lesswire::{ApprovalProvider, MessageFrame, Server, ServerHost, WireFuture};
 use keeless_sync::{WebDavAuth, WebDavProvider};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+use wasm_bindgen_futures::spawn_local;
 use web_sys::{File, FileSystemFileHandle};
 
 use crate::{
@@ -15,6 +17,14 @@ use crate::{
 };
 
 struct BrowserApproval;
+
+struct BrowserTaskSpawner;
+
+impl TaskSpawner for BrowserTaskSpawner {
+    fn spawn(&self, task: HostFuture<'static, ()>) {
+        spawn_local(task);
+    }
+}
 
 impl ApprovalProvider for BrowserApproval {
     fn approve(&self, _: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
@@ -52,6 +62,8 @@ impl BrowserCore {
             }),
             password_input: None,
             clock: Arc::new(BrowserClock),
+            database_persistence: None,
+            task_spawner: Some(Arc::new(BrowserTaskSpawner)),
         };
         let core = KeelessCore::new(host).await.map_err(js_error)?;
         let server = Server::new(ServerHost {
@@ -65,9 +77,20 @@ impl BrowserCore {
         })
         .await
         .map_err(js_error)?;
-        Ok(Self {
-            state: Rc::new(Mutex::new(BrowserState { core, server })),
-        })
+        let state = Rc::new(Mutex::new(BrowserState { core, server }));
+        let tick_state = Rc::downgrade(&state);
+        spawn_local(async move {
+            loop {
+                TimeoutFuture::new(1_000).await;
+                let Some(tick_state) = tick_state.upgrade() else {
+                    return;
+                };
+                if let Some(mut state) = tick_state.try_lock() {
+                    state.core.tick().await;
+                }
+            }
+        });
+        Ok(Self { state })
     }
 
     #[wasm_bindgen(js_name = handle)]

@@ -22,12 +22,7 @@ impl KeelessCore {
         self.enforce_auto_lock();
         let request_id = request.request_id;
         let outcome = match operations::execute(self, request.operation).await {
-            Ok(success) => {
-                if self.handle.is_some() {
-                    self.last_activity_ms = Some(self.clock.monotonic_millis());
-                }
-                OperationOutcome::Success { success }
-            }
+            Ok(success) => OperationOutcome::Success { success },
             Err(error) => OperationOutcome::Error {
                 error: (&error).into(),
             },

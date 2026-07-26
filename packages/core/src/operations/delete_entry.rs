@@ -3,8 +3,7 @@ use keeless_schema::{DeleteEntryArgs, EmptyResult, OperationSuccess};
 use crate::model::parse_node_id;
 use crate::{CoreError, KeelessCore, Result};
 
-pub(crate) fn run(core: &mut KeelessCore, args: DeleteEntryArgs) -> Result<EmptyResult> {
-    core.enforce_auto_lock();
+pub(crate) async fn run(core: &mut KeelessCore, args: DeleteEntryArgs) -> Result<EmptyResult> {
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }
@@ -21,22 +20,30 @@ pub(crate) fn run(core: &mut KeelessCore, args: DeleteEntryArgs) -> Result<Empty
     if !args.permanent && in_recycle_bin {
         return Err(CoreError::InvalidEntryDelete);
     }
-    let changed = core
-        .handle
-        .as_mut()
-        .ok_or(CoreError::DatabaseLocked)?
-        .apply_update::<CoreError>(|database| {
-            Ok(database.delete_entry(&entry_id, args.permanent))
-        })?;
-    if !changed {
+    let recycle_bin_id = uuid::Uuid::new_v4();
+    if !database.can_delete_entry(&entry_id, args.permanent, recycle_bin_id) {
         return Err(CoreError::InvalidEntryDelete);
     }
-    if changed {
-        core.touch_activity();
-    }
+    let timestamp_ms = core.clock.now_millis();
+    let mutation = super::mutations::Mutation::DeleteEntry {
+        id: entry_id,
+        permanent: args.permanent,
+        recycle_bin_id,
+        timestamp_ms,
+    };
+    super::mutations::mutate(core, &mutation, move |database| {
+        let applied =
+            database.delete_entry_at(&entry_id, args.permanent, recycle_bin_id, timestamp_ms);
+        debug_assert!(applied);
+    })
+    .await?;
+    core.touch_activity();
     Ok(EmptyResult {})
 }
 
-pub(super) fn execute(core: &mut KeelessCore, args: DeleteEntryArgs) -> Result<OperationSuccess> {
-    Ok(OperationSuccess::DeleteEntry(run(core, args)?))
+pub(super) async fn execute(
+    core: &mut KeelessCore,
+    args: DeleteEntryArgs,
+) -> Result<OperationSuccess> {
+    Ok(OperationSuccess::DeleteEntry(run(core, args).await?))
 }

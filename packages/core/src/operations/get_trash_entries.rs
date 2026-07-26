@@ -5,7 +5,6 @@ use crate::model::entry_summary;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Result<EntriesResult> {
-    core.enforce_auto_lock();
     let entries = {
         let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
         let database = handle.database();

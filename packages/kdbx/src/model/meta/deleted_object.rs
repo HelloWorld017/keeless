@@ -14,9 +14,10 @@ pub struct DeletedObject {
 
 impl DeletedObject {
     pub fn new(id: NodeId) -> Self {
-        Self {
-            id,
-            deletion_time: chrono::Utc::now().timestamp_millis(),
-        }
+        Self::new_at(id, chrono::Utc::now().timestamp_millis())
+    }
+
+    pub fn new_at(id: NodeId, deletion_time: i64) -> Self {
+        Self { id, deletion_time }
     }
 }

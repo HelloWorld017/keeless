@@ -8,7 +8,6 @@ use crate::model::{entry_detail, parse_node_id};
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore, args: GetEntryDetailArgs) -> Result<EntryDetailResult> {
-    core.enforce_auto_lock();
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }

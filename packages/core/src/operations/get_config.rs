@@ -3,7 +3,6 @@ use keeless_schema::{ConfigResult, GetConfigArgs, OperationSuccess};
 use crate::{KeelessConfig, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> KeelessConfig {
-    core.enforce_auto_lock();
     core.touch_activity();
     core.settings.clone()
 }

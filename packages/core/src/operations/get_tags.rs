@@ -8,7 +8,6 @@ use crate::model::all_entries;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Result<TagsResult> {
-    core.enforce_auto_lock();
     let tags = {
         let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
         let database = handle.database();

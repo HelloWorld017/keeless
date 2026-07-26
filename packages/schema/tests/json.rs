@@ -813,6 +813,9 @@ fn success_response_is_flat_and_operation_specific() {
             outcome: OperationOutcome::Success {
                 success: OperationSuccess::GetDatabaseStatus(DatabaseStatusResult {
                     status: DatabaseStatus::NotExist,
+                    sync_status: SyncStatus::Idle,
+                    dirty: false,
+                    sync_error: None,
                 }),
             },
         },
@@ -820,7 +823,12 @@ fn success_response_is_flat_and_operation_specific() {
             "requestId": "request-3",
             "status": "success",
             "op": "getDatabaseStatus",
-            "result": { "status": "not_exist" }
+            "result": {
+                "status": "not_exist",
+                "syncStatus": "idle",
+                "dirty": false,
+                "syncError": null
+            }
         }),
     );
     assert_roundtrip(

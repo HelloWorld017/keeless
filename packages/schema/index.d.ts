@@ -4,6 +4,8 @@ export type StorageDescriptor = { provider: string; path: string };
 
 export type DatabaseStatus = 'not_exist' | 'locked' | 'unlocked';
 
+export type SyncStatus = 'idle' | 'syncing' | 'error';
+
 export type KeelessConfig = { autoLockTimeoutMs: number | null; paranoiaMode: boolean };
 
 export type KeelessConfigPatch = { autoLockTimeoutMs?: number | null; paranoiaMode?: boolean };
@@ -254,7 +256,12 @@ export type OperationRequest = (
 
 export type EmptyResult = Record<string, never>;
 
-export type DatabaseStatusResult = { status: DatabaseStatus };
+export type DatabaseStatusResult = {
+  status: DatabaseStatus;
+  syncStatus: SyncStatus;
+  dirty: boolean;
+  syncError: OperationError | null;
+};
 
 export type StorageDescriptorResult = { storage: StorageDescriptor | null };
 

@@ -61,7 +61,11 @@ pub struct Group {
 
 impl Group {
     pub fn new(id: NodeId) -> Self {
-        let now = DateInstant::now();
+        Self::new_at(id, DateInstant::now())
+    }
+
+    /// Construct a group with deterministic initial timestamps.
+    pub fn new_at(id: NodeId, timestamp: DateInstant) -> Self {
         Self {
             id,
             title: String::new(),
@@ -71,10 +75,10 @@ impl Group {
             child_group_ids: Vec::new(),
             child_entry_ids: Vec::new(),
             is_expanded: true,
-            creation_time: now,
-            last_modification_time: now,
-            last_access_time: now,
-            location_changed: now,
+            creation_time: timestamp,
+            last_modification_time: timestamp,
+            last_access_time: timestamp,
+            location_changed: timestamp,
             expiry_time: DateInstant::never(),
             expires: false,
             usage_count: 0,

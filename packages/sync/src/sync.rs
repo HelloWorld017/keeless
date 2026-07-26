@@ -101,6 +101,29 @@ impl FileHandle {
         Ok(Self::from_remote(provider, path, database, remote, options))
     }
 
+    /// Opens a locally cached remote representation without contacting storage.
+    pub fn open_cached(
+        provider: Arc<dyn StorageProvider>,
+        path: impl Into<String>,
+        bytes: Vec<u8>,
+        key: &CompositeKey,
+        options: SyncOptions,
+    ) -> Result<Self, SyncError> {
+        let path = path.into();
+        let database = open_database(bytes.as_slice(), key)?;
+        Ok(Self {
+            provider,
+            path,
+            database,
+            checkpoint: Checkpoint {
+                bytes,
+                revision: None,
+            },
+            options,
+            dirty: false,
+        })
+    }
+
     /// Creates a new remote KDBX without merging with an existing file.
     pub async fn create(
         provider: Arc<dyn StorageProvider>,
@@ -179,6 +202,21 @@ impl FileHandle {
         Ok(changed)
     }
 
+    /// Commits a mutation which was fully validated and durably journaled by the caller.
+    pub fn commit_prepared(&mut self, commit: impl FnOnce(&mut Database)) {
+        commit(&mut self.database);
+        self.dirty = true;
+    }
+
+    /// Mutable access reserved for applying an already authenticated local journal.
+    pub fn replay_database(&mut self) -> &mut Database {
+        &mut self.database
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
@@ -191,6 +229,10 @@ impl FileHandle {
         self.checkpoint.revision.as_ref()
     }
 
+    pub fn checkpoint_bytes(&self) -> &[u8] {
+        &self.checkpoint.bytes
+    }
+
     /// Verifies credentials against the exact remote representation used as this handle's base.
     pub fn verify_credentials(&self, key: &CompositeKey) -> Result<(), SyncError> {
         open_database(self.checkpoint.bytes.as_slice(), key).map(|_| ())?;
@@ -199,10 +241,24 @@ impl FileHandle {
 
     /// Pulls remote changes, merges concurrent edits, and conditionally writes local changes.
     pub async fn sync(&mut self, key: &CompositeKey) -> Result<SyncReport, SyncError> {
+        let remote = self.provider.read(&self.path, None).await?;
+        self.sync_from_remote(key, remote).await
+    }
+
+    /// Synchronizes using a remote representation fetched by a host background task.
+    pub async fn sync_from_remote(
+        &mut self,
+        key: &CompositeKey,
+        remote: RemoteFile,
+    ) -> Result<SyncReport, SyncError> {
         let max_attempts = self.options.retry_policy.max_retries.saturating_add(1);
+        let mut first_remote = Some(remote);
 
         for attempt in 0..max_attempts {
-            let remote = self.provider.read(&self.path, None).await?;
+            let remote = match first_remote.take() {
+                Some(remote) => remote,
+                None => self.provider.read(&self.path, None).await?,
+            };
 
             if !self.dirty {
                 if remote.bytes == self.checkpoint.bytes {

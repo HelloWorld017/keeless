@@ -8,13 +8,30 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{replace_file, temporary_path};
+use crate::persistence::{DatabaseIdentity, canonical_backing_path};
 
 pub const MAX_LOCAL_FILE_SIZE: u64 = 128 * 1024 * 1024;
 
 #[derive(Debug, Default)]
 pub struct LocalFileStorage {
-    capabilities: RwLock<HashMap<String, PathBuf>>,
+    capabilities: RwLock<HashMap<String, LocalFileCapability>>,
     writes: tokio::sync::Mutex<()>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalFileCapability {
+    path: PathBuf,
+    identity: DatabaseIdentity,
+}
+
+impl LocalFileCapability {
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    pub fn identity(&self) -> &DatabaseIdentity {
+        &self.identity
+    }
 }
 
 impl LocalFileStorage {
@@ -24,20 +41,27 @@ impl LocalFileStorage {
 
     /// The desktop host calls this only with a path returned by the Electron picker.
     pub fn grant_picker_path(&self, path: PathBuf) -> io::Result<String> {
+        let path = canonical_backing_path(&path)?;
+        let identity = DatabaseIdentity::from_backing_path("local-file", &path)?;
         let mut random = [0_u8; 32];
         getrandom::getrandom(&mut random).map_err(io::Error::other)?;
         let token = hex::encode(random);
         self.capabilities
             .write()
-            .unwrap()
-            .insert(token.clone(), path);
+            .map_err(|_| io::Error::other("local-file capability lock was poisoned"))?
+            .insert(token.clone(), LocalFileCapability { path, identity });
         Ok(token)
     }
 
-    fn resolve(&self, token: &str) -> Result<PathBuf, StorageError> {
+    pub fn resolve_capability(&self, token: &str) -> Result<LocalFileCapability, StorageError> {
         self.capabilities
             .read()
-            .unwrap()
+            .map_err(|_| {
+                error(
+                    StorageErrorKind::Other,
+                    "local-file capability lock was poisoned",
+                )
+            })?
             .get(token)
             .cloned()
             .ok_or_else(|| {
@@ -46,6 +70,10 @@ impl LocalFileStorage {
                     "invalid local-file capability",
                 )
             })
+    }
+
+    fn resolve(&self, token: &str) -> Result<PathBuf, StorageError> {
+        Ok(self.resolve_capability(token)?.path)
     }
 }
 
@@ -268,6 +296,20 @@ mod tests {
         let provider = LocalFileStorage::new();
         let error = provider.stat("/tmp/not-a-token").await.unwrap_err();
         assert_eq!(error.kind(), StorageErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn new_tokens_for_the_same_path_keep_the_same_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("new-vault.kdbx");
+        let provider = LocalFileStorage::new();
+        let first = provider.grant_picker_path(path.clone()).unwrap();
+        let second = provider.grant_picker_path(path).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(
+            provider.resolve_capability(&first).unwrap().identity(),
+            provider.resolve_capability(&second).unwrap().identity()
+        );
     }
 
     #[tokio::test]

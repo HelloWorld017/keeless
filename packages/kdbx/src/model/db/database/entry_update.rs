@@ -49,6 +49,13 @@ pub struct EntryPropertiesUpdate {
     pub icon: Option<IconUpdate>,
 }
 
+/// A fully validated entry replacement ready for an infallible database commit.
+pub struct PreparedEntryUpdate {
+    entry_id: NodeId,
+    updated: crate::model::entry::Entry,
+    memory_protection_context: Option<Arc<MemoryProtectionContext>>,
+}
+
 impl Database {
     /// Atomically replace the complete ordered field list and optionally update entry properties.
     pub fn update_entry(
@@ -58,6 +65,56 @@ impl Database {
         fields: &[EntryFieldUpdate],
         properties: Option<&EntryPropertiesUpdate>,
     ) -> DatabaseResult<bool> {
+        let new_custom_field_ids = fields
+            .iter()
+            .filter(|field| field.field_id.is_none())
+            .map(|_| Uuid::new_v4())
+            .collect::<Vec<_>>();
+        self.update_entry_at(
+            composite_key,
+            entry_id,
+            fields,
+            properties,
+            &new_custom_field_ids,
+            DateInstant::now(),
+        )
+    }
+
+    /// Validate, prepare, and commit an entry update with deterministic IDs and timestamp.
+    pub fn update_entry_at(
+        &mut self,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+        fields: &[EntryFieldUpdate],
+        properties: Option<&EntryPropertiesUpdate>,
+        new_custom_field_ids: &[Uuid],
+        last_modification_time: DateInstant,
+    ) -> DatabaseResult<bool> {
+        let Some(prepared) = self.prepare_entry_update(
+            composite_key,
+            entry_id,
+            fields,
+            properties,
+            new_custom_field_ids,
+            last_modification_time,
+        )?
+        else {
+            return Ok(false);
+        };
+        self.commit_entry_update(prepared);
+        Ok(true)
+    }
+
+    /// Build an entry update without mutating the database.
+    pub fn prepare_entry_update(
+        &self,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+        fields: &[EntryFieldUpdate],
+        properties: Option<&EntryPropertiesUpdate>,
+        new_custom_field_ids: &[Uuid],
+        last_modification_time: DateInstant,
+    ) -> DatabaseResult<Option<PreparedEntryUpdate>> {
         let original = self
             .entries
             .get(entry_id)
@@ -117,6 +174,21 @@ impl Database {
                 "all standard entry fields are required".into(),
             ));
         }
+        let expected_new_ids = fields
+            .iter()
+            .filter(|field| field.field_id.is_none())
+            .count();
+        let unique_new_ids = new_custom_field_ids.iter().copied().collect::<HashSet<_>>();
+        if new_custom_field_ids.len() != expected_new_ids
+            || unique_new_ids.len() != new_custom_field_ids.len()
+            || new_custom_field_ids
+                .iter()
+                .any(|id| original.fields.0.contains_key(&EntryFieldId::Custom(*id)))
+        {
+            return Err(DatabaseError::InvalidFormat(
+                "new custom entry field IDs are invalid or duplicated".into(),
+            ));
+        }
 
         let context = self
             .memory_protection_context
@@ -165,11 +237,12 @@ impl Database {
 
         let mut updated = original.clone();
         let mut visible_fields = IndexMap::with_capacity(fields.len());
+        let mut new_ids = new_custom_field_ids.iter().copied();
         unlock.with_root(&context, |root| {
             for (requested, plaintext) in fields.iter().zip(&plaintexts) {
-                let id = requested
-                    .field_id
-                    .unwrap_or_else(|| EntryFieldId::Custom(uuid::Uuid::new_v4()));
+                let id = requested.field_id.unwrap_or_else(|| {
+                    EntryFieldId::Custom(new_ids.next().expect("new field IDs validated"))
+                });
                 let target_memory = memory_field(id, &requested.name);
                 let field = if let Some(source_id) = requested.field_id {
                     let source = original
@@ -256,17 +329,26 @@ impl Database {
         }
 
         if !changed {
-            return Ok(false);
+            return Ok(None);
         }
-        updated.last_modification_time = DateInstant::now();
-        if self.memory_protection_context.is_none() {
+        updated.last_modification_time = last_modification_time;
+        Ok(Some(PreparedEntryUpdate {
+            entry_id: *entry_id,
+            updated,
+            memory_protection_context: self.memory_protection_context.is_none().then_some(context),
+        }))
+    }
+
+    /// Commit a prepared update. Preparation guarantees this path cannot fail.
+    pub fn commit_entry_update(&mut self, prepared: PreparedEntryUpdate) {
+        if let Some(context) = prepared.memory_protection_context {
             self.memory_protection_context = Some(context);
         }
         let current = self
             .entries
-            .get_mut(entry_id)
-            .expect("entry existence validated");
-        let mut snapshot = std::mem::replace(current, updated);
+            .get_mut(&prepared.entry_id)
+            .expect("prepared entry still exists");
+        let mut snapshot = std::mem::replace(current, prepared.updated);
         snapshot.history.clear();
         snapshot.xml_extensions.history.clear();
         current.history.push(snapshot);
@@ -274,7 +356,6 @@ impl Database {
             current.history.remove(0);
         }
         self.mark_modified();
-        Ok(true)
     }
 }
 

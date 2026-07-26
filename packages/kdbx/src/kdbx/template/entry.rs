@@ -1,10 +1,11 @@
 use crate::crypto::memory_protection::MemoryUnlockSession;
 use crate::model::{
-    CompositeKey, Database, Entry, EntryFieldId, NodeId, ProtectedString, StandardField, Template,
-    TemplateField, TemplateFieldType,
+    CompositeKey, Database, DateInstant, Entry, EntryFieldId, NodeId, ProtectedString,
+    StandardField, Template, TemplateField, TemplateFieldType,
 };
-use crate::DatabaseResult;
+use crate::{DatabaseError, DatabaseResult};
 use indexmap::IndexMap;
+use uuid::Uuid;
 
 use super::metadata::{self, FieldType};
 
@@ -43,32 +44,122 @@ pub fn entries(database: &Database) -> Vec<&Entry> {
         .collect()
 }
 
-pub fn instantiate(
-    database: &mut Database,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemplateCopyMode {
+    PreserveProtected,
+    RedactProtected,
+}
+
+/// A fully prepared template entry insertion with an infallible commit path.
+pub struct PreparedTemplateInstantiation {
+    entry: Entry,
+    parent_group_id: NodeId,
+}
+
+pub fn prepare_instantiation_at(
+    database: &Database,
     source_entry_id: &NodeId,
     parent_group_id: &NodeId,
+    new_entry_id: NodeId,
+    link_field_id: EntryFieldId,
+    timestamp: DateInstant,
+    copy_mode: TemplateCopyMode,
     composite_key: Option<&CompositeKey>,
-) -> DatabaseResult<Option<NodeId>> {
-    if !database.groups.contains_key(parent_group_id) || !is_template(database, source_entry_id) {
+) -> DatabaseResult<Option<PreparedTemplateInstantiation>> {
+    if !database.can_add_entry(&new_entry_id, parent_group_id)
+        || !is_template(database, source_entry_id)
+        || !matches!(link_field_id, EntryFieldId::Custom(_))
+    {
         return Ok(None);
     }
     let source = template_entry(database, source_entry_id).expect("eligible template exists");
     let Some(source_uuid) = source.id.as_uuid().copied() else {
         return Ok(None);
     };
+    if source.field(link_field_id).is_some() {
+        return Ok(None);
+    }
     let mut entry = source.clone();
-    let id = NodeId::new_uuid();
-    let mut unlock = composite_key.map(MemoryUnlockSession::new);
-    entry.prepare_duplicate(id, unlock.as_mut())?;
+    let mut unlock = match copy_mode {
+        TemplateCopyMode::PreserveProtected => Some(MemoryUnlockSession::new(
+            composite_key.ok_or_else(|| {
+                DatabaseError::InvalidFormat(
+                    "preserving protected template fields requires credentials".into(),
+                )
+            })?,
+        )),
+        TemplateCopyMode::RedactProtected => None,
+    };
+    entry.prepare_duplicate_at(new_entry_id, unlock.as_mut(), timestamp)?;
     entry.retain_custom_fields(|field| {
         !is_internal_field(field.name()) && !field.name().starts_with('@')
     });
     standard_fields_first(&mut entry);
-    entry.add_custom_field(
+    entry.add_custom_field_with_id(
+        link_field_id,
         metadata::TEMPLATE_UUID,
         ProtectedString::new_plain(&source_uuid.simple().to_string().to_ascii_uppercase()),
     );
-    Ok(database.add_entry(entry, parent_group_id).then_some(id))
+    Ok(Some(PreparedTemplateInstantiation {
+        entry,
+        parent_group_id: *parent_group_id,
+    }))
+}
+
+pub fn commit_instantiation(
+    database: &mut Database,
+    prepared: PreparedTemplateInstantiation,
+) -> NodeId {
+    let id = prepared.entry.id;
+    database.add_entry_validated(prepared.entry, &prepared.parent_group_id);
+    id
+}
+
+pub fn instantiate(
+    database: &mut Database,
+    source_entry_id: &NodeId,
+    parent_group_id: &NodeId,
+    composite_key: Option<&CompositeKey>,
+) -> DatabaseResult<Option<NodeId>> {
+    let copy_mode = if composite_key.is_some() {
+        TemplateCopyMode::PreserveProtected
+    } else {
+        TemplateCopyMode::RedactProtected
+    };
+    instantiate_at(
+        database,
+        source_entry_id,
+        parent_group_id,
+        NodeId::new_uuid(),
+        EntryFieldId::Custom(Uuid::new_v4()),
+        DateInstant::now(),
+        copy_mode,
+        composite_key,
+    )
+}
+
+/// Instantiate a template with all replay-visible identities and time supplied by the caller.
+pub fn instantiate_at(
+    database: &mut Database,
+    source_entry_id: &NodeId,
+    parent_group_id: &NodeId,
+    new_entry_id: NodeId,
+    link_field_id: EntryFieldId,
+    timestamp: DateInstant,
+    copy_mode: TemplateCopyMode,
+    composite_key: Option<&CompositeKey>,
+) -> DatabaseResult<Option<NodeId>> {
+    Ok(prepare_instantiation_at(
+        database,
+        source_entry_id,
+        parent_group_id,
+        new_entry_id,
+        link_field_id,
+        timestamp,
+        copy_mode,
+        composite_key,
+    )?
+    .map(|prepared| commit_instantiation(database, prepared)))
 }
 
 fn standard_fields_first(entry: &mut Entry) {

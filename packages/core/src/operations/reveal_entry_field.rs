@@ -11,7 +11,6 @@ pub(crate) async fn run(
     field_id: String,
     password: Option<&[u8]>,
 ) -> Result<RevealEntryFieldResult> {
-    core.enforce_auto_lock();
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }

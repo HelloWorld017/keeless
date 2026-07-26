@@ -27,9 +27,9 @@ pub use model::{
     DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldId, EntryFieldSelector,
     EntryFieldUpdate, EntryKDB, EntryKDBX, EntryPropertiesUpdate, FieldReference, Group, GroupKDB,
     GroupKDBX, IconImage, IconImageCustom, IconImageStandard, IconUpdate, MasterCredential,
-    MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, ProtectedString, RefTarget,
-    SortNodeEnum, StandardField, Tag, Template, TemplateField, TemplateFieldType, TraversalOrder,
-    NUMBER_STANDARD_ICONS,
+    MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType, PreparedEntryUpdate,
+    ProtectedString, RefTarget, SortNodeEnum, StandardField, Tag, Template, TemplateField,
+    TemplateFieldType, TraversalOrder, NUMBER_STANDARD_ICONS,
 };
 
 // ─── Crypto ───────────────────────────────────────────────────────────

@@ -103,6 +103,73 @@ impl ConfigProvider for FailingConfig {
     }
 }
 
+#[derive(Default)]
+struct MemoryDatabasePersistence {
+    cache: Mutex<Option<Vec<u8>>>,
+    journal: Mutex<Vec<Vec<u8>>>,
+    selected: Mutex<Option<StorageDescriptor>>,
+    fail_append: AtomicBool,
+}
+
+impl DatabasePersistence for MemoryDatabasePersistence {
+    fn select<'a>(&'a self, descriptor: &'a StorageDescriptor) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            *self.selected.lock().unwrap() = Some(descriptor.clone());
+            Ok(())
+        })
+    }
+
+    fn identity(&self) -> HostFuture<'_, Result<Vec<u8>>> {
+        Box::pin(async { Ok(b"test-persistence/vault.kdbx".to_vec()) })
+    }
+
+    fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>> {
+        Box::pin(async { Ok(self.cache.lock().unwrap().clone()) })
+    }
+
+    fn write_cache<'a>(&'a self, cache: &'a [u8]) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            *self.cache.lock().unwrap() = Some(cache.to_vec());
+            Ok(())
+        })
+    }
+
+    fn read_journal(&self) -> HostFuture<'_, Result<Vec<Vec<u8>>>> {
+        Box::pin(async { Ok(self.journal.lock().unwrap().clone()) })
+    }
+
+    fn append_journal<'a>(&'a self, line: &'a [u8]) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            if self.fail_append.load(Ordering::Relaxed) {
+                return Err(CoreError::Host("journal append failed".into()));
+            }
+            self.journal.lock().unwrap().push(line.to_vec());
+            Ok(())
+        })
+    }
+
+    fn clear_journal(&self) -> HostFuture<'_, Result<()>> {
+        Box::pin(async {
+            self.journal.lock().unwrap().clear();
+            Ok(())
+        })
+    }
+
+    fn quarantine_cache<'a>(&'a self, _reason: &'a str) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            *self.cache.lock().unwrap() = None;
+            Ok(())
+        })
+    }
+
+    fn quarantine_journal<'a>(&'a self, _reason: &'a str) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            self.journal.lock().unwrap().clear();
+            Ok(())
+        })
+    }
+}
+
 struct Approval;
 
 struct PasswordInput {
@@ -381,6 +448,38 @@ async fn query_core() -> (KeelessCore, QueryIds) {
     (core, ids)
 }
 
+async fn query_core_with_persistence(
+    storage: Arc<MemoryStorage>,
+    persistence: Arc<MemoryDatabasePersistence>,
+) -> (KeelessCore, QueryIds) {
+    let (_, ids) = query_database_bytes(b"correct");
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage);
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        config_provider: Arc::new(MemoryConfig::default()),
+        password_input: None,
+        clock: Arc::new(FakeClock::new(1234)),
+        database_persistence: Some(persistence),
+        task_spawner: None,
+    })
+    .await
+    .unwrap();
+    operations::open::run(
+        &mut core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "vault.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+    (core, ids)
+}
+
 fn schema_id(id: Uuid) -> DatabaseNodeId {
     DatabaseNodeId::Uuid(id.hyphenated().to_string())
 }
@@ -402,6 +501,8 @@ fn host(
         config_provider: config,
         password_input: None,
         clock,
+        database_persistence: None,
+        task_spawner: None,
     }
 }
 
@@ -576,7 +677,7 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         .await
         .unwrap();
     clock.set(110);
-    core.tick();
+    core.tick().await;
     assert_eq!(
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Locked
@@ -1048,6 +1149,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
                 style,
             },
         )
+        .await
         .unwrap();
     }
 
@@ -1069,6 +1171,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
             name: " orphan ".into(),
         },
     )
+    .await
     .unwrap();
     assert!(matches!(
         operations::delete_tag::run(
@@ -1076,7 +1179,8 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
             DeleteTagArgs {
                 name: "shared".into()
             }
-        ),
+        )
+        .await,
         Err(CoreError::TagInUse)
     ));
     assert!(matches!(
@@ -1086,7 +1190,8 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
                 name: "bad".into(),
                 style: style(1, "red"),
             }
-        ),
+        )
+        .await,
         Err(CoreError::InvalidTagStyle)
     ));
     assert!(matches!(
@@ -1096,7 +1201,8 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
                 name: "bad".into(),
                 style: style(69, "#000000"),
             }
-        ),
+        )
+        .await,
         Err(CoreError::InvalidIconReference)
     ));
 
@@ -1114,7 +1220,8 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
                 name: "new".into(),
                 style: style(1, "#000000"),
             }
-        ),
+        )
+        .await,
         Err(CoreError::MalformedTagStyles)
     ));
 }
@@ -1335,7 +1442,8 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
                 parent_group_id: schema_id(ids.child_group),
                 template_entry_id: schema_id(ids.root_entry),
             },
-        ),
+        )
+        .await,
         Err(CoreError::EntryNotFound)
     ));
 
@@ -1347,6 +1455,7 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
                 template_entry_id: schema_id(Uuid::from_u128(41)),
             },
         )
+        .await
         .unwrap()
         .id,
     );
@@ -1412,6 +1521,7 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
                 template_entry_id: schema_id(Uuid::from_u128(41)),
             },
         )
+        .await
         .unwrap()
         .id,
     );
@@ -1592,6 +1702,7 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
             }),
         },
     )
+    .await
     .unwrap();
     assert_eq!(
         operations::get_trash_entries::run(&mut core)
@@ -1608,6 +1719,7 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
             parent_group_id: schema_id(ids.nested_group),
         },
     )
+    .await
     .unwrap();
     assert_eq!(
         operations::get_group_entries::run(
@@ -1638,7 +1750,8 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
                 entry_id: schema_id(Uuid::from_u128(999)),
                 parent_group_id: schema_id(ids.root_group),
             },
-        ),
+        )
+        .await,
         Err(CoreError::InvalidEntryMove)
     ));
     assert!(matches!(
@@ -1648,7 +1761,8 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
                 entry_id: schema_id(Uuid::from_u128(998)),
                 parent_group_id: schema_id(ids.root_group),
             },
-        ),
+        )
+        .await,
         Err(CoreError::EntryNotFound)
     ));
 }
@@ -1665,6 +1779,7 @@ async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
             destination_index: 0,
         },
     )
+    .await
     .unwrap();
     let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
     let root = hierarchy
@@ -1685,7 +1800,8 @@ async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
                 parent_group_id: schema_id(ids.child_group),
                 destination_index: 0,
             },
-        ),
+        )
+        .await,
         Err(CoreError::InvalidGroupMove)
     ));
     assert!(matches!(
@@ -1696,7 +1812,8 @@ async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
                 parent_group_id: schema_id(ids.child_group),
                 destination_index: 0,
             },
-        ),
+        )
+        .await,
         Err(CoreError::InvalidGroupMove)
     ));
 }
@@ -1707,7 +1824,7 @@ async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_
     let missing = schema_id(Uuid::from_u128(999));
 
     assert!(matches!(
-        operations::delete_group::run(&mut core, DeleteGroupArgs { group_id: missing },),
+        operations::delete_group::run(&mut core, DeleteGroupArgs { group_id: missing },).await,
         Err(CoreError::GroupNotFound)
     ));
     assert!(matches!(
@@ -1716,7 +1833,8 @@ async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_
             DeleteGroupArgs {
                 group_id: schema_id(ids.root_group),
             },
-        ),
+        )
+        .await,
         Err(CoreError::InvalidGroupDelete)
     ));
 
@@ -1726,6 +1844,7 @@ async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_
             group_id: schema_id(ids.child_group),
         },
     )
+    .await
     .unwrap();
 
     let database = core.handle.as_ref().unwrap().database();
@@ -1752,7 +1871,8 @@ async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_
                     NodeId::Int(_) => unreachable!(),
                 }),
             },
-        ),
+        )
+        .await,
         Err(CoreError::InvalidGroupDelete)
     ));
 }
@@ -2304,7 +2424,8 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
                 entry_id: entry_id.clone(),
                 permanent: true
             }
-        ),
+        )
+        .await,
         Err(CoreError::InvalidEntryDelete)
     ));
     assert!(
@@ -2323,6 +2444,7 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
             permanent: false,
         },
     )
+    .await
     .unwrap();
     let database = core.handle.as_ref().unwrap().database();
     assert!(database.is_entry_in_recycle_bin(&model_id(entry_id.clone())));
@@ -2333,7 +2455,8 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
                 entry_id: entry_id.clone(),
                 permanent: false,
             }
-        ),
+        )
+        .await,
         Err(CoreError::InvalidEntryDelete)
     ));
     operations::delete_entry::run(
@@ -2343,6 +2466,7 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
             permanent: true,
         },
     )
+    .await
     .unwrap();
     assert!(
         core.handle
@@ -2397,7 +2521,8 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
             AddEntryArgs {
                 parent_group_id: missing.clone(),
             },
-        ),
+        )
+        .await,
         Err(CoreError::GroupNotFound)
     ));
     assert!(matches!(
@@ -2406,7 +2531,8 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
             AddGroupArgs {
                 parent_group_id: missing,
             },
-        ),
+        )
+        .await,
         Err(CoreError::GroupNotFound)
     ));
     assert_eq!(
@@ -2424,6 +2550,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
             parent_group_id: schema_id(ids.child_group),
         },
     )
+    .await
     .unwrap();
     let detail =
         operations::get_entry_detail::run(&mut core, GetEntryDetailArgs { entry_id: entry.id })
@@ -2436,6 +2563,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
             parent_group_id: schema_id(ids.child_group),
         },
     )
+    .await
     .unwrap();
     operations::rename_group::run(
         &mut core,
@@ -2444,6 +2572,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
             name: "  Renamed Group  ".into(),
         },
     )
+    .await
     .unwrap();
     operations::update_group::run(
         &mut core,
@@ -2456,6 +2585,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
             },
         },
     )
+    .await
     .unwrap();
     let hierarchy = operations::get_group_hierarchy::run(&mut core).unwrap();
     let created_group = hierarchy
@@ -2476,7 +2606,8 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
                 group_id: schema_id(ids.child_group),
                 name: "  ".into(),
             },
-        ),
+        )
+        .await,
         Err(CoreError::InvalidGroupName)
     ));
     assert_eq!(
@@ -2681,6 +2812,118 @@ async fn database_query_operations_report_lookup_errors_and_require_unlock() {
         ),
         Err(CoreError::DatabaseLocked)
     ));
+}
+
+#[tokio::test]
+async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
+    let (bytes, _) = query_database_bytes(b"correct");
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes.clone()))));
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let (mut core, ids) = query_core_with_persistence(storage.clone(), persistence.clone()).await;
+
+    let first = operations::add_entry::run(
+        &mut core,
+        AddEntryArgs {
+            parent_group_id: schema_id(ids.child_group),
+        },
+    )
+    .await
+    .unwrap();
+    let first_id = model_id(first.id.clone());
+    let second = operations::add_entry::run(
+        &mut core,
+        AddEntryArgs {
+            parent_group_id: schema_id(ids.child_group),
+        },
+    )
+    .await
+    .unwrap();
+
+    let lines = persistence.journal.lock().unwrap().clone();
+    assert_eq!(lines.len(), 2);
+    let id_text = |id: &DatabaseNodeId| match id {
+        DatabaseNodeId::Uuid(value) => value.clone(),
+        DatabaseNodeId::Int(value) => value.to_string(),
+    };
+    for (sequence, line) in lines.iter().enumerate() {
+        let encoded = String::from_utf8(line.clone()).unwrap();
+        assert!(!encoded.contains("add_entry"));
+        assert!(!encoded.contains(&id_text(&first.id)));
+        assert!(!encoded.contains(&id_text(&second.id)));
+        let envelope: serde_json::Value = serde_json::from_slice(line).unwrap();
+        assert_eq!(envelope["version"], 1);
+        assert_eq!(envelope["sequence"], sequence as u64);
+        assert!(
+            envelope["nonce"]
+                .as_str()
+                .unwrap()
+                .bytes()
+                .all(|byte| byte != b'=')
+        );
+    }
+
+    persistence.fail_append.store(true, Ordering::Relaxed);
+    let before = core.handle.as_ref().unwrap().database().entry_count();
+    assert!(matches!(
+        operations::add_entry::run(
+            &mut core,
+            AddEntryArgs {
+                parent_group_id: schema_id(ids.child_group),
+            },
+        )
+        .await,
+        Err(CoreError::Host(_))
+    ));
+    assert_eq!(
+        core.handle.as_ref().unwrap().database().entry_count(),
+        before
+    );
+    assert_eq!(persistence.journal.lock().unwrap().len(), 2);
+    persistence.fail_append.store(false, Ordering::Relaxed);
+
+    *storage.0.lock().unwrap() = None;
+    let (replayed_dirty, _) =
+        query_core_with_persistence(storage.clone(), persistence.clone()).await;
+    assert!(replayed_dirty.handle.as_ref().unwrap().is_dirty());
+    assert!(
+        replayed_dirty
+            .handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&first_id)
+            .is_some()
+    );
+    *storage.0.lock().unwrap() = Some(bytes);
+
+    // Simulate a crash after the cache watermark was committed but before old journal
+    // records were removed. Replay must skip the already-covered prefix.
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let mut cached_database = Vec::new();
+    save_database(
+        &mut cached_database,
+        core.handle.as_ref().unwrap().database(),
+        &key,
+    )
+    .unwrap();
+    *persistence.cache.lock().unwrap() = Some(
+        core.journal
+            .as_ref()
+            .unwrap()
+            .encode_cache(&cached_database)
+            .unwrap(),
+    );
+    *storage.0.lock().unwrap() = None;
+    let (mut replayed, _) = query_core_with_persistence(storage, persistence).await;
+    let database = replayed.handle.as_ref().unwrap().database();
+    assert!(database.get_entry(&first_id).is_some());
+    assert!(database.get_entry(&model_id(second.id)).is_some());
+    assert!(!replayed.handle.as_ref().unwrap().is_dirty());
+    assert_eq!(replayed.sync_status, SyncStatus::Syncing);
+    replayed.tick().await;
+    assert_eq!(replayed.sync_status, SyncStatus::Error);
+    assert!(replayed.sync_error.is_some());
+    assert!(replayed.handle.is_some());
 }
 
 #[test]

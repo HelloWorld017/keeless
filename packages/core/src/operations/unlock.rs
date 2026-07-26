@@ -18,21 +18,100 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             )
         })
         .ok_or(CoreError::NoDatabaseSelected)?;
-    let exists = provider.stat(&path).await?.is_some();
-    if !exists {
-        mark_missing_if_locked(core);
-        return Err(CoreError::DatabaseNotFound);
-    }
     let key = CompositeKey::new().with_password(password)?;
-    let handle = match FileHandle::open(provider, path, &key, SyncOptions::default()).await {
-        Ok(handle) => handle,
-        Err(SyncError::RemoteNotFound(_)) => {
-            mark_missing_if_locked(core);
-            return Err(CoreError::DatabaseNotFound);
-        }
-        Err(error) => return Err(error.into()),
-    };
     let raw_key = key.build_raw_key()?;
+    let persistence = core.persistence.clone();
+    let identity = if let Some(persistence) = &persistence {
+        persistence.identity().await?
+    } else {
+        let selection = core.selection.as_ref().expect("selection checked");
+        format!(
+            "{}\0{}",
+            selection.descriptor.provider, selection.descriptor.path
+        )
+        .into_bytes()
+    };
+    let mut journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
+    let cached = match &persistence {
+        Some(persistence) => persistence.read_cache().await?,
+        None => None,
+    };
+    let mut opened_from_cache = false;
+    let mut recovered_error = None;
+    let mut handle = if let Some(cache) = cached {
+        match journal.decode_cache(&cache).and_then(|(sequence, bytes)| {
+            FileHandle::open_cached(
+                Arc::clone(&provider),
+                path.clone(),
+                bytes,
+                &key,
+                SyncOptions::default(),
+            )
+            .map_err(CoreError::from)
+            .map(|handle| (sequence, handle))
+        }) {
+            Ok((sequence, handle)) => {
+                journal.set_sequence(sequence);
+                opened_from_cache = true;
+                handle
+            }
+            Err(cache_error) => {
+                let remote =
+                    open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
+                if let Some(persistence) = &persistence {
+                    persistence
+                        .quarantine_cache(&cache_error.to_string())
+                        .await?;
+                }
+                recovered_error = Some(CoreError::from(cache_error));
+                remote
+            }
+        }
+    } else {
+        open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?
+    };
+    if let Some(persistence) = &persistence {
+        match persistence.read_journal().await {
+            Ok(lines) => {
+                if let Err(error) = super::mutations::replay_lines(
+                    &mut journal,
+                    handle.replay_database(),
+                    &key,
+                    &lines,
+                ) {
+                    let remote =
+                        open_remote_selected(core, Arc::clone(&provider), path.clone(), &key)
+                            .await?;
+                    persistence.quarantine_journal(&error.to_string()).await?;
+                    handle = remote;
+                    opened_from_cache = false;
+                    recovered_error = Some(error);
+                    let identity = persistence.identity().await?;
+                    journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
+                }
+            }
+            Err(error) => {
+                let remote =
+                    open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
+                persistence.quarantine_journal(&error.to_string()).await?;
+                handle = remote;
+                opened_from_cache = false;
+                recovered_error = Some(error);
+                let identity = persistence.identity().await?;
+                journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
+            }
+        }
+    }
+    if journal.is_dirty() {
+        handle.mark_dirty();
+    }
+    let should_sync = opened_from_cache || journal.is_dirty();
+    if !opened_from_cache && !journal.is_dirty() {
+        if let Some(persistence) = &persistence {
+            let cache = journal.encode_cache(handle.checkpoint_bytes())?;
+            persistence.write_cache(&cache).await?;
+        }
+    }
     let credential = if core.settings.paranoia_mode {
         None
     } else {
@@ -41,6 +120,24 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     core.handle = None;
     core.credential = credential;
     core.handle = Some(handle);
+    core.journal = Some(journal);
+    core.dirty = core
+        .journal
+        .as_ref()
+        .is_some_and(|journal| journal.is_dirty());
+    if should_sync {
+        core.start_background_sync(key);
+    } else {
+        core.pending_sync_key = None;
+    }
+    core.sync_status = if should_sync {
+        crate::SyncStatus::Syncing
+    } else if recovered_error.is_some() {
+        crate::SyncStatus::Error
+    } else {
+        crate::SyncStatus::Idle
+    };
+    core.sync_error = recovered_error.as_ref().map(Into::into);
     if let Some(selection) = &mut core.selection {
         selection.exists = true;
     }
@@ -48,12 +145,31 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn mark_missing_if_locked(core: &mut KeelessCore) {
-    if core.handle.is_none() {
+async fn open_remote(
+    provider: Arc<dyn crate::StorageProvider>,
+    path: String,
+    key: &CompositeKey,
+) -> Result<FileHandle> {
+    match FileHandle::open(provider, path, key, SyncOptions::default()).await {
+        Ok(handle) => Ok(handle),
+        Err(SyncError::RemoteNotFound(_)) => Err(CoreError::DatabaseNotFound),
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn open_remote_selected(
+    core: &mut KeelessCore,
+    provider: Arc<dyn crate::StorageProvider>,
+    path: String,
+    key: &CompositeKey,
+) -> Result<FileHandle> {
+    let result = open_remote(provider, path, key).await;
+    if matches!(result, Err(CoreError::DatabaseNotFound)) && core.handle.is_none() {
         if let Some(selection) = &mut core.selection {
             selection.exists = false;
         }
     }
+    result
 }
 
 pub(super) async fn execute(

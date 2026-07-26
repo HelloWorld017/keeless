@@ -7,7 +7,6 @@ use crate::model::{all_entries, entry_summary};
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore, args: SearchEntriesArgs) -> Result<EntriesResult> {
-    core.enforce_auto_lock();
     let key = core
         .credential
         .as_ref()

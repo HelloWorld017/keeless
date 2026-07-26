@@ -3,7 +3,6 @@ use keeless_schema::{GetStorageDescriptorArgs, OperationSuccess, StorageDescript
 use crate::{KeelessCore, Result, StorageDescriptor};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Option<StorageDescriptor> {
-    core.enforce_auto_lock();
     let descriptor = core
         .selection
         .as_ref()

@@ -34,6 +34,32 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     } else {
         Some(CredentialVault::wrap(&raw_key)?)
     };
+    let identity = if let Some(persistence) = &core.persistence {
+        let identity = persistence.identity().await?;
+        persistence
+            .quarantine_journal("journal predates newly created database")
+            .await?;
+        persistence
+            .quarantine_cache("cache predates newly created database")
+            .await?;
+        identity
+    } else {
+        format!(
+            "{}\0{}",
+            core.selection
+                .as_ref()
+                .expect("selection checked")
+                .descriptor
+                .provider,
+            core.selection
+                .as_ref()
+                .expect("selection checked")
+                .descriptor
+                .path
+        )
+        .into_bytes()
+    };
+    let journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
     let mut database = Database::new(DatabaseVersion::KDBX4);
     let root_id = NodeId::new_uuid();
     let mut root = Group::new(root_id);
@@ -64,9 +90,19 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             }
             Err(error) => return Err(error.into()),
         };
+    if let Some(persistence) = &core.persistence {
+        let cache = journal.encode_cache(handle.checkpoint_bytes())?;
+        persistence.write_cache(&cache).await?;
+        persistence.clear_journal().await?;
+    }
     core.handle = None;
     core.credential = credential;
     core.handle = Some(handle);
+    core.journal = Some(journal);
+    core.pending_sync_key = None;
+    core.sync_status = crate::SyncStatus::Idle;
+    core.sync_error = None;
+    core.dirty = false;
     mark_existing(core);
     core.last_activity_ms = Some(core.clock.monotonic_millis());
     Ok(())

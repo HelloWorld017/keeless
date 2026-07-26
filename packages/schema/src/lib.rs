@@ -16,6 +16,14 @@ pub enum DatabaseStatus {
     Unlocked,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncStatus {
+    Idle,
+    Syncing,
+    Error,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct KeelessConfig {
@@ -507,6 +515,10 @@ pub struct EmptyResult {}
 #[serde(rename_all = "camelCase")]
 pub struct DatabaseStatusResult {
     pub status: DatabaseStatus,
+    pub sync_status: SyncStatus,
+    pub dirty: bool,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub sync_error: Option<OperationError>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

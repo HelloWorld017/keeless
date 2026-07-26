@@ -4,7 +4,6 @@ use keeless_schema::{CustomIcon, CustomIconsResult, GetCustomIconsArgs, Operatio
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Result<CustomIconsResult> {
-    core.enforce_auto_lock();
     let mut icons = {
         let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
         handle

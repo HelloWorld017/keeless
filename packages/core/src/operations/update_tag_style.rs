@@ -3,9 +3,8 @@ use keeless_schema::{EmptyResult, OperationSuccess, UpdateTagStyleArgs};
 use crate::features::tag_styles;
 use crate::{CoreError, KeelessCore, Result};
 
-pub(crate) fn run(core: &mut KeelessCore, args: UpdateTagStyleArgs) -> Result<EmptyResult> {
-    core.enforce_auto_lock();
-    let handle = core.handle.as_mut().ok_or(CoreError::DatabaseLocked)?;
+pub(crate) async fn run(core: &mut KeelessCore, args: UpdateTagStyleArgs) -> Result<EmptyResult> {
+    let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
     let name = tag_styles::normalize_name(&args.name)?.to_string();
     let mut style = args.style;
     tag_styles::normalize_style(handle.database(), &mut style)?;
@@ -14,17 +13,26 @@ pub(crate) fn run(core: &mut KeelessCore, args: UpdateTagStyleArgs) -> Result<Em
         return Ok(EmptyResult {});
     }
     styles.insert(name, style);
-    handle.apply_update(|database| {
-        tag_styles::store(database, &styles)?;
-        Ok::<_, CoreError>(true)
-    })?;
+    let value = serde_json::to_string(&styles)?;
+    let timestamp_ms = core.clock.now_millis();
+    let mutation = super::mutations::Mutation::UpdateTagStyles {
+        value: value.clone(),
+        timestamp_ms,
+    };
+    super::mutations::mutate(core, &mutation, move |database| {
+        database
+            .custom_data
+            .set_at(tag_styles::CUSTOM_DATA_KEY, &value, Some(timestamp_ms));
+        database.mark_modified();
+    })
+    .await?;
     core.touch_activity();
     Ok(EmptyResult {})
 }
 
-pub(super) fn execute(
+pub(super) async fn execute(
     core: &mut KeelessCore,
     args: UpdateTagStyleArgs,
 ) -> Result<OperationSuccess> {
-    Ok(OperationSuccess::UpdateTagStyle(run(core, args)?))
+    Ok(OperationSuccess::UpdateTagStyle(run(core, args).await?))
 }

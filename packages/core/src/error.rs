@@ -55,6 +55,10 @@ pub enum CoreError {
     TagInUse,
     #[error("cryptographic operation failed")]
     Crypto,
+    #[error("mutation journal is invalid")]
+    InvalidJournal,
+    #[error("database cache is invalid")]
+    InvalidCache,
     #[error("serialization failed: {0}")]
     Serialization(#[from] serde_json::Error),
     #[error(transparent)]

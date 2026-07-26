@@ -20,6 +20,7 @@ pub(crate) mod get_trash_entries;
 pub(crate) mod lock;
 pub(crate) mod move_entry;
 pub(crate) mod move_group;
+pub mod mutations;
 pub(crate) mod open;
 pub(crate) mod rename_group;
 pub(crate) mod reveal_entry_field;
@@ -57,20 +58,20 @@ pub(crate) async fn execute(
         Operation::GetTags(args) => get_tags::execute(core, args),
         Operation::GetEntryDetail(args) => get_entry_detail::execute(core, args),
         Operation::UpdateEntry(args) => update_entry::execute(core, args).await,
-        Operation::DeleteEntry(args) => delete_entry::execute(core, args),
+        Operation::DeleteEntry(args) => delete_entry::execute(core, args).await,
         Operation::SaveDatabase(args) => save_database::execute(core, args).await,
         Operation::GetCustomIcons(args) => get_custom_icons::execute(core, args),
         Operation::GetEntryTemplates(args) => get_entry_templates::execute(core, args),
-        Operation::MoveGroup(args) => move_group::execute(core, args),
-        Operation::MoveEntry(args) => move_entry::execute(core, args),
-        Operation::AddEntry(args) => add_entry::execute(core, args),
-        Operation::AddEntryFromTemplate(args) => add_entry_from_template::execute(core, args),
-        Operation::AddGroup(args) => add_group::execute(core, args),
-        Operation::DeleteGroup(args) => delete_group::execute(core, args),
-        Operation::RenameGroup(args) => rename_group::execute(core, args),
-        Operation::UpdateGroup(args) => update_group::execute(core, args),
-        Operation::UpdateTagStyle(args) => update_tag_style::execute(core, args),
-        Operation::DeleteTag(args) => delete_tag::execute(core, args),
+        Operation::MoveGroup(args) => move_group::execute(core, args).await,
+        Operation::MoveEntry(args) => move_entry::execute(core, args).await,
+        Operation::AddEntry(args) => add_entry::execute(core, args).await,
+        Operation::AddEntryFromTemplate(args) => add_entry_from_template::execute(core, args).await,
+        Operation::AddGroup(args) => add_group::execute(core, args).await,
+        Operation::DeleteGroup(args) => delete_group::execute(core, args).await,
+        Operation::RenameGroup(args) => rename_group::execute(core, args).await,
+        Operation::UpdateGroup(args) => update_group::execute(core, args).await,
+        Operation::UpdateTagStyle(args) => update_tag_style::execute(core, args).await,
+        Operation::DeleteTag(args) => delete_tag::execute(core, args).await,
         Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args).await,
     }
 }

@@ -1,6 +1,7 @@
 pub mod config;
 pub mod ipc;
 mod native_ui;
+pub mod persistence;
 pub mod storage;
 
 use std::{
@@ -14,7 +15,9 @@ use std::{
     time::Duration,
 };
 
-use keeless_core::{KeelessCore, KeelessHost, StorageProvider, SystemClock};
+use keeless_core::{
+    HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
+};
 use keeless_lesswire::{MessageFrame, Server, ServerHost};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
@@ -27,6 +30,7 @@ use crate::{
     config::{CORE_SETTINGS_FILE, DesktopConfig, WIRE_STATE_FILE},
     ipc::{Request, Response, ServerListener},
     native_ui::NativeUi,
+    persistence::DesktopDatabasePersistence,
     storage::LocalFileStorage,
 };
 
@@ -38,6 +42,15 @@ struct HostState {
 struct InnerState {
     core: KeelessCore,
     server: Server,
+}
+
+#[derive(Debug)]
+struct TokioTaskSpawner;
+
+impl TaskSpawner for TokioTaskSpawner {
+    fn spawn(&self, task: HostFuture<'static, ()>) {
+        tokio::spawn(task);
+    }
 }
 
 struct HostRuntime {
@@ -77,6 +90,10 @@ impl DesktopHost {
         let (shutdown, shutdown_rx) = watch::channel(false);
         let native_ui = Arc::new(NativeUi::new(native_ui_path, shutdown_rx));
         let storage = Arc::new(LocalFileStorage::new());
+        let database_persistence = Arc::new(
+            DesktopDatabasePersistence::project(storage.clone())
+                .map_err(|error| napi_error(error.to_string()))?,
+        );
         let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
         providers.insert("local-file".into(), storage.clone());
         let core = KeelessCore::new(KeelessHost {
@@ -84,6 +101,8 @@ impl DesktopHost {
             config_provider: core_config,
             password_input: Some(native_ui.clone()),
             clock: Arc::new(SystemClock),
+            database_persistence: Some(database_persistence),
+            task_spawner: Some(Arc::new(TokioTaskSpawner)),
         })
         .await
         .map_err(|error| napi_error(error.to_string()))?;
@@ -217,7 +236,7 @@ async fn run_tick(state: Arc<HostState>, mut shutdown: watch::Receiver<bool>) {
         tokio::select! {
             _ = tick.tick() => {
                 if let Ok(mut state) = state.inner.try_lock() {
-                    state.core.tick();
+                    state.core.tick().await;
                 }
             }
             changed = shutdown.changed() => {

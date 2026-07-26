@@ -124,16 +124,28 @@ impl Database {
     /// Add an entry to the database under the specified parent group.
     /// Updates both the entries map and the parent's child list.
     pub fn add_entry(&mut self, entry: Entry, parent_group_id: &NodeId) -> bool {
-        if !self.groups.contains_key(parent_group_id) {
+        if !self.can_add_entry(&entry.id, parent_group_id) {
             return false;
         }
-        let entry_id = entry.id;
-        self.entries.insert(entry_id, entry);
-        if let Some(parent) = self.groups.get_mut(parent_group_id) {
-            parent.add_child_entry(entry_id);
-        }
-        self.mark_modified();
+        self.add_entry_validated(entry, parent_group_id);
         true
+    }
+
+    /// Pure validation for [`Database::add_entry_validated`].
+    pub fn can_add_entry(&self, entry_id: &NodeId, parent_group_id: &NodeId) -> bool {
+        self.groups.contains_key(parent_group_id) && !self.entries.contains_key(entry_id)
+    }
+
+    /// Commit an entry insertion after [`Database::can_add_entry`] succeeds.
+    pub fn add_entry_validated(&mut self, entry: Entry, parent_group_id: &NodeId) {
+        let entry_id = entry.id;
+        debug_assert!(self.can_add_entry(&entry_id, parent_group_id));
+        self.entries.insert(entry_id, entry);
+        self.groups
+            .get_mut(parent_group_id)
+            .expect("validated parent group")
+            .add_child_entry(entry_id);
+        self.mark_modified();
     }
 
     /// Duplicate an entry with a fresh identity, redacting protected content when credentials
@@ -183,10 +195,17 @@ impl Database {
 
     /// Move an entry to another group, appending it after existing entries.
     pub fn reposition_entry(&mut self, entry_id: &NodeId, new_parent_id: &NodeId) -> bool {
-        if !self.entries.contains_key(entry_id) || !self.groups.contains_key(new_parent_id) {
-            return false;
-        }
-        let Some(old_parent_id) = self.find_parent_group_of_entry(entry_id) else {
+        self.reposition_entry_at(entry_id, new_parent_id, DateInstant::now())
+    }
+
+    /// Move an entry using a caller-supplied location timestamp.
+    pub fn reposition_entry_at(
+        &mut self,
+        entry_id: &NodeId,
+        new_parent_id: &NodeId,
+        location_changed: DateInstant,
+    ) -> bool {
+        let Some(old_parent_id) = self.validate_reposition_entry(entry_id, new_parent_id) else {
             return false;
         };
         if old_parent_id == *new_parent_id {
@@ -200,10 +219,22 @@ impl Database {
             parent.add_child_entry(*entry_id);
         }
         if let Some(entry) = self.entries.get_mut(entry_id) {
-            entry.location_changed = DateInstant::now();
+            entry.location_changed = location_changed;
         }
         self.mark_modified();
         true
+    }
+
+    /// Purely validate an entry move and return its current parent.
+    pub fn validate_reposition_entry(
+        &self,
+        entry_id: &NodeId,
+        new_parent_id: &NodeId,
+    ) -> Option<NodeId> {
+        if !self.entries.contains_key(entry_id) || !self.groups.contains_key(new_parent_id) {
+            return None;
+        }
+        self.find_parent_group_of_entry(entry_id)
     }
 
     /// Find the parent group of an entry.

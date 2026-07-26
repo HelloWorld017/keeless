@@ -41,15 +41,24 @@ impl Database {
 
     /// Add a group to the database under the specified parent group.
     pub fn add_group(&mut self, group: Group, parent_group_id: &NodeId) -> bool {
-        if parent_group_id == &group.id {
+        if !self.can_add_group(&group.id, parent_group_id) {
             return false;
         }
-        if !self.groups.contains_key(parent_group_id) && self.root_group_id.is_none() {
-            // Allow adding the root group.
-        } else if !self.groups.contains_key(parent_group_id) {
-            return false;
-        }
+        self.add_group_validated(group, parent_group_id);
+        true
+    }
+
+    /// Pure validation for [`Database::add_group_validated`].
+    pub fn can_add_group(&self, group_id: &NodeId, parent_group_id: &NodeId) -> bool {
+        group_id != parent_group_id
+            && !self.groups.contains_key(group_id)
+            && (self.groups.contains_key(parent_group_id) || self.root_group_id.is_none())
+    }
+
+    /// Commit a group insertion after [`Database::can_add_group`] succeeds.
+    pub fn add_group_validated(&mut self, group: Group, parent_group_id: &NodeId) {
         let group_id = group.id;
+        debug_assert!(self.can_add_group(&group_id, parent_group_id));
         self.groups.insert(group_id, group);
         if let Some(parent) = self.groups.get_mut(parent_group_id) {
             parent.add_child_group(group_id);
@@ -58,22 +67,40 @@ impl Database {
             self.root_group_id = Some(group_id);
         }
         self.mark_modified();
-        true
     }
 
     /// Rename a group and update its modification metadata.
     pub fn rename_group(&mut self, group_id: &NodeId, name: String) -> bool {
+        self.rename_group_at(group_id, name, DateInstant::now())
+    }
+
+    pub fn rename_group_at(
+        &mut self,
+        group_id: &NodeId,
+        name: String,
+        last_modification_time: DateInstant,
+    ) -> bool {
         let Some(group) = self.groups.get_mut(group_id) else {
             return false;
         };
         group.title = name;
-        group.last_modification_time = DateInstant::now();
+        group.last_modification_time = last_modification_time;
         self.mark_modified();
         true
     }
 
     /// Atomically update a group's name and icon metadata.
     pub fn update_group(&mut self, group_id: &NodeId, name: String, icon: IconUpdate) -> bool {
+        self.update_group_at(group_id, name, icon, DateInstant::now())
+    }
+
+    pub fn update_group_at(
+        &mut self,
+        group_id: &NodeId,
+        name: String,
+        icon: IconUpdate,
+        last_modification_time: DateInstant,
+    ) -> bool {
         let Some(group) = self.groups.get_mut(group_id) else {
             return false;
         };
@@ -87,7 +114,7 @@ impl Database {
         group.title = name;
         group.icon = icon_image;
         group.custom_icon_uuid = icon.custom_uuid;
-        group.last_modification_time = DateInstant::now();
+        group.last_modification_time = last_modification_time;
         self.mark_modified();
         true
     }
@@ -138,6 +165,47 @@ impl Database {
         new_parent_id: &NodeId,
         destination_index: usize,
     ) -> bool {
+        self.reposition_group_at(
+            group_id,
+            new_parent_id,
+            destination_index,
+            DateInstant::now(),
+        )
+    }
+
+    pub fn reposition_group_at(
+        &mut self,
+        group_id: &NodeId,
+        new_parent_id: &NodeId,
+        destination_index: usize,
+        location_changed: DateInstant,
+    ) -> bool {
+        let Some(old_parent_id) =
+            self.validate_reposition_group(group_id, new_parent_id, destination_index)
+        else {
+            return false;
+        };
+
+        if let Some(parent) = self.groups.get_mut(&old_parent_id) {
+            parent.child_group_ids.retain(|id| id != group_id);
+        }
+        if let Some(parent) = self.groups.get_mut(new_parent_id) {
+            parent.child_group_ids.insert(destination_index, *group_id);
+        }
+        if let Some(group) = self.groups.get_mut(group_id) {
+            group.location_changed = location_changed;
+        }
+        self.mark_modified();
+        true
+    }
+
+    /// Purely validate a group move and return its current parent.
+    pub fn validate_reposition_group(
+        &self,
+        group_id: &NodeId,
+        new_parent_id: &NodeId,
+        destination_index: usize,
+    ) -> Option<NodeId> {
         if self.root_group_id == Some(*group_id)
             || self.is_recycle_bin(group_id)
             || self.is_recycle_bin(new_parent_id)
@@ -148,11 +216,11 @@ impl Database {
                 .collect_descendant_groups(group_id)
                 .contains(new_parent_id)
         {
-            return false;
+            return None;
         }
 
         let Some(old_parent_id) = self.find_parent_group_of_group(group_id) else {
-            return false;
+            return None;
         };
         let destination_len = self
             .groups
@@ -162,20 +230,9 @@ impl Database {
             })
             .unwrap_or_default();
         if destination_index > destination_len {
-            return false;
+            return None;
         }
-
-        if let Some(parent) = self.groups.get_mut(&old_parent_id) {
-            parent.child_group_ids.retain(|id| id != group_id);
-        }
-        if let Some(parent) = self.groups.get_mut(new_parent_id) {
-            parent.child_group_ids.insert(destination_index, *group_id);
-        }
-        if let Some(group) = self.groups.get_mut(group_id) {
-            group.location_changed = DateInstant::now();
-        }
-        self.mark_modified();
-        true
+        Some(old_parent_id)
     }
 
     pub(super) fn collect_descendant_groups(&self, group_id: &NodeId) -> Vec<NodeId> {
@@ -193,7 +250,7 @@ impl Database {
         result
     }
 
-    fn find_parent_group_of_group(&self, group_id: &NodeId) -> Option<NodeId> {
+    pub fn find_parent_group_of_group(&self, group_id: &NodeId) -> Option<NodeId> {
         for (parent_id, group) in &self.groups {
             if group.child_group_ids.contains(group_id) {
                 return Some(*parent_id);

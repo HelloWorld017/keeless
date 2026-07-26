@@ -1,5 +1,5 @@
 use keeless_kdbx::{
-    CompositeKey, DatabaseError, EntryFieldUpdate as KdbxFieldUpdate,
+    CompositeKey, DatabaseError, DateInstant, EntryFieldUpdate as KdbxFieldUpdate,
     EntryPropertiesUpdate as KdbxPropertiesUpdate,
 };
 use keeless_schema::{EmptyResult, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs};
@@ -15,7 +15,6 @@ pub(crate) async fn run(
     properties: Option<EntryPropertiesUpdate>,
     password: Option<&[u8]>,
 ) -> Result<EmptyResult> {
-    core.enforce_auto_lock();
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }
@@ -95,20 +94,64 @@ pub(crate) async fn run(
             .verify_credentials(&key)?;
         key
     };
-    let changed = core
+    let new_custom_field_ids = converted
+        .iter()
+        .filter(|field| field.field_id.is_none())
+        .map(|_| uuid::Uuid::new_v4())
+        .collect::<Vec<_>>();
+    let timestamp_ms = core.clock.now_millis();
+    let prepared = core
         .handle
-        .as_mut()
+        .as_ref()
         .ok_or(CoreError::DatabaseLocked)?
-        .apply_update(|database| {
-            database.update_entry(&key, &entry_id, &converted, properties.as_ref())
-        })
+        .database()
+        .prepare_entry_update(
+            &key,
+            &entry_id,
+            &converted,
+            properties.as_ref(),
+            &new_custom_field_ids,
+            DateInstant::EpochMillis(timestamp_ms),
+        )
         .map_err(|error| match error {
             DatabaseError::InvalidFormat(_) => CoreError::InvalidEntryUpdate,
             error => CoreError::from(error),
         })?;
-    if changed {
-        core.touch_activity();
-    }
+    let Some(prepared) = prepared else {
+        return Ok(EmptyResult {});
+    };
+    let journal_fields = converted
+        .iter()
+        .map(|field| super::mutations::JournalEntryField {
+            field_id: field.field_id.map(|id| id.to_string()),
+            name: field.name.clone(),
+            value: field.value.clone(),
+            is_protected: field.is_protected,
+        })
+        .collect();
+    let journal_properties =
+        properties
+            .as_ref()
+            .map(|properties| super::mutations::JournalEntryProperties {
+                override_url: properties.override_url.clone(),
+                tags: properties.tags.clone(),
+                expires: properties.expires,
+                expiry_time_ms: properties.expiry_time_ms,
+                standard_icon: properties.icon.map(|icon| icon.standard_id),
+                custom_icon: properties.icon.and_then(|icon| icon.custom_uuid),
+            });
+    let mutation = super::mutations::Mutation::UpdateEntry {
+        id: entry_id,
+        fields: journal_fields,
+        properties: journal_properties,
+        new_custom_field_ids,
+        timestamp_ms,
+    };
+    super::mutations::mutate(core, &mutation, move |database| {
+        database.commit_entry_update(prepared);
+    })
+    .await?;
+    core.touch_activity();
     Ok(EmptyResult {})
 }
 

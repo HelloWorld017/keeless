@@ -4,7 +4,6 @@ use crate::model::{entry_summary, parse_node_id};
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore, args: GetGroupEntriesArgs) -> Result<EntriesResult> {
-    core.enforce_auto_lock();
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }

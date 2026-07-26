@@ -254,7 +254,11 @@ impl Drop for EntryBinary {
 
 impl Entry {
     pub fn new(id: NodeId) -> Self {
-        let now = DateInstant::now();
+        Self::new_at(id, DateInstant::now())
+    }
+
+    /// Construct an entry with deterministic initial timestamps.
+    pub fn new_at(id: NodeId, timestamp: DateInstant) -> Self {
         Self {
             id,
             fields: EntryFields::with_defaults(),
@@ -265,10 +269,10 @@ impl Entry {
             override_url: String::new(),
             tags: Vec::new(),
             binaries: Vec::new(),
-            creation_time: now,
-            last_modification_time: now,
-            last_access_time: now,
-            location_changed: now,
+            creation_time: timestamp,
+            last_modification_time: timestamp,
+            last_access_time: timestamp,
+            location_changed: timestamp,
             expiry_time: DateInstant::never(),
             expires: false,
             usage_count: 0,
@@ -338,11 +342,26 @@ impl Entry {
         name: impl Into<String>,
         value: ProtectedString,
     ) -> EntryFieldId {
-        let name = name.into();
-        assert!(StandardField::from_name(&name).is_none());
         let id = EntryFieldId::Custom(Uuid::new_v4());
-        self.fields.0.insert(id, EntryField::new(name, value));
+        self.add_custom_field_with_id(id, name, value);
         id
+    }
+
+    /// Add a custom field with a caller-supplied stable ID.
+    ///
+    /// Panics when `id` is standard, already exists, or `name` is reserved for
+    /// a standard field. These are caller-controlled invariants.
+    pub fn add_custom_field_with_id(
+        &mut self,
+        id: EntryFieldId,
+        name: impl Into<String>,
+        value: ProtectedString,
+    ) {
+        let name = name.into();
+        assert!(matches!(id, EntryFieldId::Custom(_)));
+        assert!(StandardField::from_name(&name).is_none());
+        assert!(!self.fields.0.contains_key(&id));
+        self.fields.0.insert(id, EntryField::new(name, value));
     }
 
     pub(crate) fn retain_custom_fields(&mut self, keep: impl Fn(&EntryField) -> bool) {
@@ -603,6 +622,15 @@ impl Entry {
         new_entry_id: NodeId,
         unlock: Option<&mut MemoryUnlockSession<'_>>,
     ) -> DatabaseResult<()> {
+        self.prepare_duplicate_at(new_entry_id, unlock, DateInstant::now())
+    }
+
+    pub(crate) fn prepare_duplicate_at(
+        &mut self,
+        new_entry_id: NodeId,
+        unlock: Option<&mut MemoryUnlockSession<'_>>,
+        timestamp: DateInstant,
+    ) -> DatabaseResult<()> {
         self.history.clear();
         self.xml_extensions.history.clear();
 
@@ -618,11 +646,10 @@ impl Entry {
             self.id = new_entry_id;
         }
 
-        let now = DateInstant::now();
-        self.creation_time = now;
-        self.last_modification_time = now;
-        self.last_access_time = now;
-        self.location_changed = now;
+        self.creation_time = timestamp;
+        self.last_modification_time = timestamp;
+        self.last_access_time = timestamp;
+        self.location_changed = timestamp;
         self.usage_count = 0;
         self.is_template = false;
         Ok(())

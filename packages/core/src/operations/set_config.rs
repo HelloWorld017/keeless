@@ -3,7 +3,6 @@ use keeless_schema::{EmptyResult, OperationSuccess, SetConfigArgs};
 use crate::{KeelessConfigPatch, KeelessCore, Result};
 
 pub(crate) async fn run(core: &mut KeelessCore, patch: KeelessConfigPatch) -> Result<()> {
-    core.enforce_auto_lock();
     let previous = core.settings.clone();
     if let Some(timeout) = patch.auto_lock_timeout_ms {
         core.settings.auto_lock_timeout_ms = timeout;

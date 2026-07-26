@@ -7,25 +7,31 @@ mod features;
 mod host;
 mod model;
 mod network;
-mod operations;
+pub mod operations;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use config::{CONFIG_VERSION, PersistedConfig};
 use credential::CredentialVault;
 use keeless_kdbx::CompositeKey;
 #[cfg(test)]
 use keeless_kdbx::SecureArray;
-use keeless_sync::{FileHandle, SyncReport};
+use keeless_sync::{FileHandle, RemoteFile, StorageError, SyncReport};
 use zeroize::Zeroizing;
 
 pub use error::{CoreError, Result};
 pub use host::{
-    Clock, ConfigProvider, HostFuture, KeelessHost, PasswordInputMode, PasswordInputProvider,
-    SystemClock,
+    Clock, ConfigProvider, DatabasePersistence, HostFuture, KeelessHost, PasswordInputMode,
+    PasswordInputProvider, SystemClock, TaskSpawner,
 };
 pub use keeless_schema;
-pub use keeless_schema::{DatabaseStatus, KeelessConfig, KeelessConfigPatch, StorageDescriptor};
+pub use keeless_schema::{
+    DatabaseStatus, KeelessConfig, KeelessConfigPatch, OperationError, StorageDescriptor,
+    SyncStatus,
+};
 pub use keeless_sync::StorageProvider;
 pub const MAX_REQUEST_SIZE: usize = 256 * 1024;
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
@@ -46,6 +52,15 @@ pub struct KeelessCore {
     handle: Option<FileHandle>,
     credential: Option<CredentialVault>,
     last_activity_ms: Option<u64>,
+    persistence: Option<Arc<dyn DatabasePersistence>>,
+    journal: Option<operations::mutations::MutationCoordinator>,
+    sync_status: SyncStatus,
+    sync_error: Option<OperationError>,
+    pending_sync_key: Option<CompositeKey>,
+    task_spawner: Option<Arc<dyn TaskSpawner>>,
+    background_fetch: Option<Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>>,
+    background_started_ms: Option<u64>,
+    dirty: bool,
 }
 
 impl std::fmt::Debug for KeelessCore {
@@ -83,6 +98,15 @@ impl KeelessCore {
             handle: None,
             credential: None,
             last_activity_ms: None,
+            persistence: host.database_persistence,
+            journal: None,
+            sync_status: SyncStatus::Idle,
+            sync_error: None,
+            pending_sync_key: None,
+            task_spawner: host.task_spawner,
+            background_fetch: None,
+            background_started_ms: None,
+            dirty: false,
         };
         if generated {
             core.persist().await?;
@@ -92,6 +116,9 @@ impl KeelessCore {
 
     pub async fn sync(&mut self, password: Option<&[u8]>) -> Result<SyncReport> {
         self.enforce_auto_lock();
+        self.background_fetch = None;
+        self.background_started_ms = None;
+        self.pending_sync_key = None;
         if self.handle.is_none() {
             return Err(CoreError::DatabaseLocked);
         }
@@ -113,12 +140,67 @@ impl KeelessCore {
                 .verify_credentials(&key)?;
             key
         };
-        let report = self
-            .handle
-            .as_mut()
-            .ok_or(CoreError::DatabaseLocked)?
-            .sync(&key)
-            .await?;
+        self.sync_with_key(key, None).await
+    }
+
+    async fn sync_with_key(
+        &mut self,
+        key: CompositeKey,
+        remote: Option<RemoteFile>,
+    ) -> Result<SyncReport> {
+        self.sync_status = SyncStatus::Syncing;
+        self.sync_error = None;
+        let handle = self.handle.as_mut().ok_or(CoreError::DatabaseLocked)?;
+        let result = match remote {
+            Some(remote) => handle.sync_from_remote(&key, remote).await,
+            None => handle.sync(&key).await,
+        };
+        let report = match result {
+            Ok(report) => report,
+            Err(error) => {
+                let error = CoreError::from(error);
+                self.sync_status = SyncStatus::Error;
+                self.sync_error = Some((&error).into());
+                return Err(error);
+            }
+        };
+        if let Some(persistence) = &self.persistence {
+            let database = self
+                .handle
+                .as_ref()
+                .ok_or(CoreError::DatabaseLocked)?
+                .checkpoint_bytes()
+                .to_vec();
+            let cache = self
+                .journal
+                .as_ref()
+                .ok_or(CoreError::DatabaseLocked)?
+                .encode_cache(&database)?;
+            if let Err(error) = persistence.write_cache(&cache).await {
+                self.sync_status = SyncStatus::Error;
+                self.sync_error = Some((&error).into());
+                return Err(error);
+            }
+        }
+        if self
+            .journal
+            .as_ref()
+            .is_some_and(|journal| journal.is_dirty())
+            && let Some(persistence) = &self.persistence
+        {
+            if let Err(error) = persistence.clear_journal().await {
+                self.sync_status = SyncStatus::Error;
+                self.sync_error = Some((&error).into());
+                return Err(error);
+            }
+            self.journal
+                .as_mut()
+                .expect("journal state checked")
+                .mark_clean();
+        }
+        self.sync_status = SyncStatus::Idle;
+        self.sync_error = None;
+        self.dirty = false;
         self.last_activity_ms = Some(self.clock.monotonic_millis());
         Ok(report)
     }
@@ -131,8 +213,85 @@ impl KeelessCore {
         self.storage_providers.insert(name.into(), provider);
     }
 
-    pub fn tick(&mut self) {
+    pub async fn tick(&mut self) {
         self.enforce_auto_lock();
+        if self.handle.is_none() {
+            self.pending_sync_key = None;
+            self.background_fetch = None;
+            self.background_started_ms = None;
+            return;
+        }
+
+        if let Some(fetch) = &self.background_fetch {
+            if self.background_started_ms.is_some_and(|started| {
+                self.clock.monotonic_millis().saturating_sub(started) >= 30_000
+            }) {
+                self.background_fetch = None;
+                self.background_started_ms = None;
+                self.pending_sync_key = None;
+                let error = CoreError::Host("background storage fetch timed out".into());
+                self.sync_status = SyncStatus::Error;
+                self.sync_error = Some((&error).into());
+                return;
+            }
+            let completed = fetch.lock().ok().and_then(|mut result| result.take());
+            if let Some(completed) = completed {
+                self.background_fetch = None;
+                self.background_started_ms = None;
+                let Some(key) = self.pending_sync_key.take() else {
+                    return;
+                };
+                match completed {
+                    Ok(remote) => {
+                        let _ = self.sync_with_key(key, Some(remote)).await;
+                    }
+                    Err(error) => {
+                        let error = CoreError::from(error);
+                        self.sync_status = SyncStatus::Error;
+                        self.sync_error = Some((&error).into());
+                    }
+                }
+            }
+            return;
+        }
+
+        if let Some(key) = self.pending_sync_key.take() {
+            let _ = self.sync_with_key(key, None).await;
+            return;
+        }
+
+        if self.handle.as_ref().is_some_and(|handle| handle.is_dirty())
+            && self.pending_sync_key.is_none()
+            && let Some(credential) = &self.credential
+            && let Ok(key) = credential.restore_key()
+        {
+            self.start_background_sync(key);
+        }
+    }
+
+    fn start_background_sync(&mut self, key: CompositeKey) {
+        let Some(spawner) = &self.task_spawner else {
+            self.pending_sync_key = Some(key);
+            return;
+        };
+        let Some(selection) = &self.selection else {
+            return;
+        };
+        let provider = Arc::clone(&selection.provider);
+        let path = selection.descriptor.path.clone();
+        let result = Arc::new(Mutex::new(None));
+        let task_result = Arc::clone(&result);
+        spawner.spawn(Box::pin(async move {
+            let fetched = provider.read(&path, None).await;
+            if let Ok(mut result) = task_result.lock() {
+                *result = Some(fetched);
+            }
+        }));
+        self.pending_sync_key = Some(key);
+        self.background_fetch = Some(result);
+        self.background_started_ms = Some(self.clock.monotonic_millis());
+        self.sync_status = SyncStatus::Syncing;
+        self.sync_error = None;
     }
 
     fn enforce_auto_lock(&mut self) {

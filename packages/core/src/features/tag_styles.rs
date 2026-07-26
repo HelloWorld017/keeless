@@ -51,10 +51,3 @@ pub(crate) fn is_used(database: &Database, name: &str) -> bool {
         .values()
         .any(|entry| entry.tags.iter().any(|tag| tag.trim() == name))
 }
-
-pub(crate) fn store(database: &mut Database, styles: &BTreeMap<String, TagStyle>) -> Result<()> {
-    let value = serde_json::to_string(styles)?;
-    database.custom_data.set(CUSTOM_DATA_KEY, &value);
-    database.mark_modified();
-    Ok(())
-}

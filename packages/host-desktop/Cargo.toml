@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 napi-build = "2"
 
 [dependencies]
+base64 = "0.22"
 directories = "6"
 getrandom = "0.2"
 hex = "0.4"

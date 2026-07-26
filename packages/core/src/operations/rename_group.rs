@@ -3,8 +3,7 @@ use keeless_schema::{EmptyResult, OperationSuccess, RenameGroupArgs};
 use crate::model::parse_node_id;
 use crate::{CoreError, KeelessCore, Result};
 
-pub(crate) fn run(core: &mut KeelessCore, args: RenameGroupArgs) -> Result<EmptyResult> {
-    core.enforce_auto_lock();
+pub(crate) async fn run(core: &mut KeelessCore, args: RenameGroupArgs) -> Result<EmptyResult> {
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }
@@ -13,20 +12,33 @@ pub(crate) fn run(core: &mut KeelessCore, args: RenameGroupArgs) -> Result<Empty
     if name.is_empty() {
         return Err(CoreError::InvalidGroupName);
     }
-    let handle = core.handle.as_mut().ok_or(CoreError::DatabaseLocked)?;
+    let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
     if handle.database().get_group(&group_id).is_none() {
         return Err(CoreError::GroupNotFound);
     }
-    if !handle
-        .database_mut()
-        .rename_group(&group_id, name.to_string())
-    {
-        return Err(CoreError::GroupNotFound);
-    }
+    let name = name.to_string();
+    let timestamp_ms = core.clock.now_millis();
+    let mutation = super::mutations::Mutation::RenameGroup {
+        id: group_id,
+        name: name.clone(),
+        timestamp_ms,
+    };
+    super::mutations::mutate(core, &mutation, move |database| {
+        let applied = database.rename_group_at(
+            &group_id,
+            name,
+            keeless_kdbx::DateInstant::EpochMillis(timestamp_ms),
+        );
+        debug_assert!(applied);
+    })
+    .await?;
     core.touch_activity();
     Ok(EmptyResult {})
 }
 
-pub(super) fn execute(core: &mut KeelessCore, args: RenameGroupArgs) -> Result<OperationSuccess> {
-    Ok(OperationSuccess::RenameGroup(run(core, args)?))
+pub(super) async fn execute(
+    core: &mut KeelessCore,
+    args: RenameGroupArgs,
+) -> Result<OperationSuccess> {
+    Ok(OperationSuccess::RenameGroup(run(core, args).await?))
 }

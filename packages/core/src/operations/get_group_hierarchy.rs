@@ -4,7 +4,6 @@ use crate::model::group_hierarchy;
 use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> Result<GroupHierarchyResult> {
-    core.enforce_auto_lock();
     let result = {
         let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
         group_hierarchy(handle.database())?

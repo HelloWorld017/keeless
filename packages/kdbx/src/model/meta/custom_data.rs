@@ -32,11 +32,16 @@ impl CustomData {
     }
 
     pub fn set(&mut self, key: &str, value: &str) {
+        self.set_at(key, value, Some(chrono::Utc::now().timestamp_millis()));
+    }
+
+    /// Set a value with a caller-supplied serialized modification time.
+    pub fn set_at(&mut self, key: &str, value: &str, last_modification_time: Option<i64>) {
         self.items.insert(
             key.to_string(),
             CustomDataItem {
                 value: value.to_string(),
-                last_modification_time: Some(chrono::Utc::now().timestamp_millis()),
+                last_modification_time,
             },
         );
     }

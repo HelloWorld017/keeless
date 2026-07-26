@@ -3,7 +3,7 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 use keeless_sync::StorageProvider;
 use zeroize::Zeroizing;
 
-use crate::Result;
+use crate::{Result, StorageDescriptor};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type HostFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -25,6 +25,28 @@ pub trait ConfigProvider: HostProviderRequirements {
     fn load(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>>;
     /// Persist the versioned core settings.
     fn save<'a>(&'a self, config: &'a [u8]) -> HostFuture<'a, Result<()>>;
+}
+
+/// Optional durable storage used for the local database cache and mutation journal.
+pub trait DatabasePersistence: HostProviderRequirements {
+    /// Select the persistence namespace associated with a storage capability.
+    fn select<'a>(&'a self, descriptor: &'a StorageDescriptor) -> HostFuture<'a, Result<()>>;
+    /// Stable, non-secret identity for the persisted database. It is bound into journal keys/AAD.
+    fn identity(&self) -> HostFuture<'_, Result<Vec<u8>>>;
+    fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>>;
+    fn write_cache<'a>(&'a self, cache: &'a [u8]) -> HostFuture<'a, Result<()>>;
+    fn read_journal(&self) -> HostFuture<'_, Result<Vec<Vec<u8>>>>;
+    /// Return only after the complete line is durably appended.
+    fn append_journal<'a>(&'a self, line: &'a [u8]) -> HostFuture<'a, Result<()>>;
+    /// Durably remove all journal lines after their database state is persisted.
+    fn clear_journal(&self) -> HostFuture<'_, Result<()>>;
+    fn quarantine_cache<'a>(&'a self, reason: &'a str) -> HostFuture<'a, Result<()>>;
+    fn quarantine_journal<'a>(&'a self, reason: &'a str) -> HostFuture<'a, Result<()>>;
+}
+
+/// Host-specific detached task execution used for storage fetches and maintenance work.
+pub trait TaskSpawner: HostProviderRequirements {
+    fn spawn(&self, task: HostFuture<'static, ()>);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,6 +104,8 @@ pub struct KeelessHost {
     pub config_provider: Arc<dyn ConfigProvider>,
     pub password_input: Option<Arc<dyn PasswordInputProvider>>,
     pub clock: Arc<dyn Clock>,
+    pub database_persistence: Option<Arc<dyn DatabasePersistence>>,
+    pub task_spawner: Option<Arc<dyn TaskSpawner>>,
 }
 
 impl std::fmt::Debug for KeelessHost {
@@ -89,6 +113,11 @@ impl std::fmt::Debug for KeelessHost {
         f.debug_struct("KeelessHost")
             .field("storage_provider_names", &self.storage_providers.keys())
             .field("has_password_input", &self.password_input.is_some())
+            .field(
+                "has_database_persistence",
+                &self.database_persistence.is_some(),
+            )
+            .field("has_task_spawner", &self.task_spawner.is_some())
             .finish_non_exhaustive()
     }
 }
