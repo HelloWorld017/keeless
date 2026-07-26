@@ -1,5 +1,4 @@
 pub mod config;
-pub mod ipc;
 mod native_ui;
 pub mod persistence;
 pub mod storage;
@@ -18,6 +17,7 @@ use std::{
 use keeless_core::{
     HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
 };
+use keeless_host_client::ipc;
 use keeless_lesswire::{MessageFrame, Server, ServerHost};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
@@ -28,11 +28,11 @@ use tokio::{
 
 use crate::{
     config::{CORE_SETTINGS_FILE, DesktopConfig, WIRE_STATE_FILE},
-    ipc::{Request, Response, ServerListener},
     native_ui::NativeUi,
     persistence::DesktopDatabasePersistence,
     storage::LocalFileStorage,
 };
+use ipc::{Request, Response, ServerListener};
 
 struct HostState {
     inner: Mutex<InnerState>,

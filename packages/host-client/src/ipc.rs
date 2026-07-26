@@ -53,14 +53,19 @@ pub type Result<T> = std::result::Result<T, IpcError>;
 pub struct Client;
 
 impl Client {
+    /// Open a connection without sending anything yet.
+    ///
+    /// Callers whose payload carries a timestamp should connect first and build
+    /// the payload immediately before sending, so a slow connect cannot make an
+    /// otherwise-valid message arrive outside its freshness window.
+    pub async fn connect() -> Result<Connection> {
+        Connection::connect().await
+    }
+
     pub async fn request(request: Request) -> Result<Response> {
         let mut connection = Connection::connect().await?;
         connection.send_request(&request).await?;
-        let response = connection.receive_response().await?;
-        match response {
-            Response::Error(message) => Err(IpcError::Remote(message)),
-            response => Ok(response),
-        }
+        connection.receive_response().await
     }
 
     pub async fn ping() -> Result<()> {
@@ -97,12 +102,15 @@ impl Connection {
         read_message(&mut self.stream).await
     }
 
-    async fn send_request(&mut self, request: &Request) -> Result<()> {
+    pub async fn send_request(&mut self, request: &Request) -> Result<()> {
         write_message(&mut self.stream, request).await
     }
 
-    async fn receive_response(&mut self) -> Result<Response> {
-        read_message(&mut self.stream).await
+    pub async fn receive_response(&mut self) -> Result<Response> {
+        match read_message(&mut self.stream).await? {
+            Response::Error(message) => Err(IpcError::Remote(message)),
+            response => Ok(response),
+        }
     }
 }
 
@@ -139,17 +147,21 @@ impl Connection {
         }
     }
 
-    async fn send_request(&mut self, request: &Request) -> Result<()> {
+    pub async fn send_request(&mut self, request: &Request) -> Result<()> {
         match &mut self.stream {
             WindowsStream::Client(stream) => write_message(stream, request).await,
             WindowsStream::Server(stream) => write_message(stream, request).await,
         }
     }
 
-    async fn receive_response(&mut self) -> Result<Response> {
-        match &mut self.stream {
-            WindowsStream::Client(stream) => read_message(stream).await,
-            WindowsStream::Server(stream) => read_message(stream).await,
+    pub async fn receive_response(&mut self) -> Result<Response> {
+        let response = match &mut self.stream {
+            WindowsStream::Client(stream) => read_message(stream).await?,
+            WindowsStream::Server(stream) => read_message(stream).await?,
+        };
+        match response {
+            Response::Error(message) => Err(IpcError::Remote(message)),
+            response => Ok(response),
         }
     }
 }
@@ -330,7 +342,7 @@ async fn accept_platform(
 }
 
 #[cfg(not(any(unix, windows)))]
-compile_error!("keeless_host_desktop supports Unix and Windows only");
+compile_error!("keeless_host_client supports Unix and Windows only");
 
 #[cfg(test)]
 mod tests {

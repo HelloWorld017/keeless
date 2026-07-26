@@ -2288,6 +2288,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "keeless_host_client"
+version = "0.0.0"
+dependencies = [
+ "directories",
+ "getrandom 0.2.17",
+ "hex",
+ "keeless_lesswire",
+ "keeless_schema",
+ "libc",
+ "postcard",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "windows-sys 0.59.0",
+ "zeroize",
+]
+
+[[package]]
 name = "keeless_host_desktop"
 version = "0.0.0"
 dependencies = [
@@ -2296,6 +2316,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "keeless_core",
+ "keeless_host_client",
  "keeless_lesswire",
  "keeless_sync",
  "libc",

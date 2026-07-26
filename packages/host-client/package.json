@@ -1,0 +1,18 @@
+{
+  "name": "@keeless/host-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "local IPC and wire client for reaching the keeless desktop host",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "check": "pnpm run \"/^check:.*/\"",
+    "check:format": "cargo fmt --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_host_client --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_host_client",
+    "typecheck": "cargo check -p keeless_host_client --lib"
+  }
+}
