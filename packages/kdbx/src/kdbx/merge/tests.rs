@@ -4,24 +4,40 @@ use crate::model::core::security::ProtectedString;
 use crate::model::db::database::DatabaseVersion;
 use crate::model::meta::{DeletedObject, IconImageCustom};
 
+/// Fixed timestamp for fixtures. Nodes that stand for the same logical node in
+/// different databases must compare equal, so they may not read the clock: the
+/// merger compares whole `Entry`/`Group` values, and a clock tick between two
+/// constructor calls would otherwise make identical fixtures differ.
+const FIXTURE_MILLIS: i64 = 1_700_000_000_000;
+
+fn fixture_time() -> DateInstant {
+    DateInstant::EpochMillis(FIXTURE_MILLIS)
+}
+
+fn fixed_entry(id: NodeId) -> Entry {
+    Entry::new_at(id, fixture_time())
+}
+
+fn fixed_group(id: NodeId) -> Group {
+    Group::new_at(id, fixture_time())
+}
+
 fn database_with_root(root_id: NodeId) -> Database {
     let mut db = Database::new(DatabaseVersion::KDBX4);
     db.root_group_id = Some(root_id);
-    db.groups.insert(root_id, Group::new(root_id));
+    db.groups.insert(root_id, fixed_group(root_id));
     db
 }
 
 fn make_entry_with_title(id: NodeId, title: &str) -> Entry {
-    let mut entry = Entry::new(id);
+    let mut entry = fixed_entry(id);
     entry.set_title(title);
     entry
 }
 
 fn make_entry_newer(id: NodeId, title: &str) -> Entry {
-    let mut entry = Entry::new(id);
-    entry.set_title(title);
-    entry.last_modification_time =
-        DateInstant::EpochMillis(entry.last_modification_time.as_millis().unwrap_or(0) + 100_000);
+    let mut entry = make_entry_with_title(id, title);
+    entry.last_modification_time = DateInstant::EpochMillis(FIXTURE_MILLIS + 100_000);
     entry
 }
 
@@ -232,7 +248,7 @@ fn three_way_password_only_change_conflicts() {
     let root_id = NodeId::new_uuid();
     let entry_id = NodeId::new_uuid();
     let mut base = database_with_root(root_id);
-    let mut entry = Entry::new(entry_id);
+    let mut entry = fixed_entry(entry_id);
     entry.set_password(ProtectedString::new_protected("base"));
     base.add_entry(entry.clone(), &root_id);
 
@@ -263,8 +279,8 @@ fn added_group_and_entry_are_attached_to_source_parent() {
     let entry_id = NodeId::new_uuid();
     let mut target = database_with_root(root_id);
     let mut source = database_with_root(root_id);
-    source.add_group(Group::new(group_id), &root_id);
-    source.add_entry(Entry::new(entry_id), &group_id);
+    source.add_group(fixed_group(group_id), &root_id);
+    source.add_entry(fixed_entry(entry_id), &group_id);
 
     DatabaseMerger::new(MergeStrategy::Overwrite).merge(&mut target, &source);
 
@@ -295,7 +311,7 @@ fn source_deletion_uses_timestamp_and_cleans_parent_reference() {
     let root_id = NodeId::new_uuid();
     let entry_id = NodeId::new_uuid();
     let mut target = database_with_root(root_id);
-    let mut entry = Entry::new(entry_id);
+    let mut entry = fixed_entry(entry_id);
     entry.last_modification_time = DateInstant::EpochMillis(100);
     target.add_entry(entry, &root_id);
     let mut source = database_with_root(root_id);
@@ -320,7 +336,7 @@ fn three_way_group_content_keeps_target_only_and_takes_source_only_change() {
     let root_id = NodeId::new_uuid();
     let group_id = NodeId::new_uuid();
     let mut base = database_with_root(root_id);
-    let mut group = Group::new(group_id);
+    let mut group = fixed_group(group_id);
     group.title = "base".into();
     base.add_group(group.clone(), &root_id);
 
@@ -353,9 +369,9 @@ fn three_way_group_parent_keeps_target_only_and_takes_source_only_move() {
     let child_id = NodeId::new_uuid();
     let build = |child_parent: NodeId| {
         let mut db = database_with_root(root_id);
-        db.add_group(Group::new(left_id), &root_id);
-        db.add_group(Group::new(right_id), &root_id);
-        db.add_group(Group::new(child_id), &child_parent);
+        db.add_group(fixed_group(left_id), &root_id);
+        db.add_group(fixed_group(right_id), &root_id);
+        db.add_group(fixed_group(child_id), &child_parent);
         db
     };
     let base = build(left_id);
@@ -376,7 +392,7 @@ fn three_way_group_parent_keeps_target_only_and_takes_source_only_move() {
 #[test]
 fn overwrite_preserves_both_histories_and_previous_target() {
     let entry_id = NodeId::new_uuid();
-    let seed = Entry::new(entry_id);
+    let seed = fixed_entry(entry_id);
     let shared = entry_version(&seed, "shared", 50);
 
     let mut target_entry = entry_version(&seed, "target", 200);
@@ -415,7 +431,7 @@ fn overwrite_preserves_both_histories_and_previous_target() {
 #[test]
 fn keep_existing_records_incoming_current_state() {
     let entry_id = NodeId::new_uuid();
-    let seed = Entry::new(entry_id);
+    let seed = fixed_entry(entry_id);
     let target_entry = entry_version(&seed, "target", 200);
     let mut source_entry = entry_version(&seed, "source", 300);
     source_entry.history = vec![entry_version(&seed, "source-old", 100)];
@@ -443,7 +459,7 @@ fn keep_existing_records_incoming_current_state() {
 #[test]
 fn three_way_history_only_changes_merge_without_conflict() {
     let entry_id = NodeId::new_uuid();
-    let seed = Entry::new(entry_id);
+    let seed = fixed_entry(entry_id);
     let mut base_entry = entry_version(&seed, "current", 300);
     base_entry.history = vec![entry_version(&seed, "base-old", 50)];
 
@@ -482,7 +498,7 @@ fn three_way_history_only_changes_merge_without_conflict() {
 #[test]
 fn three_way_conflict_preserves_base_and_losing_current_state() {
     let entry_id = NodeId::new_uuid();
-    let seed = Entry::new(entry_id);
+    let seed = fixed_entry(entry_id);
     let base_entry = entry_version(&seed, "base", 100);
     let target_entry = entry_version(&seed, "target", 200);
     let source_entry = entry_version(&seed, "source", 300);
@@ -513,7 +529,7 @@ fn three_way_conflict_preserves_base_and_losing_current_state() {
 #[test]
 fn keep_both_rewrites_duplicate_history_ids() {
     let entry_id = NodeId::new_uuid();
-    let seed = Entry::new(entry_id);
+    let seed = fixed_entry(entry_id);
     let mut target_entry = entry_version(&seed, "target", 200);
     target_entry.history = vec![entry_version(&seed, "target-old", 100)];
     let mut source_entry = entry_version(&seed, "source", 300);
@@ -542,7 +558,7 @@ fn keep_both_rewrites_duplicate_history_ids() {
 #[test]
 fn merge_does_not_truncate_history() {
     let entry_id = NodeId::new_uuid();
-    let seed = Entry::new(entry_id);
+    let seed = fixed_entry(entry_id);
     let mut target_entry = entry_version(&seed, "target", 20);
     target_entry.history = (0..12)
         .map(|version| entry_version(&seed, &format!("v{version}"), version))
@@ -563,7 +579,7 @@ fn merge_does_not_truncate_history() {
 #[test]
 fn three_way_history_change_conflicts_with_deletion() {
     let entry_id = NodeId::new_uuid();
-    let seed = Entry::new(entry_id);
+    let seed = fixed_entry(entry_id);
     let base_entry = entry_version(&seed, "current", 200);
     let mut source_entry = base_entry.clone();
     source_entry.history = vec![entry_version(&seed, "old", 100)];
@@ -633,9 +649,9 @@ fn three_way_source_only_group_move_marks_target_modified() {
     let right_id = NodeId::new_uuid();
     let child_id = NodeId::new_uuid();
     let mut base = database_with_root(root_id);
-    base.add_group(Group::new(left_id), &root_id);
-    base.add_group(Group::new(right_id), &root_id);
-    base.add_group(Group::new(child_id), &left_id);
+    base.add_group(fixed_group(left_id), &root_id);
+    base.add_group(fixed_group(right_id), &root_id);
+    base.add_group(fixed_group(child_id), &left_id);
     base.data_modified = false;
     let mut target = base.clone();
     let mut source = base.clone();
@@ -664,9 +680,9 @@ fn three_way_source_only_entry_move_updates_parent() {
     let right_id = NodeId::new_uuid();
     let entry_id = NodeId::new_uuid();
     let mut base = database_with_root(root_id);
-    base.add_group(Group::new(left_id), &root_id);
-    base.add_group(Group::new(right_id), &root_id);
-    base.add_entry(Entry::new(entry_id), &left_id);
+    base.add_group(fixed_group(left_id), &root_id);
+    base.add_group(fixed_group(right_id), &root_id);
+    base.add_entry(fixed_entry(entry_id), &left_id);
     base.data_modified = false;
     let mut target = base.clone();
     let mut source = base.clone();
@@ -698,7 +714,7 @@ fn two_way_live_entry_clears_matching_tombstone() {
         deletion_time: 100,
     });
     let mut source = database_with_root(root_id);
-    source.add_entry(entry_version(&Entry::new(entry_id), "live", 200), &root_id);
+    source.add_entry(entry_version(&fixed_entry(entry_id), "live", 200), &root_id);
 
     DatabaseMerger::new(MergeStrategy::NewestWins).merge(&mut target, &source);
 
@@ -715,8 +731,8 @@ fn three_way_group_deletion_preserves_target_modified_descendant() {
     let group_id = NodeId::new_uuid();
     let entry_id = NodeId::new_uuid();
     let mut base = database_with_root(root_id);
-    base.add_group(Group::new(group_id), &root_id);
-    base.add_entry(Entry::new(entry_id), &group_id);
+    base.add_group(fixed_group(group_id), &root_id);
+    base.add_entry(fixed_entry(entry_id), &group_id);
     base.data_modified = false;
     let mut target = base.clone();
     target
