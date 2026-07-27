@@ -7,13 +7,14 @@ Keeless as an ordinary security key with no extension or patched build.
 ## Requirements
 
 - Linux with the `uhid` driver (`CONFIG_UHID`), which mainstream distributions ship
-- Membership of a group with write access to `/dev/uhid`, which `setup` explains
+- Either membership of a group with write access to `/dev/uhid`, which `setup`
+  explains, or a systemd service that passes the device as a named descriptor
 - The Keeless desktop app running, since it owns the database
 
 ## Setup
 
-`/dev/uhid` needs a udev rule before a desktop session can use it. Print the
-commands with:
+For direct interactive use, `/dev/uhid` needs a udev rule before a desktop
+session can open it. Print the commands with:
 
 ```sh
 keeless-passkey-linux setup
@@ -44,6 +45,25 @@ The consent dialog helper is expected beside the `keeless-passkey-linux` executa
 searched for on `PATH`, because whatever answers that prompt decides which
 signatures get made. The daemon serves requests until it is stopped; only one
 instance runs at a time.
+
+### systemd descriptor passing
+
+When systemd passes a descriptor named `uhid` through `LISTEN_FDS` and
+`LISTEN_FDNAMES`, the daemon uses it instead of opening `/dev/uhid` itself. It
+accepts the descriptor only when it is read/write and identifies the same
+character device as `/dev/uhid`; an invalid or duplicate `uhid` descriptor is
+an error. If no descriptor is named `uhid`, the daemon uses the direct-open
+behaviour above.
+
+On systemd v253 or later, a service unit can arrange this with:
+
+```ini
+[Service]
+OpenFile=/dev/uhid:uhid
+```
+
+`OpenFile=` lets the service manager open the device before dropping to the
+service user, so that user need not receive general `/dev/uhid` access.
 
 The first request asks the desktop app to approve this daemon, the same dialog
 any new local client gets. The app's key is then pinned, so a replaced app is

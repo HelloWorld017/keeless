@@ -10,7 +10,9 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
+use std::os::fd::{FromRawFd, RawFd};
 use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
 use tokio::io::unix::AsyncFd;
 
@@ -41,6 +43,8 @@ const CREATE2_SIZE: usize = 128 + 64 + 64 + 2 + 2 + 4 + 4 + 4 + 4 + DATA_MAX;
 pub const REPORT_SIZE: usize = 64;
 
 const BUS_USB: u16 = 0x03;
+const UHID_PATH: &str = "/dev/uhid";
+const LISTEN_FDS_START: RawFd = 3;
 
 /// Report descriptor for a FIDO authenticator: usage page 0xF1D0, usage 0x01,
 /// with one 64-byte input and one 64-byte output report.
@@ -81,19 +85,7 @@ pub struct UhidDevice {
 impl UhidDevice {
     /// Create the device and wait for the kernel to bring it up.
     pub async fn create(name: &str) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(libc::O_NONBLOCK)
-            .open("/dev/uhid")
-            .map_err(|error| {
-                io::Error::new(
-                    error.kind(),
-                    format!(
-                        "cannot open /dev/uhid ({error}); run `keeless-passkey-linux setup` to grant access"
-                    ),
-                )
-            })?;
+        let file = open_uhid()?;
         let mut device = Self {
             file: AsyncFd::new(file)?,
             started: false,
@@ -165,6 +157,161 @@ impl UhidDevice {
             }
         }
     }
+}
+
+/// Open the systemd-provided UHID descriptor when available, otherwise open the
+/// device directly for ordinary interactive use.
+fn open_uhid() -> io::Result<File> {
+    if let Some(fd) = inherited_uhid_fd()? {
+        if !fd_matches_character_device(fd, UHID_PATH)? {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the systemd descriptor named \"uhid\" is not /dev/uhid",
+            ));
+        }
+        ensure_read_write(fd)?;
+        set_nonblocking(fd)?;
+        set_close_on_exec(fd)?;
+        // The systemd activation contract transfers ownership of descriptors
+        // starting at fd 3 to this process.
+        return Ok(unsafe { File::from_raw_fd(fd) });
+    }
+
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(UHID_PATH)
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "cannot open {UHID_PATH} ({error}); run `keeless-passkey-linux setup` to grant access"
+                ),
+            )
+        })
+}
+
+/// Return the descriptor named `uhid` by systemd's fd-passing protocol.
+///
+/// An absent or malformed activation environment is treated as no activation,
+/// matching `sd_listen_fds_with_names()`. A named descriptor that is malformed
+/// or ambiguous is an error rather than a direct-open fallback.
+fn inherited_uhid_fd() -> io::Result<Option<RawFd>> {
+    let listen_pid = std::env::var("LISTEN_PID").ok();
+    let listen_fds = std::env::var("LISTEN_FDS").ok();
+    let listen_fdnames = std::env::var("LISTEN_FDNAMES").ok();
+    named_activation_fd(
+        listen_pid.as_deref(),
+        listen_fds.as_deref(),
+        listen_fdnames.as_deref(),
+        std::process::id(),
+    )
+}
+
+fn named_activation_fd(
+    listen_pid: Option<&str>,
+    listen_fds: Option<&str>,
+    listen_fdnames: Option<&str>,
+    current_pid: u32,
+) -> io::Result<Option<RawFd>> {
+    let (Some(listen_pid), Some(listen_fds), Some(listen_fdnames)) =
+        (listen_pid, listen_fds, listen_fdnames)
+    else {
+        return Ok(None);
+    };
+    if listen_pid.parse::<u32>().ok() != Some(current_pid) {
+        return Ok(None);
+    }
+    let Ok(fd_count) = listen_fds.parse::<usize>() else {
+        return Ok(None);
+    };
+
+    let mut uhid_fd = None;
+    for (index, name) in listen_fdnames.split(':').take(fd_count).enumerate() {
+        if name != "uhid" {
+            continue;
+        }
+        if uhid_fd.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "systemd passed more than one descriptor named \"uhid\"",
+            ));
+        }
+        let offset = RawFd::try_from(index).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "systemd passed too many file descriptors",
+            )
+        })?;
+        uhid_fd = Some(LISTEN_FDS_START.checked_add(offset).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "systemd passed too many file descriptors",
+            )
+        })?);
+    }
+    Ok(uhid_fd)
+}
+
+/// Verify the passed descriptor and the current `/dev/uhid` name reference the
+/// same character device. `/proc/self/fd` names are not used because they are
+/// only diagnostic symlinks, not a device identity check.
+fn fd_matches_character_device(fd: RawFd, path: &str) -> io::Result<bool> {
+    let expected = std::fs::metadata(path)?;
+    let actual = fd_stat(fd)?;
+    Ok(expected.file_type().is_char_device()
+        && actual.st_mode & libc::S_IFMT == libc::S_IFCHR
+        && expected.rdev() == actual.st_rdev)
+}
+
+fn fd_stat(fd: RawFd) -> io::Result<libc::stat> {
+    let mut stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(fd, &raw mut stat) } == 0 {
+        Ok(stat)
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+fn ensure_read_write(fd: RawFd) -> io::Result<()> {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if flags & libc::O_ACCMODE != libc::O_RDWR {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "the systemd descriptor named \"uhid\" is not open for reading and writing",
+        ));
+    }
+    Ok(())
+}
+
+fn set_nonblocking(fd: RawFd) -> io::Result<()> {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if flags & libc::O_NONBLOCK == 0
+        && unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn set_close_on_exec(fd: RawFd) -> io::Result<()> {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if flags & libc::FD_CLOEXEC == 0
+        && unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 impl Drop for UhidDevice {
@@ -278,6 +425,50 @@ fn write_cstr(field: &mut [u8], value: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::AsRawFd;
+
+    #[test]
+    fn chooses_the_named_systemd_descriptor() {
+        assert_eq!(
+            named_activation_fd(Some("42"), Some("3"), Some("socket:uhid:other"), 42).unwrap(),
+            Some(4)
+        );
+        assert_eq!(
+            named_activation_fd(Some("42"), Some("1"), Some("socket:uhid"), 42).unwrap(),
+            None,
+            "names beyond LISTEN_FDS are not descriptors passed to this process"
+        );
+    }
+
+    #[test]
+    fn ignores_an_environment_not_for_this_process() {
+        assert_eq!(
+            named_activation_fd(Some("41"), Some("1"), Some("uhid"), 42).unwrap(),
+            None
+        );
+        assert_eq!(
+            named_activation_fd(Some("42"), Some("not-a-number"), Some("uhid"), 42).unwrap(),
+            None
+        );
+        assert_eq!(
+            named_activation_fd(Some("42"), Some("1"), None, 42).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_ambiguous_systemd_uhid_descriptors() {
+        let error = named_activation_fd(Some("42"), Some("2"), Some("uhid:uhid"), 42)
+            .expect_err("the name must identify exactly one descriptor");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn compares_the_passed_descriptor_to_the_device_node() {
+        let null = File::open("/dev/null").unwrap();
+        assert!(fd_matches_character_device(null.as_raw_fd(), "/dev/null").unwrap());
+        assert!(!fd_matches_character_device(null.as_raw_fd(), "/dev/zero").unwrap());
+    }
 
     #[test]
     fn builds_a_create_event_the_kernel_layout_expects() {
