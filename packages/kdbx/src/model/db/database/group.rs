@@ -219,9 +219,7 @@ impl Database {
             return None;
         }
 
-        let Some(old_parent_id) = self.find_parent_group_of_group(group_id) else {
-            return None;
-        };
+        let old_parent_id = self.find_parent_group_of_group(group_id)?;
         let destination_len = self
             .groups
             .get(new_parent_id)

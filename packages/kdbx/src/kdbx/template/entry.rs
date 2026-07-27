@@ -50,6 +50,14 @@ pub enum TemplateCopyMode {
     RedactProtected,
 }
 
+pub struct TemplateInstantiationOptions<'a> {
+    pub new_entry_id: NodeId,
+    pub link_field_id: EntryFieldId,
+    pub timestamp: DateInstant,
+    pub copy_mode: TemplateCopyMode,
+    pub composite_key: Option<&'a CompositeKey>,
+}
+
 /// A fully prepared template entry insertion with an infallible commit path.
 pub struct PreparedTemplateInstantiation {
     entry: Entry,
@@ -60,15 +68,11 @@ pub fn prepare_instantiation_at(
     database: &Database,
     source_entry_id: &NodeId,
     parent_group_id: &NodeId,
-    new_entry_id: NodeId,
-    link_field_id: EntryFieldId,
-    timestamp: DateInstant,
-    copy_mode: TemplateCopyMode,
-    composite_key: Option<&CompositeKey>,
+    options: TemplateInstantiationOptions<'_>,
 ) -> DatabaseResult<Option<PreparedTemplateInstantiation>> {
-    if !database.can_add_entry(&new_entry_id, parent_group_id)
+    if !database.can_add_entry(&options.new_entry_id, parent_group_id)
         || !is_template(database, source_entry_id)
-        || !matches!(link_field_id, EntryFieldId::Custom(_))
+        || !matches!(options.link_field_id, EntryFieldId::Custom(_))
     {
         return Ok(None);
     }
@@ -76,13 +80,13 @@ pub fn prepare_instantiation_at(
     let Some(source_uuid) = source.id.as_uuid().copied() else {
         return Ok(None);
     };
-    if source.field(link_field_id).is_some() {
+    if source.field(options.link_field_id).is_some() {
         return Ok(None);
     }
     let mut entry = source.clone();
-    let mut unlock = match copy_mode {
+    let mut unlock = match options.copy_mode {
         TemplateCopyMode::PreserveProtected => Some(MemoryUnlockSession::new(
-            composite_key.ok_or_else(|| {
+            options.composite_key.ok_or_else(|| {
                 DatabaseError::InvalidFormat(
                     "preserving protected template fields requires credentials".into(),
                 )
@@ -90,13 +94,13 @@ pub fn prepare_instantiation_at(
         )),
         TemplateCopyMode::RedactProtected => None,
     };
-    entry.prepare_duplicate_at(new_entry_id, unlock.as_mut(), timestamp)?;
+    entry.prepare_duplicate_at(options.new_entry_id, unlock.as_mut(), options.timestamp)?;
     entry.retain_custom_fields(|field| {
         !is_internal_field(field.name()) && !field.name().starts_with('@')
     });
     standard_fields_first(&mut entry);
     entry.add_custom_field_with_id(
-        link_field_id,
+        options.link_field_id,
         metadata::TEMPLATE_UUID,
         ProtectedString::new_plain(&source_uuid.simple().to_string().to_ascii_uppercase()),
     );
@@ -130,11 +134,13 @@ pub fn instantiate(
         database,
         source_entry_id,
         parent_group_id,
-        NodeId::new_uuid(),
-        EntryFieldId::Custom(Uuid::new_v4()),
-        DateInstant::now(),
-        copy_mode,
-        composite_key,
+        TemplateInstantiationOptions {
+            new_entry_id: NodeId::new_uuid(),
+            link_field_id: EntryFieldId::Custom(Uuid::new_v4()),
+            timestamp: DateInstant::now(),
+            copy_mode,
+            composite_key,
+        },
     )
 }
 
@@ -143,23 +149,12 @@ pub fn instantiate_at(
     database: &mut Database,
     source_entry_id: &NodeId,
     parent_group_id: &NodeId,
-    new_entry_id: NodeId,
-    link_field_id: EntryFieldId,
-    timestamp: DateInstant,
-    copy_mode: TemplateCopyMode,
-    composite_key: Option<&CompositeKey>,
+    options: TemplateInstantiationOptions<'_>,
 ) -> DatabaseResult<Option<NodeId>> {
-    Ok(prepare_instantiation_at(
-        database,
-        source_entry_id,
-        parent_group_id,
-        new_entry_id,
-        link_field_id,
-        timestamp,
-        copy_mode,
-        composite_key,
-    )?
-    .map(|prepared| commit_instantiation(database, prepared)))
+    Ok(
+        prepare_instantiation_at(database, source_entry_id, parent_group_id, options)?
+            .map(|prepared| commit_instantiation(database, prepared)),
+    )
 }
 
 fn standard_fields_first(entry: &mut Entry) {

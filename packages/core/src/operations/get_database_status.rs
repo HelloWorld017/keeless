@@ -3,13 +3,12 @@ use keeless_schema::{DatabaseStatusResult, GetDatabaseStatusArgs, OperationSucce
 use crate::{DatabaseStatus, KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) -> DatabaseStatus {
-    let status = match (&core.selection, &core.handle) {
+    match (&core.selection, &core.handle) {
         (None, _) => DatabaseStatus::NotExist,
         (Some(selection), _) if !selection.exists => DatabaseStatus::NotExist,
         (_, Some(_)) => DatabaseStatus::Unlocked,
         _ => DatabaseStatus::Locked,
-    };
-    status
+    }
 }
 
 pub(super) fn execute(

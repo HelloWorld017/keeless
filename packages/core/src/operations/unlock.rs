@@ -54,7 +54,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
                         .quarantine_cache(&cache_error.to_string())
                         .await?;
                 }
-                recovered_error = Some(CoreError::from(cache_error));
+                recovered_error = Some(cache_error);
                 remote
             }
         }

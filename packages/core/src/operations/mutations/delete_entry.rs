@@ -41,7 +41,7 @@ pub(crate) async fn run(core: &mut KeelessCore, args: DeleteEntryArgs) -> Result
         return Err(CoreError::EntryNotFound);
     }
     let in_recycle_bin = database.is_entry_in_recycle_bin(&id);
-    if args.permanent == !in_recycle_bin {
+    if args.permanent != in_recycle_bin {
         return Err(CoreError::InvalidEntryDelete);
     }
     let payload = Mutation {

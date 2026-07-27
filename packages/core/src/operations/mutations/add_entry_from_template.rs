@@ -1,6 +1,6 @@
 use keeless_kdbx::{
     CompositeKey, Database, DateInstant, EntryFieldId, NodeId,
-    kdbx::template::{self, TemplateCopyMode},
+    kdbx::template::{self, TemplateCopyMode, TemplateInstantiationOptions},
 };
 use keeless_schema::{AddEntryFromTemplateArgs, AddEntryResult, OperationSuccess};
 use serde::{Deserialize, Serialize};
@@ -29,15 +29,17 @@ pub(super) fn apply(
         database,
         &mutation.template,
         &mutation.parent,
-        mutation.id,
-        EntryFieldId::Custom(mutation.link_field_id),
-        DateInstant::EpochMillis(mutation.timestamp_ms),
-        if mutation.preserve_protected {
-            TemplateCopyMode::PreserveProtected
-        } else {
-            TemplateCopyMode::RedactProtected
+        TemplateInstantiationOptions {
+            new_entry_id: mutation.id,
+            link_field_id: EntryFieldId::Custom(mutation.link_field_id),
+            timestamp: DateInstant::EpochMillis(mutation.timestamp_ms),
+            copy_mode: if mutation.preserve_protected {
+                TemplateCopyMode::PreserveProtected
+            } else {
+                TemplateCopyMode::RedactProtected
+            },
+            composite_key: mutation.preserve_protected.then_some(key),
         },
-        mutation.preserve_protected.then_some(key),
     )?
     .is_some()
     .then_some(())
@@ -81,15 +83,17 @@ pub(crate) async fn run(
         database,
         &payload.template,
         &payload.parent,
-        payload.id,
-        EntryFieldId::Custom(payload.link_field_id),
-        DateInstant::EpochMillis(payload.timestamp_ms),
-        if payload.preserve_protected {
-            TemplateCopyMode::PreserveProtected
-        } else {
-            TemplateCopyMode::RedactProtected
+        TemplateInstantiationOptions {
+            new_entry_id: payload.id,
+            link_field_id: EntryFieldId::Custom(payload.link_field_id),
+            timestamp: DateInstant::EpochMillis(payload.timestamp_ms),
+            copy_mode: if payload.preserve_protected {
+                TemplateCopyMode::PreserveProtected
+            } else {
+                TemplateCopyMode::RedactProtected
+            },
+            composite_key: key.as_ref(),
         },
-        key.as_ref(),
     )?
     .ok_or(CoreError::EntryNotFound)?;
     let id = payload.id;

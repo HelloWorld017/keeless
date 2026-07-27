@@ -1,4 +1,6 @@
-use keeless_kdbx::kdbx::template::{instantiate_at, TemplateCopyMode};
+use keeless_kdbx::kdbx::template::{
+    instantiate_at, TemplateCopyMode, TemplateInstantiationOptions,
+};
 use keeless_kdbx::{
     CompositeKey, CustomData, Database, DatabaseVersion, DateInstant, Entry, EntryFieldId,
     EntryFieldUpdate, Group, NodeId, ProtectedString,
@@ -166,11 +168,13 @@ fn custom_data_and_template_instantiation_are_fully_deterministic() {
             &mut database,
             &source_id,
             &root_id,
-            child_id,
-            link_id,
-            timestamp,
-            TemplateCopyMode::RedactProtected,
-            None,
+            TemplateInstantiationOptions {
+                new_entry_id: child_id,
+                link_field_id: link_id,
+                timestamp,
+                copy_mode: TemplateCopyMode::RedactProtected,
+                composite_key: None,
+            },
         )
         .unwrap(),
         Some(child_id)

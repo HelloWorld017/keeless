@@ -57,6 +57,8 @@ struct Selection {
     exists: bool,
 }
 
+type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>;
+
 pub struct KeelessCore {
     config_provider: Arc<dyn ConfigProvider>,
     password_input: Option<Arc<dyn PasswordInputProvider>>,
@@ -73,7 +75,7 @@ pub struct KeelessCore {
     sync_error: Option<OperationError>,
     pending_sync_key: Option<CompositeKey>,
     task_spawner: Option<Arc<dyn TaskSpawner>>,
-    background_fetch: Option<Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>>,
+    background_fetch: Option<BackgroundFetch>,
     background_started_ms: Option<u64>,
     dirty: bool,
 }
