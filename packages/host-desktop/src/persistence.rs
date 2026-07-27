@@ -7,7 +7,9 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use directories::ProjectDirs;
-use keeless_core::{CoreError, DatabasePersistence, HostFuture, Result, StorageDescriptor};
+use keeless_core::{
+    CoreError, DatabaseId, DatabasePersistence, HostFuture, Result, StorageDescriptor,
+};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -16,34 +18,21 @@ use crate::storage::LocalFileStorage;
 pub const MAX_CACHE_SIZE: usize = 128 * 1024 * 1024 + 64;
 pub const MAX_JOURNAL_SIZE: usize = 16 * 1024 * 1024;
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct DatabaseIdentity(String);
-
-impl DatabaseIdentity {
-    pub fn from_backing_path(provider: &str, path: &Path) -> io::Result<Self> {
-        if provider.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "database provider is empty",
-            ));
-        }
-        let canonical = canonical_backing_path(path)?;
-        let mut digest = Sha256::new();
-        digest.update((provider.len() as u64).to_be_bytes());
-        digest.update(provider.as_bytes());
-        update_path_digest(&mut digest, canonical.as_os_str());
-        Ok(Self(URL_SAFE_NO_PAD.encode(digest.finalize())))
+pub fn database_id_from_backing_path(provider: &str, path: &Path) -> io::Result<DatabaseId> {
+    if provider.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "database provider is empty",
+        ));
     }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for DatabaseIdentity {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.0)
-    }
+    let canonical = canonical_backing_path(path)?;
+    let mut digest = Sha256::new();
+    digest.update((provider.len() as u64).to_be_bytes());
+    digest.update(provider.as_bytes());
+    update_path_digest(&mut digest, canonical.as_os_str());
+    Ok(DatabaseId::new(
+        URL_SAFE_NO_PAD.encode(digest.finalize()).into_bytes(),
+    ))
 }
 
 /// Canonicalizes an existing backing file, or its parent when the selected create target is absent.
@@ -101,11 +90,14 @@ struct DatabaseStore {
 impl DatabaseStore {
     fn at(
         app_data: impl AsRef<Path>,
-        identity: &DatabaseIdentity,
+        database_id: &DatabaseId,
         writes: Arc<tokio::sync::Mutex<()>>,
     ) -> Self {
         Self {
-            directory: app_data.as_ref().join(format!("db_{identity}")),
+            directory: app_data.as_ref().join(format!(
+                "db_{}",
+                std::str::from_utf8(database_id.as_bytes()).expect("desktop database ID is ASCII")
+            )),
             writes,
         }
     }
@@ -219,7 +211,7 @@ impl DatabaseStore {
 pub struct DesktopDatabasePersistence {
     app_data: PathBuf,
     storage: Arc<LocalFileStorage>,
-    selected: tokio::sync::RwLock<Option<DatabaseIdentity>>,
+    selected: tokio::sync::RwLock<Option<DatabaseId>>,
     writes: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -240,7 +232,7 @@ impl DesktopDatabasePersistence {
     }
 
     async fn store(&self) -> Result<DatabaseStore> {
-        let identity = self
+        let database_id = self
             .selected
             .read()
             .await
@@ -248,38 +240,30 @@ impl DesktopDatabasePersistence {
             .ok_or_else(|| CoreError::Host("database persistence is not selected".into()))?;
         Ok(DatabaseStore::at(
             &self.app_data,
-            &identity,
+            &database_id,
             Arc::clone(&self.writes),
         ))
     }
 }
 
 impl DatabasePersistence for DesktopDatabasePersistence {
-    fn select<'a>(&'a self, descriptor: &'a StorageDescriptor) -> HostFuture<'a, Result<()>> {
+    fn select<'a>(
+        &'a self,
+        descriptor: &'a StorageDescriptor,
+    ) -> HostFuture<'a, Result<DatabaseId>> {
         Box::pin(async move {
             if descriptor.provider != "local-file" {
                 return Err(CoreError::Host(
                     "desktop persistence requires local-file storage".into(),
                 ));
             }
-            let identity = self
+            let database_id = self
                 .storage
                 .resolve_capability(&descriptor.path)?
-                .identity()
+                .database_id()
                 .clone();
-            *self.selected.write().await = Some(identity);
-            Ok(())
-        })
-    }
-
-    fn identity(&self) -> HostFuture<'_, Result<Vec<u8>>> {
-        Box::pin(async move {
-            self.selected
-                .read()
-                .await
-                .as_ref()
-                .map(|identity| identity.as_str().as_bytes().to_vec())
-                .ok_or_else(|| CoreError::Host("database persistence is not selected".into()))
+            *self.selected.write().await = Some(database_id.clone());
+            Ok(database_id)
         })
     }
 
@@ -532,28 +516,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn identity_is_stable_for_a_create_target_and_separates_paths() {
+    fn database_id_is_stable_for_a_create_target_and_separates_paths() {
         let directory = tempfile::tempdir().unwrap();
         let first_path = directory.path().join("first.kdbx");
         let second_path = directory.path().join("second.kdbx");
-        let before = DatabaseIdentity::from_backing_path("local-file", &first_path).unwrap();
+        let before = database_id_from_backing_path("local-file", &first_path).unwrap();
         std::fs::write(&first_path, b"database").unwrap();
-        let after = DatabaseIdentity::from_backing_path("local-file", &first_path).unwrap();
-        let other = DatabaseIdentity::from_backing_path("local-file", &second_path).unwrap();
+        let after = database_id_from_backing_path("local-file", &first_path).unwrap();
+        let other = database_id_from_backing_path("local-file", &second_path).unwrap();
         assert_eq!(before, after);
         assert_ne!(before, other);
-        assert_eq!(before.as_str().len(), 43);
-        assert!(!before.as_str().contains('='));
+        assert_eq!(before.as_bytes().len(), 43);
+        assert!(!before.as_bytes().contains(&b'='));
     }
 
     #[tokio::test]
     async fn cache_and_journal_round_trip_and_quarantine() {
         let directory = tempfile::tempdir().unwrap();
         let backing = directory.path().join("vault.kdbx");
-        let identity = DatabaseIdentity::from_backing_path("local-file", &backing).unwrap();
+        let database_id = database_id_from_backing_path("local-file", &backing).unwrap();
         let store = DatabaseStore::at(
             directory.path().join("data"),
-            &identity,
+            &database_id,
             Arc::new(tokio::sync::Mutex::new(())),
         );
 
@@ -584,12 +568,12 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let directory = tempfile::tempdir().unwrap();
-        let identity =
-            DatabaseIdentity::from_backing_path("local-file", &directory.path().join("vault.kdbx"))
+        let database_id =
+            database_id_from_backing_path("local-file", &directory.path().join("vault.kdbx"))
                 .unwrap();
         let store = DatabaseStore::at(
             directory.path().join("data"),
-            &identity,
+            &database_id,
             Arc::new(tokio::sync::Mutex::new(())),
         );
         store.replace_cache(b"secret").await.unwrap();

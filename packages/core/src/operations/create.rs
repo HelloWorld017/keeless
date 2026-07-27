@@ -11,13 +11,14 @@ use zeroize::Zeroizing;
 use crate::{CoreError, KeelessCore, Result, credential::CredentialVault};
 
 pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
-    let (provider, path) = core
+    let (provider, path, database_id) = core
         .selection
         .as_ref()
         .map(|selection| {
             (
                 Arc::clone(&selection.provider),
                 selection.descriptor.path.clone(),
+                selection.database_id.clone(),
             )
         })
         .ok_or(CoreError::NoDatabaseSelected)?;
@@ -34,32 +35,15 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     } else {
         Some(CredentialVault::wrap(&raw_key)?)
     };
-    let identity = if let Some(persistence) = &core.persistence {
-        let identity = persistence.identity().await?;
+    if let Some(persistence) = &core.persistence {
         persistence
             .quarantine_journal("journal predates newly created database")
             .await?;
         persistence
             .quarantine_cache("cache predates newly created database")
             .await?;
-        identity
-    } else {
-        format!(
-            "{}\0{}",
-            core.selection
-                .as_ref()
-                .expect("selection checked")
-                .descriptor
-                .provider,
-            core.selection
-                .as_ref()
-                .expect("selection checked")
-                .descriptor
-                .path
-        )
-        .into_bytes()
-    };
-    let journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
+    }
+    let journal = super::mutations::MutationCoordinator::new(&raw_key, database_id, 0)?;
     let mut database = Database::new(DatabaseVersion::KDBX4);
     let root_id = NodeId::new_uuid();
     let mut root = Group::new(root_id);

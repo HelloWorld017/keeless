@@ -1,5 +1,6 @@
 use keeless_schema::{DeleteTagArgs, EmptyResult, OperationSuccess};
 
+use super::update_tag_style;
 use crate::features::tag_styles;
 use crate::{CoreError, KeelessCore, Result};
 
@@ -14,24 +15,10 @@ pub(crate) async fn run(core: &mut KeelessCore, args: DeleteTagArgs) -> Result<E
         return Err(CoreError::TagInUse);
     }
     styles.remove(name);
-    let value = serde_json::to_string(&styles)?;
-    let timestamp_ms = core.clock.now_millis();
-    let mutation = super::mutations::Mutation::UpdateTagStyles {
-        value: value.clone(),
-        timestamp_ms,
-    };
-    super::mutations::mutate(core, &mutation, move |database| {
-        database
-            .custom_data
-            .set_at(tag_styles::CUSTOM_DATA_KEY, &value, Some(timestamp_ms));
-        database.mark_modified();
-    })
-    .await?;
-    core.touch_activity();
-    Ok(EmptyResult {})
+    update_tag_style::apply_final_state(core, serde_json::to_string(&styles)?).await
 }
 
-pub(super) async fn execute(
+pub(crate) async fn execute(
     core: &mut KeelessCore,
     args: DeleteTagArgs,
 ) -> Result<OperationSuccess> {

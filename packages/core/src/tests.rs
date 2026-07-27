@@ -112,15 +112,14 @@ struct MemoryDatabasePersistence {
 }
 
 impl DatabasePersistence for MemoryDatabasePersistence {
-    fn select<'a>(&'a self, descriptor: &'a StorageDescriptor) -> HostFuture<'a, Result<()>> {
+    fn select<'a>(
+        &'a self,
+        descriptor: &'a StorageDescriptor,
+    ) -> HostFuture<'a, Result<DatabaseId>> {
         Box::pin(async move {
             *self.selected.lock().unwrap() = Some(descriptor.clone());
-            Ok(())
+            Ok(DatabaseId::new(b"test-persistence/vault.kdbx".to_vec()))
         })
-    }
-
-    fn identity(&self) -> HostFuture<'_, Result<Vec<u8>>> {
-        Box::pin(async { Ok(b"test-persistence/vault.kdbx".to_vec()) })
     }
 
     fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>> {
@@ -855,7 +854,7 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
         .await
         .unwrap();
     let _ = core.sync(None).await;
-    operations::update_entry::run(&mut core, entry_id, fields, None, None)
+    operations::mutations::update_entry::run(&mut core, entry_id, fields, None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -1142,7 +1141,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
         ("TrashOnly", style(3, "#445566")),
         ("TemplateOnly", style(4, "#778899")),
     ] {
-        operations::update_tag_style::run(
+        operations::mutations::update_tag_style::run(
             &mut core,
             UpdateTagStyleArgs {
                 name: name.into(),
@@ -1165,7 +1164,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
     assert_eq!(tag("TemplateOnly").entry_count, 0);
     assert!(!tag("TemplateOnly").can_delete);
 
-    operations::delete_tag::run(
+    operations::mutations::delete_tag::run(
         &mut core,
         DeleteTagArgs {
             name: " orphan ".into(),
@@ -1174,7 +1173,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
     .await
     .unwrap();
     assert!(matches!(
-        operations::delete_tag::run(
+        operations::mutations::delete_tag::run(
             &mut core,
             DeleteTagArgs {
                 name: "shared".into()
@@ -1184,7 +1183,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
         Err(CoreError::TagInUse)
     ));
     assert!(matches!(
-        operations::update_tag_style::run(
+        operations::mutations::update_tag_style::run(
             &mut core,
             UpdateTagStyleArgs {
                 name: "bad".into(),
@@ -1195,7 +1194,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
         Err(CoreError::InvalidTagStyle)
     ));
     assert!(matches!(
-        operations::update_tag_style::run(
+        operations::mutations::update_tag_style::run(
             &mut core,
             UpdateTagStyleArgs {
                 name: "bad".into(),
@@ -1214,7 +1213,7 @@ async fn tag_styles_union_hidden_usage_and_validate_mutations() {
         .set("KLSS_TAG_STYLES", "not json");
     assert!(operations::get_tags::run(&mut core).is_ok());
     assert!(matches!(
-        operations::update_tag_style::run(
+        operations::mutations::update_tag_style::run(
             &mut core,
             UpdateTagStyleArgs {
                 name: "new".into(),
@@ -1436,7 +1435,7 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
     }
 
     assert!(matches!(
-        operations::add_entry_from_template::run(
+        operations::mutations::add_entry_from_template::run(
             &mut core,
             AddEntryFromTemplateArgs {
                 parent_group_id: schema_id(ids.child_group),
@@ -1448,7 +1447,7 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
     ));
 
     let copied_id = model_id(
-        operations::add_entry_from_template::run(
+        operations::mutations::add_entry_from_template::run(
             &mut core,
             AddEntryFromTemplateArgs {
                 parent_group_id: schema_id(ids.child_group),
@@ -1514,7 +1513,7 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
 
     core.credential = None;
     let redacted_id = model_id(
-        operations::add_entry_from_template::run(
+        operations::mutations::add_entry_from_template::run(
             &mut core,
             AddEntryFromTemplateArgs {
                 parent_group_id: schema_id(ids.child_group),
@@ -1692,7 +1691,7 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
         .database_mut()
         .create_recycle_bin();
 
-    operations::move_entry::run(
+    operations::mutations::move_entry::run(
         &mut core,
         MoveEntryArgs {
             entry_id: schema_id(ids.root_entry),
@@ -1712,7 +1711,7 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
         schema_id(ids.root_entry)
     );
 
-    operations::move_entry::run(
+    operations::mutations::move_entry::run(
         &mut core,
         MoveEntryArgs {
             entry_id: schema_id(ids.root_entry),
@@ -1744,7 +1743,7 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
         .entries
         .insert(orphan_id, Entry::new(orphan_id));
     assert!(matches!(
-        operations::move_entry::run(
+        operations::mutations::move_entry::run(
             &mut core,
             MoveEntryArgs {
                 entry_id: schema_id(Uuid::from_u128(999)),
@@ -1755,7 +1754,7 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
         Err(CoreError::InvalidEntryMove)
     ));
     assert!(matches!(
-        operations::move_entry::run(
+        operations::mutations::move_entry::run(
             &mut core,
             MoveEntryArgs {
                 entry_id: schema_id(Uuid::from_u128(998)),
@@ -1771,7 +1770,7 @@ async fn move_entry_operation_supports_trash_boundaries_and_rejects_invalid_move
 async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
     let (mut core, ids) = query_core().await;
 
-    operations::move_group::run(
+    operations::mutations::move_group::run(
         &mut core,
         MoveGroupArgs {
             group_id: schema_id(ids.nested_group),
@@ -1793,7 +1792,7 @@ async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
     );
 
     assert!(matches!(
-        operations::move_group::run(
+        operations::mutations::move_group::run(
             &mut core,
             MoveGroupArgs {
                 group_id: schema_id(ids.child_group),
@@ -1805,7 +1804,7 @@ async fn move_group_operation_reparents_reorders_and_rejects_cycles() {
         Err(CoreError::InvalidGroupMove)
     ));
     assert!(matches!(
-        operations::move_group::run(
+        operations::mutations::move_group::run(
             &mut core,
             MoveGroupArgs {
                 group_id: schema_id(ids.root_group),
@@ -1824,11 +1823,12 @@ async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_
     let missing = schema_id(Uuid::from_u128(999));
 
     assert!(matches!(
-        operations::delete_group::run(&mut core, DeleteGroupArgs { group_id: missing },).await,
+        operations::mutations::delete_group::run(&mut core, DeleteGroupArgs { group_id: missing },)
+            .await,
         Err(CoreError::GroupNotFound)
     ));
     assert!(matches!(
-        operations::delete_group::run(
+        operations::mutations::delete_group::run(
             &mut core,
             DeleteGroupArgs {
                 group_id: schema_id(ids.root_group),
@@ -1838,7 +1838,7 @@ async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_
         Err(CoreError::InvalidGroupDelete)
     ));
 
-    operations::delete_group::run(
+    operations::mutations::delete_group::run(
         &mut core,
         DeleteGroupArgs {
             group_id: schema_id(ids.child_group),
@@ -1863,7 +1863,7 @@ async fn delete_group_operation_moves_the_subtree_to_trash_and_protects_special_
         vec![schema_id(ids.child_entry), schema_id(ids.nested_entry)]
     );
     assert!(matches!(
-        operations::delete_group::run(
+        operations::mutations::delete_group::run(
             &mut core,
             DeleteGroupArgs {
                 group_id: schema_id(match recycle_bin_id {
@@ -2224,7 +2224,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             is_protected: false,
         },
     ];
-    operations::update_entry::run(
+    operations::mutations::update_entry::run(
         &mut core,
         entry_id.clone(),
         fields,
@@ -2326,7 +2326,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         .unwrap()
         .clone();
     assert!(matches!(
-        operations::update_entry::run(
+        operations::mutations::update_entry::run(
             &mut core,
             entry_id,
             vec![SchemaEntryFieldUpdate {
@@ -2392,7 +2392,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
     .await
     .unwrap();
     assert!(matches!(
-        operations::update_entry::run(
+        operations::mutations::update_entry::run(
             &mut core,
             schema_id(ids.root_entry),
             current_fields.clone(),
@@ -2402,7 +2402,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         .await,
         Err(CoreError::PasswordRequired)
     ));
-    operations::update_entry::run(
+    operations::mutations::update_entry::run(
         &mut core,
         schema_id(ids.root_entry),
         current_fields,
@@ -2418,7 +2418,7 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
     let (mut core, ids) = query_core().await;
     let entry_id = schema_id(ids.nested_entry);
     assert!(matches!(
-        operations::delete_entry::run(
+        operations::mutations::delete_entry::run(
             &mut core,
             DeleteEntryArgs {
                 entry_id: entry_id.clone(),
@@ -2437,7 +2437,7 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
             .is_some()
     );
 
-    operations::delete_entry::run(
+    operations::mutations::delete_entry::run(
         &mut core,
         DeleteEntryArgs {
             entry_id: entry_id.clone(),
@@ -2449,7 +2449,7 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
     let database = core.handle.as_ref().unwrap().database();
     assert!(database.is_entry_in_recycle_bin(&model_id(entry_id.clone())));
     assert!(matches!(
-        operations::delete_entry::run(
+        operations::mutations::delete_entry::run(
             &mut core,
             DeleteEntryArgs {
                 entry_id: entry_id.clone(),
@@ -2459,7 +2459,7 @@ async fn delete_entry_requires_trash_for_permanent_removal() {
         .await,
         Err(CoreError::InvalidEntryDelete)
     ));
-    operations::delete_entry::run(
+    operations::mutations::delete_entry::run(
         &mut core,
         DeleteEntryArgs {
             entry_id: entry_id.clone(),
@@ -2516,7 +2516,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
     let missing = schema_id(Uuid::from_u128(999));
 
     assert!(matches!(
-        operations::add_entry::run(
+        operations::mutations::add_entry::run(
             &mut core,
             AddEntryArgs {
                 parent_group_id: missing.clone(),
@@ -2526,7 +2526,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
         Err(CoreError::GroupNotFound)
     ));
     assert!(matches!(
-        operations::add_group::run(
+        operations::mutations::add_group::run(
             &mut core,
             AddGroupArgs {
                 parent_group_id: missing,
@@ -2544,7 +2544,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
         group_count
     );
 
-    let entry = operations::add_entry::run(
+    let entry = operations::mutations::add_entry::run(
         &mut core,
         AddEntryArgs {
             parent_group_id: schema_id(ids.child_group),
@@ -2557,7 +2557,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
             .unwrap();
     assert_eq!(detail_field(&detail.fields[0]).unwrap().value, Some(""));
 
-    let group = operations::add_group::run(
+    let group = operations::mutations::add_group::run(
         &mut core,
         AddGroupArgs {
             parent_group_id: schema_id(ids.child_group),
@@ -2565,7 +2565,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
     )
     .await
     .unwrap();
-    operations::rename_group::run(
+    operations::mutations::rename_group::run(
         &mut core,
         RenameGroupArgs {
             group_id: group.id.clone(),
@@ -2574,7 +2574,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
     )
     .await
     .unwrap();
-    operations::update_group::run(
+    operations::mutations::update_group::run(
         &mut core,
         UpdateGroupArgs {
             group_id: group.id.clone(),
@@ -2600,7 +2600,7 @@ async fn add_and_rename_operations_validate_parents_and_apply_defaults() {
         Some(Uuid::from_u128(100).hyphenated().to_string().as_str())
     );
     assert!(matches!(
-        operations::rename_group::run(
+        operations::mutations::rename_group::run(
             &mut core,
             RenameGroupArgs {
                 group_id: schema_id(ids.child_group),
@@ -2821,7 +2821,7 @@ async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
     let persistence = Arc::new(MemoryDatabasePersistence::default());
     let (mut core, ids) = query_core_with_persistence(storage.clone(), persistence.clone()).await;
 
-    let first = operations::add_entry::run(
+    let first = operations::mutations::add_entry::run(
         &mut core,
         AddEntryArgs {
             parent_group_id: schema_id(ids.child_group),
@@ -2830,7 +2830,7 @@ async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
     .await
     .unwrap();
     let first_id = model_id(first.id.clone());
-    let second = operations::add_entry::run(
+    let second = operations::mutations::add_entry::run(
         &mut core,
         AddEntryArgs {
             parent_group_id: schema_id(ids.child_group),
@@ -2865,7 +2865,7 @@ async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
     persistence.fail_append.store(true, Ordering::Relaxed);
     let before = core.handle.as_ref().unwrap().database().entry_count();
     assert!(matches!(
-        operations::add_entry::run(
+        operations::mutations::add_entry::run(
             &mut core,
             AddEntryArgs {
                 parent_group_id: schema_id(ids.child_group),

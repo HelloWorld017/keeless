@@ -1,6 +1,6 @@
 use keeless_schema::{EmptyResult, OpenArgs, OperationSuccess};
 
-use crate::{CoreError, KeelessCore, Result, Selection, StorageDescriptor};
+use crate::{CoreError, DatabaseId, KeelessCore, Result, Selection, StorageDescriptor};
 
 pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -> Result<()> {
     let provider = core
@@ -12,9 +12,11 @@ pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -
     // selection before changing namespaces so a failed open cannot journal the old DB elsewhere.
     super::lock::run(core);
     core.selection = None;
-    if let Some(persistence) = &core.persistence {
-        persistence.select(&descriptor).await?;
-    }
+    let database_id = if let Some(persistence) = &core.persistence {
+        persistence.select(&descriptor).await?
+    } else {
+        DatabaseId::new(format!("{}\0{}", descriptor.provider, descriptor.path).into_bytes())
+    };
     let (cache_exists, journal_dirty, persistence_error) =
         if let Some(persistence) = &core.persistence {
             let (cache_exists, mut error) = match persistence.read_cache().await {
@@ -54,6 +56,7 @@ pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -
     core.selection = Some(Selection {
         descriptor,
         provider,
+        database_id,
         exists,
     });
     core.sync_status = if sync_error.is_some() {

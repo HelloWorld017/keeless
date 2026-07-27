@@ -8,30 +8,21 @@ use zeroize::Zeroizing;
 use crate::{CoreError, KeelessCore, Result, credential::CredentialVault};
 
 pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
-    let (provider, path) = core
+    let (provider, path, database_id) = core
         .selection
         .as_ref()
         .map(|selection| {
             (
                 Arc::clone(&selection.provider),
                 selection.descriptor.path.clone(),
+                selection.database_id.clone(),
             )
         })
         .ok_or(CoreError::NoDatabaseSelected)?;
     let key = CompositeKey::new().with_password(password)?;
     let raw_key = key.build_raw_key()?;
     let persistence = core.persistence.clone();
-    let identity = if let Some(persistence) = &persistence {
-        persistence.identity().await?
-    } else {
-        let selection = core.selection.as_ref().expect("selection checked");
-        format!(
-            "{}\0{}",
-            selection.descriptor.provider, selection.descriptor.path
-        )
-        .into_bytes()
-    };
-    let mut journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
+    let mut journal = super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
     let cached = match &persistence {
         Some(persistence) => persistence.read_cache().await?,
         None => None,
@@ -86,8 +77,11 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
                     handle = remote;
                     opened_from_cache = false;
                     recovered_error = Some(error);
-                    let identity = persistence.identity().await?;
-                    journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
+                    journal = super::mutations::MutationCoordinator::new(
+                        &raw_key,
+                        database_id.clone(),
+                        0,
+                    )?;
                 }
             }
             Err(error) => {
@@ -97,8 +91,8 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
                 handle = remote;
                 opened_from_cache = false;
                 recovered_error = Some(error);
-                let identity = persistence.identity().await?;
-                journal = super::mutations::MutationCoordinator::new(&raw_key, identity, 0)?;
+                journal =
+                    super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
             }
         }
     }

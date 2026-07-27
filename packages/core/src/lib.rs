@@ -36,9 +36,24 @@ pub use keeless_sync::StorageProvider;
 pub const MAX_REQUEST_SIZE: usize = 256 * 1024;
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
 
+/// Stable, non-secret identifier bound into database persistence authentication.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct DatabaseId(Vec<u8>);
+
+impl DatabaseId {
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 struct Selection {
     descriptor: StorageDescriptor,
     provider: Arc<dyn StorageProvider>,
+    database_id: DatabaseId,
     exists: bool,
 }
 

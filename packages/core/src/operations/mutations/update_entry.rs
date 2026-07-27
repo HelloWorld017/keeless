@@ -1,12 +1,128 @@
 use keeless_kdbx::{
-    CompositeKey, DatabaseError, DateInstant, EntryFieldUpdate as KdbxFieldUpdate,
-    EntryPropertiesUpdate as KdbxPropertiesUpdate,
+    CompositeKey, Database, DatabaseError, DateInstant, EntryFieldId, EntryFieldUpdate,
+    EntryPropertiesUpdate as KdbxPropertiesUpdate, IconUpdate, NodeId,
 };
 use keeless_schema::{EmptyResult, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
+use super::{Mutation as JournalMutation, mutate};
 use crate::model::{parse_icon_reference, parse_node_id};
 use crate::{CoreError, KeelessCore, Result};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct Mutation {
+    pub(super) id: NodeId,
+    pub(super) fields: Vec<JournalEntryField>,
+    pub(super) properties: Option<JournalEntryProperties>,
+    pub(super) new_custom_field_ids: Vec<Uuid>,
+    pub(super) timestamp_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct JournalEntryField {
+    pub(super) field_id: Option<String>,
+    pub(super) name: String,
+    pub(super) value: Option<String>,
+    pub(super) is_protected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct JournalEntryProperties {
+    pub(super) override_url: String,
+    pub(super) tags: Vec<String>,
+    pub(super) expires: bool,
+    pub(super) expiry_time_ms: Option<i64>,
+    pub(super) standard_icon: Option<u32>,
+    pub(super) custom_icon: Option<Uuid>,
+}
+
+impl Drop for JournalEntryField {
+    fn drop(&mut self) {
+        self.value.zeroize();
+    }
+}
+
+impl Drop for JournalEntryProperties {
+    fn drop(&mut self) {
+        self.override_url.zeroize();
+        self.tags.zeroize();
+    }
+}
+
+impl JournalEntryField {
+    fn to_kdbx(&self) -> Result<EntryFieldUpdate> {
+        Ok(EntryFieldUpdate {
+            field_id: self
+                .field_id
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(|_| CoreError::InvalidJournal)?,
+            name: self.name.clone(),
+            value: self.value.clone(),
+            is_protected: self.is_protected,
+        })
+    }
+}
+
+impl JournalEntryProperties {
+    fn to_kdbx(&self) -> KdbxPropertiesUpdate {
+        KdbxPropertiesUpdate {
+            override_url: self.override_url.clone(),
+            tags: self.tags.clone(),
+            expires: self.expires,
+            expiry_time_ms: self.expiry_time_ms,
+            icon: self.standard_icon.map(|standard_id| IconUpdate {
+                standard_id,
+                custom_uuid: self.custom_icon,
+            }),
+        }
+    }
+}
+
+pub(super) fn apply(
+    database: &mut Database,
+    mutation: &Mutation,
+    key: &CompositeKey,
+) -> Result<()> {
+    let mut fields = mutation
+        .fields
+        .iter()
+        .map(JournalEntryField::to_kdbx)
+        .collect::<Result<Vec<_>>>()?;
+    for field in &mut fields {
+        if matches!(
+            field.field_id,
+            Some(EntryFieldId::Standard(
+                keeless_kdbx::StandardField::Password
+            ))
+        ) && field.value.is_none()
+            && let Some(source) = database
+                .get_entry(&mutation.id)
+                .and_then(|entry| entry.field(field.field_id.expect("password field ID")))
+            && !source.value().is_protected()
+        {
+            field.value = Some(source.value().as_str().to_string());
+        }
+    }
+    let properties = mutation
+        .properties
+        .as_ref()
+        .map(JournalEntryProperties::to_kdbx);
+    database
+        .update_entry_at(
+            key,
+            &mutation.id,
+            &fields,
+            properties.as_ref(),
+            &mutation.new_custom_field_ids,
+            DateInstant::EpochMillis(mutation.timestamp_ms),
+        )?
+        .then_some(())
+        .ok_or(CoreError::InvalidJournal)
+}
 
 pub(crate) async fn run(
     core: &mut KeelessCore,
@@ -43,7 +159,7 @@ pub(crate) async fn run(
                 return Err(CoreError::InvalidEntryUpdate);
             }
         };
-        converted.push(KdbxFieldUpdate {
+        converted.push(EntryFieldUpdate {
             field_id,
             name: field.name,
             value: field.value,
@@ -97,7 +213,7 @@ pub(crate) async fn run(
     let new_custom_field_ids = converted
         .iter()
         .filter(|field| field.field_id.is_none())
-        .map(|_| uuid::Uuid::new_v4())
+        .map(|_| Uuid::new_v4())
         .collect::<Vec<_>>();
     let timestamp_ms = core.clock.now_millis();
     let prepared = core
@@ -120,42 +236,40 @@ pub(crate) async fn run(
     let Some(prepared) = prepared else {
         return Ok(EmptyResult {});
     };
-    let journal_fields = converted
-        .iter()
-        .map(|field| super::mutations::JournalEntryField {
-            field_id: field.field_id.map(|id| id.to_string()),
-            name: field.name.clone(),
-            value: field.value.clone(),
-            is_protected: field.is_protected,
-        })
-        .collect();
-    let journal_properties =
-        properties
+    let payload = Mutation {
+        id: entry_id,
+        fields: converted
+            .iter()
+            .map(|field| JournalEntryField {
+                field_id: field.field_id.map(|id| id.to_string()),
+                name: field.name.clone(),
+                value: field.value.clone(),
+                is_protected: field.is_protected,
+            })
+            .collect(),
+        properties: properties
             .as_ref()
-            .map(|properties| super::mutations::JournalEntryProperties {
+            .map(|properties| JournalEntryProperties {
                 override_url: properties.override_url.clone(),
                 tags: properties.tags.clone(),
                 expires: properties.expires,
                 expiry_time_ms: properties.expiry_time_ms,
                 standard_icon: properties.icon.map(|icon| icon.standard_id),
                 custom_icon: properties.icon.and_then(|icon| icon.custom_uuid),
-            });
-    let mutation = super::mutations::Mutation::UpdateEntry {
-        id: entry_id,
-        fields: journal_fields,
-        properties: journal_properties,
+            }),
         new_custom_field_ids,
         timestamp_ms,
     };
-    super::mutations::mutate(core, &mutation, move |database| {
-        database.commit_entry_update(prepared);
+    let mutation = JournalMutation::UpdateEntry(payload);
+    mutate(core, &mutation, move |database| {
+        database.commit_entry_update(prepared)
     })
     .await?;
     core.touch_activity();
     Ok(EmptyResult {})
 }
 
-pub(super) async fn execute(
+pub(crate) async fn execute(
     core: &mut KeelessCore,
     mut args: UpdateEntryArgs,
 ) -> Result<OperationSuccess> {

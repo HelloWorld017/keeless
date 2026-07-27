@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt::Write as _, io, path::PathBuf, sync::RwLock};
 
+use keeless_core::DatabaseId;
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, Revision, StorageError, StorageErrorKind, StorageFuture,
     StorageProvider, WriteCondition, WriteOutcome,
@@ -8,7 +9,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{replace_file, temporary_path};
-use crate::persistence::{DatabaseIdentity, canonical_backing_path};
+use crate::persistence::{canonical_backing_path, database_id_from_backing_path};
 
 pub const MAX_LOCAL_FILE_SIZE: u64 = 128 * 1024 * 1024;
 
@@ -21,7 +22,7 @@ pub struct LocalFileStorage {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalFileCapability {
     path: PathBuf,
-    identity: DatabaseIdentity,
+    database_id: DatabaseId,
 }
 
 impl LocalFileCapability {
@@ -29,8 +30,8 @@ impl LocalFileCapability {
         &self.path
     }
 
-    pub fn identity(&self) -> &DatabaseIdentity {
-        &self.identity
+    pub fn database_id(&self) -> &DatabaseId {
+        &self.database_id
     }
 }
 
@@ -42,14 +43,14 @@ impl LocalFileStorage {
     /// The desktop host calls this only with a path returned by the Electron picker.
     pub fn grant_picker_path(&self, path: PathBuf) -> io::Result<String> {
         let path = canonical_backing_path(&path)?;
-        let identity = DatabaseIdentity::from_backing_path("local-file", &path)?;
+        let database_id = database_id_from_backing_path("local-file", &path)?;
         let mut random = [0_u8; 32];
         getrandom::getrandom(&mut random).map_err(io::Error::other)?;
         let token = hex::encode(random);
         self.capabilities
             .write()
             .map_err(|_| io::Error::other("local-file capability lock was poisoned"))?
-            .insert(token.clone(), LocalFileCapability { path, identity });
+            .insert(token.clone(), LocalFileCapability { path, database_id });
         Ok(token)
     }
 
@@ -299,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn new_tokens_for_the_same_path_keep_the_same_identity() {
+    fn new_tokens_for_the_same_path_keep_the_same_database_id() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("new-vault.kdbx");
         let provider = LocalFileStorage::new();
@@ -307,8 +308,8 @@ mod tests {
         let second = provider.grant_picker_path(path).unwrap();
         assert_ne!(first, second);
         assert_eq!(
-            provider.resolve_capability(&first).unwrap().identity(),
-            provider.resolve_capability(&second).unwrap().identity()
+            provider.resolve_capability(&first).unwrap().database_id(),
+            provider.resolve_capability(&second).unwrap().database_id()
         );
     }
 

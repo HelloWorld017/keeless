@@ -3,7 +3,7 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 use keeless_sync::StorageProvider;
 use zeroize::Zeroizing;
 
-use crate::{Result, StorageDescriptor};
+use crate::{DatabaseId, Result, StorageDescriptor};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type HostFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -30,9 +30,10 @@ pub trait ConfigProvider: HostProviderRequirements {
 /// Optional durable storage used for the local database cache and mutation journal.
 pub trait DatabasePersistence: HostProviderRequirements {
     /// Select the persistence namespace associated with a storage capability.
-    fn select<'a>(&'a self, descriptor: &'a StorageDescriptor) -> HostFuture<'a, Result<()>>;
-    /// Stable, non-secret identity for the persisted database. It is bound into journal keys/AAD.
-    fn identity(&self) -> HostFuture<'_, Result<Vec<u8>>>;
+    fn select<'a>(
+        &'a self,
+        descriptor: &'a StorageDescriptor,
+    ) -> HostFuture<'a, Result<DatabaseId>>;
     fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>>;
     fn write_cache<'a>(&'a self, cache: &'a [u8]) -> HostFuture<'a, Result<()>>;
     fn read_journal(&self) -> HostFuture<'_, Result<Vec<Vec<u8>>>>;
