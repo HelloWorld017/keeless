@@ -469,6 +469,9 @@ pub struct GetPasskeysArgs {
     #[serde(default, deserialize_with = "deserialize_nullable")]
     #[specta(optional = true)]
     pub rp_id: Option<String>,
+    /// Credential IDs from CTAP2 `allowList`, base64url without padding.
+    #[serde(default)]
+    pub allow_credential_ids: Vec<String>,
 }
 
 /// Registration inputs from a CTAP2 `authenticatorMakeCredential` request.
@@ -662,14 +665,8 @@ pub struct RevealEntryFieldResult {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PasskeySummary {
     pub entry_id: DatabaseNodeId,
-    /// Credential ID, base64url without padding.
-    pub credential_id: String,
     pub rp_id: String,
     pub username: String,
-    /// User handle, base64url without padding.
-    pub user_handle: String,
-    /// COSE algorithm identifier of the credential key.
-    pub algorithm: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

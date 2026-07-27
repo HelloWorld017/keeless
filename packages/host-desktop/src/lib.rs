@@ -17,7 +17,7 @@ use std::{
 use keeless_core::{
     HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
 };
-use keeless_host_client::ipc;
+use keeless_host_desktop_shared::ipc;
 use keeless_lesswire::{MessageFrame, Server, ServerHost};
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;

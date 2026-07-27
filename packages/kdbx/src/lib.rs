@@ -78,11 +78,12 @@ pub use model::entry::otp::{OtpHashAlgorithm, OtpParameters, OtpType, TokenCalcu
 
 // ─── Passkeys ─────────────────────────────────────────────────────────
 pub use model::entry::passkey::{
-    find_credentials, is_passkey_entry, AuthenticationRequest, AuthenticationResponse,
-    CtapAuthenticationRequest, CtapAuthenticationResponse, CtapRegistrationRequest,
-    CtapRegistrationResponse, CtapRegistrationResult, PasskeyAlgorithm, PasskeyAuthenticator,
-    PasskeyCredential, PasskeyError, PasskeyFieldValue, RegistrationRequest, RegistrationResponse,
-    RegistrationResult, UserPresence, UserVerification, KEELESS_AAGUID,
+    find_passkey_credentials, is_passkey_entry, passkey_credential_ids, AuthenticationRequest,
+    AuthenticationResponse, CtapAuthenticationRequest, CtapAuthenticationResponse,
+    CtapRegistrationRequest, CtapRegistrationResponse, CtapRegistrationResult, PasskeyAlgorithm,
+    PasskeyAuthenticator, PasskeyCredential, PasskeyCredentialId, PasskeyCredentialSummary,
+    PasskeyError, PasskeyFieldValue, RegistrationRequest, RegistrationResponse, RegistrationResult,
+    UserPresence, UserVerification, KEELESS_AAGUID,
 };
 
 // ─── Repair ───────────────────────────────────────────────────────────

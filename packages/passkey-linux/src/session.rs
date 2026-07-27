@@ -1,7 +1,7 @@
 //! Talking to the running Keeless desktop app.
 
-use keeless_host_client::state::{ClientState, FileStore};
-use keeless_host_client::{ClientError, CoreClient};
+use keeless_host_desktop_shared::state::{ClientState, FileStore};
+use keeless_host_desktop_shared::{ClientError, CoreClient};
 use keeless_schema::{Operation, OperationSuccess};
 
 /// File holding this daemon's wire identity, next to the app's own state.
@@ -62,5 +62,5 @@ pub enum SessionError {
     #[error("cannot locate the Keeless data directory: {0}")]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    State(#[from] keeless_host_client::state::StateError),
+    State(#[from] keeless_host_desktop_shared::state::StateError),
 }

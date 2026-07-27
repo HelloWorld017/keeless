@@ -1,5 +1,5 @@
 [package]
-name = "keeless_vhid"
+name = "keeless_passkey_linux"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.85"
@@ -8,8 +8,8 @@ description = "Virtual FIDO2 authenticator serving Keeless passkeys on Linux"
 
 [dependencies]
 base64 = "0.22"
-keeless_ctap = { path = "../ctap" }
-keeless_host_client = { path = "../host-client" }
+keeless_passkey_ctap = { path = "../passkey-ctap" }
+keeless_host_desktop_shared = { path = "../host-desktop-shared" }
 keeless_lesswire = { path = "../lesswire" }
 keeless_schema = { path = "../schema" }
 serde = { version = "1", features = ["derive"] }
@@ -25,5 +25,5 @@ keeless_kdbx = { path = "../kdbx" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [[bin]]
-name = "keeless-vhid"
+name = "keeless-passkey-linux"
 path = "src/main.rs"

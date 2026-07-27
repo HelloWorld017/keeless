@@ -3,6 +3,7 @@
 mod config;
 mod credential;
 mod error;
+mod extensions;
 mod features;
 mod host;
 mod model;
@@ -68,6 +69,7 @@ pub struct KeelessCore {
     selection: Option<Selection>,
     handle: Option<FileHandle>,
     credential: Option<CredentialVault>,
+    extensions: extensions::Extensions,
     last_activity_ms: Option<u64>,
     persistence: Option<Arc<dyn DatabasePersistence>>,
     journal: Option<operations::mutations::MutationCoordinator>,
@@ -114,6 +116,7 @@ impl KeelessCore {
             selection: None,
             handle: None,
             credential: None,
+            extensions: extensions::Extensions::new()?,
             last_activity_ms: None,
             persistence: host.database_persistence,
             journal: None,
@@ -181,6 +184,7 @@ impl KeelessCore {
                 return Err(error);
             }
         };
+        self.extensions.unlock(handle.database(), &key)?;
         if let Some(persistence) = &self.persistence {
             let database = self
                 .handle

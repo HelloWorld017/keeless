@@ -111,6 +111,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     } else {
         Some(CredentialVault::wrap(&raw_key)?)
     };
+    core.extensions.unlock(handle.database(), &key)?;
     core.handle = None;
     core.credential = credential;
     core.handle = Some(handle);

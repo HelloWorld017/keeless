@@ -18,7 +18,7 @@ directories = "6"
 getrandom = "0.2"
 hex = "0.4"
 keeless_core = { path = "../core" }
-keeless_host_client = { path = "../host-client" }
+keeless_host_desktop_shared = { path = "../host-desktop-shared" }
 keeless_lesswire = { path = "../lesswire" }
 keeless_sync = { path = "../sync", default-features = false }
 napi = { version = "3", features = ["async", "tokio_rt"] }

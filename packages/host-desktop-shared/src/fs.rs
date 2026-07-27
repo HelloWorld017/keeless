@@ -88,4 +88,4 @@ pub fn sync_directory(_: &Path) -> io::Result<()> {
 }
 
 #[cfg(not(any(unix, windows)))]
-compile_error!("keeless_host_client supports Unix and Windows only");
+compile_error!("keeless_host_desktop_shared supports Unix and Windows only");

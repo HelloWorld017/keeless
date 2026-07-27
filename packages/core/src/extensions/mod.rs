@@ -1,0 +1,57 @@
+use std::any::{Any, TypeId};
+use std::collections::HashMap;
+
+use keeless_kdbx::{CompositeKey, Database};
+
+use crate::Result;
+
+pub(crate) mod passkey;
+
+pub(crate) trait CoreExtension: Any + Send + Sync {
+    fn unlock(&mut self, database: &Database, key: &CompositeKey) -> Result<()>;
+    fn lock(&mut self);
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+pub(crate) struct Extensions {
+    values: HashMap<TypeId, Box<dyn CoreExtension>>,
+}
+
+impl Extensions {
+    pub(crate) fn new() -> Result<Self> {
+        let mut values: HashMap<TypeId, Box<dyn CoreExtension>> = HashMap::new();
+        values.insert(
+            TypeId::of::<passkey::PasskeyExtension>(),
+            Box::new(passkey::PasskeyExtension::new()?),
+        );
+        Ok(Self { values })
+    }
+
+    pub(crate) fn unlock(&mut self, database: &Database, key: &CompositeKey) -> Result<()> {
+        for extension in self.values.values_mut() {
+            extension.unlock(database, key)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn lock(&mut self) {
+        for extension in self.values.values_mut() {
+            extension.lock();
+        }
+    }
+
+    pub(crate) fn get_mut<T: CoreExtension>(&mut self) -> &mut T {
+        self.values
+            .get_mut(&TypeId::of::<T>())
+            .and_then(|extension| extension.as_any_mut().downcast_mut())
+            .expect("registered core extension has its declared type")
+    }
+
+    pub(crate) fn get<T: CoreExtension>(&self) -> &T {
+        self.values
+            .get(&TypeId::of::<T>())
+            .and_then(|extension| extension.as_any().downcast_ref())
+            .expect("registered core extension has its declared type")
+    }
+}

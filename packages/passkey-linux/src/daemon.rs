@@ -2,8 +2,8 @@
 
 use std::time::{Duration, Instant};
 
-use keeless_ctap::CtapStatus;
-use keeless_ctap::response;
+use keeless_passkey_ctap::CtapStatus;
+use keeless_passkey_ctap::response;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::authenticator::{Authenticator, Progress};

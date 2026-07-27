@@ -2,7 +2,7 @@ use std::{io, path::PathBuf};
 
 use directories::ProjectDirs;
 use keeless_core::{ConfigProvider, CoreError, HostFuture};
-use keeless_host_client::{fs, state::FileStore};
+use keeless_host_desktop_shared::{fs, state::FileStore};
 
 pub const MAX_CONFIG_SIZE: usize = 1024 * 1024;
 pub const CORE_SETTINGS_FILE: &str = "core-settings.json";

@@ -13,7 +13,7 @@ use keeless_core::{
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use keeless_host_client::fs::{
+use keeless_host_desktop_shared::fs::{
     replace_file, set_directory_permissions, set_file_permissions, set_private_create_mode,
     sync_directory, temporary_path,
 };

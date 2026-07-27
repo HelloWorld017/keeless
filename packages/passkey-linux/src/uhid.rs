@@ -90,7 +90,7 @@ impl UhidDevice {
                 io::Error::new(
                     error.kind(),
                     format!(
-                        "cannot open /dev/uhid ({error}); run `keeless-vhid setup` to grant access"
+                        "cannot open /dev/uhid ({error}); run `keeless-passkey-linux setup` to grant access"
                     ),
                 )
             })?;
@@ -218,7 +218,7 @@ fn create2_event(name: &str) -> Vec<u8> {
     event[..4].copy_from_slice(&event::CREATE2.to_ne_bytes());
     write_cstr(&mut event[4..132], name);
     write_cstr(&mut event[132..196], "keeless");
-    write_cstr(&mut event[196..260], "keeless-vhid");
+    write_cstr(&mut event[196..260], "keeless-passkey-linux");
     event[260..262].copy_from_slice(&(FIDO_REPORT_DESCRIPTOR.len() as u16).to_ne_bytes());
     event[262..264].copy_from_slice(&BUS_USB.to_ne_bytes());
     event[264..268].copy_from_slice(&VENDOR_ID.to_ne_bytes());

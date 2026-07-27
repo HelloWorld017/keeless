@@ -6,9 +6,10 @@ use keeless_schema::{
     RegisterPasskeyResult,
 };
 
+use crate::extensions::passkey::PasskeyExtension;
 use crate::features::passkeys;
-use crate::model::node_id;
-use crate::{CoreError, KeelessCore, PasswordInputMode, Result};
+use crate::model::{node_id, parse_node_id};
+use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) async fn run(
     core: &mut KeelessCore,
@@ -32,29 +33,26 @@ pub(crate) async fn run(
         .root_group_id
         .ok_or(CoreError::GroupNotFound)?;
 
-    let unlocked = passkeys::unlock(core, PasswordInputMode::Save).await?;
-    let existing = passkeys::visible_credentials(core, &unlocked.key, Some(&args.rp_id))?;
-    let existing_credentials = existing
-        .iter()
-        .map(|(_, credential)| credential)
-        .collect::<Vec<_>>();
+    if !exclude_credential_ids.is_empty()
+        && !passkeys::visible_credentials(core, Some(&args.rp_id), &exclude_credential_ids)?
+            .is_empty()
+    {
+        return Err(CoreError::PasskeyExcluded);
+    }
     let result = PasskeyAuthenticator::create_ctap(&CtapRegistrationRequest {
         client_data_hash: &client_data_hash,
         rp_id: &args.rp_id,
         user_handle: &user_handle,
         username: &args.user_name,
         algorithms: &args.algorithms,
-        existing_credentials: &existing_credentials,
+        existing_credentials: &[],
         exclude_credential_ids: &exclude_credential_ids
             .iter()
             .map(Vec::as_slice)
             .collect::<Vec<_>>(),
         user_verification: passkeys::user_verification(args.user_verified),
     })?;
-    drop(existing_credentials);
-    drop(existing);
-
-    let entry_id = super::mutations::add_entry::run(
+    let entry_id = super::add_entry::run(
         core,
         AddEntryArgs {
             parent_group_id: node_id(parent_group_id),
@@ -69,18 +67,10 @@ pub(crate) async fn run(
         .filter(|name| !name.is_empty())
         .unwrap_or(result.credential.rp_id());
     let fields = entry_fields(title, &args.user_name, &result.credential)?;
-    if let Err(error) = super::mutations::update_entry::run(
-        core,
-        entry_id.clone(),
-        fields,
-        None,
-        unlocked.password(),
-    )
-    .await
-    {
+    if let Err(error) = super::update_entry::run(core, entry_id.clone(), fields, None, None).await {
         // The entry was already journaled, so leave the database consistent by
         // trashing the stub rather than leaving an empty entry in the root group.
-        let _ = super::mutations::delete_entry::run(
+        let _ = super::delete_entry::run(
             core,
             DeleteEntryArgs {
                 entry_id: entry_id.clone(),
@@ -90,6 +80,11 @@ pub(crate) async fn run(
         .await;
         return Err(error);
     }
+
+    core.extensions.get_mut::<PasskeyExtension>().insert(
+        parse_node_id(entry_id.clone())?,
+        result.credential.credential_id(),
+    );
 
     core.touch_activity();
     Ok(RegisterPasskeyResult {
@@ -149,7 +144,7 @@ fn standard_field(field: StandardField, value: Option<String>) -> EntryFieldUpda
     }
 }
 
-pub(super) async fn execute(
+pub(crate) async fn execute(
     core: &mut KeelessCore,
     args: RegisterPasskeyArgs,
 ) -> Result<OperationSuccess> {

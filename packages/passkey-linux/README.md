@@ -1,6 +1,6 @@
-# @keeless/vhid
+# @keeless/passkey-linux
 
-`keeless-vhid` serves the passkeys in your Keeless database to any application
+`keeless-passkey-linux` serves the passkeys in your Keeless database to any application
 that speaks WebAuthn on Linux. It creates a virtual HID device, so browsers see
 Keeless as an ordinary security key with no extension or patched build.
 
@@ -16,7 +16,7 @@ Keeless as an ordinary security key with no extension or patched build.
 commands with:
 
 ```sh
-keeless-vhid setup
+keeless-passkey-linux setup
 ```
 
 Read them before running them. Write access to `/dev/uhid` is the ability to
@@ -27,7 +27,7 @@ console. Run the commands as root, then log out and back in. Check the result
 any time with:
 
 ```sh
-keeless-vhid doctor
+keeless-passkey-linux doctor
 ```
 
 which reports whether the device is usable, whether the daemon has been approved
@@ -36,10 +36,10 @@ by the app, and whether the app is reachable.
 ## Running
 
 ```sh
-keeless-vhid run
+keeless-passkey-linux run
 ```
 
-The consent dialog helper is expected beside the `keeless-vhid` executable;
+The consent dialog helper is expected beside the `keeless-passkey-linux` executable;
 `--native-ui` names it elsewhere, and must be an absolute path. It is never
 searched for on `PATH`, because whatever answers that prompt decides which
 signatures get made. The daemon serves requests until it is stopped; only one
@@ -47,7 +47,7 @@ instance runs at a time.
 
 The first request asks the desktop app to approve this daemon, the same dialog
 any new local client gets. The app's key is then pinned, so a replaced app is
-visible rather than silently trusted. `keeless-vhid reset-pairing` forgets it.
+visible rather than silently trusted. `keeless-passkey-linux reset-pairing` forgets it.
 
 ## What a ceremony looks like
 
@@ -85,7 +85,7 @@ The device-level test is skipped unless you ask for it, because it needs
 `/dev/uhid`:
 
 ```sh
-cargo test -p keeless_vhid -- --ignored
+cargo test -p keeless_passkey_linux -- --ignored
 ```
 
 For a manual check, `fido2-token -L` from libfido2 lists the device, and

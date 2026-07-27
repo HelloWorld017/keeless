@@ -8,11 +8,10 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use keeless_kdbx::{
-    CompositeKey, NodeId, PasskeyCredential, PasskeyError, UserPresence, UserVerification,
+    CompositeKey, NodeId, PasskeyCredentialSummary, PasskeyError, UserPresence, UserVerification,
 };
 use keeless_schema::PasskeySummary;
 use std::collections::HashSet;
-use zeroize::Zeroizing;
 
 use crate::model::{all_entries, node_id};
 use crate::{CoreError, KeelessCore, PasswordInputMode, Result};
@@ -44,19 +43,8 @@ pub(crate) fn user_presence(user_present: bool) -> UserPresence {
     }
 }
 
-/// A composite key plus the password it came from, when the host had to prompt.
-///
-/// Carrying the password lets a nested operation reuse it, so paranoia mode asks
-/// once per passkey ceremony instead of once per underlying mutation.
 pub(crate) struct UnlockedKey {
     pub(crate) key: CompositeKey,
-    pub(crate) password: Option<Zeroizing<Vec<u8>>>,
-}
-
-impl UnlockedKey {
-    pub(crate) fn password(&self) -> Option<&[u8]> {
-        self.password.as_ref().map(|password| password.as_slice())
-    }
 }
 
 /// Obtain the composite key needed to read protected passkey fields.
@@ -70,7 +58,6 @@ pub(crate) async fn unlock(core: &mut KeelessCore, mode: PasswordInputMode) -> R
     if let Some(credential) = &core.credential {
         return Ok(UnlockedKey {
             key: credential.restore_key()?,
-            password: None,
         });
     }
     let password = core.request_password(mode).await?;
@@ -79,18 +66,15 @@ pub(crate) async fn unlock(core: &mut KeelessCore, mode: PasswordInputMode) -> R
         .as_ref()
         .ok_or(CoreError::DatabaseLocked)?
         .verify_credentials(&key)?;
-    Ok(UnlockedKey {
-        key,
-        password: Some(password),
-    })
+    Ok(UnlockedKey { key })
 }
 
 /// Credentials reachable from the group tree, excluding trashed entries.
 pub(crate) fn visible_credentials(
     core: &KeelessCore,
-    key: &CompositeKey,
     rp_id: Option<&str>,
-) -> Result<Vec<(NodeId, PasskeyCredential)>> {
+    allowed_credential_ids: &[Vec<u8>],
+) -> Result<Vec<(NodeId, PasskeyCredentialSummary)>> {
     let database = core
         .handle
         .as_ref()
@@ -100,18 +84,21 @@ pub(crate) fn visible_credentials(
         .into_iter()
         .map(|entry| entry.id)
         .collect::<HashSet<_>>();
-    let mut credentials = keeless_kdbx::find_credentials(database, key, rp_id)?;
+    let mut credentials = keeless_kdbx::find_passkey_credentials(database, rp_id)?;
     credentials.retain(|(id, _)| visible.contains(id));
+    if !allowed_credential_ids.is_empty() {
+        let extension = core
+            .extensions
+            .get::<crate::extensions::passkey::PasskeyExtension>();
+        credentials.retain(|(id, _)| extension.matches_any(id, allowed_credential_ids));
+    }
     Ok(credentials)
 }
 
-pub(crate) fn summary(entry_id: NodeId, credential: &PasskeyCredential) -> PasskeySummary {
+pub(crate) fn summary(entry_id: NodeId, credential: &PasskeyCredentialSummary) -> PasskeySummary {
     PasskeySummary {
         entry_id: node_id(entry_id),
-        credential_id: encode(credential.credential_id()),
-        rp_id: credential.rp_id().to_string(),
-        username: credential.username().to_string(),
-        user_handle: encode(credential.user_handle()),
-        algorithm: credential.algorithm().cose_id(),
+        rp_id: credential.rp_id.clone(),
+        username: credential.username.clone(),
     }
 }

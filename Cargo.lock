@@ -2270,14 +2270,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "keeless_ctap"
-version = "0.0.0"
-dependencies = [
- "minicbor",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "keeless_host_browser"
 version = "0.0.0"
 dependencies = [
@@ -2296,7 +2288,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "keeless_host_client"
+name = "keeless_host_desktop"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "directories",
+ "getrandom 0.2.17",
+ "hex",
+ "keeless_core",
+ "keeless_host_desktop_shared",
+ "keeless_lesswire",
+ "keeless_sync",
+ "libc",
+ "napi",
+ "napi-build",
+ "napi-derive",
+ "postcard",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "windows-sys 0.59.0",
+ "zeroize",
+]
+
+[[package]]
+name = "keeless_host_desktop_shared"
 version = "0.0.0"
 dependencies = [
  "directories",
@@ -2308,33 +2327,6 @@ dependencies = [
  "postcard",
  "serde",
  "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "windows-sys 0.59.0",
- "zeroize",
-]
-
-[[package]]
-name = "keeless_host_desktop"
-version = "0.0.0"
-dependencies = [
- "base64",
- "directories",
- "getrandom 0.2.17",
- "hex",
- "keeless_core",
- "keeless_host_client",
- "keeless_lesswire",
- "keeless_sync",
- "libc",
- "napi",
- "napi-build",
- "napi-derive",
- "postcard",
- "serde",
- "serde_json",
- "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -2436,6 +2428,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "keeless_passkey_ctap"
+version = "0.0.0"
+dependencies = [
+ "minicbor",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "keeless_passkey_linux"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "keeless_host_desktop_shared",
+ "keeless_kdbx",
+ "keeless_lesswire",
+ "keeless_passkey_ctap",
+ "keeless_schema",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "keeless_schema"
 version = "0.0.0"
 dependencies = [
@@ -2469,23 +2486,6 @@ dependencies = [
  "url",
  "wiremock",
  "zeroize",
-]
-
-[[package]]
-name = "keeless_vhid"
-version = "0.0.0"
-dependencies = [
- "base64",
- "keeless_ctap",
- "keeless_host_client",
- "keeless_kdbx",
- "keeless_lesswire",
- "keeless_schema",
- "libc",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]

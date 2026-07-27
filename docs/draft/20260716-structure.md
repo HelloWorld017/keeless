@@ -68,7 +68,7 @@ rust package는 wasm 및 네이티브로 동시에 컴파일 됨
 * stdin/stdout 으로 Daemon과의 요청을 중계
 * rust로 구현
 
-### `keeless_vhid` (native rust)
+### `keeless_passkey_linux` (native rust)
 * linux에서 백그라운드에서 떠있는 daemon
   * passkey 를 통한 인증을 가상 hid device를 가지고 처리
 * `soft-fido2-transport` 이용하여 구현

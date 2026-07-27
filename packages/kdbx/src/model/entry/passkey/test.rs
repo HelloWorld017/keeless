@@ -586,7 +586,7 @@ fn reads_compatibility_fields_and_rejects_malformed_entries() {
 }
 
 #[test]
-fn finds_credentials_by_relying_party_and_skips_malformed_entries() {
+fn finds_public_passkey_metadata_by_relying_party_and_skips_malformed_entries() {
     let first = PasskeyAuthenticator::create_ctap(&ctap_registration_request(&[-7])).unwrap();
     let second = PasskeyAuthenticator::create_ctap(&CtapRegistrationRequest {
         username: "bob",
@@ -606,7 +606,7 @@ fn finds_credentials_by_relying_party_and_skips_malformed_entries() {
     );
     let plain_entry = Entry::new(NodeId::new_uuid());
 
-    let (database, composite_key) = database_with_entries(vec![
+    let (database, _composite_key) = database_with_entries(vec![
         entry_with_credential(&first.credential),
         entry_with_credential(&second.credential),
         entry_with_credential(&other_rp.credential),
@@ -614,34 +614,27 @@ fn finds_credentials_by_relying_party_and_skips_malformed_entries() {
         plain_entry,
     ]);
 
-    let all = find_credentials(&database, &composite_key, None).unwrap();
+    let all = find_passkey_credentials(&database, None).unwrap();
     assert_eq!(all.len(), 3);
 
-    let filtered = find_credentials(&database, &composite_key, Some("EXAMPLE.com")).unwrap();
-    let mut expected = vec![
-        first.credential.credential_id().to_vec(),
-        second.credential.credential_id().to_vec(),
-    ];
+    let filtered = find_passkey_credentials(&database, Some("EXAMPLE.com")).unwrap();
+    let mut expected = vec!["alice", "bob"];
     expected.sort();
-    assert_eq!(
-        filtered
-            .iter()
-            .map(|(_, credential)| credential.credential_id().to_vec())
-            .collect::<Vec<_>>(),
-        expected
-    );
+    let mut usernames = filtered
+        .iter()
+        .map(|(_, credential)| credential.username.as_str())
+        .collect::<Vec<_>>();
+    usernames.sort();
+    assert_eq!(usernames, expected);
     for (entry_id, credential) in &filtered {
-        assert_eq!(credential.rp_id(), "example.com");
+        assert_eq!(credential.rp_id, "example.com");
         assert!(database.entries.contains_key(entry_id));
     }
 
-    assert!(
-        find_credentials(&database, &composite_key, Some("missing.example"))
-            .unwrap()
-            .is_empty()
-    );
-    let invalid_filter = find_credentials(&database, &composite_key, Some("not a domain"))
-        .err()
-        .expect("invalid RP ID filters should be rejected");
+    assert!(find_passkey_credentials(&database, Some("missing.example"))
+        .unwrap()
+        .is_empty());
+    let invalid_filter = find_passkey_credentials(&database, Some("not a domain"))
+        .expect_err("invalid RP ID filters should be rejected");
     assert_eq!(invalid_filter, PasskeyError::InvalidRpId);
 }

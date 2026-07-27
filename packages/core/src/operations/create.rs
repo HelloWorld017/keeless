@@ -79,6 +79,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         persistence.write_cache(&cache).await?;
         persistence.clear_journal().await?;
     }
+    core.extensions.unlock(handle.database(), &key)?;
     core.handle = None;
     core.credential = credential;
     core.handle = Some(handle);

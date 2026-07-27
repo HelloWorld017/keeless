@@ -1,5 +1,5 @@
 {
-  "name": "@keeless/ctap",
+  "name": "@keeless/passkey-ctap",
   "version": "0.0.0",
   "private": true,
   "description": "CTAP2 command codec shared by the keeless authenticator transports",
@@ -11,8 +11,8 @@
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
     "format": "cargo fmt",
-    "lint": "cargo clippy -p keeless_ctap --all-targets -- -D warnings",
-    "test": "cargo test -p keeless_ctap",
-    "typecheck": "cargo check -p keeless_ctap --lib"
+    "lint": "cargo clippy -p keeless_passkey_ctap --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_passkey_ctap",
+    "typecheck": "cargo check -p keeless_passkey_ctap --lib"
   }
 }

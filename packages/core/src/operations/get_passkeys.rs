@@ -1,18 +1,22 @@
 use keeless_schema::{GetPasskeysArgs, OperationSuccess, PasskeysResult};
 
 use crate::features::passkeys;
-use crate::{CoreError, KeelessCore, PasswordInputMode, Result};
+use crate::{CoreError, KeelessCore, Result};
 
 pub(crate) async fn run(core: &mut KeelessCore, args: GetPasskeysArgs) -> Result<PasskeysResult> {
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }
-    let unlocked = passkeys::unlock(core, PasswordInputMode::Reveal).await?;
-    let credentials = passkeys::visible_credentials(core, &unlocked.key, args.rp_id.as_deref())?
-        .into_iter()
-        .map(|(entry_id, credential)| passkeys::summary(entry_id, &credential))
-        .collect();
-    core.touch_activity();
+    let allowed_credential_ids = args
+        .allow_credential_ids
+        .iter()
+        .map(|value| passkeys::decode(value))
+        .collect::<Result<Vec<_>>>()?;
+    let credentials =
+        passkeys::visible_credentials(core, args.rp_id.as_deref(), &allowed_credential_ids)?
+            .into_iter()
+            .map(|(entry_id, credential)| passkeys::summary(entry_id, &credential))
+            .collect();
     Ok(PasskeysResult { credentials })
 }
 

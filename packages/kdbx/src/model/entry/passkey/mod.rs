@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use zeroize::Zeroizing;
 
+use crate::crypto::memory_protection::MemoryField;
 use crate::model::core::node::NodeId;
 use crate::model::core::security::ProtectedString;
 use crate::model::db::{CompositeKey, Database};
@@ -220,6 +221,16 @@ pub struct PasskeyCredential {
     backup_state: bool,
     key: CredentialKey,
 }
+
+/// The public metadata needed to discover a resident passkey.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PasskeyCredentialSummary {
+    pub rp_id: String,
+    pub username: String,
+}
+
+/// A credential ID read from protected storage for in-memory indexing.
+pub type PasskeyCredentialId = (NodeId, Zeroizing<Vec<u8>>);
 
 impl PasskeyCredential {
     pub fn rp_id(&self) -> &str {
@@ -589,17 +600,60 @@ struct CredentialInputs<'a> {
     user_verification: UserVerification,
 }
 
-/// Collect every passkey credential stored in a loaded database.
+/// Collect public metadata for every passkey stored in a loaded database.
 ///
-/// Passing `rp_id` limits the result to one relying party. Entries whose passkey
-/// fields are malformed are skipped so a single broken entry cannot hide the rest;
-/// a failure to read protected memory aborts the scan because it affects every entry.
-pub fn find_credentials(
+/// This deliberately reads no protected fields. Credential IDs are indexed by the
+/// core extension when the database unlocks; private keys remain sealed until an
+/// assertion needs the selected credential.
+pub fn find_passkey_credentials(
+    database: &Database,
+    rp_id: Option<&str>,
+) -> Result<Vec<(NodeId, PasskeyCredentialSummary)>, PasskeyError> {
+    let rp_filter = rp_id.map(webauthn::normalize_stored_rp_id).transpose()?;
+    let mut credentials = Vec::new();
+
+    for (id, entry) in &database.entries {
+        if !is_passkey_entry(entry) {
+            continue;
+        }
+        let username_name = if has_field(entry, FIELD_COMPATIBLE_USERNAME) {
+            FIELD_COMPATIBLE_USERNAME
+        } else {
+            FIELD_USERNAME
+        };
+        let Some(rp_id) = public_field(entry, FIELD_RELYING_PARTY) else {
+            continue;
+        };
+        let Ok(rp_id) = webauthn::normalize_stored_rp_id(rp_id) else {
+            continue;
+        };
+        let Some(username) = public_field(entry, username_name) else {
+            continue;
+        };
+        if rp_filter.as_deref().is_some_and(|filter| filter != rp_id) {
+            continue;
+        }
+        credentials.push((
+            *id,
+            PasskeyCredentialSummary {
+                rp_id,
+                username: username.to_owned(),
+            },
+        ));
+    }
+
+    credentials.sort_by_key(|(id, _)| format!("{id:?}"));
+    Ok(credentials)
+}
+
+/// Read only the protected credential-ID fields needed to build an in-memory index.
+///
+/// No entry clone is made, so protected private keys and user handles are never
+/// decrypted while indexing.
+pub fn passkey_credential_ids(
     database: &Database,
     composite_key: &CompositeKey,
-    rp_id: Option<&str>,
-) -> Result<Vec<(NodeId, PasskeyCredential)>, PasskeyError> {
-    let rp_filter = rp_id.map(webauthn::normalize_stored_rp_id).transpose()?;
+) -> Result<Vec<PasskeyCredentialId>, PasskeyError> {
     let mut unlock = database.memory_unlock(composite_key);
     let mut credentials = Vec::new();
 
@@ -607,22 +661,18 @@ pub fn find_credentials(
         if !is_passkey_entry(entry) {
             continue;
         }
-        let entry = entry
-            .semantic_clone(&mut unlock)
-            .map_err(|_| PasskeyError::ProtectedFieldAccess)?;
-        let Ok(Some(credential)) = PasskeyCredential::from_entry(&entry) else {
+        let credential_id_name = if has_field(entry, FIELD_GENERATED_USER_ID) {
+            FIELD_GENERATED_USER_ID
+        } else {
+            FIELD_CREDENTIAL_ID
+        };
+        let Ok(Some(credential_id)) = protected_identifier(entry, credential_id_name, &mut unlock)
+        else {
             continue;
         };
-        if rp_filter
-            .as_deref()
-            .is_some_and(|filter| filter != credential.rp_id)
-        {
-            continue;
-        }
-        credentials.push((*id, credential));
+        credentials.push((*id, credential_id));
     }
 
-    credentials.sort_by(|(_, left), (_, right)| left.credential_id.cmp(&right.credential_id));
     Ok(credentials)
 }
 
@@ -711,6 +761,50 @@ fn validate_client_data_hash(client_data_hash: &[u8]) -> Result<(), PasskeyError
 
 fn has_field(entry: &Entry, name: &str) -> bool {
     entry.custom_fields().any(|(_, field)| field.name == name)
+}
+
+fn public_field<'a>(entry: &'a Entry, name: &'static str) -> Option<&'a str> {
+    let mut fields = entry
+        .custom_fields()
+        .filter(|(_, field)| field.name == name)
+        .map(|(_, field)| field);
+    let field = fields.next()?;
+    if fields.next().is_some() {
+        return None;
+    }
+    field
+        .value
+        .as_unsealed_str()
+        .filter(|value| !value.is_empty())
+}
+
+fn protected_identifier(
+    entry: &Entry,
+    name: &'static str,
+    unlock: &mut crate::crypto::memory_protection::MemoryUnlockSession<'_>,
+) -> Result<Option<Zeroizing<Vec<u8>>>, PasskeyError> {
+    let mut fields = entry
+        .custom_fields()
+        .filter(|(_, field)| field.name == name)
+        .map(|(_, field)| field);
+    let Some(field) = fields.next() else {
+        return Ok(None);
+    };
+    if fields.next().is_some() {
+        return Ok(None);
+    }
+    let value = field
+        .value
+        .with_plaintext(
+            unlock,
+            entry.id,
+            &MemoryField::Custom(field.name.clone()),
+            |value| Ok(Zeroizing::new(value.to_owned())),
+        )
+        .map_err(|_| PasskeyError::ProtectedFieldAccess)?;
+    decode_identifier(&value, name)
+        .map(Zeroizing::new)
+        .map(Some)
 }
 
 fn required_field<'a>(entry: &'a Entry, name: &'static str) -> Result<&'a str, PasskeyError> {

@@ -1,5 +1,5 @@
 {
-  "name": "@keeless/host-client",
+  "name": "@keeless/host-desktop-shared",
   "version": "0.0.0",
   "private": true,
   "description": "local IPC and wire client for reaching the keeless desktop host",
@@ -11,8 +11,8 @@
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
     "format": "cargo fmt",
-    "lint": "cargo clippy -p keeless_host_client --all-targets -- -D warnings",
-    "test": "cargo test -p keeless_host_client",
-    "typecheck": "cargo check -p keeless_host_client --lib"
+    "lint": "cargo clippy -p keeless_host_desktop_shared --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_host_desktop_shared",
+    "typecheck": "cargo check -p keeless_host_desktop_shared --lib"
   }
 }

@@ -1,17 +1,17 @@
 //! Exercises the daemon against a real virtual HID device.
 //!
 //! Ignored by default: it needs a kernel with `CONFIG_UHID` and write access to
-//! `/dev/uhid`, which `keeless-vhid setup` explains how to arrange. Run it with
-//! `cargo test -p keeless_vhid -- --ignored` on a Linux desktop.
+//! `/dev/uhid`, which `keeless-passkey-linux setup` explains how to arrange. Run it with
+//! `cargo test -p keeless_passkey_linux -- --ignored` on a Linux desktop.
 
 #![cfg(target_os = "linux")]
 
 use std::io::{Read, Write};
 use std::time::Duration;
 
-use keeless_vhid::authenticator::Authenticator;
-use keeless_vhid::consent::ConsentPrompt;
-use keeless_vhid::session::Session;
+use keeless_passkey_linux::authenticator::Authenticator;
+use keeless_passkey_linux::consent::ConsentPrompt;
+use keeless_passkey_linux::session::Session;
 
 /// The USB identifiers `uhid.rs` creates the device with.
 const DEVICE_UEVENT_ID: &str = "1209:00005031";
@@ -25,7 +25,7 @@ async fn a_host_can_initialize_a_channel_and_read_the_authenticator_info() {
         // getInfo needs neither the app nor a prompt, so any real file is
         // enough to satisfy the helper check for this exchange.
         let consent = ConsentPrompt::new("/bin/true".into()).expect("bind the consent prompt");
-        keeless_vhid::daemon::run(Authenticator::new(session, consent), async {
+        keeless_passkey_linux::daemon::run(Authenticator::new(session, consent), async {
             let _ = stop.await;
         })
         .await

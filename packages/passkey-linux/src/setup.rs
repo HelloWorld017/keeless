@@ -70,7 +70,7 @@ pub fn readiness() -> Readiness {
 /// business: the user sees exactly what will be written before it happens, and
 /// packaging formats without an install step still have a documented path.
 pub fn print_instructions() {
-    println!("keeless-vhid needs access to /dev/uhid.\n");
+    println!("keeless-passkey-linux needs access to /dev/uhid.\n");
     println!("Be aware of what that grants: writing to /dev/uhid creates virtual");
     println!("input devices of any kind, keyboards included, so anyone holding it");
     println!("can type into your session. The commands below limit it to members");
@@ -88,7 +88,7 @@ pub fn print_instructions() {
     println!("  udevadm control --reload-rules");
     println!("  udevadm trigger --name-match=uhid");
     println!("\nThen log out and back in so the new group membership applies.");
-    println!("Check the result with `keeless-vhid doctor`.");
+    println!("Check the result with `keeless-passkey-linux doctor`.");
 }
 
 #[cfg(test)]

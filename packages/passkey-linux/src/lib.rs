@@ -55,10 +55,10 @@ impl VhidError {
 pub type Result<T> = std::result::Result<T, VhidError>;
 
 const USAGE: &str = "\
-usage: keeless-vhid [run] [--native-ui <path>]
-       keeless-vhid setup
-       keeless-vhid doctor
-       keeless-vhid reset-pairing
+usage: keeless-passkey-linux [run] [--native-ui <path>]
+       keeless-passkey-linux setup
+       keeless-passkey-linux doctor
+       keeless-passkey-linux reset-pairing
 
   run            serve passkeys over a virtual HID device (default)
   setup          print the commands that grant access to /dev/uhid
@@ -130,7 +130,7 @@ impl Options {
 fn default_native_ui() -> Result<PathBuf> {
     let executable = std::env::current_exe().map_err(VhidError::Device)?;
     let directory = executable.parent().ok_or_else(|| {
-        VhidError::Usage("cannot locate the directory holding keeless-vhid".into())
+        VhidError::Usage("cannot locate the directory holding keeless-passkey-linux".into())
     })?;
     Ok(directory.join(NATIVE_UI_NAME))
 }
@@ -175,7 +175,7 @@ fn doctor_command() -> Result<()> {
                 "not paired yet; the first request will ask for approval"
             }
         );
-        match keeless_host_client::CoreClient::ping().await {
+        match keeless_host_desktop_shared::CoreClient::ping().await {
             Ok(()) => println!("app:     reachable"),
             Err(error) => println!("app:     unreachable ({error})"),
         }
@@ -183,7 +183,7 @@ fn doctor_command() -> Result<()> {
     })?;
 
     if readiness != setup::Readiness::Ready {
-        println!("\nRun `keeless-vhid setup` for the commands that fix the device.");
+        println!("\nRun `keeless-passkey-linux setup` for the commands that fix the device.");
     }
     Ok(())
 }
@@ -191,7 +191,7 @@ fn doctor_command() -> Result<()> {
 #[cfg(target_os = "linux")]
 fn run_command(options: Options) -> Result<()> {
     let Some(_lock) = instance::InstanceLock::acquire().map_err(VhidError::Device)? else {
-        eprintln!("keeless-vhid: another instance is already running");
+        eprintln!("keeless-passkey-linux: another instance is already running");
         return Ok(());
     };
 

@@ -122,15 +122,10 @@ async fn passkey_operations_register_enumerate_and_assert() {
     assert_eq!(usernames, ["alice", "bob"]);
     let summary = credentials
         .iter()
-        .find(|credential| credential["credentialId"] == credential_id)
+        .find(|credential| credential["username"] == "alice")
         .expect("registered credential should be listed");
     assert_eq!(summary["entryId"], entry_id);
     assert_eq!(summary["rpId"], "example.com");
-    assert_eq!(summary["algorithm"], -7);
-    assert_eq!(
-        summary["userHandle"],
-        URL_SAFE_NO_PAD.encode(b"alice").as_str()
-    );
 
     let other_rp = dispatch_json(
         &mut core,
@@ -224,7 +219,6 @@ async fn passkey_operations_reject_invalid_requests() {
         .as_str()
         .unwrap()
         .to_string();
-    let credential_id = registered["result"]["credentialId"].as_str().unwrap();
 
     let excluded = dispatch_json(
         &mut core,
@@ -357,8 +351,6 @@ async fn registered_passkey_survives_journal_replay() {
         .as_str()
         .unwrap()
         .to_string();
-    let credential_id = registered["result"]["credentialId"].as_str().unwrap();
-
     let mut replayed = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         database_persistence: Some(persistence),
@@ -388,7 +380,6 @@ async fn registered_passkey_survives_journal_replay() {
     .await;
     let credentials = listed["result"]["credentials"].as_array().unwrap();
     assert_eq!(credentials.len(), 1, "{listed}");
-    assert_eq!(credentials[0]["credentialId"], credential_id);
     assert_eq!(credentials[0]["entryId"], entry_id);
 
     let asserted = dispatch_json(

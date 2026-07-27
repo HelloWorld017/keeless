@@ -7,6 +7,7 @@ pub(crate) mod delete_tag;
 pub(crate) mod move_entry;
 pub(crate) mod move_group;
 mod persistence;
+pub(crate) mod register_passkey;
 pub(crate) mod rename_group;
 pub(crate) mod update_entry;
 pub(crate) mod update_group;

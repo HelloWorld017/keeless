@@ -9,7 +9,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 
-use keeless_host_client::fs;
+use keeless_host_desktop_shared::fs;
 
 /// Held for the lifetime of the daemon; the lock is released when it drops.
 pub struct InstanceLock {
@@ -57,11 +57,11 @@ fn lock_path() -> PathBuf {
         .unwrap_or_else(|| {
             std::env::temp_dir().join(format!(
                 "{}-{}",
-                keeless_host_client::ipc::NAMESPACE,
+                keeless_host_desktop_shared::ipc::NAMESPACE,
                 unsafe { libc::geteuid() }
             ))
         });
-    root.join(keeless_host_client::ipc::NAMESPACE)
+    root.join(keeless_host_desktop_shared::ipc::NAMESPACE)
         .join("vhid.lock")
 }
 
@@ -75,7 +75,9 @@ mod tests {
         assert!(path.ends_with("vhid.lock"));
         assert_eq!(
             path.parent().and_then(|parent| parent.file_name()),
-            Some(std::ffi::OsStr::new(keeless_host_client::ipc::NAMESPACE))
+            Some(std::ffi::OsStr::new(
+                keeless_host_desktop_shared::ipc::NAMESPACE
+            ))
         );
     }
 

@@ -5,11 +5,11 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use keeless_ctap::error::{CtapError, CtapStatus};
-use keeless_ctap::request::{Command, GetAssertionRequest, MakeCredentialRequest};
-use keeless_ctap::response::{self, Assertion, AuthenticatorInfo};
-use keeless_ctap::{KEELESS_AAGUID, parse_command};
-use keeless_host_client::ClientError;
+use keeless_host_desktop_shared::ClientError;
+use keeless_passkey_ctap::error::{CtapError, CtapStatus};
+use keeless_passkey_ctap::request::{Command, GetAssertionRequest, MakeCredentialRequest};
+use keeless_passkey_ctap::response::{self, Assertion, AuthenticatorInfo};
+use keeless_passkey_ctap::{KEELESS_AAGUID, parse_command};
 use keeless_schema::{
     AssertPasskeyArgs, DatabaseStatus, GetDatabaseStatusArgs, GetPasskeysArgs, Operation,
     OperationSuccess, PasskeySummary, RegisterPasskeyArgs, UnlockArgs,
@@ -120,16 +120,18 @@ impl Authenticator {
             return Err(CtapStatus::UnsupportedAlgorithm.into());
         }
         self.ensure_unlocked(progress).await?;
-        let existing = self.passkeys(Some(&request.rp_id)).await?;
+        let exclude_credential_ids = request
+            .exclude_credential_ids
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>();
+        let existing = self
+            .passkeys(Some(&request.rp_id), &exclude_credential_ids)
+            .await?;
 
         // A credential the relying party excluded still needs the user's consent
         // before being told one exists, so the answer cannot be used to probe.
-        if existing.iter().any(|credential| {
-            request
-                .exclude_credential_ids
-                .iter()
-                .any(|excluded| encode(excluded) == credential.credential_id)
-        }) {
+        if !existing.is_empty() {
             // The answer is the same whether or not the user approves, so a
             // decline cannot be used to tell "excluded" apart from "denied".
             let _ = self
@@ -195,15 +197,14 @@ impl Authenticator {
                 return Err(CtapStatus::NoCredentials.into());
             }
         }
-        let mut candidates = self.passkeys(Some(&request.rp_id)).await?;
-        if !request.allow_credential_ids.is_empty() {
-            let allowed: Vec<String> = request
-                .allow_credential_ids
-                .iter()
-                .map(|id| encode(id))
-                .collect();
-            candidates.retain(|credential| allowed.contains(&credential.credential_id));
-        }
+        let allowed_credential_ids = request
+            .allow_credential_ids
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>();
+        let mut candidates = self
+            .passkeys(Some(&request.rp_id), &allowed_credential_ids)
+            .await?;
         if candidates.is_empty() {
             return Err(CtapStatus::NoCredentials.into());
         }
@@ -286,10 +287,15 @@ impl Authenticator {
         Ok(status.status)
     }
 
-    async fn passkeys(&mut self, rp_id: Option<&str>) -> Result<Vec<PasskeySummary>, CtapError> {
+    async fn passkeys(
+        &mut self,
+        rp_id: Option<&str>,
+        allowed_credential_ids: &[&[u8]],
+    ) -> Result<Vec<PasskeySummary>, CtapError> {
         let result = self
             .request(Operation::GetPasskeys(GetPasskeysArgs {
                 rp_id: rp_id.map(str::to_owned),
+                allow_credential_ids: allowed_credential_ids.iter().map(|id| encode(id)).collect(),
             }))
             .await?;
         let OperationSuccess::GetPasskeys(result) = result else {

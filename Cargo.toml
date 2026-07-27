@@ -2,9 +2,9 @@
 resolver = "3"
 members = [
   "packages/core",
-  "packages/ctap",
+  "packages/passkey-ctap",
   "packages/host-browser",
-  "packages/host-client",
+  "packages/host-desktop-shared",
   "packages/host-desktop",
   "packages/kdbx",
   "packages/kdbx-debug",
@@ -13,5 +13,5 @@ members = [
   "packages/schema",
   "packages/secure-types",
   "packages/sync",
-  "packages/vhid"
+  "packages/passkey-linux"
 ]

@@ -15,6 +15,9 @@ catalogs:
     '@types/react-dom':
       specifier: 19.2.3
       version: 19.2.3
+    electron:
+      specifier: 42.5.1
+      version: 42.5.1
     react:
       specifier: 19.2.8
       version: 19.2.8
@@ -151,7 +154,7 @@ importers:
         version: 6.0.4(vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
       rolldown-plugin-dts:
         specifier: 0.27.13
-        version: 0.27.13(rolldown@1.2.0)(typescript@6.0.3)
+        version: 0.27.13(@typescript/native-preview@7.0.0-dev.20260707.2)(rolldown@1.2.0)(typescript@6.0.3)
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
@@ -173,8 +176,6 @@ importers:
       '@keeless/sync':
         specifier: workspace:*
         version: link:../sync
-
-  packages/ctap: {}
 
   packages/desktop:
     dependencies:
@@ -233,8 +234,6 @@ importers:
         specifier: workspace:*
         version: link:../sync
 
-  packages/host-client: {}
-
   packages/host-desktop:
     dependencies:
       '@keeless/core':
@@ -247,6 +246,8 @@ importers:
       '@napi-rs/cli':
         specifier: 3.4.0
         version: 3.4.0(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.1.1)
+
+  packages/host-desktop-shared: {}
 
   packages/kdbx:
     dependencies:
@@ -285,6 +286,10 @@ importers:
         specifier: workspace:*
         version: link:../secure-types
 
+  packages/passkey-ctap: {}
+
+  packages/passkey-linux: {}
+
   packages/schema: {}
 
   packages/secure-types: {}
@@ -294,8 +299,6 @@ importers:
       '@keeless/kdbx':
         specifier: workspace:*
         version: link:../kdbx
-
-  packages/vhid: {}
 
 packages:
 
@@ -8220,20 +8223,6 @@ snapshots:
       yuku-parser: 0.7.4
     optionalDependencies:
       '@typescript/native-preview': 7.0.0-dev.20260707.2
-      typescript: 6.0.3
-    transitivePeerDependencies:
-      - oxc-resolver
-
-  rolldown-plugin-dts@0.27.13(rolldown@1.2.0)(typescript@6.0.3):
-    dependencies:
-      dts-resolver: 3.0.0
-      get-tsconfig: 5.0.0-beta.5
-      obug: 2.1.4
-      rolldown: 1.2.0
-      yuku-ast: 0.7.4
-      yuku-codegen: 0.7.4
-      yuku-parser: 0.7.4
-    optionalDependencies:
       typescript: 6.0.3
     transitivePeerDependencies:
       - oxc-resolver
