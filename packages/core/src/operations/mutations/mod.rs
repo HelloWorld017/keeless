@@ -1,13 +1,12 @@
 pub(crate) mod add_entry;
 pub(crate) mod add_entry_from_template;
 pub(crate) mod add_group;
-mod cache;
 pub(crate) mod delete_entry;
 pub(crate) mod delete_group;
 pub(crate) mod delete_tag;
-mod journal;
 pub(crate) mod move_entry;
 pub(crate) mod move_group;
+mod persistence;
 pub(crate) mod rename_group;
 pub(crate) mod update_entry;
 pub(crate) mod update_group;
@@ -18,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 
-use journal::mutate;
-pub(crate) use journal::{MutationCoordinator, replay_lines};
+use persistence::mutate;
+pub(crate) use persistence::{MutationCoordinator, replay_lines};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]

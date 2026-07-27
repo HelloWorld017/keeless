@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::Zeroizing;
 
-use super::{Mutation, apply};
+use super::super::{Mutation, apply};
 use crate::{CoreError, DatabaseId, KeelessCore, Result, random_array};
 
 pub(super) const JOURNAL_VERSION: u8 = 1;
@@ -100,7 +100,7 @@ impl MutationCoordinator {
     }
 }
 
-pub(super) async fn mutate(
+pub(in crate::operations::mutations) async fn mutate(
     core: &mut KeelessCore,
     mutation: &Mutation,
     commit: impl FnOnce(&mut Database),
