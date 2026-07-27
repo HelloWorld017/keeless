@@ -1,15 +1,66 @@
 use keeless_kdbx::{
-    CtapRegistrationRequest, EntryFieldId, PasskeyAuthenticator, PasskeyCredential, StandardField,
+    CompositeKey, CtapRegistrationRequest, Database, EntryFieldId, PasskeyAuthenticator,
+    PasskeyCredential, StandardField,
 };
-use keeless_schema::{
-    AddEntryArgs, DeleteEntryArgs, EntryFieldUpdate, OperationSuccess, RegisterPasskeyArgs,
-    RegisterPasskeyResult,
-};
+use keeless_schema::{OperationSuccess, RegisterPasskeyArgs, RegisterPasskeyResult};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::extensions::passkey::PasskeyExtension;
 use crate::features::passkeys;
-use crate::model::{node_id, parse_node_id};
-use crate::{CoreError, KeelessCore, Result};
+use crate::model::node_id;
+use crate::{CoreError, KeelessCore, PasswordInputMode, Result};
+
+use super::{Mutation as JournalMutation, add_entry, mutate, update_entry};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct Mutation {
+    pub(super) parent: keeless_kdbx::NodeId,
+    pub(super) entry: update_entry::Mutation,
+}
+
+fn prepare(
+    database: &Database,
+    mutation: &Mutation,
+    key: &CompositeKey,
+) -> Result<keeless_kdbx::PreparedEntryUpdate> {
+    let add = add_entry::Mutation {
+        parent: mutation.parent,
+        id: mutation.entry.id,
+        timestamp_ms: mutation.entry.timestamp_ms,
+    };
+    let mut preview = database.clone();
+    add_entry::apply(&mut preview, &add)?;
+    update_entry::prepare(&mut preview, &mutation.entry, key)?.ok_or(CoreError::InvalidJournal)
+}
+
+fn commit(
+    database: &mut Database,
+    mutation: &Mutation,
+    prepared: keeless_kdbx::PreparedEntryUpdate,
+) {
+    let add = add_entry::Mutation {
+        parent: mutation.parent,
+        id: mutation.entry.id,
+        timestamp_ms: mutation.entry.timestamp_ms,
+    };
+    add_entry::apply(database, &add).expect("registration preflight validated entry creation");
+    database.commit_entry_update(prepared);
+    database
+        .get_entry_mut(&mutation.entry.id)
+        .expect("registration preflight created entry")
+        .clear_history();
+}
+
+pub(super) fn apply(
+    database: &mut Database,
+    mutation: &Mutation,
+    key: &CompositeKey,
+) -> Result<()> {
+    let prepared = prepare(database, mutation, key)?;
+    commit(database, mutation, prepared);
+    Ok(())
+}
 
 pub(crate) async fn run(
     core: &mut KeelessCore,
@@ -52,43 +103,50 @@ pub(crate) async fn run(
             .collect::<Vec<_>>(),
         user_verification: passkeys::user_verification(args.user_verified),
     })?;
-    let entry_id = super::add_entry::run(
-        core,
-        AddEntryArgs {
-            parent_group_id: node_id(parent_group_id),
-        },
-    )
-    .await?
-    .id;
-
     let title = args
         .rp_name
         .as_deref()
         .filter(|name| !name.is_empty())
         .unwrap_or(result.credential.rp_id());
     let fields = entry_fields(title, &args.user_name, &result.credential)?;
-    if let Err(error) = super::update_entry::run(core, entry_id.clone(), fields, None, None).await {
-        // The entry was already journaled, so leave the database consistent by
-        // trashing the stub rather than leaving an empty entry in the root group.
-        let _ = super::delete_entry::run(
-            core,
-            DeleteEntryArgs {
-                entry_id: entry_id.clone(),
-                permanent: false,
-            },
-        )
-        .await;
-        return Err(error);
-    }
+    let key = passkeys::unlock(core, PasswordInputMode::Save).await?;
+    let entry_id = keeless_kdbx::NodeId::new_uuid();
+    let new_custom_field_ids = fields
+        .iter()
+        .filter(|field| field.field_id.is_none())
+        .map(|_| Uuid::new_v4())
+        .collect();
+    let payload = Mutation {
+        parent: parent_group_id,
+        entry: update_entry::Mutation {
+            id: entry_id,
+            fields,
+            properties: None,
+            new_custom_field_ids,
+            timestamp_ms: core.clock.now_millis(),
+        },
+    };
+    let prepared = prepare(
+        core.handle
+            .as_ref()
+            .ok_or(CoreError::DatabaseLocked)?
+            .database(),
+        &payload,
+        &key,
+    )?;
+    let mutation = JournalMutation::RegisterPasskey(payload.clone());
+    mutate(core, &mutation, move |database| {
+        commit(database, &payload, prepared);
+    })
+    .await?;
 
-    core.extensions.get_mut::<PasskeyExtension>().insert(
-        parse_node_id(entry_id.clone())?,
-        result.credential.credential_id(),
-    );
+    core.extensions
+        .get_mut::<PasskeyExtension>()
+        .insert(entry_id, result.credential.credential_id());
 
     core.touch_activity();
     Ok(RegisterPasskeyResult {
-        entry_id,
+        entry_id: node_id(entry_id),
         credential_id: passkeys::encode(&result.response.credential_id),
         authenticator_data: passkeys::encode(&result.response.authenticator_data),
     })
@@ -100,12 +158,12 @@ fn entry_fields(
     title: &str,
     user_name: &str,
     credential: &PasskeyCredential,
-) -> Result<Vec<EntryFieldUpdate>> {
+) -> Result<Vec<update_entry::JournalEntryField>> {
     let mut fields = vec![
         standard_field(StandardField::Title, Some(title.to_string())),
         standard_field(StandardField::UserName, Some(user_name.to_string())),
         // Passkey entries hold no password; `None` preserves the protected empty value.
-        EntryFieldUpdate {
+        update_entry::JournalEntryField {
             field_id: Some(standard_field_id(StandardField::Password)),
             name: StandardField::Password.name().to_string(),
             value: None,
@@ -117,17 +175,14 @@ fn entry_fields(
         ),
         standard_field(StandardField::Notes, Some(String::new())),
     ];
-    fields.extend(
-        credential
-            .to_field_values()?
-            .into_iter()
-            .map(|field| EntryFieldUpdate {
-                field_id: None,
-                name: field.name.to_string(),
-                value: Some(field.value.to_string()),
-                is_protected: field.protected,
-            }),
-    );
+    fields.extend(credential.to_field_values()?.into_iter().map(|field| {
+        update_entry::JournalEntryField {
+            field_id: None,
+            name: field.name.to_string(),
+            value: Some(field.value.to_string()),
+            is_protected: field.protected,
+        }
+    }));
     Ok(fields)
 }
 
@@ -135,8 +190,8 @@ fn standard_field_id(field: StandardField) -> String {
     EntryFieldId::Standard(field).to_string()
 }
 
-fn standard_field(field: StandardField, value: Option<String>) -> EntryFieldUpdate {
-    EntryFieldUpdate {
+fn standard_field(field: StandardField, value: Option<String>) -> update_entry::JournalEntryField {
+    update_entry::JournalEntryField {
         field_id: Some(standard_field_id(field)),
         name: field.name().to_string(),
         value,

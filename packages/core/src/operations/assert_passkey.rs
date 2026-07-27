@@ -14,14 +14,14 @@ pub(crate) async fn run(
     }
     let entry_id = parse_node_id(args.entry_id)?;
     let client_data_hash = passkeys::decode(&args.client_data_hash)?;
-    let unlocked = passkeys::unlock(core, PasswordInputMode::Reveal).await?;
+    let key = passkeys::unlock(core, PasswordInputMode::Reveal).await?;
 
     let database = core
         .handle
         .as_ref()
         .ok_or(CoreError::DatabaseLocked)?
         .database();
-    let credential = PasskeyCredential::from_database_entry(database, &unlocked.key, &entry_id)
+    let credential = PasskeyCredential::from_database_entry(database, &key, &entry_id)
         .map_err(CoreError::from)?
         .ok_or(CoreError::PasskeyNotFound)?;
 

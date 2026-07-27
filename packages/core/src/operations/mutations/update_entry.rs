@@ -1,6 +1,6 @@
 use keeless_kdbx::{
     CompositeKey, Database, DatabaseError, DateInstant, EntryFieldId, EntryFieldUpdate,
-    EntryPropertiesUpdate as KdbxPropertiesUpdate, IconUpdate, NodeId,
+    EntryPropertiesUpdate as KdbxPropertiesUpdate, IconUpdate, NodeId, PreparedEntryUpdate,
 };
 use keeless_schema::{EmptyResult, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs};
 use serde::{Deserialize, Serialize};
@@ -82,11 +82,11 @@ impl JournalEntryProperties {
     }
 }
 
-pub(super) fn apply(
-    database: &mut Database,
+pub(super) fn prepare(
+    database: &Database,
     mutation: &Mutation,
     key: &CompositeKey,
-) -> Result<()> {
+) -> Result<Option<PreparedEntryUpdate>> {
     let mut fields = mutation
         .fields
         .iter()
@@ -112,16 +112,25 @@ pub(super) fn apply(
         .as_ref()
         .map(JournalEntryProperties::to_kdbx);
     database
-        .update_entry_at(
+        .prepare_entry_update(
             key,
             &mutation.id,
             &fields,
             properties.as_ref(),
             &mutation.new_custom_field_ids,
             DateInstant::EpochMillis(mutation.timestamp_ms),
-        )?
-        .then_some(())
-        .ok_or(CoreError::InvalidJournal)
+        )
+        .map_err(CoreError::from)
+}
+
+pub(super) fn apply(
+    database: &mut Database,
+    mutation: &Mutation,
+    key: &CompositeKey,
+) -> Result<()> {
+    let prepared = prepare(database, mutation, key)?.ok_or(CoreError::InvalidJournal)?;
+    database.commit_entry_update(prepared);
+    Ok(())
 }
 
 pub(crate) async fn run(

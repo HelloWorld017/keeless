@@ -43,22 +43,19 @@ pub(crate) fn user_presence(user_present: bool) -> UserPresence {
     }
 }
 
-pub(crate) struct UnlockedKey {
-    pub(crate) key: CompositeKey,
-}
-
 /// Obtain the composite key needed to read protected passkey fields.
 ///
 /// Mirrors the reveal/update operations: the cached credential is preferred, and
 /// paranoia mode falls back to prompting the host.
-pub(crate) async fn unlock(core: &mut KeelessCore, mode: PasswordInputMode) -> Result<UnlockedKey> {
+pub(crate) async fn unlock(
+    core: &mut KeelessCore,
+    mode: PasswordInputMode,
+) -> Result<CompositeKey> {
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
     }
     if let Some(credential) = &core.credential {
-        return Ok(UnlockedKey {
-            key: credential.restore_key()?,
-        });
+        return credential.restore_key();
     }
     let password = core.request_password(mode).await?;
     let key = CompositeKey::new().with_password(&password)?;
@@ -66,7 +63,7 @@ pub(crate) async fn unlock(core: &mut KeelessCore, mode: PasswordInputMode) -> R
         .as_ref()
         .ok_or(CoreError::DatabaseLocked)?
         .verify_credentials(&key)?;
-    Ok(UnlockedKey { key })
+    Ok(key)
 }
 
 /// Credentials reachable from the group tree, excluding trashed entries.

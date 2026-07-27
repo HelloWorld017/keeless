@@ -219,6 +219,10 @@ async fn passkey_operations_reject_invalid_requests() {
         .as_str()
         .unwrap()
         .to_string();
+    let credential_id = registered["result"]["credentialId"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let excluded = dispatch_json(
         &mut core,
@@ -351,6 +355,18 @@ async fn registered_passkey_survives_journal_replay() {
         .as_str()
         .unwrap()
         .to_string();
+    assert_eq!(persistence.journal.lock().unwrap().len(), 1);
+    assert_eq!(
+        core.handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&model_id(DatabaseNodeId::Uuid(entry_id.clone())))
+            .unwrap()
+            .history_count(),
+        0,
+        "registering a passkey should not create a blank history entry"
+    );
     let mut replayed = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         database_persistence: Some(persistence),
@@ -368,6 +384,18 @@ async fn registered_passkey_survives_journal_replay() {
     operations::unlock::run(&mut replayed, b"correct")
         .await
         .unwrap();
+    assert_eq!(
+        replayed
+            .handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&model_id(DatabaseNodeId::Uuid(entry_id.clone())))
+            .unwrap()
+            .history_count(),
+        0,
+        "journal replay should not create a blank history entry"
+    );
 
     let listed = dispatch_json(
         &mut replayed,
@@ -398,4 +426,61 @@ async fn registered_passkey_survives_journal_replay() {
     )
     .await;
     assert_eq!(asserted["status"], "success", "{asserted}");
+}
+
+#[tokio::test]
+async fn failed_passkey_registration_does_not_create_an_entry_or_index() {
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage);
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        database_persistence: Some(persistence.clone()),
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval),
+            Arc::new(FakeClock::new(100)),
+        )
+    })
+    .await
+    .unwrap();
+    operations::open::run(
+        &mut core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "vault.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+
+    persistence.fail_append.store(true, Ordering::Relaxed);
+    let entries_before = core.handle.as_ref().unwrap().database().entry_count();
+    let response = dispatch_json(&mut core, register_request("request-1", "alice")).await;
+    assert_eq!(response["status"], "error", "{response}");
+    assert_eq!(
+        core.handle.as_ref().unwrap().database().entry_count(),
+        entries_before
+    );
+    assert!(persistence.journal.lock().unwrap().is_empty());
+
+    let listed = dispatch_json(
+        &mut core,
+        serde_json::json!({
+            "requestId": "request-2",
+            "op": "getPasskeys",
+            "args": {},
+        }),
+    )
+    .await;
+    assert!(
+        listed["result"]["credentials"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }
