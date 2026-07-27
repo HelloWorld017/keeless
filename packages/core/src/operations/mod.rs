@@ -1,6 +1,3 @@
-pub(crate) mod add_entry;
-pub(crate) mod add_entry_from_template;
-pub(crate) mod add_group;
 pub(crate) mod assert_passkey;
 pub(crate) mod create;
 pub(crate) mod get_config;
@@ -20,7 +17,6 @@ pub(crate) mod lock;
 pub(crate) mod mutations;
 pub(crate) mod open;
 pub(crate) mod register_passkey;
-pub(crate) mod rename_group;
 pub(crate) mod reveal_entry_field;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;

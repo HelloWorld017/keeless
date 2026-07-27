@@ -62,7 +62,10 @@ async fn passkey_operations_register_enumerate_and_assert() {
 
     let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
     assert_eq!(registered["status"], "success", "{registered}");
-    let entry_id = registered["result"]["entryId"].as_str().unwrap().to_string();
+    let entry_id = registered["result"]["entryId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let credential_id = registered["result"]["credentialId"].as_str().unwrap();
     let authenticator_data = URL_SAFE_NO_PAD
         .decode(registered["result"]["authenticatorData"].as_str().unwrap())
@@ -184,7 +187,10 @@ async fn a_silent_assertion_signs_without_the_user_presence_flag() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let mut core = passkey_core(storage).await;
     let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
-    let entry_id = registered["result"]["entryId"].as_str().unwrap().to_string();
+    let entry_id = registered["result"]["entryId"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let asserted = dispatch_json(
         &mut core,
@@ -214,7 +220,10 @@ async fn passkey_operations_reject_invalid_requests() {
     let mut core = passkey_core(storage).await;
 
     let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
-    let entry_id = registered["result"]["entryId"].as_str().unwrap().to_string();
+    let entry_id = registered["result"]["entryId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let credential_id = registered["result"]["credentialId"].as_str().unwrap();
 
     let excluded = dispatch_json(
@@ -344,7 +353,10 @@ async fn registered_passkey_survives_journal_replay() {
 
     let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
     assert_eq!(registered["status"], "success", "{registered}");
-    let entry_id = registered["result"]["entryId"].as_str().unwrap().to_string();
+    let entry_id = registered["result"]["entryId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let credential_id = registered["result"]["credentialId"].as_str().unwrap();
 
     let mut replayed = KeelessCore::new(KeelessHost {

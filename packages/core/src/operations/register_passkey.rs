@@ -54,7 +54,7 @@ pub(crate) async fn run(
     drop(existing_credentials);
     drop(existing);
 
-    let entry_id = super::add_entry::run(
+    let entry_id = super::mutations::add_entry::run(
         core,
         AddEntryArgs {
             parent_group_id: node_id(parent_group_id),
@@ -69,12 +69,18 @@ pub(crate) async fn run(
         .filter(|name| !name.is_empty())
         .unwrap_or(result.credential.rp_id());
     let fields = entry_fields(title, &args.user_name, &result.credential)?;
-    if let Err(error) =
-        super::update_entry::run(core, entry_id.clone(), fields, None, unlocked.password()).await
+    if let Err(error) = super::mutations::update_entry::run(
+        core,
+        entry_id.clone(),
+        fields,
+        None,
+        unlocked.password(),
+    )
+    .await
     {
         // The entry was already journaled, so leave the database consistent by
         // trashing the stub rather than leaving an empty entry in the root group.
-        let _ = super::delete_entry::run(
+        let _ = super::mutations::delete_entry::run(
             core,
             DeleteEntryArgs {
                 entry_id: entry_id.clone(),
