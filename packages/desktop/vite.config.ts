@@ -77,7 +77,7 @@ const binary = (): Plugin => {
         const fullPath = resolve(outputDir, fileName);
         await chmod(fullPath, 0o755);
       }
-    }
+    },
   };
 };
 

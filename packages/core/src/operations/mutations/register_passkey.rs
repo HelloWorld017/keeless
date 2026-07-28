@@ -31,7 +31,7 @@ fn prepare(
     };
     let mut preview = database.clone();
     add_entry::apply(&mut preview, &add)?;
-    update_entry::prepare(&mut preview, &mutation.entry, key)?.ok_or(CoreError::InvalidJournal)
+    update_entry::prepare(&preview, &mutation.entry, key)?.ok_or(CoreError::InvalidJournal)
 }
 
 fn commit(

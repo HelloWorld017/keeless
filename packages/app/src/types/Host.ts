@@ -43,4 +43,5 @@ export interface Host {
   isAvailable(): Promise<boolean>;
   connect(defaultApprovedBundle: string): Promise<void>;
   send(frame: MessageFrame): Promise<MessageFrame | null>;
+  onEntryFocus?(listener: (entryId: string) => void): () => void;
 }

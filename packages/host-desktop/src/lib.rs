@@ -16,10 +16,14 @@ use std::{
 
 use keeless_core::{
     HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
+    keeless_schema::{DatabaseNodeId, OperationOutcome, OperationResponse, OperationSuccess},
 };
 use keeless_host_desktop_shared::ipc;
 use keeless_lesswire::{MessageFrame, Server, ServerHost};
-use napi::bindgen_prelude::Buffer;
+use napi::{
+    bindgen_prelude::{Buffer, Function},
+    threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
+};
 use napi_derive::napi;
 use tokio::{
     sync::{Mutex, watch},
@@ -34,9 +38,12 @@ use crate::{
 };
 use ipc::{Request, Response, ServerListener};
 
+type EntryFocusCallback = ThreadsafeFunction<String, (), String, napi::Status, true>;
+
 struct HostState {
     inner: Mutex<InnerState>,
     storage: Arc<LocalFileStorage>,
+    entry_focus: Arc<StdMutex<Option<EntryFocusCallback>>>,
 }
 
 struct InnerState {
@@ -117,6 +124,7 @@ impl DesktopHost {
         let state = Arc::new(HostState {
             inner: Mutex::new(InnerState { core, server }),
             storage,
+            entry_focus: Arc::new(StdMutex::new(None)),
         });
         let listener = bind_listener().map_err(|error| napi_error(error.to_string()))?;
         let tasks = vec![
@@ -169,6 +177,22 @@ impl DesktopHost {
             .map_err(napi_error)
     }
 
+    #[napi(js_name = "onEntryFocus")]
+    pub fn on_entry_focus(&self, callback: Function<'_, String, ()>) -> napi::Result<()> {
+        self.ensure_open()?;
+        let callback = callback
+            .build_threadsafe_function()
+            .callee_handled::<true>()
+            .build()?;
+        *self
+            .runtime
+            .state
+            .entry_focus
+            .lock()
+            .map_err(|_| napi_error("entry focus callback lock was poisoned"))? = Some(callback);
+        Ok(())
+    }
+
     #[napi]
     pub async fn shutdown(&self) -> napi::Result<()> {
         if self.runtime.closed.swap(true, Ordering::AcqRel) {
@@ -208,16 +232,47 @@ async fn handle_frame(state: &HostState, bytes: &[u8]) -> Result<Option<Vec<u8>>
     let Ok(frame) = serde_json::from_slice::<MessageFrame>(bytes) else {
         return Ok(None);
     };
+    let entry_focus = state.entry_focus.clone();
     let mut inner = state.inner.lock().await;
     let InnerState { core, server } = &mut *inner;
     server
         .handle_frame(&frame, |plaintext| async move {
-            core.handle_payload(&plaintext).await
+            let response = core.handle_payload(&plaintext).await;
+            if let Ok(response) = &response {
+                if let Some(entry_id) = entry_focus_id(response.as_deref()) {
+                    notify_entry_focus(&entry_focus, entry_id);
+                }
+            }
+            response
         })
         .await
         .map_err(|error| error.to_string())?
         .map(|response| serde_json::to_vec(&response).map_err(|error| error.to_string()))
         .transpose()
+}
+
+fn entry_focus_id(response: Option<&[u8]>) -> Option<String> {
+    let response = serde_json::from_slice::<OperationResponse>(response?).ok()?;
+    let OperationOutcome::Success {
+        success: OperationSuccess::RegisterPasskey(result),
+    } = response.outcome
+    else {
+        return None;
+    };
+    Some(match result.entry_id {
+        DatabaseNodeId::Uuid(value) => value,
+        DatabaseNodeId::Int(value) => value.to_string(),
+    })
+}
+
+fn notify_entry_focus(entry_focus: &StdMutex<Option<EntryFocusCallback>>, entry_id: String) {
+    let Ok(callback) = entry_focus.lock() else {
+        return;
+    };
+    let Some(callback) = callback.as_ref() else {
+        return;
+    };
+    let _ = callback.call(Ok(entry_id), ThreadsafeFunctionCallMode::NonBlocking);
 }
 
 async fn handle_request(request: Request, state: &HostState) -> Response {
@@ -296,4 +351,36 @@ fn bind_listener() -> ipc::Result<ServerListener> {
 
 fn napi_error(error: impl ToString) -> napi::Error {
     napi::Error::from_reason(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::entry_focus_id;
+
+    #[test]
+    fn extracts_focus_id_from_passkey_registration() {
+        let response = br#"{
+            "requestId": "request",
+            "status": "success",
+            "op": "registerPasskey",
+            "result": {
+                "entryId": "entry",
+                "credentialId": "credential",
+                "authenticatorData": "authenticator"
+            }
+        }"#;
+
+        assert_eq!(entry_focus_id(Some(response)), Some("entry".into()));
+    }
+
+    #[test]
+    fn ignores_other_responses() {
+        let response = br#"{
+            "requestId": "request",
+            "status": "error",
+            "error": { "code": "denied", "message": "Denied" }
+        }"#;
+
+        assert_eq!(entry_focus_id(Some(response)), None);
+    }
 }

@@ -30,4 +30,5 @@ export const desktopHost: Host = {
   isAvailable: async () => true,
   connect: bundle => window.keelessDesktop.registerClient(bundle),
   send: frame => window.keelessDesktop.relayFrame(frame),
+  onEntryFocus: listener => window.keelessDesktop.onEntryFocus(listener),
 };

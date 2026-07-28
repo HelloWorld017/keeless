@@ -8,6 +8,7 @@ import { OpenFragment } from '@/fragments/open';
 import { getRoute } from '@/utils/route';
 import { StrictMode } from 'react';
 import { Redirect, Route, Switch } from 'wouter';
+import { EntryFocusHandler } from './_components/EntryFocusHandler';
 import type { AppIntegration } from '@/types/AppIntegration';
 
 export const AppContents = () => (
@@ -33,6 +34,7 @@ export const App = ({ integration }: AppProps) => (
         <ToastProvider>
           <RouterProvider fallback="open">
             <AppContents />
+            <EntryFocusHandler />
           </RouterProvider>
           <ToastList />
         </ToastProvider>

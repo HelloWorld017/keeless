@@ -185,6 +185,10 @@ if (!hasLock) {
   app.on('activate', showWindow);
   void app.whenReady().then(async () => {
     host = await keeless.DesktopHost.create(nativeUiPath);
+    host.onEntryFocus(entryId => {
+      showWindow();
+      browserWindow?.webContents.send('desktop:focus-entry', entryId);
+    });
     installIpc();
     createTray();
     await createWindow();
