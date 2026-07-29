@@ -233,6 +233,7 @@ mod tests {
                 is_protected: true,
             }],
             properties: None,
+            attachments: Vec::new(),
             new_custom_field_ids: Vec::new(),
             timestamp_ms: 1,
         });
@@ -261,6 +262,7 @@ mod tests {
             id: keeless_kdbx::NodeId::from_uuid(Uuid::from_u128(1)),
             fields: Vec::new(),
             properties: None,
+            attachments: Vec::new(),
             new_custom_field_ids: Vec::new(),
             timestamp_ms: 1,
         });

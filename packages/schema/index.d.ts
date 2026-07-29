@@ -76,7 +76,12 @@ export type EntryFieldInformation =
   | { type: 'tags'; order: number; label: string; control: FieldControl }
   | { type: 'divider'; order: number; label: string };
 
-export type EntryAttachmentInformation = { name: string; size: number; isProtected: boolean };
+export type EntryAttachmentInformation = {
+  index: number;
+  name: string;
+  size: number;
+  isProtected: boolean;
+};
 
 export type FieldControl =
   | { type: 'text'; protected: boolean; lines: number }
@@ -137,11 +142,20 @@ export type EntryPropertiesUpdate = {
   icon?: IconReference | null;
 };
 
+export type EntryAttachmentUpdate = { transferId: string; name: string };
+
 export type UpdateEntryArgs = {
   entryId: DatabaseNodeId;
   fields: EntryFieldUpdate[];
   properties?: EntryPropertiesUpdate | null;
+  attachments?: EntryAttachmentUpdate[] | null;
   password?: string | null;
+};
+
+export type PrepareEntryAttachmentDownloadArgs = {
+  entryId: DatabaseNodeId;
+  attachmentIndex: number;
+  name: string;
 };
 
 export type DeleteEntryArgs = { entryId: DatabaseNodeId; permanent: boolean };
@@ -238,6 +252,7 @@ export type Operation =
   | { op: 'getTags'; args: GetTagsArgs }
   | { op: 'getEntryDetail'; args: GetEntryDetailArgs }
   | { op: 'updateEntry'; args: UpdateEntryArgs }
+  | { op: 'prepareEntryAttachmentDownload'; args: PrepareEntryAttachmentDownloadArgs }
   | { op: 'deleteEntry'; args: DeleteEntryArgs }
   | { op: 'saveDatabase'; args: SaveDatabaseArgs }
   | { op: 'prepareDatabaseExport'; args: PrepareDatabaseExportArgs }
@@ -277,6 +292,7 @@ export type OperationRequest = (
   | { op: 'getTags'; args: GetTagsArgs }
   | { op: 'getEntryDetail'; args: GetEntryDetailArgs }
   | { op: 'updateEntry'; args: UpdateEntryArgs }
+  | { op: 'prepareEntryAttachmentDownload'; args: PrepareEntryAttachmentDownloadArgs }
   | { op: 'deleteEntry'; args: DeleteEntryArgs }
   | { op: 'saveDatabase'; args: SaveDatabaseArgs }
   | { op: 'prepareDatabaseExport'; args: PrepareDatabaseExportArgs }
@@ -350,6 +366,8 @@ export type AddGroupResult = { id: DatabaseNodeId };
 
 export type PrepareDatabaseExportResult = { transferId: string };
 
+export type PrepareEntryAttachmentDownloadResult = { transferId: string };
+
 export type MergeTransferredDatabaseResult = {
   entriesAdded: number;
   entriesModified: number;
@@ -401,6 +419,7 @@ export type OperationSuccess =
   | { op: 'getTags'; result: TagsResult }
   | { op: 'getEntryDetail'; result: EntryDetailResult }
   | { op: 'updateEntry'; result: EmptyResult }
+  | { op: 'prepareEntryAttachmentDownload'; result: PrepareEntryAttachmentDownloadResult }
   | { op: 'deleteEntry'; result: EmptyResult }
   | { op: 'saveDatabase'; result: EmptyResult }
   | { op: 'prepareDatabaseExport'; result: PrepareDatabaseExportResult }

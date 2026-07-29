@@ -27,6 +27,8 @@ pub enum CoreError {
     GroupNotFound,
     #[error("entry does not exist")]
     EntryNotFound,
+    #[error("entry attachment does not exist")]
+    AttachmentNotFound,
     #[error("invalid database node identifier")]
     InvalidNodeId,
     #[error("group cannot be moved to the requested location")]
@@ -146,6 +148,9 @@ impl From<&CoreError> for OperationError {
             CoreError::PasswordRequired => ("password_required", "Password is required"),
             CoreError::GroupNotFound => ("group_not_found", "Group does not exist"),
             CoreError::EntryNotFound => ("entry_not_found", "Entry does not exist"),
+            CoreError::AttachmentNotFound => {
+                ("attachment_not_found", "Entry attachment does not exist")
+            }
             CoreError::InvalidNodeId => ("invalid_node_id", "Database node identifier is invalid"),
             CoreError::InvalidGroupMove => (
                 "invalid_group_move",

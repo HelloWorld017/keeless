@@ -277,7 +277,9 @@ pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
         attachments: entry
             .binaries
             .iter()
-            .map(|binary| EntryAttachmentInformation {
+            .enumerate()
+            .map(|(index, binary)| EntryAttachmentInformation {
+                index: index as u64,
                 name: binary.name.clone(),
                 size: binary.data.len() as u64,
                 is_protected: binary.is_protected,

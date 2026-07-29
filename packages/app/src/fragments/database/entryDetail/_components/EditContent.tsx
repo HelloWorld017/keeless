@@ -1,4 +1,13 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@/components/attachment';
 import { Button } from '@/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/field';
@@ -6,6 +15,7 @@ import { Input } from '@/components/input';
 import { Toggle } from '@/components/toggle';
 import {
   IconChevronRight,
+  IconFile,
   IconLockKeyhole,
   IconLockKeyholeOpen,
   IconPlus,
@@ -36,6 +46,7 @@ export const EditContent = ({
   properties,
   confirmations,
   confirmationErrors,
+  attachments,
   errors,
   pending,
   onAdd,
@@ -44,6 +55,7 @@ export const EditContent = ({
   onDelete,
   onPropertiesChange,
   onConfirmationChange,
+  onAttachmentsChange,
 }: {
   entryId: DatabaseNodeId;
   isTemplate: boolean;
@@ -52,6 +64,7 @@ export const EditContent = ({
   properties: EntryPropertiesDraft;
   confirmations: Record<string, string>;
   confirmationErrors: Set<string>;
+  attachments: File[];
   errors: Set<string>;
   pending: boolean;
   onAdd: () => void;
@@ -60,6 +73,7 @@ export const EditContent = ({
   onDelete: (key: string) => void;
   onPropertiesChange: (patch: Partial<EntryPropertiesDraft>) => void;
   onConfirmationChange: (fieldId: string, value: string) => void;
+  onAttachmentsChange: (attachments: File[]) => void;
 }) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const ordered: OrderedItem[] = [
@@ -257,6 +271,50 @@ export const EditContent = ({
         <IconPlus />
         Add field
       </Button>
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold">Attachments</h2>
+        </div>
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-3">
+            {attachments.map((attachment, index) => (
+              <Attachment key={`${attachment.name}:${index}`} size="sm">
+                <AttachmentMedia>
+                  <IconFile />
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{attachment.name}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {attachment.size.toLocaleString()} bytes
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction
+                    type="button"
+                    aria-label={`Remove ${attachment.name}`}
+                    disabled={pending}
+                    onClick={() =>
+                      onAttachmentsChange(attachments.filter((_, current) => current !== index))
+                    }
+                  >
+                    <IconTrash />
+                  </AttachmentAction>
+                </AttachmentActions>
+              </Attachment>
+            ))}
+          </div>
+        )}
+        <Input
+          type="file"
+          multiple
+          disabled={pending}
+          onChange={event => {
+            const selected = [...(event.currentTarget.files ?? [])];
+            onAttachmentsChange([...attachments, ...selected]);
+            event.currentTarget.value = '';
+          }}
+        />
+      </section>
       {(!hasExpiry || !hasTags) && (
         <section className="space-y-4">
           <h2 className="text-sm font-semibold">Additional properties</h2>

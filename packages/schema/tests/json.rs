@@ -264,6 +264,7 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
                     },
                 ],
                 properties: None,
+                attachments: None,
                 password: None,
             }),
         },
@@ -287,6 +288,17 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
             permanent: false,
         }),
         json!({ "op": "deleteEntry", "args": { "entryId": 42, "permanent": false } }),
+    );
+    assert_roundtrip(
+        Operation::PrepareEntryAttachmentDownload(PrepareEntryAttachmentDownloadArgs {
+            entry_id: DatabaseNodeId::Int(42),
+            attachment_index: 3,
+            name: "document.pdf".into(),
+        }),
+        json!({
+            "op": "prepareEntryAttachmentDownload",
+            "args": { "entryId": 42, "attachmentIndex": 3, "name": "document.pdf" }
+        }),
     );
     assert_roundtrip(
         Operation::SaveDatabase(SaveDatabaseArgs {
@@ -414,6 +426,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                     expiry_time_ms: None,
                     usage_count: 2,
                     attachments: vec![EntryAttachmentInformation {
+                        index: 0,
                         name: "key.txt".into(),
                         size: 12,
                         is_protected: true,
@@ -441,7 +454,7 @@ fn entry_detail_keeps_protected_fields_but_omits_their_values() {
                 "expires": false,
                 "expiryTimeMs": null,
                 "usageCount": 2,
-                "attachments": [{ "name": "key.txt", "size": 12, "isProtected": true }]
+                "attachments": [{ "index": 0, "name": "key.txt", "size": 12, "isProtected": true }]
             }
         }),
     );

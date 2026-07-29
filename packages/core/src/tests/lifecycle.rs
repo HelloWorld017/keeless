@@ -269,7 +269,7 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
         .await
         .unwrap();
     let _ = core.sync(None).await;
-    operations::mutations::update_entry::run(&mut core, entry_id, fields, None, None)
+    operations::mutations::update_entry::run(&mut core, entry_id, fields, None, Vec::new(), None)
         .await
         .unwrap();
     assert_eq!(

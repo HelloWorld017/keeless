@@ -9,7 +9,9 @@ use crate::model::core::date::DateInstant;
 use crate::model::core::node::NodeId;
 use crate::model::core::security::ProtectedString;
 use crate::model::db::composite_key::CompositeKey;
-use crate::model::entry::{memory_field, EntryField, EntryFieldId, EntryFields, StandardField};
+use crate::model::entry::{
+    memory_field, EntryBinary, EntryField, EntryFieldId, EntryFields, StandardField,
+};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 use crate::model::meta::icon::{IconImage, IconImageStandard};
 use uuid::Uuid;
@@ -95,6 +97,7 @@ impl Database {
             entry_id,
             fields,
             properties,
+            &[],
             new_custom_field_ids,
             last_modification_time,
         )?
@@ -106,12 +109,14 @@ impl Database {
     }
 
     /// Build an entry update without mutating the database.
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare_entry_update(
         &self,
         composite_key: &CompositeKey,
         entry_id: &NodeId,
         fields: &[EntryFieldUpdate],
         properties: Option<&EntryPropertiesUpdate>,
+        attachments: &[EntryBinary],
         new_custom_field_ids: &[Uuid],
         last_modification_time: DateInstant,
     ) -> DatabaseResult<Option<PreparedEntryUpdate>> {
@@ -203,8 +208,9 @@ impl Database {
             .filter_map(|field| field.field_id)
             .collect::<Vec<_>>();
         let original_ids = original.fields.0.keys().copied().collect::<Vec<_>>();
-        let mut changed =
-            requested_ids != original_ids || fields.iter().any(|field| field.field_id.is_none());
+        let mut changed = requested_ids != original_ids
+            || fields.iter().any(|field| field.field_id.is_none())
+            || !attachments.is_empty();
         let mut unlock = MemoryUnlockSession::new(composite_key);
         let mut plaintexts = Vec::with_capacity(fields.len());
         for requested in fields {
@@ -327,6 +333,8 @@ impl Database {
                 updated.custom_icon_uuid = icon.custom_uuid;
             }
         }
+
+        updated.binaries.extend_from_slice(attachments);
 
         if !changed {
             return Ok(None);

@@ -44,7 +44,7 @@ import { ViewContent } from './_components/ViewContent';
 import { useEntryEditor } from './_hooks/useEntryEditor';
 import { EntryFieldValuesProvider, useEntryFieldValues } from './_hooks/useEntryFieldValues';
 import { usePasswordConfirmations } from './_hooks/usePasswordConfirmations';
-import type { EntrySummary } from '@keeless/schema';
+import type { EntryAttachmentUpdate, EntrySummary } from '@keeless/schema';
 
 const REFRESH_OPERATIONS = [
   'getEntries',
@@ -114,6 +114,7 @@ const EntryDetailQuery = ({
   const operationRef = useRef(0);
   const passwordRequestRef = useRef<PasswordRequest | undefined>(undefined);
   const [editing, setEditing] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
   const editor = useEntryEditor();
   const fieldValues = useEntryFieldValues(entry.id);
   const confirmations = usePasswordConfirmations();
@@ -236,6 +237,7 @@ const EntryDetailQuery = ({
     }
 
     editor.begin(detail.data);
+    setAttachments([]);
     fieldValues.controller.hideAll();
     confirmations.clear();
     setError(undefined);
@@ -244,6 +246,7 @@ const EntryDetailQuery = ({
 
   const clearEditing = () => {
     setEditing(false);
+    setAttachments([]);
     editor.clear();
     confirmations.clear();
     setError(undefined);
@@ -267,6 +270,13 @@ const EntryDetailQuery = ({
     setError(undefined);
 
     try {
+      const attachmentUpdates: EntryAttachmentUpdate[] = [];
+      for (const attachment of attachments) {
+        attachmentUpdates.push({
+          transferId: await requestClient.data!.upload(attachment),
+          name: attachment.name,
+        });
+      }
       const updated = await requestWithPassword(
         password =>
           hasNativePasswordInput
@@ -274,11 +284,13 @@ const EntryDetailQuery = ({
                 entryId: entry.id,
                 fields,
                 properties: propertiesUpdate,
+                attachments: attachmentUpdates,
               })
             : requestClient.data!.request('updateEntry', {
                 entryId: entry.id,
                 fields,
                 properties: propertiesUpdate,
+                attachments: attachmentUpdates,
                 password,
               }),
         operation,
@@ -474,6 +486,7 @@ const EntryDetailQuery = ({
                 properties={editor.properties}
                 confirmations={confirmations.values}
                 confirmationErrors={confirmations.errors}
+                attachments={attachments}
                 errors={editor.errors}
                 pending={pending}
                 onLoad={editor.load}
@@ -482,6 +495,7 @@ const EntryDetailQuery = ({
                 onDelete={editor.remove}
                 onPropertiesChange={editor.changeProperties}
                 onConfirmationChange={confirmations.change}
+                onAttachmentsChange={setAttachments}
               />
             ) : (
               <EntryFieldValuesProvider value={fieldValues.controller}>

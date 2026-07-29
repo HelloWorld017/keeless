@@ -122,6 +122,7 @@ pub(crate) async fn run(
             id: entry_id,
             fields,
             properties: None,
+            attachments: Vec::new(),
             new_custom_field_ids,
             timestamp_ms: core.clock.now_millis(),
         },

@@ -90,7 +90,15 @@ fn prepared_entry_update_is_pure_and_commits_supplied_id_and_time() {
     let key = CompositeKey::new().with_password(b"test").unwrap();
 
     let prepared = database
-        .prepare_entry_update(&key, &entry_id, &fields, None, &[custom_uuid], modified)
+        .prepare_entry_update(
+            &key,
+            &entry_id,
+            &fields,
+            None,
+            &[],
+            &[custom_uuid],
+            modified,
+        )
         .unwrap()
         .unwrap();
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);

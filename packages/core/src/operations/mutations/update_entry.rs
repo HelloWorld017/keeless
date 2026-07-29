@@ -1,8 +1,11 @@
 use keeless_kdbx::{
-    CompositeKey, Database, DatabaseError, DateInstant, EntryFieldId, EntryFieldUpdate,
-    EntryPropertiesUpdate as KdbxPropertiesUpdate, IconUpdate, NodeId, PreparedEntryUpdate,
+    CompositeKey, Database, DatabaseError, DateInstant, EntryBinary, EntryFieldId,
+    EntryFieldUpdate, EntryPropertiesUpdate as KdbxPropertiesUpdate, IconUpdate, NodeId,
+    PreparedEntryUpdate,
 };
-use keeless_schema::{EmptyResult, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs};
+use keeless_schema::{
+    EmptyResult, EntryAttachmentUpdate, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
@@ -16,6 +19,7 @@ pub(super) struct Mutation {
     pub(super) id: NodeId,
     pub(super) fields: Vec<JournalEntryField>,
     pub(super) properties: Option<JournalEntryProperties>,
+    pub(super) attachments: Vec<JournalEntryAttachment>,
     pub(super) new_custom_field_ids: Vec<Uuid>,
     pub(super) timestamp_ms: i64,
 }
@@ -38,6 +42,12 @@ pub(super) struct JournalEntryProperties {
     pub(super) custom_icon: Option<Uuid>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) struct JournalEntryAttachment {
+    pub(super) name: String,
+    pub(super) data: Vec<u8>,
+}
+
 impl Drop for JournalEntryField {
     fn drop(&mut self) {
         self.value.zeroize();
@@ -48,6 +58,13 @@ impl Drop for JournalEntryProperties {
     fn drop(&mut self) {
         self.override_url.zeroize();
         self.tags.zeroize();
+    }
+}
+
+impl Drop for JournalEntryAttachment {
+    fn drop(&mut self) {
+        self.name.zeroize();
+        self.data.zeroize();
     }
 }
 
@@ -111,12 +128,22 @@ pub(super) fn prepare(
         .properties
         .as_ref()
         .map(JournalEntryProperties::to_kdbx);
+    let attachments = mutation
+        .attachments
+        .iter()
+        .map(|attachment| EntryBinary {
+            name: attachment.name.clone(),
+            data: attachment.data.clone(),
+            is_protected: false,
+        })
+        .collect::<Vec<_>>();
     database
         .prepare_entry_update(
             key,
             &mutation.id,
             &fields,
             properties.as_ref(),
+            &attachments,
             &mutation.new_custom_field_ids,
             DateInstant::EpochMillis(mutation.timestamp_ms),
         )
@@ -138,6 +165,7 @@ pub(crate) async fn run(
     entry_id: keeless_schema::DatabaseNodeId,
     fields: Vec<keeless_schema::EntryFieldUpdate>,
     properties: Option<EntryPropertiesUpdate>,
+    attachment_updates: Vec<EntryAttachmentUpdate>,
     password: Option<&[u8]>,
 ) -> Result<EmptyResult> {
     if core.handle.is_none() {
@@ -225,6 +253,15 @@ pub(crate) async fn run(
         .map(|_| Uuid::new_v4())
         .collect::<Vec<_>>();
     let timestamp_ms = core.clock.now_millis();
+    let mut attachments = Vec::with_capacity(attachment_updates.len());
+    for attachment in attachment_updates {
+        let mut data = core.consume_upload_transfer(&attachment.transfer_id)?;
+        attachments.push(EntryBinary {
+            name: attachment.name,
+            data: std::mem::take(&mut *data),
+            is_protected: false,
+        });
+    }
     let prepared = core
         .handle
         .as_ref()
@@ -235,6 +272,7 @@ pub(crate) async fn run(
             &entry_id,
             &converted,
             properties.as_ref(),
+            &attachments,
             &new_custom_field_ids,
             DateInstant::EpochMillis(timestamp_ms),
         )
@@ -266,6 +304,13 @@ pub(crate) async fn run(
                 standard_icon: properties.icon.map(|icon| icon.standard_id),
                 custom_icon: properties.icon.and_then(|icon| icon.custom_uuid),
             }),
+        attachments: attachments
+            .iter()
+            .map(|attachment| JournalEntryAttachment {
+                name: attachment.name.clone(),
+                data: attachment.data.clone(),
+            })
+            .collect(),
         new_custom_field_ids,
         timestamp_ms,
     };
@@ -292,6 +337,7 @@ pub(crate) async fn execute(
             args.entry_id,
             args.fields,
             args.properties,
+            args.attachments.unwrap_or_default(),
             password.as_ref().map(|password| password.as_slice()),
         )
         .await?,

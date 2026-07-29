@@ -111,6 +111,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
                 custom_uuid: Some(Uuid::from_u128(100).hyphenated().to_string()),
             }),
         }),
+        Vec::new(),
         None,
     )
     .await
@@ -215,6 +216,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
                 expiry_time_ms: None,
                 icon: None,
             }),
+            Vec::new(),
             None,
         )
         .await,
@@ -270,6 +272,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             schema_id(ids.root_entry),
             current_fields.clone(),
             None,
+            Vec::new(),
             None,
         )
         .await,
@@ -280,10 +283,99 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         schema_id(ids.root_entry),
         current_fields,
         None,
+        Vec::new(),
         Some(b"correct"),
     )
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn update_entry_adds_transferred_attachments_and_download_verifies_name() {
+    let (mut core, ids) = query_core().await;
+    let transfers = Arc::new(MemoryTransferProvider::default());
+    transfers.add_upload("upload-1", b"new attachment".to_vec());
+    core.transfer_provider = Some(transfers.clone());
+    core.transfer_owner = Some("test-client".into());
+    let entry_id = schema_id(ids.root_entry);
+    let fields = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap()
+    .fields
+    .into_iter()
+    .filter_map(|field| match field {
+        EntryFieldInformation::Field {
+            field_id,
+            name,
+            value,
+            is_protected,
+            ..
+        } => Some(SchemaEntryFieldUpdate {
+            field_id,
+            name,
+            value,
+            is_protected,
+        }),
+        _ => None,
+    })
+    .collect();
+
+    operations::mutations::update_entry::run(
+        &mut core,
+        entry_id.clone(),
+        fields,
+        None,
+        vec![keeless_schema::EntryAttachmentUpdate {
+            transfer_id: "upload-1".into(),
+            name: "new.txt".into(),
+        }],
+        None,
+    )
+    .await
+    .unwrap();
+
+    let detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap();
+    let attachment = detail.attachments.last().unwrap();
+    assert_eq!(attachment.name, "new.txt");
+    assert_eq!(attachment.size, 14);
+    assert!(matches!(
+        operations::prepare_entry_attachment_download::execute(
+            &mut core,
+            keeless_schema::PrepareEntryAttachmentDownloadArgs {
+                entry_id: entry_id.clone(),
+                attachment_index: attachment.index,
+                name: "wrong-name.txt".into(),
+            },
+        ),
+        Err(CoreError::AttachmentNotFound)
+    ));
+    let OperationSuccess::PrepareEntryAttachmentDownload(download) =
+        operations::prepare_entry_attachment_download::execute(
+            &mut core,
+            keeless_schema::PrepareEntryAttachmentDownloadArgs {
+                entry_id,
+                attachment_index: attachment.index,
+                name: attachment.name.clone(),
+            },
+        )
+        .unwrap()
+    else {
+        unreachable!();
+    };
+    assert_eq!(
+        transfers.download(&download.transfer_id).unwrap(),
+        b"new attachment"
+    );
 }
 
 #[tokio::test]

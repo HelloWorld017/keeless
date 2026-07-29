@@ -52,7 +52,9 @@ fn generate() -> String {
     export::<GetEntryDetailArgs>(&mut output);
     export::<EntryFieldUpdate>(&mut output);
     export::<EntryPropertiesUpdate>(&mut output);
+    export::<EntryAttachmentUpdate>(&mut output);
     export::<UpdateEntryArgs>(&mut output);
+    export::<PrepareEntryAttachmentDownloadArgs>(&mut output);
     export::<DeleteEntryArgs>(&mut output);
     export::<SaveDatabaseArgs>(&mut output);
     export::<PrepareDatabaseExportArgs>(&mut output);
@@ -87,6 +89,7 @@ fn generate() -> String {
     export::<AddEntryResult>(&mut output);
     export::<AddGroupResult>(&mut output);
     export::<PrepareDatabaseExportResult>(&mut output);
+    export::<PrepareEntryAttachmentDownloadResult>(&mut output);
     export::<MergeTransferredDatabaseResult>(&mut output);
     export::<RevealEntryFieldsResult>(&mut output);
     export::<PasskeySummary>(&mut output);

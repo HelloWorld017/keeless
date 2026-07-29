@@ -1,8 +1,17 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from '@/components/attachment';
 import { Button } from '@/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
-import { useRequest } from '@/fragments/_providers/QueryProvider';
-import { IconChevronRight, IconInfo } from '@/icons';
+import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useShowToast } from '@/fragments/_providers/ToastProvider';
+import { IconChevronRight, IconFile, IconInfo, IconLoaderCircle } from '@/icons';
 import { cn } from '@/utils/css';
 import { useState, type ReactNode } from 'react';
 import { Tag } from '../../_components/Tag';
@@ -37,16 +46,6 @@ const DetailSection = ({
   </section>
 );
 
-const Attachment = ({ attachment }: { attachment: EntryAttachmentInformation }) => (
-  <div className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
-    <span className="min-w-0 truncate">{attachment.name || 'Untitled attachment'}</span>
-    <span className="shrink-0 text-muted-foreground">
-      {attachment.isProtected && 'Protected · '}
-      {formatBytes(attachment.size)}
-    </span>
-  </div>
-);
-
 const MetadataRow = ({ label, value }: { label: string; value: ReactNode }) => (
   <div className="grid gap-1 px-4 py-3 text-sm xl:grid-cols-[10rem_1fr] xl:gap-4">
     <dt className="text-muted-foreground">{label}</dt>
@@ -70,7 +69,10 @@ const fieldKey = (field: EntryFieldInformation) =>
 
 export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
   const [internalOpen, setInternalOpen] = useState(false);
+  const [downloadingAttachment, setDownloadingAttachment] = useState<number>();
   const tags = useRequest('getTags', {});
+  const requestClient = useRequestClient();
+  const showToast = useShowToast();
   const tagStyle = (name: string) => tags.data?.tags.find(tag => tag.name === name)?.style;
   const colorRows = [
     detail.backgroundColor && ['Background color', detail.backgroundColor],
@@ -80,6 +82,31 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
   const internalFields = fields.filter(field => field.type === 'field' && field.isInternal);
   const visibleFields = fields.filter(field => field.type !== 'field' || !field.isInternal);
   const hasTagField = fields.some(field => field.type === 'tags');
+  const downloadAttachment = async (attachment: EntryAttachmentInformation) => {
+    setDownloadingAttachment(attachment.index);
+    try {
+      const transfer = await requestClient.data!.request('prepareEntryAttachmentDownload', {
+        entryId: detail.id,
+        attachmentIndex: attachment.index,
+        name: attachment.name,
+      });
+      const bytes = await requestClient.data!.download(transfer.transferId);
+      try {
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = attachment.name || 'attachment';
+        anchor.click();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      } finally {
+        bytes.fill(0);
+      }
+    } catch {
+      showToast({ kind: 'destructive', message: 'The attachment could not be downloaded.' });
+    } finally {
+      setDownloadingAttachment(undefined);
+    }
+  };
   const tagList = (key: string, label?: string) => (
     <div key={key} className="space-y-2 px-4 py-3">
       {label && <dt className="text-xs text-muted-foreground">{label}</dt>}
@@ -186,8 +213,32 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
       {detail.attachments.length > 0 && (
         <DetailSection title="Attachments">
           <div className="divide-y rounded-lg border">
-            {detail.attachments.map((attachment, index) => (
-              <Attachment key={`${attachment.name}:${index}`} attachment={attachment} />
+            {detail.attachments.map(attachment => (
+              <Attachment
+                key={`${attachment.index}:${attachment.name}`}
+                state={downloadingAttachment === attachment.index ? 'uploading' : 'done'}
+                className="w-full rounded-none border-0"
+              >
+                <AttachmentMedia>
+                  {downloadingAttachment === attachment.index ? (
+                    <IconLoaderCircle className="animate-spin" />
+                  ) : (
+                    <IconFile />
+                  )}
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{attachment.name || 'Untitled attachment'}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {attachment.isProtected && 'Protected · '}
+                    {formatBytes(attachment.size)}
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentTrigger
+                  aria-label={`Download ${attachment.name || 'attachment'}`}
+                  disabled={downloadingAttachment !== undefined}
+                  onClick={() => void downloadAttachment(attachment)}
+                />
+              </Attachment>
             ))}
           </div>
         </DetailSection>

@@ -289,6 +289,50 @@ impl StorageProvider for MemoryStorage {
     }
 }
 
+#[derive(Default)]
+pub(super) struct MemoryTransferProvider {
+    uploads: Mutex<std::collections::HashMap<String, Zeroizing<Vec<u8>>>>,
+    downloads: Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    next_id: AtomicU64,
+}
+
+impl MemoryTransferProvider {
+    pub(super) fn add_upload(&self, transfer_id: &str, bytes: Vec<u8>) {
+        self.uploads
+            .lock()
+            .unwrap()
+            .insert(transfer_id.into(), Zeroizing::new(bytes));
+    }
+
+    pub(super) fn download(&self, transfer_id: &str) -> Option<Vec<u8>> {
+        self.downloads.lock().unwrap().get(transfer_id).cloned()
+    }
+}
+
+impl TransferProvider for MemoryTransferProvider {
+    fn publish_download(&self, _owner: &str, bytes: Zeroizing<Vec<u8>>) -> Result<String> {
+        let transfer_id = format!("download-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
+        self.downloads
+            .lock()
+            .unwrap()
+            .insert(transfer_id.clone(), bytes.to_vec());
+        Ok(transfer_id)
+    }
+
+    fn consume_upload(&self, _owner: &str, transfer_id: &str) -> Result<Zeroizing<Vec<u8>>> {
+        self.uploads
+            .lock()
+            .unwrap()
+            .remove(transfer_id)
+            .ok_or_else(|| CoreError::Host("upload transfer does not exist".into()))
+    }
+
+    fn clear(&self) {
+        self.uploads.lock().unwrap().clear();
+        self.downloads.lock().unwrap().clear();
+    }
+}
+
 pub(super) fn metadata(bytes: &[u8]) -> FileMetadata {
     FileMetadata {
         size: bytes.len() as u64,

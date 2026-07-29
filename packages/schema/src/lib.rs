@@ -179,6 +179,7 @@ pub enum EntryFieldInformation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EntryAttachmentInformation {
+    pub index: u64,
     pub name: String,
     pub size: u64,
     pub is_protected: bool,
@@ -348,6 +349,13 @@ pub struct EntryPropertiesUpdate {
     pub icon: Option<IconReference>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EntryAttachmentUpdate {
+    pub transfer_id: String,
+    pub name: String,
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateEntryArgs {
@@ -356,9 +364,24 @@ pub struct UpdateEntryArgs {
     #[serde(default, deserialize_with = "deserialize_nullable")]
     #[specta(optional = true)]
     pub properties: Option<EntryPropertiesUpdate>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[specta(optional = true)]
+    pub attachments: Option<Vec<EntryAttachmentUpdate>>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     #[specta(optional = true)]
     pub password: Option<String>,
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrepareEntryAttachmentDownloadArgs {
+    pub entry_id: DatabaseNodeId,
+    pub attachment_index: u64,
+    pub name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -551,6 +574,7 @@ pub enum Operation {
     GetTags(GetTagsArgs),
     GetEntryDetail(GetEntryDetailArgs),
     UpdateEntry(UpdateEntryArgs),
+    PrepareEntryAttachmentDownload(PrepareEntryAttachmentDownloadArgs),
     DeleteEntry(DeleteEntryArgs),
     SaveDatabase(SaveDatabaseArgs),
     PrepareDatabaseExport(PrepareDatabaseExportArgs),
@@ -682,6 +706,12 @@ pub struct PrepareDatabaseExportResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub struct PrepareEntryAttachmentDownloadResult {
+    pub transfer_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct MergeTransferredDatabaseResult {
     pub entries_added: u64,
     pub entries_modified: u64,
@@ -758,6 +788,7 @@ pub enum OperationSuccess {
     GetTags(TagsResult),
     GetEntryDetail(Box<EntryDetailResult>),
     UpdateEntry(EmptyResult),
+    PrepareEntryAttachmentDownload(PrepareEntryAttachmentDownloadResult),
     DeleteEntry(EmptyResult),
     SaveDatabase(EmptyResult),
     PrepareDatabaseExport(PrepareDatabaseExportResult),
