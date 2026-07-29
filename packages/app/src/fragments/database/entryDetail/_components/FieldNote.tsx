@@ -1,6 +1,6 @@
 import { Button } from '@/components/button';
 import { IconEye, IconEyeOff, IconLoaderCircle } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { useEntryFieldValueActions } from '../_hooks/useEntryFieldValues';
 import { FieldCopyButton } from './FieldCopyButton';
 
@@ -26,7 +26,7 @@ export const FieldNote = ({
       <dt className="text-xs text-muted-foreground">{name || 'Untitled field'}</dt>
       <dd className="flex min-w-0 items-start gap-2 text-sm">
         <span
-          className={cn(
+          className={cx(
             'min-w-0 flex-1 whitespace-pre-wrap break-words',
             (!isProtected || revealed) && !displayValue && 'text-muted-foreground',
             isProtected && !revealed && 'text-muted-foreground',

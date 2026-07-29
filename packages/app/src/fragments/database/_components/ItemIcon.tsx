@@ -1,6 +1,6 @@
 import { useRequest } from '@/fragments/_providers/QueryProvider';
 import { IconFile, IconFolder } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { useState } from 'react';
 import { standardIcons } from '../_constants/icons';
 import type { IconReference } from '@keeless/schema';
@@ -33,7 +33,7 @@ const CustomItemIcon = ({
     <img
       src={`data:image/png;base64,${customIcon.dataBase64}`}
       alt=""
-      className={cn('size-[1em] object-contain', className)}
+      className={cx('size-[1em] object-contain', className)}
       onError={() => setLoadFailed(true)}
     />
   );

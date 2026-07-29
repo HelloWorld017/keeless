@@ -1,4 +1,4 @@
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { FieldCopyButton } from './FieldCopyButton';
 
 export const FieldPlain = ({ name, value }: { name: string; value: string | null }) => (
@@ -6,7 +6,7 @@ export const FieldPlain = ({ name, value }: { name: string; value: string | null
     <dt className="text-xs text-muted-foreground">{name || 'Untitled field'}</dt>
     <dd className="flex min-w-0 items-start gap-2 text-sm">
       <span
-        className={cn(
+        className={cx(
           'min-w-0 flex-1 whitespace-pre-wrap break-words',
           !value && 'text-muted-foreground',
         )}

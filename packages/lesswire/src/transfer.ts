@@ -2,7 +2,6 @@ export const MAX_TRANSFER_CHUNK_SIZE = 760 * 1024;
 export const MAX_TRANSFER_SIZE = 192 * 1024 * 1024;
 export const TRANSFER_MAGIC = 0x21;
 
-const encoder = new TextEncoder();
 const TRANSFER_VERSION = 1;
 const TRANSFER_ID_SIZE = 16;
 const TRANSFER_HEADER_SIZE = 3;

@@ -11,7 +11,7 @@ import {
   useComboboxAnchor,
 } from '@/components/combobox';
 import { useRequest } from '@/fragments/_providers/QueryProvider';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { useState } from 'react';
 import { Tag } from './Tag';
 
@@ -56,7 +56,7 @@ export const TagPicker = ({
     >
       <ComboboxChips
         ref={anchor}
-        className={cn('w-full', disabled && 'pointer-events-none opacity-50')}
+        className={cx('w-full', disabled && 'pointer-events-none opacity-50')}
       >
         <ComboboxValue>
           {(selected: string[]) => (

@@ -1,19 +1,9 @@
 import { Button } from '@/components/button';
-import {
-  FileUpload,
-  FileUploadClear,
-  FileUploadDropzone,
-  FileUploadItem,
-  FileUploadItemDelete,
-  FileUploadItemMetadata,
-  FileUploadItemPreview,
-  FileUploadList,
-  FileUploadTrigger,
-} from '@/components/file-upload';
+import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
-import { IconFile, IconLoaderCircle, IconTrash } from '@/icons';
+import { IconFile, IconLoaderCircle } from '@/icons';
 import { CoreRequestError } from '@/utils/request';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type DragEvent } from 'react';

@@ -1,5 +1,5 @@
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
-import { cn, cx } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { joinComponent } from '@/utils/joinComponent';
 import { ItemIcon } from './ItemIcon';
 import { Tag } from './Tag';
@@ -46,7 +46,7 @@ export const EntryItem = ({
   return (
     <Item
       variant={variant ?? (selected ? 'muted' : 'default')}
-      className={cn('flex-nowrap', selected && 'bg-primary', className)}
+      className={cx('flex-nowrap', selected && 'bg-primary', className)}
       style={{ ...style, height: `${getEntryItemSize(entry)}px` }}
       {...props}
     >

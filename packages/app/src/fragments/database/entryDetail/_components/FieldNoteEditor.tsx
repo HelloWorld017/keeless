@@ -1,6 +1,6 @@
 import { Button } from '@/components/button';
 import { IconLoaderCircle } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { useProtectedReveal } from '../_hooks/useProtectedReveal';
 import type { DatabaseNodeId } from '@keeless/schema';
 
@@ -48,7 +48,7 @@ export const FieldNoteEditor = ({
           id={id}
           value={value}
           rows={Math.max(1, lines)}
-          className={cn(
+          className={cx(
             'min-h-8 w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80',
           )}
           placeholder={unloaded ? '(unchanged)' : undefined}

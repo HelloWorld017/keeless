@@ -31,7 +31,7 @@ import {
   IconPencil,
   IconTrash,
 } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { CoreRequestError } from '@/utils/request';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -76,7 +76,7 @@ const EntryDetailSkeleton = ({ pending }: { pending: boolean }) => {
   }
   return (
     <div
-      className={cn(
+      className={cx(
         'animate-in w-full max-w-3xl space-y-8 p-6 duration-200 fade-in',
         !pending && 'animate-out opacity-0 fade-out',
       )}
@@ -586,7 +586,7 @@ export const EntryDetailFragment = ({
   onClose: () => void;
 }) => (
   <section
-    className={cn(
+    className={cx(
       'min-h-0 min-w-0 flex-3 flex-col p-4 md:pt-2 xl:p-6 xl:pt-2 xl:pb-8',
       selected ? 'flex' : 'hidden md:flex',
     )}

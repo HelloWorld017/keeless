@@ -2,7 +2,7 @@ import { Alert, AlertAction, AlertDescription } from '@/components/alert';
 import { Button } from '@/components/button';
 import { useDismissToast, useToasts } from '@/fragments/_providers/ToastProvider';
 import { IconInfo, IconTriangleAlert, IconX } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import type { ToastItem } from '@/fragments/_providers/ToastProvider';
 
 type ToastProps = {
@@ -19,7 +19,7 @@ const Toast = ({ toast, onDismiss }: ToastProps) => {
       role={destructive ? 'alert' : 'status'}
       aria-atomic="true"
       variant={destructive ? 'destructive' : 'default'}
-      className={cn(
+      className={cx(
         'pointer-events-auto animate-in shadow-lg duration-200 fade-in slide-in-from-bottom-2',
         toast.kind === 'primary' &&
           'border-primary/30 bg-primary/10 text-primary *:data-[slot=alert-description]:text-primary',
@@ -34,7 +34,7 @@ const Toast = ({ toast, onDismiss }: ToastProps) => {
           size="icon-xs"
           aria-label={`Dismiss notification: ${toast.message}`}
           onClick={() => onDismiss(toast.id)}
-          className={cn(
+          className={cx(
             destructive && 'text-destructive hover:text-destructive',
             toast.kind === 'primary' && 'text-primary hover:text-primary',
           )}

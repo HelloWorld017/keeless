@@ -3,7 +3,7 @@ import { Calendar } from '@/components/calendar';
 import { Input } from '@/components/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
 import { IconCalendar, IconX } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { format } from 'date-fns';
 import { useState } from 'react';
 
@@ -62,7 +62,7 @@ export const DateInput = ({
               id={id}
               type="button"
               variant="outline"
-              className={cn(
+              className={cx(
                 'min-w-0 flex-1 justify-start font-normal',
                 !selected && 'text-muted-foreground',
               )}

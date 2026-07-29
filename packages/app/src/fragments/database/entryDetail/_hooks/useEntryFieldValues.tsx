@@ -83,13 +83,13 @@ export const useEntryFieldValues = (entryId: DatabaseNodeId) => {
 
     const fieldIds = action.fieldIds.filter(fieldId => valuesRef.current[fieldId] === undefined);
     if (fieldIds.length > 0) {
-      const { values } = await requestClient.data.request(
+      const { values: revealedValues } = await requestClient.data.request(
         'revealEntryFields',
         hasNativePasswordInput ? { entryId, fieldIds } : { entryId, fieldIds, password },
       );
 
       fieldIds.forEach((fieldId, index) => {
-        loaded[fieldId] = values[index];
+        loaded[fieldId] = revealedValues[index];
       });
     }
 

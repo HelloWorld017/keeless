@@ -41,7 +41,7 @@ import {
   IconTrash,
   IconTriangleAlert,
 } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { formatBytes } from '@/utils/format';
 import { useState } from 'react';
 import { TagPicker } from '../../_components/TagPicker';
@@ -308,7 +308,7 @@ export const EditContent = ({
           <CollapsibleTrigger
             render={<Button type="button" variant="ghost" className="w-full justify-start" />}
           >
-            <IconChevronRight className={cn('transition-transform', internalOpen && 'rotate-90')} />
+            <IconChevronRight className={cx('transition-transform', internalOpen && 'rotate-90')} />
             Internal fields
             <span className="text-muted-foreground">({internal.length})</span>
           </CollapsibleTrigger>

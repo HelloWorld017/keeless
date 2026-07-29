@@ -12,7 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { IconChevronRight, IconFile, IconInfo, IconLoaderCircle } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { formatBytes, formatDate } from '@/utils/format';
 import { useState, type ReactNode } from 'react';
 import { Tag } from '../../_components/Tag';
@@ -190,7 +190,7 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
               render={<Button type="button" variant="ghost" className="w-full justify-start" />}
             >
               <IconChevronRight
-                className={cn('transition-transform', internalOpen && 'rotate-90')}
+                className={cx('transition-transform', internalOpen && 'rotate-90')}
               />
               Internal fields
               <span className="text-muted-foreground">({internalFields.length})</span>

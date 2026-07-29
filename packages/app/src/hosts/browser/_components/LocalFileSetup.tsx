@@ -1,18 +1,8 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
 import { Button } from '@/components/button';
-import {
-  FileUpload,
-  FileUploadClear,
-  FileUploadDropzone,
-  FileUploadItem,
-  FileUploadItemDelete,
-  FileUploadItemMetadata,
-  FileUploadItemPreview,
-  FileUploadList,
-  FileUploadTrigger,
-} from '@/components/file-upload';
+import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { StepError } from '@/fragments/open/_components/StepError';
-import { IconChevronLeft, IconFile, IconLoaderCircle, IconTrash } from '@/icons';
+import { IconChevronLeft, IconFile } from '@/icons';
 import { useState } from 'react';
 import type { StorageSetupComponentProps } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';

@@ -1,6 +1,6 @@
 import { Button } from '@/components/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/sheet';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { useState } from 'react';
 import { useEntryFieldValueActions } from '../_hooks/useEntryFieldValues';
 import { FieldCopyButton } from './FieldCopyButton';
@@ -55,7 +55,7 @@ export const PopoutFieldValue = ({ field, label }: { field: EntryField; label: s
             <SheetTitle>{label || 'Untitled field'}</SheetTitle>
             <SheetDescription>Expanded field value</SheetDescription>
           </SheetHeader>
-          <div className={cn('whitespace-pre-wrap break-words', !value && 'text-muted-foreground')}>
+          <div className={cx('whitespace-pre-wrap break-words', !value && 'text-muted-foreground')}>
             {value || 'Empty'}
           </div>
         </SheetContent>

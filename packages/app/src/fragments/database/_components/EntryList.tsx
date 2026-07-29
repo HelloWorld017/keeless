@@ -6,7 +6,7 @@ import { useHistoryBack } from '@/fragments/_providers/RouterProvider';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { IconAlertCircle, IconChevronDown, IconLoaderCircle, IconPlus } from '@/icons';
-import { cn, cx } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
 import { Menu } from '@base-ui/react/menu';
 import { useDraggable } from '@dnd-kit/core';
@@ -87,7 +87,7 @@ const VirtualEntryRow = ({
       tags={tags}
       selected={selectedEntry === String(entry.id)}
       render={<button type="button" aria-label={title} />}
-      className={cn(
+      className={cx(
         'transition-opacity',
         isDragging ? 'z-10 cursor-grabbing opacity-60' : 'cursor-pointer',
         hiddenEntryId !== undefined &&
@@ -164,7 +164,7 @@ const EntryListSkeleton = ({ pending }: { pending: boolean }) => {
 
   return (
     <div
-      className={cn(
+      className={cx(
         'animate-in space-y-2 p-3 duration-200 fade-in',
         !pending && 'animate-out opacity-0 fade-out',
       )}
@@ -267,7 +267,7 @@ const EntryQuery = <TName extends EntryOperationName>({
   return (
     <>
       <section
-        className={cn(
+        className={cx(
           'min-h-0 w-full flex-2 flex-col border-r md:flex md:max-w-sm xl:max-w-md',
           selectedEntry ? 'hidden' : 'flex',
         )}
