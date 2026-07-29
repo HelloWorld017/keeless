@@ -1,7 +1,7 @@
 use keeless_kdbx::{
     CompositeKey, Database, DatabaseError, DateInstant, EntryBinary, EntryFieldId,
-    EntryFieldUpdate, EntryPropertiesUpdate as KdbxPropertiesUpdate, IconUpdate, NodeId,
-    PreparedEntryUpdate,
+    EntryFieldUpdate, EntryPropertiesUpdate as KdbxPropertiesUpdate, EntryUpdate, IconUpdate,
+    NodeId, PreparedEntryUpdate,
 };
 use keeless_schema::{
     EmptyResult, EntryAttachmentUpdate, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs,
@@ -138,17 +138,16 @@ pub(super) fn prepare(
             is_protected: false,
         })
         .collect::<Vec<_>>();
+    let update = EntryUpdate {
+        fields,
+        properties,
+        attachments,
+        removed_attachment_indices: mutation.removed_attachment_indices.clone(),
+        new_custom_field_ids: mutation.new_custom_field_ids.clone(),
+        last_modification_time: DateInstant::EpochMillis(mutation.timestamp_ms),
+    };
     database
-        .prepare_entry_update(
-            key,
-            &mutation.id,
-            &fields,
-            properties.as_ref(),
-            &attachments,
-            &mutation.removed_attachment_indices,
-            &mutation.new_custom_field_ids,
-            DateInstant::EpochMillis(mutation.timestamp_ms),
-        )
+        .prepare_entry_update(key, &mutation.id, &update)
         .map_err(CoreError::from)
 }
 
@@ -265,21 +264,20 @@ pub(crate) async fn run(
             is_protected: false,
         });
     }
+    let update = EntryUpdate {
+        fields: converted,
+        properties,
+        attachments,
+        removed_attachment_indices,
+        new_custom_field_ids,
+        last_modification_time: DateInstant::EpochMillis(timestamp_ms),
+    };
     let prepared = core
         .handle
         .as_ref()
         .ok_or(CoreError::DatabaseLocked)?
         .database()
-        .prepare_entry_update(
-            &key,
-            &entry_id,
-            &converted,
-            properties.as_ref(),
-            &attachments,
-            &removed_attachment_indices,
-            &new_custom_field_ids,
-            DateInstant::EpochMillis(timestamp_ms),
-        )
+        .prepare_entry_update(&key, &entry_id, &update)
         .map_err(|error| match error {
             DatabaseError::InvalidFormat(_) => CoreError::InvalidEntryUpdate,
             error => CoreError::from(error),
@@ -289,7 +287,8 @@ pub(crate) async fn run(
     };
     let payload = Mutation {
         id: entry_id,
-        fields: converted
+        fields: update
+            .fields
             .iter()
             .map(|field| JournalEntryField {
                 field_id: field.field_id.map(|id| id.to_string()),
@@ -298,7 +297,8 @@ pub(crate) async fn run(
                 is_protected: field.is_protected,
             })
             .collect(),
-        properties: properties
+        properties: update
+            .properties
             .as_ref()
             .map(|properties| JournalEntryProperties {
                 override_url: properties.override_url.clone(),
@@ -308,15 +308,16 @@ pub(crate) async fn run(
                 standard_icon: properties.icon.map(|icon| icon.standard_id),
                 custom_icon: properties.icon.and_then(|icon| icon.custom_uuid),
             }),
-        attachments: attachments
+        attachments: update
+            .attachments
             .iter()
             .map(|attachment| JournalEntryAttachment {
                 name: attachment.name.clone(),
                 data: attachment.data.clone(),
             })
             .collect(),
-        removed_attachment_indices,
-        new_custom_field_ids,
+        removed_attachment_indices: update.removed_attachment_indices.clone(),
+        new_custom_field_ids: update.new_custom_field_ids.clone(),
         timestamp_ms,
     };
     let mutation = JournalMutation::UpdateEntry(payload);

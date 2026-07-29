@@ -51,6 +51,16 @@ pub struct EntryPropertiesUpdate {
     pub icon: Option<IconUpdate>,
 }
 
+/// Complete desired entry update, including deterministic mutation metadata.
+pub struct EntryUpdate {
+    pub fields: Vec<EntryFieldUpdate>,
+    pub properties: Option<EntryPropertiesUpdate>,
+    pub attachments: Vec<EntryBinary>,
+    pub removed_attachment_indices: Vec<u64>,
+    pub new_custom_field_ids: Vec<Uuid>,
+    pub last_modification_time: DateInstant,
+}
+
 /// A fully validated entry replacement ready for an infallible database commit.
 pub struct PreparedEntryUpdate {
     entry_id: NodeId,
@@ -59,50 +69,14 @@ pub struct PreparedEntryUpdate {
 }
 
 impl Database {
-    /// Atomically replace the complete ordered field list and optionally update entry properties.
+    /// Atomically apply a complete entry update.
     pub fn update_entry(
         &mut self,
         composite_key: &CompositeKey,
         entry_id: &NodeId,
-        fields: &[EntryFieldUpdate],
-        properties: Option<&EntryPropertiesUpdate>,
+        update: &EntryUpdate,
     ) -> DatabaseResult<bool> {
-        let new_custom_field_ids = fields
-            .iter()
-            .filter(|field| field.field_id.is_none())
-            .map(|_| Uuid::new_v4())
-            .collect::<Vec<_>>();
-        self.update_entry_at(
-            composite_key,
-            entry_id,
-            fields,
-            properties,
-            &new_custom_field_ids,
-            DateInstant::now(),
-        )
-    }
-
-    /// Validate, prepare, and commit an entry update with deterministic IDs and timestamp.
-    pub fn update_entry_at(
-        &mut self,
-        composite_key: &CompositeKey,
-        entry_id: &NodeId,
-        fields: &[EntryFieldUpdate],
-        properties: Option<&EntryPropertiesUpdate>,
-        new_custom_field_ids: &[Uuid],
-        last_modification_time: DateInstant,
-    ) -> DatabaseResult<bool> {
-        let Some(prepared) = self.prepare_entry_update(
-            composite_key,
-            entry_id,
-            fields,
-            properties,
-            &[],
-            &[],
-            new_custom_field_ids,
-            last_modification_time,
-        )?
-        else {
+        let Some(prepared) = self.prepare_entry_update(composite_key, entry_id, update)? else {
             return Ok(false);
         };
         self.commit_entry_update(prepared);
@@ -110,18 +84,20 @@ impl Database {
     }
 
     /// Build an entry update without mutating the database.
-    #[allow(clippy::too_many_arguments)]
     pub fn prepare_entry_update(
         &self,
         composite_key: &CompositeKey,
         entry_id: &NodeId,
-        fields: &[EntryFieldUpdate],
-        properties: Option<&EntryPropertiesUpdate>,
-        attachments: &[EntryBinary],
-        removed_attachment_indices: &[u64],
-        new_custom_field_ids: &[Uuid],
-        last_modification_time: DateInstant,
+        update: &EntryUpdate,
     ) -> DatabaseResult<Option<PreparedEntryUpdate>> {
+        let EntryUpdate {
+            fields,
+            properties,
+            attachments,
+            removed_attachment_indices,
+            new_custom_field_ids,
+            last_modification_time,
+        } = update;
         let original = self
             .entries
             .get(entry_id)
@@ -363,7 +339,7 @@ impl Database {
         if !changed {
             return Ok(None);
         }
-        updated.last_modification_time = last_modification_time;
+        updated.last_modification_time = *last_modification_time;
         Ok(Some(PreparedEntryUpdate {
             entry_id: *entry_id,
             updated,

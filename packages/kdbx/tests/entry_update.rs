@@ -1,7 +1,7 @@
 use keeless_kdbx::{
     open_database, save_database, ChangeTracker, CompositeKey, Database, DatabaseError,
     DatabaseVersion, DateInstant, Entry, EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate,
-    Group, IconImage, IconImageStandard, IconUpdate, NodeId, ProtectedString,
+    EntryUpdate, Group, IconImage, IconImageStandard, IconUpdate, NodeId, ProtectedString,
 };
 
 fn loaded_database() -> (Database, CompositeKey, NodeId) {
@@ -87,6 +87,25 @@ fn unchanged_fields(entry: &Entry) -> Vec<EntryFieldUpdate> {
         .collect()
 }
 
+fn entry_update(
+    fields: Vec<EntryFieldUpdate>,
+    properties: Option<EntryPropertiesUpdate>,
+) -> EntryUpdate {
+    let new_custom_field_ids = fields
+        .iter()
+        .filter(|field| field.field_id.is_none())
+        .map(|_| uuid::Uuid::new_v4())
+        .collect();
+    EntryUpdate {
+        fields,
+        properties,
+        attachments: vec![],
+        removed_attachment_indices: vec![],
+        new_custom_field_ids,
+        last_modification_time: DateInstant::now(),
+    }
+}
+
 #[test]
 fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() {
     let (mut database, key, entry_id) = loaded_database();
@@ -118,7 +137,7 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
     ]);
 
     assert!(database
-        .update_entry(&key, &entry_id, &fields, None)
+        .update_entry(&key, &entry_id, &entry_update(fields, None))
         .unwrap());
     let entry = database.get_entry(&entry_id).unwrap();
     assert_eq!(
@@ -199,7 +218,7 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
         },
     ]);
     changed
-        .update_entry(&key, &entry_id, &changed_fields, None)
+        .update_entry(&key, &entry_id, &entry_update(changed_fields, None))
         .unwrap();
     let diff = tracker
         .diff_against_snapshot_with_credentials(&changed, &key)
@@ -215,7 +234,7 @@ fn invalid_and_noop_updates_are_atomic() {
     let mut invalid = standard_fields(&before);
     invalid[0].name = "RenamedTitle".into();
     assert!(matches!(
-        database.update_entry(&key, &entry_id, &invalid, None),
+        database.update_entry(&key, &entry_id, &entry_update(invalid, None)),
         Err(DatabaseError::InvalidFormat(_))
     ));
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
@@ -244,7 +263,7 @@ fn invalid_and_noop_updates_are_atomic() {
         },
     ]);
     assert!(!database
-        .update_entry(&key, &entry_id, &unchanged, None)
+        .update_entry(&key, &entry_id, &entry_update(unchanged, None))
         .unwrap());
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
     assert!(!database.data_modified);
@@ -270,7 +289,7 @@ fn deleting_trailing_or_all_custom_fields_is_a_change() {
         );
 
         assert!(database
-            .update_entry(&key, &entry_id, &fields, None)
+            .update_entry(&key, &entry_id, &entry_update(fields, None))
             .unwrap());
         let entry = database.get_entry(&entry_id).unwrap();
         assert_eq!(entry.custom_fields().count(), retained_occurrences.len());
@@ -291,7 +310,7 @@ fn template_metadata_can_be_updated_added_and_deleted() {
     let fields = unchanged_fields(&before);
 
     assert!(!database
-        .update_entry(&key, &entry_id, &fields, None)
+        .update_entry(&key, &entry_id, &entry_update(fields.clone(), None))
         .unwrap());
     let reserved = database
         .get_entry(&entry_id)
@@ -321,7 +340,7 @@ fn template_metadata_can_be_updated_added_and_deleted() {
         is_protected: true,
     });
     assert!(database
-        .update_entry(&key, &entry_id, &changed, None)
+        .update_entry(&key, &entry_id, &entry_update(changed, None))
         .unwrap());
     let updated = database.get_entry(&entry_id).unwrap();
     let renamed = updated.field(reserved_id).unwrap();
@@ -334,7 +353,7 @@ fn template_metadata_can_be_updated_added_and_deleted() {
     let mut without_internal = unchanged_fields(updated);
     without_internal.retain(|field| !field.name.starts_with("_etm_"));
     assert!(database
-        .update_entry(&key, &entry_id, &without_internal, None)
+        .update_entry(&key, &entry_id, &entry_update(without_internal, None))
         .unwrap());
     assert!(database
         .get_entry(&entry_id)
@@ -374,7 +393,7 @@ fn fields_and_properties_commit_with_one_history_snapshot() {
     };
 
     assert!(database
-        .update_entry(&key, &entry_id, &fields, Some(&properties))
+        .update_entry(&key, &entry_id, &entry_update(fields, Some(properties)))
         .unwrap());
     let updated = database.get_entry(&entry_id).unwrap();
     assert_eq!(updated.title().as_str(), "Updated");

@@ -7,7 +7,9 @@ mod entry;
 pub use entry::EntryFieldSelector;
 
 mod entry_update;
-pub use entry_update::{EntryFieldUpdate, EntryPropertiesUpdate, IconUpdate, PreparedEntryUpdate};
+pub use entry_update::{
+    EntryFieldUpdate, EntryPropertiesUpdate, EntryUpdate, IconUpdate, PreparedEntryUpdate,
+};
 
 mod group;
 mod recycle_bin;

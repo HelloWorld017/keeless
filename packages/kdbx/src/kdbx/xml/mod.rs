@@ -14,9 +14,10 @@ mod tests {
     use super::*;
     use crate::crypto::inner_stream::{InnerStreamCipher, Salsa20InnerStream};
     use crate::kdbx::limits::MAX_XML_NESTING_DEPTH;
+    use crate::model::core::date::DateInstant;
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
-    use crate::model::db::database::{Database, DatabaseVersion, EntryFieldUpdate};
+    use crate::model::db::database::{Database, DatabaseVersion, EntryFieldUpdate, EntryUpdate};
     use crate::model::entry::{Entry, EntryFieldId, StandardField};
     use crate::model::exception::DatabaseResult;
     use crate::model::group::Group;
@@ -259,7 +260,20 @@ mod tests {
         .collect::<Vec<_>>();
         let key = crate::CompositeKey::new().with_password(b"test").unwrap();
 
-        assert!(db.update_entry(&key, &entry_id, &fields, None).unwrap());
+        assert!(db
+            .update_entry(
+                &key,
+                &entry_id,
+                &EntryUpdate {
+                    fields,
+                    properties: None,
+                    attachments: vec![],
+                    removed_attachment_indices: vec![],
+                    new_custom_field_ids: vec![Uuid::new_v4()],
+                    last_modification_time: DateInstant::now(),
+                },
+            )
+            .unwrap());
         db.entries.get_mut(&entry_id).unwrap().history.clear();
         let mut write_stream = Salsa20InnerStream::new(stream_key).unwrap();
         let output = KdbxXmlWriter::write(&db, &mut write_stream).unwrap();

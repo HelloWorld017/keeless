@@ -27,8 +27,8 @@ pub use core::{
 };
 pub use db::{
     ChangeRecord, ChangeTracker, ChangeType, CompositeKey, Database, DatabaseVersion, DiffResult,
-    EntryFieldSelector, EntryFieldUpdate, EntryPropertiesUpdate, IconUpdate, MasterCredential,
-    PreparedEntryUpdate,
+    EntryFieldSelector, EntryFieldUpdate, EntryPropertiesUpdate, EntryUpdate, IconUpdate,
+    MasterCredential, PreparedEntryUpdate,
 };
 pub use entry::auto_type::{AutoType, AutoTypeAssociation};
 pub use entry::field_references::{FieldReference, RefTarget};

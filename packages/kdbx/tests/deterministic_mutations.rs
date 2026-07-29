@@ -3,7 +3,7 @@ use keeless_kdbx::kdbx::template::{
 };
 use keeless_kdbx::{
     CompositeKey, CustomData, Database, DatabaseVersion, DateInstant, Entry, EntryFieldId,
-    EntryFieldUpdate, Group, NodeId, ProtectedString,
+    EntryFieldUpdate, EntryUpdate, Group, NodeId, ProtectedString,
 };
 use uuid::Uuid;
 
@@ -93,12 +93,14 @@ fn prepared_entry_update_is_pure_and_commits_supplied_id_and_time() {
         .prepare_entry_update(
             &key,
             &entry_id,
-            &fields,
-            None,
-            &[],
-            &[],
-            &[custom_uuid],
-            modified,
+            &EntryUpdate {
+                fields,
+                properties: None,
+                attachments: vec![],
+                removed_attachment_indices: vec![],
+                new_custom_field_ids: vec![custom_uuid],
+                last_modification_time: modified,
+            },
         )
         .unwrap()
         .unwrap();
