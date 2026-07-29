@@ -19,6 +19,8 @@ pub enum CoreError {
     DatabaseLocked,
     #[error("invalid database credentials")]
     InvalidCredentials,
+    #[error("invalid source database credentials")]
+    InvalidSourceCredentials,
     #[error("password is required")]
     PasswordRequired,
     #[error("group does not exist")]
@@ -137,6 +139,10 @@ impl From<&CoreError> for OperationError {
             CoreError::InvalidCredentials => {
                 ("invalid_credentials", "Database credentials are invalid")
             }
+            CoreError::InvalidSourceCredentials => (
+                "source_invalid_credentials",
+                "Source database credentials are invalid",
+            ),
             CoreError::PasswordRequired => ("password_required", "Password is required"),
             CoreError::GroupNotFound => ("group_not_found", "Group does not exist"),
             CoreError::EntryNotFound => ("entry_not_found", "Entry does not exist"),

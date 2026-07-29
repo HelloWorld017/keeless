@@ -12,7 +12,6 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: MergeTransferredDatabaseArgs,
 ) -> Result<OperationSuccess> {
-    let bytes = core.consume_upload_transfer(&args.transfer_id)?;
     let source_password = Zeroizing::new(std::mem::take(&mut args.source_password).into_bytes());
     let target_password = args
         .password
@@ -21,8 +20,12 @@ pub(super) async fn execute(
     let target_key = core
         .current_key(target_password.as_deref().map(Vec::as_slice))
         .await?;
+    let bytes = core.consume_upload_transfer(&args.transfer_id)?;
     let source_key = CompositeKey::new().with_password(&source_password)?;
-    let source = open_database(bytes.as_slice(), &source_key)?;
+    let source = open_database(bytes.as_slice(), &source_key).map_err(|error| match error {
+        keeless_kdbx::DatabaseError::InvalidCredentials => CoreError::InvalidSourceCredentials,
+        error => error.into(),
+    })?;
 
     // Protected values are memory-encrypted with the source key. Re-encrypt the parsed
     // source under the target key before the credential-aware merger compares either side.

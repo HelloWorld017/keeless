@@ -1,7 +1,10 @@
 import { Button } from '@/components/button';
 import { Input } from '@/components/input';
+import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
 import { IconFile, IconLoaderCircle } from '@/icons';
+import { CoreRequestError } from '@/utils/request';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type DragEvent } from 'react';
 import { ConfigRow } from '../_components';
@@ -23,6 +26,10 @@ const refreshOperations = [
 const fileError = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
+const needsPassword = (error: unknown) =>
+  error instanceof CoreRequestError &&
+  (error.code === 'password_required' || error.code === 'invalid_credentials');
+
 const validFile = (file: File) => {
   if (!file.name.toLowerCase().endsWith('.kdbx')) {
     throw new Error('Choose a .kdbx database file.');
@@ -35,12 +42,16 @@ const validFile = (file: File) => {
 export const DatabaseConfigFragment = () => {
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
+  const hasNativePasswordInput = useHasNativePasswordInput();
   const [file, setFile] = useState<File>();
-  const [sourcePassword, setSourcePassword] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
   const [pending, setPending] = useState<'export' | 'merge'>();
   const [error, setError] = useState<string>();
   const [summary, setSummary] = useState<string>();
+  const [passwordRequest, setPasswordRequest] = useState<
+    | { type: 'source' }
+    | { type: 'current-export'; invalid: boolean }
+    | { type: 'current-merge'; sourcePassword: string; invalid: boolean }
+  >();
 
   const selectFile = (nextFile: File | undefined) => {
     if (!nextFile) {
@@ -57,13 +68,13 @@ export const DatabaseConfigFragment = () => {
     }
   };
 
-  const download = async () => {
+  const download = async (password?: string) => {
     setPending('export');
     setError(undefined);
     setSummary(undefined);
     try {
       const transfer = await requestClient.data!.request('prepareDatabaseExport', {
-        password: currentPassword || null,
+        password: password ?? null,
       });
       const bytes = await requestClient.data!.download(transfer.transferId);
       try {
@@ -77,15 +88,23 @@ export const DatabaseConfigFragment = () => {
         bytes.fill(0);
       }
     } catch (nextError) {
+      if (!hasNativePasswordInput && needsPassword(nextError)) {
+        setPasswordRequest({
+          type: 'current-export',
+          invalid:
+            nextError instanceof CoreRequestError && nextError.code === 'invalid_credentials',
+        });
+        return;
+      }
       setError(fileError(nextError, 'The database could not be exported.'));
     } finally {
       setPending(undefined);
     }
   };
 
-  const merge = async () => {
-    if (!file || !sourcePassword) {
-      setError('Choose a database file and enter its master password.');
+  const merge = async (sourcePassword: string, password?: string) => {
+    if (!file) {
+      setError('Choose a database file.');
       return;
     }
     setPending('merge');
@@ -96,9 +115,8 @@ export const DatabaseConfigFragment = () => {
       const result = await requestClient.data!.request('mergeTransferredDatabase', {
         transferId,
         sourcePassword,
-        password: currentPassword || null,
+        password: password ?? null,
       });
-      setSourcePassword('');
       setSummary(
         `Merged ${result.entriesAdded} added, ${result.entriesModified} modified, and ${result.entriesDeleted} deleted entries.`,
       );
@@ -108,6 +126,15 @@ export const DatabaseConfigFragment = () => {
         ),
       );
     } catch (nextError) {
+      if (!hasNativePasswordInput && needsPassword(nextError)) {
+        setPasswordRequest({
+          type: 'current-merge',
+          sourcePassword,
+          invalid:
+            nextError instanceof CoreRequestError && nextError.code === 'invalid_credentials',
+        });
+        return;
+      }
       setError(fileError(nextError, 'The database could not be merged.'));
     } finally {
       setPending(undefined);
@@ -171,26 +198,10 @@ export const DatabaseConfigFragment = () => {
             onChange={chooseFile}
           />
         </div>
-        <Input
-          type="password"
-          autoComplete="current-password"
-          placeholder="Dropped database password"
-          value={sourcePassword}
-          disabled={pending !== undefined}
-          onChange={event => setSourcePassword(event.target.value)}
-        />
-        <Input
-          type="password"
-          autoComplete="current-password"
-          placeholder="Current database password (when required)"
-          value={currentPassword}
-          disabled={pending !== undefined}
-          onChange={event => setCurrentPassword(event.target.value)}
-        />
         <Button
           type="button"
-          disabled={pending !== undefined || !file || !sourcePassword}
-          onClick={() => void merge()}
+          disabled={pending !== undefined || !file}
+          onClick={() => setPasswordRequest({ type: 'source' })}
         >
           {pending === 'merge' && <IconLoaderCircle className="animate-spin" />}
           Merge database
@@ -203,6 +214,40 @@ export const DatabaseConfigFragment = () => {
           {error}
         </p>
       )}
+      <PasswordPrompt
+        open={passwordRequest !== undefined}
+        pending={pending !== undefined}
+        error={
+          passwordRequest && 'invalid' in passwordRequest && passwordRequest.invalid
+            ? 'The master password is incorrect.'
+            : undefined
+        }
+        title={
+          passwordRequest?.type === 'source' ? 'Unlock dropped database' : 'Confirm master password'
+        }
+        description={
+          passwordRequest?.type === 'source'
+            ? 'Enter the master password for the dropped database.'
+            : 'Enter the master password for the current database.'
+        }
+        action={passwordRequest?.type === 'source' ? 'Merge database' : 'Continue'}
+        onOpenChange={open => {
+          if (!open && pending === undefined) {
+            setPasswordRequest(undefined);
+          }
+        }}
+        onSubmit={password => {
+          const request = passwordRequest;
+          setPasswordRequest(undefined);
+          if (request?.type === 'source') {
+            void merge(password);
+          } else if (request?.type === 'current-export') {
+            void download(password);
+          } else if (request?.type === 'current-merge') {
+            void merge(request.sourcePassword, password);
+          }
+        }}
+      />
     </div>
   );
 };
