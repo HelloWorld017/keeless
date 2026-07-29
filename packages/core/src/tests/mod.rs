@@ -463,6 +463,7 @@ pub(super) async fn query_core_with_persistence(
         clock: Arc::new(FakeClock::new(1234)),
         database_persistence: Some(persistence),
         task_spawner: None,
+        transfer_provider: None,
     })
     .await
     .unwrap();
@@ -504,6 +505,7 @@ pub(super) fn host(
         clock,
         database_persistence: None,
         task_spawner: None,
+        transfer_provider: None,
     }
 }
 

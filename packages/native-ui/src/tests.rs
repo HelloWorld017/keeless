@@ -160,7 +160,7 @@ async fn encrypted_response_round_trips_through_lesswire_server() {
     let observed = Arc::new(Mutex::new(Vec::new()));
     let captured = observed.clone();
     let response = server
-        .handle_frame(&frame, move |value| {
+        .handle_frame(&frame, move |_owner, value| {
             *captured.lock().unwrap() = value.to_vec();
             async { Ok::<Option<Vec<u8>>, ()>(None) }
         })

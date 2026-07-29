@@ -26,7 +26,7 @@ use zeroize::Zeroizing;
 pub use error::{CoreError, Result};
 pub use host::{
     Clock, ConfigProvider, DatabasePersistence, HostFuture, KeelessHost, PasswordInputMode,
-    PasswordInputProvider, SystemClock, TaskSpawner,
+    PasswordInputProvider, SystemClock, TaskSpawner, TransferProvider,
 };
 pub use keeless_schema;
 pub use keeless_schema::{
@@ -34,7 +34,7 @@ pub use keeless_schema::{
     SyncStatus,
 };
 pub use keeless_sync::StorageProvider;
-pub const MAX_REQUEST_SIZE: usize = 256 * 1024;
+pub const MAX_REQUEST_SIZE: usize = 760 * 1024;
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
 
 /// Stable, non-secret identifier bound into database persistence authentication.
@@ -77,6 +77,8 @@ pub struct KeelessCore {
     sync_error: Option<OperationError>,
     pending_sync_key: Option<CompositeKey>,
     task_spawner: Option<Arc<dyn TaskSpawner>>,
+    transfer_provider: Option<Arc<dyn TransferProvider>>,
+    transfer_owner: Option<String>,
     background_fetch: Option<BackgroundFetch>,
     background_started_ms: Option<u64>,
     dirty: bool,
@@ -124,6 +126,8 @@ impl KeelessCore {
             sync_error: None,
             pending_sync_key: None,
             task_spawner: host.task_spawner,
+            transfer_provider: host.transfer_provider,
+            transfer_owner: None,
             background_fetch: None,
             background_started_ms: None,
             dirty: false,
@@ -134,23 +138,49 @@ impl KeelessCore {
         Ok(core)
     }
 
-    pub async fn sync(&mut self, password: Option<&[u8]>) -> Result<SyncReport> {
-        self.enforce_auto_lock();
-        self.background_fetch = None;
-        self.background_started_ms = None;
-        self.pending_sync_key = None;
+    pub(crate) fn publish_download_transfer(&self, bytes: Zeroizing<Vec<u8>>) -> Result<String> {
+        let provider = self
+            .transfer_provider
+            .as_ref()
+            .ok_or_else(|| CoreError::Host("binary transfers are unavailable".into()))?;
+        let owner = self
+            .transfer_owner
+            .as_deref()
+            .ok_or_else(|| CoreError::Host("binary transfer owner is unavailable".into()))?;
+        provider.publish_download(owner, bytes)
+    }
+
+    pub(crate) fn consume_upload_transfer(&self, transfer_id: &str) -> Result<Zeroizing<Vec<u8>>> {
+        let provider = self
+            .transfer_provider
+            .as_ref()
+            .ok_or_else(|| CoreError::Host("binary transfers are unavailable".into()))?;
+        let owner = self
+            .transfer_owner
+            .as_deref()
+            .ok_or_else(|| CoreError::Host("binary transfer owner is unavailable".into()))?;
+        provider.consume_upload(owner, transfer_id)
+    }
+
+    pub(crate) fn clear_transfers(&self) {
+        if let Some(provider) = &self.transfer_provider {
+            provider.clear();
+        }
+    }
+
+    pub(crate) async fn current_key(&self, password: Option<&[u8]>) -> Result<CompositeKey> {
         if self.handle.is_none() {
             return Err(CoreError::DatabaseLocked);
         }
-        let key = if let Some(password) = password {
+        if let Some(password) = password {
             let key = CompositeKey::new().with_password(password)?;
             self.handle
                 .as_ref()
                 .ok_or(CoreError::DatabaseLocked)?
                 .verify_credentials(&key)?;
-            key
+            Ok(key)
         } else if let Some(credential) = &self.credential {
-            credential.restore_key()?
+            credential.restore_key()
         } else {
             let password = self.request_password(PasswordInputMode::Save).await?;
             let key = CompositeKey::new().with_password(&password)?;
@@ -158,8 +188,16 @@ impl KeelessCore {
                 .as_ref()
                 .ok_or(CoreError::DatabaseLocked)?
                 .verify_credentials(&key)?;
-            key
-        };
+            Ok(key)
+        }
+    }
+
+    pub async fn sync(&mut self, password: Option<&[u8]>) -> Result<SyncReport> {
+        self.enforce_auto_lock();
+        self.background_fetch = None;
+        self.background_started_ms = None;
+        self.pending_sync_key = None;
+        let key = self.current_key(password).await?;
         self.sync_with_key(key, None).await
     }
 

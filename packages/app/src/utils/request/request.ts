@@ -60,6 +60,14 @@ export class RequestClient {
       responseBytes.fill(0);
     }
   }
+
+  upload(file: File) {
+    return this.wire.upload(file);
+  }
+
+  download(transferId: string) {
+    return this.wire.download(transferId);
+  }
 }
 
 export const getRequestClient = (host: Host) => RequestClient.connect(host);

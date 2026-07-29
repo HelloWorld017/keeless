@@ -55,6 +55,8 @@ fn generate() -> String {
     export::<UpdateEntryArgs>(&mut output);
     export::<DeleteEntryArgs>(&mut output);
     export::<SaveDatabaseArgs>(&mut output);
+    export::<PrepareDatabaseExportArgs>(&mut output);
+    export::<MergeTransferredDatabaseArgs>(&mut output);
     export_empty("GetCustomIconsArgs", &mut output);
     export_empty("GetEntryTemplatesArgs", &mut output);
     export::<MoveGroupArgs>(&mut output);
@@ -84,6 +86,8 @@ fn generate() -> String {
     export::<CustomIconsResult>(&mut output);
     export::<AddEntryResult>(&mut output);
     export::<AddGroupResult>(&mut output);
+    export::<PrepareDatabaseExportResult>(&mut output);
+    export::<MergeTransferredDatabaseResult>(&mut output);
     export::<RevealEntryFieldsResult>(&mut output);
     export::<PasskeySummary>(&mut output);
     export::<PasskeysResult>(&mut output);
@@ -95,6 +99,8 @@ fn generate() -> String {
         "export type OperationOutcome = ({ status: \"success\" } & OperationSuccess) | { status: \"error\"; error: OperationError }\n\n",
     );
     output.push_str("export type OperationResponse = OperationOutcome & { requestId: string }\n\n");
+    output.truncate(output.trim_end().len());
+    output.push('\n');
     output
 }
 

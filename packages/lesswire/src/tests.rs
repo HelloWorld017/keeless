@@ -3,7 +3,9 @@ use std::sync::{
     atomic::{AtomicBool, AtomicI64, Ordering},
 };
 
+use super::transfer::Packet;
 use super::*;
+use zeroize::Zeroizing;
 
 #[derive(Default)]
 struct MemoryStore(Mutex<Option<Vec<u8>>>);
@@ -34,6 +36,81 @@ impl Clock for TestClock {
     }
 }
 
+fn transfer_response_id(bytes: &[u8], kind: u8) -> TransferId {
+    assert_eq!(&bytes[..3], &[TRANSFER_MAGIC, 1, kind]);
+    TransferId::from_bytes(&bytes[3..]).unwrap()
+}
+
+#[test]
+fn upload_is_preallocated_finished_and_consumed_once() {
+    let clock = Arc::new(TestClock(AtomicI64::new(0)));
+    let registry = TransferRegistry::new(clock);
+    let owner = TransferOwner::new("client");
+    let response = registry
+        .handle_packet(owner.clone(), &Packet::BeginUpload { size: 3 }.encode())
+        .unwrap();
+    let id = transfer_response_id(&response, 2);
+
+    let response = registry
+        .handle_packet(
+            owner.clone(),
+            &Packet::UploadChunk {
+                id: id.clone(),
+                offset: 0,
+                bytes: b"abc",
+            }
+            .encode(),
+        )
+        .unwrap();
+    assert_eq!(response[2], 4);
+    registry
+        .handle_packet(owner.clone(), &Packet::Finish { id: id.clone() }.encode())
+        .unwrap();
+    assert_eq!(&*registry.consume_upload(&owner, &id).unwrap(), b"abc");
+    assert!(matches!(
+        registry.consume_upload(&owner, &id),
+        Err(TransferError::NotFound)
+    ));
+}
+
+#[test]
+fn transfer_expires_after_one_minute_without_valid_packets() {
+    let clock = Arc::new(TestClock(AtomicI64::new(0)));
+    let registry = TransferRegistry::new(clock.clone());
+    let owner = TransferOwner::new("client");
+    let response = registry
+        .handle_packet(owner.clone(), &Packet::BeginUpload { size: 1 }.encode())
+        .unwrap();
+    let id = transfer_response_id(&response, 2);
+    clock.0.store(TRANSFER_TTL_MS as i64, Ordering::Relaxed);
+    registry.purge_expired();
+    assert!(matches!(
+        registry.consume_upload(&owner, &id),
+        Err(TransferError::NotFound)
+    ));
+}
+
+#[test]
+fn downloads_are_bound_to_the_authenticated_owner() {
+    let clock = Arc::new(TestClock(AtomicI64::new(0)));
+    let registry = TransferRegistry::new(clock);
+    let owner = TransferOwner::new("client-a");
+    let id = registry
+        .publish_download(owner.clone(), Zeroizing::new(b"abc".to_vec()))
+        .unwrap();
+    assert!(matches!(
+        registry.handle_packet(
+            TransferOwner::new("client-b"),
+            &Packet::BeginDownload { id: id.clone() }.encode()
+        ),
+        Err(TransferError::OwnerMismatch)
+    ));
+    let response = registry
+        .handle_packet(owner, &Packet::BeginDownload { id }.encode())
+        .unwrap();
+    assert_eq!(response[2], 6);
+}
+
 #[tokio::test]
 async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
     let store = Arc::new(MemoryStore::default());
@@ -52,7 +129,7 @@ async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
 
     let handshake = client.handshake_frame().unwrap();
     let response = server
-        .handle_frame(&handshake, |_| async { Ok::<_, ()>(None) })
+        .handle_frame(&handshake, |_, _| async { Ok::<_, ()>(None) })
         .await
         .unwrap()
         .unwrap();
@@ -60,7 +137,7 @@ async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
     assert_eq!(trusted, server.public_key_bundle());
     assert!(
         server
-            .handle_frame(&handshake, |_| async { Ok::<_, ()>(None) })
+            .handle_frame(&handshake, |_, _| async { Ok::<_, ()>(None) })
             .await
             .unwrap()
             .is_none()
@@ -68,7 +145,7 @@ async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
 
     let request = client.encrypt(b"secret request").unwrap();
     let response = server
-        .handle_frame(&request, |plaintext| async move {
+        .handle_frame(&request, |_owner, plaintext| async move {
             assert_eq!(&*plaintext, b"secret request");
             Ok::<_, ()>(Some(b"secret response".to_vec()))
         })
@@ -119,7 +196,7 @@ async fn dynamic_runtime_approval_is_validated_and_not_persisted() {
         .add_runtime_approval(&client.public_key_bundle())
         .unwrap();
     let response = server
-        .handle_frame(&client.handshake_frame().unwrap(), |_| async {
+        .handle_frame(&client.handshake_frame().unwrap(), |_, _| async {
             Ok::<_, ()>(None)
         })
         .await

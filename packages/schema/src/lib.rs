@@ -376,6 +376,24 @@ pub struct SaveDatabaseArgs {
     pub password: Option<String>,
 }
 
+#[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrepareDatabaseExportArgs {
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub password: Option<String>,
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MergeTransferredDatabaseArgs {
+    pub transfer_id: String,
+    pub source_password: String,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    #[specta(optional = true)]
+    pub password: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
 pub struct GetCustomIconsArgs {}
@@ -535,6 +553,8 @@ pub enum Operation {
     UpdateEntry(UpdateEntryArgs),
     DeleteEntry(DeleteEntryArgs),
     SaveDatabase(SaveDatabaseArgs),
+    PrepareDatabaseExport(PrepareDatabaseExportArgs),
+    MergeTransferredDatabase(MergeTransferredDatabaseArgs),
     GetCustomIcons(GetCustomIconsArgs),
     GetEntryTemplates(GetEntryTemplatesArgs),
     MoveGroup(MoveGroupArgs),
@@ -656,6 +676,24 @@ pub struct AddGroupResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
+pub struct PrepareDatabaseExportResult {
+    pub transfer_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeTransferredDatabaseResult {
+    pub entries_added: u64,
+    pub entries_modified: u64,
+    pub entries_deleted: u64,
+    pub groups_added: u64,
+    pub groups_modified: u64,
+    pub groups_deleted: u64,
+    pub conflict_count: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct RevealEntryFieldsResult {
     pub values: Vec<String>,
 }
@@ -720,6 +758,8 @@ pub enum OperationSuccess {
     UpdateEntry(EmptyResult),
     DeleteEntry(EmptyResult),
     SaveDatabase(EmptyResult),
+    PrepareDatabaseExport(PrepareDatabaseExportResult),
+    MergeTransferredDatabase(MergeTransferredDatabaseResult),
     GetCustomIcons(CustomIconsResult),
     GetEntryTemplates(EntriesResult),
     MoveGroup(EmptyResult),

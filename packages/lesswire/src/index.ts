@@ -2,6 +2,15 @@ import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { download as downloadTransfer, upload as uploadTransfer } from './transfer';
+
+export {
+  MAX_TRANSFER_CHUNK_SIZE,
+  MAX_TRANSFER_SIZE,
+  TRANSFER_MAGIC,
+  download,
+  upload,
+} from './transfer';
 
 export type MessageFrame = {
   version: 1;
@@ -25,6 +34,7 @@ export interface ClientStore {
   saveTrustedServer(relayId: string, bundle: string): Promise<void>;
 }
 
+export const MAX_FRAME_SIZE = 1024 * 1024;
 const FRAME_TIMESTAMP_TOLERANCE_MS = 500;
 const NONCE_CACHE_CAPACITY = 2048;
 const FRAME_TRANSCRIPT_PREFIX = 'keeless-frame-v1';
@@ -34,6 +44,8 @@ const DEVICE_SIGNING_INFO = new TextEncoder().encode('keeless-device-ed25519-v1'
 const DEVICE_ENCRYPTION_INFO = new TextEncoder().encode('keeless-device-x25519-v1');
 const EMPTY_SALT = new Uint8Array();
 const encoder = new TextEncoder();
+
+const frameSize = (frame: MessageFrame) => encoder.encode(JSON.stringify(frame)).byteLength;
 
 type Identity = {
   signingSecret: Uint8Array;
@@ -180,6 +192,14 @@ export class Client {
     return request;
   }
 
+  upload(file: Blob) {
+    return uploadTransfer(this, file);
+  }
+
+  download(transferId: string) {
+    return downloadTransfer(this, transferId);
+  }
+
   private async performRequest(payload: Uint8Array) {
     const nonce = randomBytes(24);
     const ephemeral = x25519.keygen();
@@ -199,6 +219,9 @@ export class Client {
         xchacha20poly1305(key, nonce, encoder.encode(headerTranscript(frame))).encrypt(payload),
       );
       frame = signFrame(frame, this.identity.signingSecret);
+      if (frameSize(frame) > MAX_FRAME_SIZE) {
+        throw new Error('Encrypted frame exceeds the 1 MiB limit');
+      }
     } finally {
       nonce.fill(0);
       ephemeral.secretKey.fill(0);
@@ -208,6 +231,9 @@ export class Client {
     const response = await this.relay.send(frame);
     if (!response?.payload || !response.ephemeralPublicKey) {
       throw new Error('Server rejected the request');
+    }
+    if (frameSize(response) > MAX_FRAME_SIZE) {
+      throw new Error('Relay returned an oversized message frame');
     }
     verifyFrame(response, this.serverBundle);
     const acceptedAt = performance.now();

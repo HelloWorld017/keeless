@@ -3,6 +3,7 @@ use keeless_schema::{EmptyResult, LockArgs, OperationSuccess};
 use crate::{KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) {
+    core.clear_transfers();
     core.extensions.lock();
     core.handle = None;
     core.credential = None;

@@ -16,6 +16,12 @@ use thiserror::Error;
 use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+mod transfer;
+pub use transfer::{
+    MAX_TRANSFER_CHUNK_SIZE, MAX_TRANSFER_SIZE, TRANSFER_MAGIC, TRANSFER_TTL_MS, TransferError,
+    TransferId, TransferOwner, TransferRegistry,
+};
+
 pub const FRAME_VERSION: u8 = 1;
 pub const FRAME_TIMESTAMP_TOLERANCE_MS: i64 = 500;
 pub const NONCE_CACHE_CAPACITY: usize = 2048;
@@ -55,6 +61,8 @@ pub enum Error {
     InvalidState(String),
     #[error("cryptographic operation failed")]
     Crypto,
+    #[error("encrypted frame exceeds {MAX_FRAME_SIZE} bytes")]
+    FrameTooLarge,
     #[error("wire serialization failed: {0}")]
     Serialization(#[from] serde_json::Error),
 }
@@ -234,6 +242,7 @@ pub struct Server {
     runtime_approved: Vec<String>,
     nonce_cache: HashMap<String, u64>,
     host: ServerHost,
+    transfers: TransferRegistry,
 }
 
 impl Server {
@@ -259,12 +268,14 @@ impl Server {
             None => (Identity::generate()?, Vec::new(), true),
         };
         validate_bundles(&host.runtime_approved_clients)?;
+        let transfers = TransferRegistry::new(host.clock.clone());
         let server = Self {
             identity,
             persisted_approved,
             runtime_approved: host.runtime_approved_clients.clone(),
             nonce_cache: HashMap::new(),
             host,
+            transfers,
         };
         if generated {
             server.persist().await?;
@@ -274,6 +285,10 @@ impl Server {
 
     pub fn public_key_bundle(&self) -> String {
         self.identity.public_key_bundle()
+    }
+
+    pub fn transfers(&self) -> TransferRegistry {
+        self.transfers.clone()
     }
 
     /// Adds a validated approval for this server process without persisting it.
@@ -292,7 +307,7 @@ impl Server {
         handler: F,
     ) -> std::result::Result<Option<MessageFrame>, HandleError<E>>
     where
-        F: FnOnce(Zeroizing<Vec<u8>>) -> Fut,
+        F: FnOnce(TransferOwner, Zeroizing<Vec<u8>>) -> Fut,
         Fut: Future<Output = std::result::Result<Option<Vec<u8>>, E>>,
     {
         if frame_size(frame) > MAX_FRAME_SIZE {
@@ -313,7 +328,23 @@ impl Server {
         let Some(plaintext) = decrypt_frame(frame, &self.identity.encryption_key()) else {
             return Ok(None);
         };
-        let Some(response) = handler(Zeroizing::new(plaintext))
+        let owner = TransferOwner::new(sender.as_str());
+        if plaintext.first() == Some(&TRANSFER_MAGIC) {
+            let response = self.transfers.handle_packet(owner, &plaintext).ok();
+            return response
+                .map(|response| {
+                    encrypt_frame(
+                        self.host.clock.now_millis(),
+                        &response,
+                        self.identity.public_key_bundle(),
+                        &self.identity.signing_key(),
+                        &sender.encryption,
+                    )
+                })
+                .transpose()
+                .map_err(HandleError::Wire);
+        }
+        let Some(response) = handler(owner, Zeroizing::new(plaintext))
             .await
             .map_err(HandleError::Handler)?
         else {
@@ -622,6 +653,9 @@ fn encrypt_frame(
         .map_err(|_| Error::Crypto)?;
     frame.payload = Some(URL_SAFE_NO_PAD.encode(ciphertext));
     sign_frame(&mut frame, sender_signing);
+    if frame_size(&frame) > MAX_FRAME_SIZE {
+        return Err(Error::FrameTooLarge);
+    }
     Ok(frame)
 }
 

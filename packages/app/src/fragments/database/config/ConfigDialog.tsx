@@ -8,9 +8,13 @@ import {
 } from '@/components/dialog';
 import { useExtraConfig } from '@/fragments/_providers/AppIntegrationProvider';
 import { useState } from 'react';
+import { DatabaseConfigFragment } from './database';
 import { GeneralConfigFragment } from './general';
 
-const builtInConfig = [{ category: 'General', component: GeneralConfigFragment }];
+const builtInConfig = [
+  { category: 'General', component: GeneralConfigFragment },
+  { category: 'Database', component: DatabaseConfigFragment },
+];
 
 export const ConfigDialog = ({
   open,

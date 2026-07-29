@@ -14,8 +14,10 @@ pub(crate) mod get_tag_entries;
 pub(crate) mod get_tags;
 pub(crate) mod get_trash_entries;
 pub(crate) mod lock;
+pub(crate) mod merge_transferred_database;
 pub(crate) mod mutations;
 pub(crate) mod open;
+pub(crate) mod prepare_database_export;
 pub(crate) mod reveal_entry_fields;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;
@@ -50,6 +52,12 @@ pub(crate) async fn execute(
         Operation::UpdateEntry(args) => mutations::update_entry::execute(core, args).await,
         Operation::DeleteEntry(args) => mutations::delete_entry::execute(core, args).await,
         Operation::SaveDatabase(args) => save_database::execute(core, args).await,
+        Operation::PrepareDatabaseExport(args) => {
+            prepare_database_export::execute(core, args).await
+        }
+        Operation::MergeTransferredDatabase(args) => {
+            merge_transferred_database::execute(core, args).await
+        }
         Operation::GetCustomIcons(args) => get_custom_icons::execute(core, args),
         Operation::GetEntryTemplates(args) => get_entry_templates::execute(core, args),
         Operation::MoveGroup(args) => mutations::move_group::execute(core, args).await,

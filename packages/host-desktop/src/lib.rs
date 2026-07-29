@@ -15,11 +15,14 @@ use std::{
 };
 
 use keeless_core::{
-    HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
+    CoreError, HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
+    TransferProvider,
     keeless_schema::{DatabaseNodeId, OperationOutcome, OperationResponse, OperationSuccess},
 };
 use keeless_host_desktop_shared::ipc;
-use keeless_lesswire::{MessageFrame, Server, ServerHost};
+use keeless_lesswire::{
+    MessageFrame, Server, ServerHost, TransferId, TransferOwner, TransferRegistry,
+};
 use napi::{
     bindgen_prelude::{Buffer, Function},
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
@@ -29,6 +32,7 @@ use tokio::{
     sync::{Mutex, watch},
     task::JoinHandle,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     config::{CORE_SETTINGS_FILE, DesktopConfig, WIRE_STATE_FILE},
@@ -53,6 +57,38 @@ struct InnerState {
 
 #[derive(Debug)]
 struct TokioTaskSpawner;
+
+#[derive(Clone)]
+struct DesktopTransfers(TransferRegistry);
+
+impl TransferProvider for DesktopTransfers {
+    fn publish_download(
+        &self,
+        owner: &str,
+        bytes: Zeroizing<Vec<u8>>,
+    ) -> keeless_core::Result<String> {
+        self.0
+            .publish_download(TransferOwner::new(owner), bytes)
+            .map(|id| id.encode())
+            .map_err(|error| CoreError::Host(error.to_string()))
+    }
+
+    fn consume_upload(
+        &self,
+        owner: &str,
+        transfer_id: &str,
+    ) -> keeless_core::Result<Zeroizing<Vec<u8>>> {
+        let id = TransferId::parse(transfer_id)
+            .ok_or_else(|| CoreError::Host("invalid binary transfer ID".into()))?;
+        self.0
+            .consume_upload(&TransferOwner::new(owner), &id)
+            .map_err(|error| CoreError::Host(error.to_string()))
+    }
+
+    fn clear(&self) {
+        self.0.clear();
+    }
+}
 
 impl TaskSpawner for TokioTaskSpawner {
     fn spawn(&self, task: HostFuture<'static, ()>) {
@@ -103,6 +139,14 @@ impl DesktopHost {
         );
         let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
         providers.insert("local-file".into(), storage.clone());
+        let server = Server::new(ServerHost {
+            store: wire_config,
+            approval_provider: native_ui.clone(),
+            clock: Arc::new(keeless_lesswire::SystemClock),
+            runtime_approved_clients: Vec::new(),
+        })
+        .await
+        .map_err(|error| napi_error(error.to_string()))?;
         let core = KeelessCore::new(KeelessHost {
             storage_providers: providers,
             config_provider: core_config,
@@ -110,14 +154,7 @@ impl DesktopHost {
             clock: Arc::new(SystemClock),
             database_persistence: Some(database_persistence),
             task_spawner: Some(Arc::new(TokioTaskSpawner)),
-        })
-        .await
-        .map_err(|error| napi_error(error.to_string()))?;
-        let server = Server::new(ServerHost {
-            store: wire_config,
-            approval_provider: native_ui.clone(),
-            clock: Arc::new(keeless_lesswire::SystemClock),
-            runtime_approved_clients: Vec::new(),
+            transfer_provider: Some(Arc::new(DesktopTransfers(server.transfers()))),
         })
         .await
         .map_err(|error| napi_error(error.to_string()))?;
@@ -236,8 +273,10 @@ async fn handle_frame(state: &HostState, bytes: &[u8]) -> Result<Option<Vec<u8>>
     let mut inner = state.inner.lock().await;
     let InnerState { core, server } = &mut *inner;
     server
-        .handle_frame(&frame, |plaintext| async move {
-            let response = core.handle_payload(&plaintext).await;
+        .handle_frame(&frame, |owner, plaintext| async move {
+            let response = core
+                .handle_payload_from(Some(owner.as_str().into()), &plaintext)
+                .await;
             if let Ok(response) = &response {
                 if let Some(entry_id) = entry_focus_id(response.as_deref()) {
                     notify_entry_focus(&entry_focus, entry_id);

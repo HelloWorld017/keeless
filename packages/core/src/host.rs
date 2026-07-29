@@ -50,6 +50,13 @@ pub trait TaskSpawner: HostProviderRequirements {
     fn spawn(&self, task: HostFuture<'static, ()>);
 }
 
+/// Host-owned Lesswire transfer registry. Core only exchanges opaque IDs and owned bytes.
+pub trait TransferProvider: HostProviderRequirements {
+    fn publish_download(&self, owner: &str, bytes: Zeroizing<Vec<u8>>) -> Result<String>;
+    fn consume_upload(&self, owner: &str, transfer_id: &str) -> Result<Zeroizing<Vec<u8>>>;
+    fn clear(&self);
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PasswordInputMode {
     Create,
@@ -107,6 +114,7 @@ pub struct KeelessHost {
     pub clock: Arc<dyn Clock>,
     pub database_persistence: Option<Arc<dyn DatabasePersistence>>,
     pub task_spawner: Option<Arc<dyn TaskSpawner>>,
+    pub transfer_provider: Option<Arc<dyn TransferProvider>>,
 }
 
 impl std::fmt::Debug for KeelessHost {
@@ -119,6 +127,7 @@ impl std::fmt::Debug for KeelessHost {
                 &self.database_persistence.is_some(),
             )
             .field("has_task_spawner", &self.task_spawner.is_some())
+            .field("has_transfer_provider", &self.transfer_provider.is_some())
             .finish_non_exhaustive()
     }
 }

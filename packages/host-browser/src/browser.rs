@@ -2,12 +2,18 @@ use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use futures::lock::Mutex;
 use gloo_timers::future::TimeoutFuture;
-use keeless_core::{HostFuture, KeelessCore, KeelessHost, StorageProvider, TaskSpawner};
-use keeless_lesswire::{ApprovalProvider, MessageFrame, Server, ServerHost, WireFuture};
+use keeless_core::{
+    CoreError, HostFuture, KeelessCore, KeelessHost, StorageProvider, TaskSpawner, TransferProvider,
+};
+use keeless_lesswire::{
+    ApprovalProvider, MessageFrame, Server, ServerHost, TransferId, TransferOwner,
+    TransferRegistry, WireFuture,
+};
 use keeless_sync::{WebDavAuth, WebDavProvider};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{File, FileSystemFileHandle};
+use zeroize::Zeroizing;
 
 use crate::{
     clock::BrowserClock,
@@ -19,6 +25,38 @@ use crate::{
 struct BrowserApproval;
 
 struct BrowserTaskSpawner;
+
+#[derive(Clone)]
+struct BrowserTransfers(TransferRegistry);
+
+impl TransferProvider for BrowserTransfers {
+    fn publish_download(
+        &self,
+        owner: &str,
+        bytes: Zeroizing<Vec<u8>>,
+    ) -> keeless_core::Result<String> {
+        self.0
+            .publish_download(TransferOwner::new(owner), bytes)
+            .map(|id| id.encode())
+            .map_err(|error| CoreError::Host(error.to_string()))
+    }
+
+    fn consume_upload(
+        &self,
+        owner: &str,
+        transfer_id: &str,
+    ) -> keeless_core::Result<Zeroizing<Vec<u8>>> {
+        let id = TransferId::parse(transfer_id)
+            .ok_or_else(|| CoreError::Host("invalid binary transfer ID".into()))?;
+        self.0
+            .consume_upload(&TransferOwner::new(owner), &id)
+            .map_err(|error| CoreError::Host(error.to_string()))
+    }
+
+    fn clear(&self) {
+        self.0.clear();
+    }
+}
 
 impl TaskSpawner for BrowserTaskSpawner {
     fn spawn(&self, task: HostFuture<'static, ()>) {
@@ -54,6 +92,17 @@ impl BrowserCore {
             "indexeddb".into(),
             Arc::new(IndexedDbStorage { idb: idb.clone() }),
         );
+        let server = Server::new(ServerHost {
+            store: Arc::new(BrowserConfig {
+                idb: idb.clone(),
+                key: WIRE_CONFIG_KEY,
+            }),
+            approval_provider: Arc::new(BrowserApproval),
+            clock: Arc::new(BrowserClock),
+            runtime_approved_clients: default_approved_bundle.into_iter().collect(),
+        })
+        .await
+        .map_err(js_error)?;
         let host = KeelessHost {
             storage_providers,
             config_provider: Arc::new(BrowserConfig {
@@ -64,19 +113,9 @@ impl BrowserCore {
             clock: Arc::new(BrowserClock),
             database_persistence: None,
             task_spawner: Some(Arc::new(BrowserTaskSpawner)),
+            transfer_provider: Some(Arc::new(BrowserTransfers(server.transfers()))),
         };
         let core = KeelessCore::new(host).await.map_err(js_error)?;
-        let server = Server::new(ServerHost {
-            store: Arc::new(BrowserConfig {
-                idb,
-                key: WIRE_CONFIG_KEY,
-            }),
-            approval_provider: Arc::new(BrowserApproval),
-            clock: Arc::new(BrowserClock),
-            runtime_approved_clients: default_approved_bundle.into_iter().collect(),
-        })
-        .await
-        .map_err(js_error)?;
         let state = Rc::new(Mutex::new(BrowserState { core, server }));
         let tick_state = Rc::downgrade(&state);
         spawn_local(async move {
@@ -104,8 +143,9 @@ impl BrowserCore {
         let mut state = self.state.lock().await;
         let BrowserState { core, server } = &mut *state;
         server
-            .handle_frame(&frame, |plaintext| async move {
-                core.handle_payload(&plaintext).await
+            .handle_frame(&frame, |owner, plaintext| async move {
+                core.handle_payload_from(Some(owner.as_str().into()), &plaintext)
+                    .await
             })
             .await
             .map_err(js_error)?
