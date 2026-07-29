@@ -10,7 +10,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
 import { useRequest } from '@/fragments/_providers/QueryProvider';
 import { IconCheck } from '@/icons';
-import { cn } from '@/utils/css';
+import { cx } from '@/utils/css';
 import { useState } from 'react';
 import { standardIcons } from '../_constants/icons';
 import { ItemIcon } from './ItemIcon';
@@ -59,30 +59,33 @@ export const IconPicker = ({
           <CommandInput placeholder="Search icons..." />
           <CommandList>
             <CommandEmpty>No icons found.</CommandEmpty>
-            <CommandGroup heading="Standard icons" className="grid grid-cols-6">
-              {standardIcons.map(({ id, label, searchTerms, Icon }) => {
-                const icon = { standardId: id, customUuid: null };
-                const selected = sameIcon(value, icon);
-                return (
-                  <CommandItem
-                    key={id}
-                    value={`${label} ${searchTerms}`}
-                    className="relative aspect-square justify-center px-0 py-0"
-                    aria-label={label}
-                    title={label}
-                    onSelect={() => select(icon)}
-                  >
-                    <Icon className="size-5" />
-                    <IconCheck
-                      className={cn(
-                        'absolute right-0.5 bottom-0.5 size-3 rounded-full bg-primary p-0.5 text-primary-foreground',
-                        !selected && 'hidden',
-                      )}
-                    />
-                    <span className="sr-only">{selected ? 'Selected' : ''}</span>
-                  </CommandItem>
-                );
-              })}
+            <CommandGroup heading="Standard icons">
+              <div className="grid grid-cols-6 gap-2 px-1.5">
+                {standardIcons.map(({ id, label, searchTerms, Icon }) => {
+                  const icon = { standardId: id, customUuid: null };
+                  const selected = sameIcon(value, icon);
+                  return (
+                    <CommandItem
+                      key={id}
+                      value={`${label} ${searchTerms}`}
+                      className="relative aspect-square justify-center px-0 py-0"
+                      aria-label={label}
+                      title={label}
+                      onSelect={() => select(icon)}
+                    >
+                      <Icon className="size-5" />
+                      <IconCheck
+                        strokeWidth={4}
+                        className={cx(
+                          'absolute right-0.5 top-0.5 size-3 rounded-full bg-primary p-0.5 text-primary-foreground',
+                          !selected && 'hidden',
+                        )}
+                      />
+                      <span className="sr-only">{selected ? 'Selected' : ''}</span>
+                    </CommandItem>
+                  );
+                })}
+              </div>
             </CommandGroup>
             {(customIcons.data?.icons.length ?? 0) > 0 && (
               <CommandGroup heading="Custom icons" className="grid grid-cols-6">
@@ -104,7 +107,7 @@ export const IconPicker = ({
                         className="size-5 object-contain"
                       />
                       <IconCheck
-                        className={cn(
+                        className={cx(
                           'absolute right-0.5 bottom-0.5 size-3 rounded-full bg-primary p-0.5 text-primary-foreground',
                           !selected && 'hidden',
                         )}
