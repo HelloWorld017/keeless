@@ -30,6 +30,7 @@ import { SearchCommand } from './_components/SearchCommand';
 import { Sidebar } from './_components/Sidebar';
 import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
 import type { MoveEntryArgs } from '@keeless/schema';
+import {ConfigDialog} from './config';
 
 const collisionDetection: CollisionDetection = args =>
   args.active.data.current?.type === 'entry' && args.pointerCoordinates
@@ -79,6 +80,7 @@ const DatabaseFragmentContents = () => {
   const queryClient = useQueryClient();
   const tags = useRequest('getTags', {});
   const navigate = useNavigate();
+  const [configOpen, setConfigOpen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<DragDropData | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
@@ -207,7 +209,7 @@ const DatabaseFragmentContents = () => {
       onDragEnd={handleDragEnd}
     >
       <SidebarProvider className="[--sidebar-width:16rem]! xl:[--sidebar-width:18rem]!">
-        <Sidebar onSearch={() => setSearchOpen(true)} />
+        <Sidebar onSearch={() => setSearchOpen(true)} onConfigOpen={() => setConfigOpen(true)} />
         <SearchCommand
           open={searchOpen}
           onOpenChange={setSearchOpen}
@@ -247,6 +249,7 @@ const DatabaseFragmentContents = () => {
           <GroupDragOverlay title={activeDrag.title} icon={activeDrag.icon} />
         ) : null}
       </DragOverlay>
+      <ConfigDialog open={configOpen} onOpenChange={setConfigOpen} />
     </DndContext>
   );
 };

@@ -36,7 +36,8 @@
 - [ ] Attachment 다운로드 가능
 - [ ] setuplayout에서 위에 <- Back으로 하게, router로 이동하게
 - [x] enforce_auto_lock을 dispatch 시에 구현하지말고 자체 timeout으로 작업하게
-- [ ] per-database config store
+- [ ] per-database config store, per-database lesswire key upgrade
+- [ ] scoped approved lesswire key (app, passkey, extension)
 - [x] desktop용 cache + journal로 저장하는 storage wrapper
 - [x] vhid 구현 (Linux)
 - [ ] Windows WebAuthn plugin authenticator 구현

@@ -5,6 +5,7 @@ import { CoreRequestError } from '@/utils/request';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { PasswordPrompt } from '../_components/PasswordPrompt';
 import type { DatabaseNodeId } from '@keeless/schema';
+import { useLatestRef } from '@/hooks/useLatestRef';
 
 type RevealAction = {
   fieldIds: string[];
@@ -42,12 +43,11 @@ export const useEntryFieldValues = (entryId: DatabaseNodeId) => {
   const [pendingFieldIds, setPendingFieldIds] = useState(new Set<string>());
   const [pendingAction, setPendingAction] = useState<PendingAction>();
   const [passwordError, setPasswordError] = useState<string>();
-  const valuesRef = useRef(values);
+  const valuesRef = useLatestRef(values);
   const operationRef = useRef(0);
 
   useEffect(() => {
     operationRef.current += 1;
-    valuesRef.current = {};
     setValues({});
     setPendingFieldIds(new Set());
     setPendingAction(undefined);
@@ -73,28 +73,36 @@ export const useEntryFieldValues = (entryId: DatabaseNodeId) => {
     if (!requestClient.data) {
       return;
     }
+
     const loaded = Object.fromEntries(
       action.fieldIds.flatMap(fieldId => {
         const value = valuesRef.current[fieldId];
         return value === undefined ? [] : [[fieldId, value]];
       }),
     );
+
     const fieldIds = action.fieldIds.filter(fieldId => valuesRef.current[fieldId] === undefined);
     if (fieldIds.length > 0) {
       const { values } = await requestClient.data.request(
         'revealEntryFields',
         hasNativePasswordInput ? { entryId, fieldIds } : { entryId, fieldIds, password },
       );
-      Object.assign(loaded, Object.fromEntries(fieldIds.map((fieldId, index) => [fieldId, values[index]])));
+
+      fieldIds.forEach((fieldId, index) => {
+        loaded[fieldId] = values[index];
+      });
     }
+
     if (operation !== operationRef.current) {
       return;
     }
+
     if (action.reveal) {
       const next = { ...valuesRef.current, ...loaded };
       valuesRef.current = next;
       setValues(next);
     }
+
     if (action.copy) {
       await copyValue(loaded[action.copy.fieldId], action.copy.label);
     }

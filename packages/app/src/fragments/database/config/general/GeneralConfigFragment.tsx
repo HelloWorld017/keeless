@@ -4,6 +4,7 @@ import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvid
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ConfigRow } from '../_components';
 import type { KeelessConfigPatch } from '@keeless/schema';
+import {Switch} from '@/components/switch';
 
 const autoLockOptions: ReadonlyArray<{ value: string; label: string; timeout: number | null }> = [
   { value: 'off', label: 'Off', timeout: null },
@@ -68,7 +69,9 @@ export const GeneralConfigFragment = () => {
           }}
         >
           <SelectTrigger aria-label="Auto lock timeout" className="w-32">
-            <SelectValue />
+            <SelectValue>
+              {availableAutoLockOptions.find(({ value }) => value === autoLockOption?.value)?.label}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {availableAutoLockOptions.map(option => (
@@ -83,15 +86,11 @@ export const GeneralConfigFragment = () => {
         title="Paranoia mode"
         description="Do not keep the master key in memory after unlocking."
       >
-        <Toggle
-          type="button"
-          variant="outline"
-          pressed={currentConfig?.paranoiaMode ?? false}
+        <Switch
+          checked={currentConfig?.paranoiaMode ?? false}
+          onCheckedChange={paranoiaMode => setConfig.mutate({ paranoiaMode })}
           disabled={disabled}
-          onPressedChange={paranoiaMode => setConfig.mutate({ paranoiaMode })}
-        >
-          {currentConfig?.paranoiaMode ? 'On' : 'Off'}
-        </Toggle>
+        />
       </ConfigRow>
       {setConfig.isError && (
         <p className="pt-4 text-sm text-destructive" role="alert">

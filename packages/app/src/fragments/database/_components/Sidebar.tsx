@@ -131,7 +131,7 @@ const TrashMenuItem = ({
         render={<Link href={buildRoute('trash')} replace />}
         isActive={location === buildRoute('trash') || isEntryOver}
         className={cx(
-          'border-2 border-transparent',
+          'border-2 border-transparent -mx-[2px]',
           isEntryOver && 'border-destructive/50 bg-destructive/25!',
         )}
         onClick={onNavigate}
@@ -143,9 +143,13 @@ const TrashMenuItem = ({
   );
 };
 
-const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
+type DatabaseSidebarProps = {
+  onSearch: () => void;
+  onConfigOpen: () => void;
+}
+
+const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const [location, setLocation] = useLocation();
-  const [configOpen, setConfigOpen] = useState(false);
   const [groupMatch, groupParams] = useRoute<{ group: string }>(getRoute('group'));
   const hierarchy = useRequest('getGroupHierarchy', {});
   const tags = useRequest('getTags', {});
@@ -306,17 +310,13 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
                   </div>
                 </div>
               </DropdownMenuTrigger>
-              <DropdownMenuContent>
+              <DropdownMenuContent className='max-w-40'>
                 <DropdownMenuItem
                   disabled={lockDatabase.isPending}
                   onClick={() => lockDatabase.mutate()}
                 >
                   <IconLockKeyhole />
                   Lock
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setConfigOpen(true)}>
-                  <IconSettings />
-                  Config
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -486,9 +486,14 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
             location={location}
             onNavigate={closeMobile}
           />
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={onConfigOpen}>
+              <IconSettings />
+              Settings
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <ConfigDialog open={configOpen} onOpenChange={setConfigOpen} />
     </Sidebar>
   );
 };

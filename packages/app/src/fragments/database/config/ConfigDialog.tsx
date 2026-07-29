@@ -27,7 +27,7 @@ export const ConfigDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-108 gap-0 overflow-hidden p-0 sm:max-w-3xl h-full">
         <DialogHeader className="sr-only">
           <DialogTitle>Configuration</DialogTitle>
           <DialogDescription>Configure this application.</DialogDescription>
@@ -38,8 +38,9 @@ export const ConfigDialog = ({
               <Button
                 key={item.category}
                 type="button"
-                variant={item.category === selectedCategory ? 'secondary' : 'ghost'}
-                className="w-full justify-start"
+                variant="ghost"
+                className="w-full justify-start aria-selected:bg-muted"
+                aria-selected={item.category === selectedCategory}
                 onClick={() => setSelectedCategory(item.category)}
               >
                 {item.category}

@@ -97,7 +97,7 @@ const VirtualEntryRow = ({
       onClick={() => onSelect(entry)}
       {...attributes}
       {...listeners}
-      aria-pressed={selectedEntry === String(entry.id)}
+      aria-current={selectedEntry === String(entry.id)}
     />
   );
 };

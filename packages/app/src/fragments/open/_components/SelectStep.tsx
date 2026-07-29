@@ -1,4 +1,4 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/alert';
 import { Button } from '@/components/button';
 import {
   Item,
@@ -129,9 +129,11 @@ export const SelectStep = ({
         <IconAlertCircle />
         <AlertTitle>Host could not start</AlertTitle>
         <AlertDescription>{requestError}</AlertDescription>
-        <Button type="button" variant="outline" className="mt-2" onClick={onRetryRequest}>
-          Try again
-        </Button>
+        <AlertAction>
+          <Button type="button" variant="outline" className="mt-2" onClick={onRetryRequest}>
+            Try again
+          </Button>
+        </AlertAction>
       </Alert>
     )}
     <StepError error={error} />
