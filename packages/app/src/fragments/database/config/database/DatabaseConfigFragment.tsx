@@ -120,6 +120,7 @@ export const DatabaseConfigFragment = () => {
       setSummary(
         `Merged ${result.entriesAdded} added, ${result.entriesModified} modified, and ${result.entriesDeleted} deleted entries.`,
       );
+      setError(result.syncError?.message);
       await Promise.all(
         refreshOperations.map(name =>
           queryClient.invalidateQueries({ queryKey: ['request', name] }),
@@ -201,6 +202,7 @@ export const DatabaseConfigFragment = () => {
         <Button
           type="button"
           disabled={pending !== undefined || !file}
+          variant={!file ? 'ghost' : 'default'}
           onClick={() => setPasswordRequest({ type: 'source' })}
         >
           {pending === 'merge' && <IconLoaderCircle className="animate-spin" />}
@@ -208,10 +210,10 @@ export const DatabaseConfigFragment = () => {
         </Button>
       </div>
 
-      {summary && <p className="text-sm text-muted-foreground">{summary}</p>}
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
+      {(summary || error) && (
+        <p className="text-sm text-muted-foreground flex flex-col" role="alert">
+          {summary}
+          {error && <span className="text-destructive">{error}</span>}
         </p>
       )}
       <PasswordPrompt

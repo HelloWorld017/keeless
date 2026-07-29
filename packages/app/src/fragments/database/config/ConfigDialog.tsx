@@ -51,7 +51,7 @@ export const ConfigDialog = ({
               </Button>
             ))}
           </nav>
-          <section className="min-w-0 p-6 pr-12">
+          <section className="min-w-0 min-h-0 p-6 pr-12 overflow-auto">
             <h2 className="mb-4 font-heading text-base font-medium">{selectedConfig?.category}</h2>
             {Content && <Content />}
           </section>

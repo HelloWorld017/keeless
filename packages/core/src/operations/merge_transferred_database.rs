@@ -43,7 +43,11 @@ pub(super) async fn execute(
         DatabaseMerger::with_credentials(MergeStrategy::NewestWins, &target_key)
             .merge(target, &source)
     };
-    core.sync_with_key(target_key, None).await?;
+    let sync_error = core
+        .sync_with_key(target_key, None)
+        .await
+        .err()
+        .map(|error| (&error).into());
 
     Ok(OperationSuccess::MergeTransferredDatabase(
         MergeTransferredDatabaseResult {
@@ -54,6 +58,7 @@ pub(super) async fn execute(
             groups_modified: result.groups_modified as u64,
             groups_deleted: result.groups_deleted as u64,
             conflict_count: result.conflicts.len() as u64,
+            sync_error,
         },
     ))
 }

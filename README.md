@@ -32,10 +32,10 @@
 - [x] enforce_auto_lock을 dispatch 시에 구현하지말고 자체 timeout으로 작업하게
 - [x] desktop용 cache + journal로 저장하는 storage wrapper
 - [x] vhid 구현 (Linux)
+- [x] DB 내보내기 기능
+- [x] 설정 UI
 - [ ] 엔트리 검색 로직 러스트로 일원화 [skim](https://github.com/skim-rs/skim)사용, `tag:` 쿼리, `in:` 쿼리
 - [ ] WebDAV 싱크 테스트 하기
-- [ ] DB 내보내기 기능
-- [ ] 설정 UI
 - [ ] Attachment 다운로드 가능
 - [ ] setuplayout에서 위에 <- Back으로 하게, router로 이동하게
 - [ ] per-database config store, per-database lesswire key upgrade

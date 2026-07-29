@@ -848,6 +848,50 @@ fn success_response_is_flat_and_operation_specific() {
 }
 
 #[test]
+fn merge_response_preserves_sync_error() {
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "merge-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::MergeTransferredDatabase(
+                    MergeTransferredDatabaseResult {
+                        entries_added: 1,
+                        entries_modified: 2,
+                        entries_deleted: 3,
+                        groups_added: 4,
+                        groups_modified: 5,
+                        groups_deleted: 6,
+                        conflict_count: 7,
+                        sync_error: Some(OperationError {
+                            code: "storage_error".into(),
+                            message: "Storage operation failed".into(),
+                        }),
+                    },
+                ),
+            },
+        },
+        json!({
+            "requestId": "merge-1",
+            "status": "success",
+            "op": "mergeTransferredDatabase",
+            "result": {
+                "entriesAdded": 1,
+                "entriesModified": 2,
+                "entriesDeleted": 3,
+                "groupsAdded": 4,
+                "groupsModified": 5,
+                "groupsDeleted": 6,
+                "conflictCount": 7,
+                "syncError": {
+                    "code": "storage_error",
+                    "message": "Storage operation failed"
+                }
+            }
+        }),
+    );
+}
+
+#[test]
 fn required_nullable_and_empty_types_reject_ambiguous_shapes() {
     assert!(serde_json::from_value::<LockArgs>(json!({ "ignored": true })).is_err());
     assert!(serde_json::from_value::<StorageDescriptorResult>(json!({})).is_err());

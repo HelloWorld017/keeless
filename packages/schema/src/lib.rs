@@ -690,6 +690,8 @@ pub struct MergeTransferredDatabaseResult {
     pub groups_modified: u64,
     pub groups_deleted: u64,
     pub conflict_count: u64,
+    #[serde(deserialize_with = "deserialize_nullable")]
+    pub sync_error: Option<OperationError>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
