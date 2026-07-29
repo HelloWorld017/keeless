@@ -182,11 +182,11 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             .unwrap()
             .to_string();
         assert_eq!(
-            operations::reveal_entry_field::run(&mut core, entry_id.clone(), field_id, None)
+            operations::reveal_entry_fields::run(&mut core, entry_id.clone(), vec![field_id], None)
                 .await
                 .unwrap()
-                .value,
-            expected
+                .values,
+            [expected]
         );
     }
 

@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
+async fn reveal_entry_fields_handles_ids_duplicates_and_credentials() {
     let (mut core, ids) = query_core().await;
     let entry_id = schema_id(ids.root_entry);
     let detail = operations::get_entry_detail::run(
@@ -30,33 +30,30 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
     let duplicate_second_id = field_id("Duplicate", 1);
 
     assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None)
-            .await
-            .unwrap()
-            .value,
-        "password-secret"
-    );
-    assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), duplicate_first_id, None)
-            .await
-            .unwrap()
-            .value,
-        "duplicate-first"
-    );
-    assert_eq!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), duplicate_second_id, None)
-            .await
-            .unwrap()
-            .value,
-        "duplicate-second"
+        operations::reveal_entry_fields::run(
+            &mut core,
+            entry_id.clone(),
+            vec![password_id.clone(), duplicate_first_id, duplicate_second_id],
+            None,
+        )
+        .await
+        .unwrap()
+        .values,
+        ["password-secret", "duplicate-first", "duplicate-second"]
     );
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), public_id, None).await,
+        operations::reveal_entry_fields::run(&mut core, entry_id.clone(), vec![public_id], None)
+            .await,
         Err(CoreError::InvalidEntryField)
     ));
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), "invalid".into(), None)
-            .await,
+        operations::reveal_entry_fields::run(
+            &mut core,
+            entry_id.clone(),
+            vec!["invalid".into()],
+            None,
+        )
+        .await,
         Err(CoreError::InvalidEntryField)
     ));
     assert_eq!(
@@ -64,10 +61,10 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
         "invalid_entry_field"
     );
     assert!(matches!(
-        operations::reveal_entry_field::run(
+        operations::reveal_entry_fields::run(
             &mut core,
             schema_id(Uuid::from_u128(999)),
-            password_id.clone(),
+            vec![password_id.clone()],
             None,
         )
         .await,
@@ -84,39 +81,44 @@ async fn reveal_entry_field_handles_ids_duplicates_and_credentials() {
     .await
     .unwrap();
     assert!(matches!(
-        operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None)
-            .await,
+        operations::reveal_entry_fields::run(
+            &mut core,
+            entry_id.clone(),
+            vec![password_id.clone()],
+            None,
+        )
+        .await,
         Err(CoreError::PasswordRequired)
     ));
     assert!(matches!(
-        operations::reveal_entry_field::run(
+        operations::reveal_entry_fields::run(
             &mut core,
             entry_id.clone(),
-            password_id.clone(),
+            vec![password_id.clone()],
             Some(b"wrong"),
         )
         .await,
         Err(CoreError::InvalidCredentials)
     ));
     assert_eq!(
-        operations::reveal_entry_field::run(
+        operations::reveal_entry_fields::run(
             &mut core,
             entry_id.clone(),
-            notes_id,
+            vec![notes_id],
             Some(b"correct")
         )
         .await
         .unwrap()
-        .value,
-        "notes-secret"
+        .values,
+        ["notes-secret"]
     );
 
     operations::lock::run(&mut core);
     assert!(matches!(
-        operations::reveal_entry_field::run(
+        operations::reveal_entry_fields::run(
             &mut core,
             DatabaseNodeId::Uuid("invalid".into()),
-            password_id,
+            vec![password_id],
             Some(b"correct"),
         )
         .await,

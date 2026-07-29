@@ -73,18 +73,19 @@ export const useEntryFieldValues = (entryId: DatabaseNodeId) => {
     if (!requestClient.data) {
       return;
     }
-    const loaded: Record<string, string> = {};
-    for (const fieldId of action.fieldIds) {
-      const cached = valuesRef.current[fieldId];
-      loaded[fieldId] =
-        cached !== undefined
-          ? cached
-          : (
-              await requestClient.data.request(
-                'revealEntryField',
-                hasNativePasswordInput ? { entryId, fieldId } : { entryId, fieldId, password },
-              )
-            ).value;
+    const loaded = Object.fromEntries(
+      action.fieldIds.flatMap(fieldId => {
+        const value = valuesRef.current[fieldId];
+        return value === undefined ? [] : [[fieldId, value]];
+      }),
+    );
+    const fieldIds = action.fieldIds.filter(fieldId => valuesRef.current[fieldId] === undefined);
+    if (fieldIds.length > 0) {
+      const { values } = await requestClient.data.request(
+        'revealEntryFields',
+        hasNativePasswordInput ? { entryId, fieldIds } : { entryId, fieldIds, password },
+      );
+      Object.assign(loaded, Object.fromEntries(fieldIds.map((fieldId, index) => [fieldId, values[index]])));
     }
     if (operation !== operationRef.current) {
       return;

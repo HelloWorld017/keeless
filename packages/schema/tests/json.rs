@@ -745,29 +745,29 @@ fn database_editing_operations_have_stable_shapes() {
     assert_roundtrip(
         OperationRequest {
             request_id: "reveal-1".into(),
-            operation: Operation::RevealEntryField(RevealEntryFieldArgs {
+            operation: Operation::RevealEntryFields(RevealEntryFieldsArgs {
                 entry_id: DatabaseNodeId::Int(8),
-                field_id: "standard:Password".into(),
+                field_ids: vec!["standard:Password".into(), "custom:OTP".into()],
                 password: None,
             }),
         },
-        json!({ "requestId": "reveal-1", "op": "revealEntryField", "args": { "entryId": 8, "fieldId": "standard:Password", "password": null } }),
+        json!({ "requestId": "reveal-1", "op": "revealEntryFields", "args": { "entryId": 8, "fieldIds": ["standard:Password", "custom:OTP"], "password": null } }),
     );
     assert_roundtrip(
         OperationResponse {
             request_id: "reveal-1".into(),
             outcome: OperationOutcome::Success {
-                success: OperationSuccess::RevealEntryField(RevealEntryFieldResult {
-                    value: "secret".into(),
+                success: OperationSuccess::RevealEntryFields(RevealEntryFieldsResult {
+                    values: vec!["secret".into(), "123456".into()],
                 }),
             },
         },
-        json!({ "requestId": "reveal-1", "status": "success", "op": "revealEntryField", "result": { "value": "secret" } }),
+        json!({ "requestId": "reveal-1", "status": "success", "op": "revealEntryFields", "result": { "values": ["secret", "123456"] } }),
     );
 
-    let omitted: RevealEntryFieldArgs = serde_json::from_value(json!({
+    let omitted: RevealEntryFieldsArgs = serde_json::from_value(json!({
         "entryId": 8,
-        "fieldId": "standard:Password"
+        "fieldIds": ["standard:Password"]
     }))
     .unwrap();
     assert_eq!(omitted.password, None);

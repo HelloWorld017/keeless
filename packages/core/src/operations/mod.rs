@@ -16,7 +16,7 @@ pub(crate) mod get_trash_entries;
 pub(crate) mod lock;
 pub(crate) mod mutations;
 pub(crate) mod open;
-pub(crate) mod reveal_entry_field;
+pub(crate) mod reveal_entry_fields;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;
 pub(crate) mod set_config;
@@ -64,7 +64,7 @@ pub(crate) async fn execute(
         Operation::UpdateGroup(args) => mutations::update_group::execute(core, args).await,
         Operation::UpdateTagStyle(args) => mutations::update_tag_style::execute(core, args).await,
         Operation::DeleteTag(args) => mutations::delete_tag::execute(core, args).await,
-        Operation::RevealEntryField(args) => reveal_entry_field::execute(core, args).await,
+        Operation::RevealEntryFields(args) => reveal_entry_fields::execute(core, args).await,
         Operation::GetPasskeys(args) => get_passkeys::execute(core, args).await,
         Operation::RegisterPasskey(args) => mutations::register_passkey::execute(core, args).await,
         Operation::AssertPasskey(args) => assert_passkey::execute(core, args).await,

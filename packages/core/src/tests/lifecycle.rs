@@ -246,9 +246,14 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
             _ => None,
         })
         .collect();
-    operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id.clone(), None)
-        .await
-        .unwrap();
+    operations::reveal_entry_fields::run(
+        &mut core,
+        entry_id.clone(),
+        vec![password_id.clone()],
+        None,
+    )
+    .await
+    .unwrap();
     assert!(input.modes.lock().unwrap().is_empty());
     operations::set_config::run(
         &mut core,
@@ -260,7 +265,7 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
     .await
     .unwrap();
 
-    operations::reveal_entry_field::run(&mut core, entry_id.clone(), password_id, None)
+    operations::reveal_entry_fields::run(&mut core, entry_id.clone(), vec![password_id], None)
         .await
         .unwrap();
     let _ = core.sync(None).await;

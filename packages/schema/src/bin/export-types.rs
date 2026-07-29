@@ -67,7 +67,7 @@ fn generate() -> String {
     export::<UpdateGroupArgs>(&mut output);
     export::<UpdateTagStyleArgs>(&mut output);
     export::<DeleteTagArgs>(&mut output);
-    export::<RevealEntryFieldArgs>(&mut output);
+    export::<RevealEntryFieldsArgs>(&mut output);
     export::<GetPasskeysArgs>(&mut output);
     export::<RegisterPasskeyArgs>(&mut output);
     export::<AssertPasskeyArgs>(&mut output);
@@ -84,7 +84,7 @@ fn generate() -> String {
     export::<CustomIconsResult>(&mut output);
     export::<AddEntryResult>(&mut output);
     export::<AddGroupResult>(&mut output);
-    export::<RevealEntryFieldResult>(&mut output);
+    export::<RevealEntryFieldsResult>(&mut output);
     export::<PasskeySummary>(&mut output);
     export::<PasskeysResult>(&mut output);
     export::<RegisterPasskeyResult>(&mut output);

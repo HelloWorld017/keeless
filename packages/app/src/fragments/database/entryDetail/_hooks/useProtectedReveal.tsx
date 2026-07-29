@@ -59,10 +59,10 @@ export const useProtectedReveal = ({
     setPending(true);
     setError(undefined);
     void requestClient.data
-      .request('revealEntryField', { entryId, fieldId })
+      .request('revealEntryFields', { entryId, fieldIds: [fieldId] })
       .then(result => {
         if (operation === operationRef.current) {
-          onRevealRef.current(result.value);
+          onRevealRef.current(result.values[0]);
           setRevealed(true);
         }
       })
@@ -93,8 +93,8 @@ export const useProtectedReveal = ({
 
   const reveal = (password?: string) =>
     requestClient.data!.request(
-      'revealEntryField',
-      hasNativePasswordInput ? { entryId, fieldId } : { entryId, fieldId, password },
+      'revealEntryFields',
+      hasNativePasswordInput ? { entryId, fieldIds: [fieldId] } : { entryId, fieldIds: [fieldId], password },
     );
 
   const toggleReveal = async () => {
@@ -110,7 +110,7 @@ export const useProtectedReveal = ({
     setPending(true);
     setError(undefined);
     try {
-      acceptValue((await reveal()).value, operation);
+      acceptValue((await reveal()).values[0], operation);
     } catch (nextError) {
       if (operation !== operationRef.current) {
         return;
@@ -143,7 +143,7 @@ export const useProtectedReveal = ({
     setPending(true);
     setError(undefined);
     try {
-      acceptValue((await reveal(password)).value, operation);
+      acceptValue((await reveal(password)).values[0], operation);
       if (operation === operationRef.current) {
         setPromptOpen(false);
       }

@@ -454,9 +454,9 @@ pub struct DeleteTagArgs {
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RevealEntryFieldArgs {
+pub struct RevealEntryFieldsArgs {
     pub entry_id: DatabaseNodeId,
-    pub field_id: String,
+    pub field_ids: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     #[specta(optional = true)]
     pub password: Option<String>,
@@ -547,7 +547,7 @@ pub enum Operation {
     UpdateGroup(UpdateGroupArgs),
     UpdateTagStyle(UpdateTagStyleArgs),
     DeleteTag(DeleteTagArgs),
-    RevealEntryField(RevealEntryFieldArgs),
+    RevealEntryFields(RevealEntryFieldsArgs),
     GetPasskeys(GetPasskeysArgs),
     RegisterPasskey(RegisterPasskeyArgs),
     AssertPasskey(AssertPasskeyArgs),
@@ -656,8 +656,8 @@ pub struct AddGroupResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct RevealEntryFieldResult {
-    pub value: String,
+pub struct RevealEntryFieldsResult {
+    pub values: Vec<String>,
 }
 
 /// One stored passkey, as much as can be shown without signing anything.
@@ -732,7 +732,7 @@ pub enum OperationSuccess {
     UpdateGroup(EmptyResult),
     UpdateTagStyle(EmptyResult),
     DeleteTag(EmptyResult),
-    RevealEntryField(RevealEntryFieldResult),
+    RevealEntryFields(RevealEntryFieldsResult),
     GetPasskeys(PasskeysResult),
     RegisterPasskey(RegisterPasskeyResult),
     AssertPasskey(AssertPasskeyResult),
