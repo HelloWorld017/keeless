@@ -1163,12 +1163,14 @@ interface FileUploadItemMetadataProps
   extends React.ComponentProps<"div">,
     useRender.ComponentProps<"div"> {
   size?: "default" | "sm";
+  sizeEndAdornment?: React.ReactNode;
 }
 
 function FileUploadItemMetadata(props: FileUploadItemMetadataProps) {
   const {
     render,
     size = "default",
+    sizeEndAdornment,
     children,
     className,
     ...metadataProps
@@ -1202,6 +1204,7 @@ function FileUploadItemMetadata(props: FileUploadItemMetadataProps) {
               {itemContext.fileState
                 ? formatBytes(itemContext.fileState.file.size)
                 : ""}
+              {sizeEndAdornment}
             </span>
             {itemContext.fileState?.error && (
               <span

@@ -23,6 +23,14 @@ import {
   FileUploadTrigger,
 } from '@/components/file-upload';
 import { Input } from '@/components/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from '@/components/popover';
 import { Toggle } from '@/components/toggle';
 import {
   IconChevronRight,
@@ -49,6 +57,34 @@ import type {
   EntryAttachmentInformation,
   EntryFieldInformation,
 } from '@keeless/schema';
+
+const LARGE_ATTACHMENT_SIZE = 512 * 1024;
+
+const AttachmentSizeWarning = () => (
+  <Popover>
+    <PopoverTrigger
+      render={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="ml-1 inline-flex shrink-0 align-middle text-amber-600 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-400"
+        />
+      }
+      aria-label="Large attachment performance warning"
+    >
+      <IconTriangleAlert />
+    </PopoverTrigger>
+    <PopoverContent className="w-64">
+      <PopoverHeader>
+        <PopoverTitle>Large attachment</PopoverTitle>
+        <PopoverDescription>
+          Attachments larger than 512KiB may cause performance issues.
+        </PopoverDescription>
+      </PopoverHeader>
+    </PopoverContent>
+  </Popover>
+);
 
 type OrderedItem =
   | { type: 'draft'; order: number; draft: FieldDraft }
@@ -300,22 +336,26 @@ export const EditContent = ({
             {existingAttachments.map(attachment => (
               <Attachment
                 key={`${attachment.index}:${attachment.name}`}
-                className="w-full rounded-none border-0"
+                className="w-full rounded-lg border-0 bg-transparent"
               >
                 <AttachmentMedia>
                   <IconFile />
                 </AttachmentMedia>
                 <AttachmentContent>
                   <AttachmentTitle>{attachment.name || 'Untitled attachment'}</AttachmentTitle>
-                  <AttachmentDescription>
-                    {attachment.isProtected && 'Protected · '}
-                    {formatBytes(attachment.size)}
+                  <AttachmentDescription className="flex items-center">
+                    <span className="min-w-0 truncate">
+                      {attachment.isProtected && 'Protected · '}
+                      {formatBytes(attachment.size)}
+                    </span>
+                    {attachment.size > LARGE_ATTACHMENT_SIZE && <AttachmentSizeWarning />}
                   </AttachmentDescription>
                 </AttachmentContent>
                 <AttachmentActions>
                   <AttachmentAction
                     type="button"
-                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    size="icon-lg"
+                    className="hover:bg-destructive/10 hover:text-destructive"
                     aria-label={`Remove ${attachment.name || 'attachment'}`}
                     disabled={pending}
                     onClick={() => onExistingAttachmentDelete(attachment.index)}
@@ -345,8 +385,12 @@ export const EditContent = ({
           <FileUploadList>
             {attachments.map((attachment, index) => (
               <FileUploadItem key={`${attachment.name}:${index}`} value={attachment}>
-                <FileUploadItemPreview />
-                <FileUploadItemMetadata />
+                <FileUploadItemPreview className='[:has(svg)]:border-none' />
+                <FileUploadItemMetadata
+                  sizeEndAdornment={
+                    attachment.size > LARGE_ATTACHMENT_SIZE ? <AttachmentSizeWarning /> : undefined
+                  }
+                />
                 <FileUploadItemDelete
                   aria-label={`Remove ${attachment.name}`}
                   disabled={pending}
@@ -358,7 +402,7 @@ export const EditContent = ({
             ))}
           </FileUploadList>
           <FileUploadClear render={<Button type="button" variant="outline" size="sm" />}>
-            Clear attachments
+            Clear uploads
           </FileUploadClear>
         </FileUpload>
       </section>

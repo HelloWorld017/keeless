@@ -12,7 +12,7 @@ export const formatBytes = (size: number) => {
   if (size < 1024) {
     return `${numberFormatter.format(size)} B`;
   }
-  const units = ['KB', 'MB', 'GB', 'TB'];
+  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
   let value = size / 1024;
   let unitIndex = 0;
   while (value >= 1024 && unitIndex < units.length - 1) {
