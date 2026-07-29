@@ -98,6 +98,7 @@ impl Database {
             fields,
             properties,
             &[],
+            &[],
             new_custom_field_ids,
             last_modification_time,
         )?
@@ -117,6 +118,7 @@ impl Database {
         fields: &[EntryFieldUpdate],
         properties: Option<&EntryPropertiesUpdate>,
         attachments: &[EntryBinary],
+        removed_attachment_indices: &[u64],
         new_custom_field_ids: &[Uuid],
         last_modification_time: DateInstant,
     ) -> DatabaseResult<Option<PreparedEntryUpdate>> {
@@ -210,7 +212,22 @@ impl Database {
         let original_ids = original.fields.0.keys().copied().collect::<Vec<_>>();
         let mut changed = requested_ids != original_ids
             || fields.iter().any(|field| field.field_id.is_none())
-            || !attachments.is_empty();
+            || !attachments.is_empty()
+            || !removed_attachment_indices.is_empty();
+        let removal_count = removed_attachment_indices.len();
+        let removed_attachment_indices = removed_attachment_indices
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
+        if removed_attachment_indices.len() != removal_count
+            || removed_attachment_indices
+                .iter()
+                .any(|index| *index >= original.binaries.len() as u64)
+        {
+            return Err(DatabaseError::InvalidFormat(
+                "attachment index is invalid or duplicated".into(),
+            ));
+        }
         let mut unlock = MemoryUnlockSession::new(composite_key);
         let mut plaintexts = Vec::with_capacity(fields.len());
         for requested in fields {
@@ -334,6 +351,13 @@ impl Database {
             }
         }
 
+        updated.binaries = original
+            .binaries
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !removed_attachment_indices.contains(&(*index as u64)))
+            .map(|(_, attachment)| attachment.clone())
+            .collect();
         updated.binaries.extend_from_slice(attachments);
 
         if !changed {

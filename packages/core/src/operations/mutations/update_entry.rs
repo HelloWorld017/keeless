@@ -20,6 +20,7 @@ pub(super) struct Mutation {
     pub(super) fields: Vec<JournalEntryField>,
     pub(super) properties: Option<JournalEntryProperties>,
     pub(super) attachments: Vec<JournalEntryAttachment>,
+    pub(super) removed_attachment_indices: Vec<u64>,
     pub(super) new_custom_field_ids: Vec<Uuid>,
     pub(super) timestamp_ms: i64,
 }
@@ -144,6 +145,7 @@ pub(super) fn prepare(
             &fields,
             properties.as_ref(),
             &attachments,
+            &mutation.removed_attachment_indices,
             &mutation.new_custom_field_ids,
             DateInstant::EpochMillis(mutation.timestamp_ms),
         )
@@ -166,6 +168,7 @@ pub(crate) async fn run(
     fields: Vec<keeless_schema::EntryFieldUpdate>,
     properties: Option<EntryPropertiesUpdate>,
     attachment_updates: Vec<EntryAttachmentUpdate>,
+    removed_attachment_indices: Vec<u64>,
     password: Option<&[u8]>,
 ) -> Result<EmptyResult> {
     if core.handle.is_none() {
@@ -273,6 +276,7 @@ pub(crate) async fn run(
             &converted,
             properties.as_ref(),
             &attachments,
+            &removed_attachment_indices,
             &new_custom_field_ids,
             DateInstant::EpochMillis(timestamp_ms),
         )
@@ -311,6 +315,7 @@ pub(crate) async fn run(
                 data: attachment.data.clone(),
             })
             .collect(),
+        removed_attachment_indices,
         new_custom_field_ids,
         timestamp_ms,
     };
@@ -338,6 +343,7 @@ pub(crate) async fn execute(
             args.fields,
             args.properties,
             args.attachments.unwrap_or_default(),
+            args.removed_attachment_indices.unwrap_or_default(),
             password.as_ref().map(|password| password.as_slice()),
         )
         .await?,

@@ -371,6 +371,13 @@ pub struct UpdateEntryArgs {
     )]
     #[specta(optional = true)]
     pub attachments: Option<Vec<EntryAttachmentUpdate>>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_nullable",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[specta(optional = true)]
+    pub removed_attachment_indices: Option<Vec<u64>>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     #[specta(optional = true)]
     pub password: Option<String>,

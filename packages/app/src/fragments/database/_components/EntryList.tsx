@@ -3,7 +3,7 @@ import { Button } from '@/components/button';
 import { Skeleton } from '@/components/skeleton';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useHistoryBack } from '@/fragments/_providers/RouterProvider';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { IconAlertCircle, IconChevronDown, IconLoaderCircle, IconPlus } from '@/icons';
 import { cn, cx } from '@/utils/css';

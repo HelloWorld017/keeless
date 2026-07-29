@@ -96,6 +96,7 @@ fn prepared_entry_update_is_pure_and_commits_supplied_id_and_time() {
             &fields,
             None,
             &[],
+            &[],
             &[custom_uuid],
             modified,
         )

@@ -2,7 +2,7 @@ import { Button } from '@/components/button';
 import { Separator } from '@/components/separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/sheet';
 import { Skeleton } from '@/components/skeleton';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { IconPanelLeft } from '@/icons';
 import { cn } from '@/utils/css';
 import { mergeProps } from '@base-ui/react/merge-props';

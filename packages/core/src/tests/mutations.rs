@@ -112,6 +112,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             }),
         }),
         Vec::new(),
+        Vec::new(),
         None,
     )
     .await
@@ -217,6 +218,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
                 icon: None,
             }),
             Vec::new(),
+            Vec::new(),
             None,
         )
         .await,
@@ -273,6 +275,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
             current_fields.clone(),
             None,
             Vec::new(),
+            Vec::new(),
             None,
         )
         .await,
@@ -283,6 +286,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
         schema_id(ids.root_entry),
         current_fields,
         None,
+        Vec::new(),
         Vec::new(),
         Some(b"correct"),
     )
@@ -333,6 +337,7 @@ async fn update_entry_adds_transferred_attachments_and_download_verifies_name() 
             transfer_id: "upload-1".into(),
             name: "new.txt".into(),
         }],
+        Vec::new(),
         None,
     )
     .await
@@ -345,7 +350,9 @@ async fn update_entry_adds_transferred_attachments_and_download_verifies_name() 
         },
     )
     .unwrap();
+    let attachment_count = detail.attachments.len();
     let attachment = detail.attachments.last().unwrap();
+    let attachment_index = attachment.index;
     assert_eq!(attachment.name, "new.txt");
     assert_eq!(attachment.size, 14);
     assert!(matches!(
@@ -353,7 +360,7 @@ async fn update_entry_adds_transferred_attachments_and_download_verifies_name() 
             &mut core,
             keeless_schema::PrepareEntryAttachmentDownloadArgs {
                 entry_id: entry_id.clone(),
-                attachment_index: attachment.index,
+                attachment_index,
                 name: "wrong-name.txt".into(),
             },
         ),
@@ -363,8 +370,8 @@ async fn update_entry_adds_transferred_attachments_and_download_verifies_name() 
         operations::prepare_entry_attachment_download::execute(
             &mut core,
             keeless_schema::PrepareEntryAttachmentDownloadArgs {
-                entry_id,
-                attachment_index: attachment.index,
+                entry_id: entry_id.clone(),
+                attachment_index,
                 name: attachment.name.clone(),
             },
         )
@@ -375,6 +382,44 @@ async fn update_entry_adds_transferred_attachments_and_download_verifies_name() 
     assert_eq!(
         transfers.download(&download.transfer_id).unwrap(),
         b"new attachment"
+    );
+
+    let fields = detail
+        .fields
+        .into_iter()
+        .filter_map(|field| match field {
+            EntryFieldInformation::Field {
+                field_id,
+                name,
+                value,
+                is_protected,
+                ..
+            } => Some(SchemaEntryFieldUpdate {
+                field_id,
+                name,
+                value,
+                is_protected,
+            }),
+            _ => None,
+        })
+        .collect();
+    operations::mutations::update_entry::run(
+        &mut core,
+        entry_id.clone(),
+        fields,
+        None,
+        Vec::new(),
+        vec![attachment_index],
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        operations::get_entry_detail::run(&mut core, GetEntryDetailArgs { entry_id })
+            .unwrap()
+            .attachments
+            .len(),
+        attachment_count - 1,
     );
 }
 

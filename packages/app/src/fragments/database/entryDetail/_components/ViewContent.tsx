@@ -17,7 +17,7 @@ import { useState, type ReactNode } from 'react';
 import { Tag } from '../../_components/Tag';
 import { ExpiryValue } from '../_layout/ExpiryValue';
 import { FieldDivider } from '../_layout/FieldDivider';
-import { formatBytes, formatDate } from '../_utils/format';
+import { formatBytes, formatDate } from '@/utils/format';
 import { getFieldName } from '../_utils/getFieldName';
 import { EntryFieldValue } from './EntryFieldValue';
 import { FieldCopyButton } from './FieldCopyButton';

@@ -265,6 +265,7 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
                 ],
                 properties: None,
                 attachments: None,
+                removed_attachment_indices: None,
                 password: None,
             }),
         },

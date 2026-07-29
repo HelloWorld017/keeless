@@ -234,6 +234,7 @@ mod tests {
             }],
             properties: None,
             attachments: Vec::new(),
+            removed_attachment_indices: Vec::new(),
             new_custom_field_ids: Vec::new(),
             timestamp_ms: 1,
         });
@@ -263,6 +264,7 @@ mod tests {
             fields: Vec::new(),
             properties: None,
             attachments: Vec::new(),
+            removed_attachment_indices: Vec::new(),
             new_custom_field_ids: Vec::new(),
             timestamp_ms: 1,
         });

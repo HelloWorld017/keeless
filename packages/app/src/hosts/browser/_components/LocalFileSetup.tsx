@@ -1,13 +1,22 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
 import { Button } from '@/components/button';
-import { Input } from '@/components/input';
-import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/item';
+import {
+  FileUpload,
+  FileUploadClear,
+  FileUploadDropzone,
+  FileUploadItem,
+  FileUploadItemDelete,
+  FileUploadItemMetadata,
+  FileUploadItemPreview,
+  FileUploadList,
+  FileUploadTrigger,
+} from '@/components/file-upload';
 import { StepError } from '@/fragments/open/_components/StepError';
-import { IconChevronLeft, IconFile, IconLoaderCircle } from '@/icons';
+import { IconChevronLeft, IconFile, IconLoaderCircle, IconTrash } from '@/icons';
 import { useState } from 'react';
 import type { StorageSetupComponentProps } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';
-import type { ChangeEvent, DragEvent } from 'react';
+import type { DragEvent } from 'react';
 
 const pickerOptions: OpenFilePickerOptions = {
   multiple: false,
@@ -55,12 +64,14 @@ export const LocalFileSetup = ({
 }: StorageSetupComponentProps & { getCore: () => BrowserCore }) => {
   const [isAcquiring, setIsAcquiring] = useState(false);
   const [localError, setLocalError] = useState<string>();
+  const [selectedFile, setSelectedFile] = useState<File>();
   const supportsPicker =
     typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function';
   const pending = isPending || isAcquiring;
 
   const openFile = async (file: File, handle?: FileSystemFileHandle) => {
     validateFile(file);
+    setSelectedFile(file);
     await onOpen(async () => {
       await getCore().configureLocalFile(file, handle);
       return { provider: 'local-file', path: '' };
@@ -99,14 +110,6 @@ export const LocalFileSetup = ({
     });
   };
 
-  const selectFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
-    if (file) {
-      void runAcquisition(() => openFile(file));
-    }
-  };
-
   const dropFile = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const items = [...event.dataTransfer.items].filter(item => item.kind === 'file');
@@ -135,44 +138,49 @@ export const LocalFileSetup = ({
 
   return (
     <div className="space-y-4">
-      <Item
-        variant="outline"
-        className="min-h-28"
-        onDragOver={event => {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = 'copy';
+      <FileUpload
+        value={selectedFile ? [selectedFile] : []}
+        accept=".kdbx,application/octet-stream"
+        disabled={pending}
+        onClick={pickFile}
+        onValueChange={files => {
+          if (files.length === 0) {
+            setSelectedFile(undefined);
+          }
         }}
-        onDrop={dropFile}
+        onAccept={files => {
+          const file = files[0];
+          if (file) {
+            void runAcquisition(() => openFile(file));
+          }
+        }}
       >
-        <ItemMedia variant="icon">
-          <IconFile />
-        </ItemMedia>
-        <ItemContent>
-          <ItemTitle>Drop a database file</ItemTitle>
-          <ItemDescription>Drop one .kdbx file here or choose it from this device.</ItemDescription>
-        </ItemContent>
-      </Item>
+        <FileUploadDropzone
+          className="min-h-28"
+          onClick={event => {
+            if (supportsPicker) {
+              event.preventDefault();
+            }
+          }}
+          onDrop={dropFile}
+        >
+          <IconFile className="size-6 text-muted-foreground" />
+          <div className="space-y-1 text-center">
+            <p className="font-medium text-sm">Drop a database file</p>
+            <p className="text-muted-foreground text-sm">
+              Drop one .kdbx file here or choose it from this device.
+            </p>
+          </div>
+        </FileUploadDropzone>
+      </FileUpload>
 
-      {supportsPicker ? (
-        <Button type="button" className="w-full" disabled={pending} onClick={pickFile}>
-          {pending && <IconLoaderCircle className="animate-spin" />}
-          Choose file
-        </Button>
-      ) : (
-        <div className="space-y-2">
-          <Input
-            type="file"
-            accept=".kdbx,application/octet-stream"
-            disabled={pending}
-            onChange={selectFile}
-          />
-          <Alert>
-            <AlertTitle>Read-only file</AlertTitle>
-            <AlertDescription>
-              This browser can open the selected database but cannot write changes back to it.
-            </AlertDescription>
-          </Alert>
-        </div>
+      {!supportsPicker && (
+        <Alert>
+          <AlertTitle>Read-only file</AlertTitle>
+          <AlertDescription>
+            This browser can open the selected database but cannot write changes back to it.
+          </AlertDescription>
+        </Alert>
       )}
 
       <StepError error={localError ?? error} />

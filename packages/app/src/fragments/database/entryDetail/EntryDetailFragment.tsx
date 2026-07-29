@@ -115,6 +115,7 @@ const EntryDetailQuery = ({
   const passwordRequestRef = useRef<PasswordRequest | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [removedAttachmentIndices, setRemovedAttachmentIndices] = useState<number[]>([]);
   const editor = useEntryEditor();
   const fieldValues = useEntryFieldValues(entry.id);
   const confirmations = usePasswordConfirmations();
@@ -238,6 +239,7 @@ const EntryDetailQuery = ({
 
     editor.begin(detail.data);
     setAttachments([]);
+    setRemovedAttachmentIndices([]);
     fieldValues.controller.hideAll();
     confirmations.clear();
     setError(undefined);
@@ -247,6 +249,7 @@ const EntryDetailQuery = ({
   const clearEditing = () => {
     setEditing(false);
     setAttachments([]);
+    setRemovedAttachmentIndices([]);
     editor.clear();
     confirmations.clear();
     setError(undefined);
@@ -285,12 +288,14 @@ const EntryDetailQuery = ({
                 fields,
                 properties: propertiesUpdate,
                 attachments: attachmentUpdates,
+                removedAttachmentIndices,
               })
             : requestClient.data!.request('updateEntry', {
                 entryId: entry.id,
                 fields,
                 properties: propertiesUpdate,
                 attachments: attachmentUpdates,
+                removedAttachmentIndices,
                 password,
               }),
         operation,
@@ -487,6 +492,9 @@ const EntryDetailQuery = ({
                 confirmations={confirmations.values}
                 confirmationErrors={confirmations.errors}
                 attachments={attachments}
+                existingAttachments={(detail.data?.attachments ?? []).filter(
+                  attachment => !removedAttachmentIndices.includes(attachment.index),
+                )}
                 errors={editor.errors}
                 pending={pending}
                 onLoad={editor.load}
@@ -496,6 +504,9 @@ const EntryDetailQuery = ({
                 onPropertiesChange={editor.changeProperties}
                 onConfirmationChange={confirmations.change}
                 onAttachmentsChange={setAttachments}
+                onExistingAttachmentDelete={attachmentIndex =>
+                  setRemovedAttachmentIndices(indices => [...indices, attachmentIndex])
+                }
               />
             ) : (
               <EntryFieldValuesProvider value={fieldValues.controller}>

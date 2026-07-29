@@ -11,6 +11,17 @@ import {
 import { Button } from '@/components/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/collapsible';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/field';
+import {
+  FileUpload,
+  FileUploadClear,
+  FileUploadDropzone,
+  FileUploadItem,
+  FileUploadItemDelete,
+  FileUploadItemMetadata,
+  FileUploadItemPreview,
+  FileUploadList,
+  FileUploadTrigger,
+} from '@/components/file-upload';
 import { Input } from '@/components/input';
 import { Toggle } from '@/components/toggle';
 import {
@@ -23,6 +34,7 @@ import {
   IconTriangleAlert,
 } from '@/icons';
 import { cn } from '@/utils/css';
+import { formatBytes } from '@/utils/format';
 import { useState } from 'react';
 import { TagPicker } from '../../_components/TagPicker';
 import { ExpiryEditor } from '../_layout/ExpiryEditor';
@@ -32,7 +44,11 @@ import { getFieldName } from '../_utils/getFieldName';
 import { EntryFieldEditor } from './EntryFieldEditor';
 import type { EntryPropertiesDraft } from '../_types/EntryPropertiesDraft';
 import type { FieldDraft } from '../_types/FieldDraft';
-import type { DatabaseNodeId, EntryFieldInformation } from '@keeless/schema';
+import type {
+  DatabaseNodeId,
+  EntryAttachmentInformation,
+  EntryFieldInformation,
+} from '@keeless/schema';
 
 type OrderedItem =
   | { type: 'draft'; order: number; draft: FieldDraft }
@@ -47,6 +63,7 @@ export const EditContent = ({
   confirmations,
   confirmationErrors,
   attachments,
+  existingAttachments,
   errors,
   pending,
   onAdd,
@@ -56,6 +73,7 @@ export const EditContent = ({
   onPropertiesChange,
   onConfirmationChange,
   onAttachmentsChange,
+  onExistingAttachmentDelete,
 }: {
   entryId: DatabaseNodeId;
   isTemplate: boolean;
@@ -65,6 +83,7 @@ export const EditContent = ({
   confirmations: Record<string, string>;
   confirmationErrors: Set<string>;
   attachments: File[];
+  existingAttachments: EntryAttachmentInformation[];
   errors: Set<string>;
   pending: boolean;
   onAdd: () => void;
@@ -74,6 +93,7 @@ export const EditContent = ({
   onPropertiesChange: (patch: Partial<EntryPropertiesDraft>) => void;
   onConfirmationChange: (fieldId: string, value: string) => void;
   onAttachmentsChange: (attachments: File[]) => void;
+  onExistingAttachmentDelete: (attachmentIndex: number) => void;
 }) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const ordered: OrderedItem[] = [
@@ -275,27 +295,30 @@ export const EditContent = ({
         <div>
           <h2 className="text-sm font-semibold">Attachments</h2>
         </div>
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-3">
-            {attachments.map((attachment, index) => (
-              <Attachment key={`${attachment.name}:${index}`} size="sm">
+        {existingAttachments.length > 0 && (
+          <div className="divide-y rounded-lg border">
+            {existingAttachments.map(attachment => (
+              <Attachment
+                key={`${attachment.index}:${attachment.name}`}
+                className="w-full rounded-none border-0"
+              >
                 <AttachmentMedia>
                   <IconFile />
                 </AttachmentMedia>
                 <AttachmentContent>
-                  <AttachmentTitle>{attachment.name}</AttachmentTitle>
+                  <AttachmentTitle>{attachment.name || 'Untitled attachment'}</AttachmentTitle>
                   <AttachmentDescription>
-                    {attachment.size.toLocaleString()} bytes
+                    {attachment.isProtected && 'Protected · '}
+                    {formatBytes(attachment.size)}
                   </AttachmentDescription>
                 </AttachmentContent>
                 <AttachmentActions>
                   <AttachmentAction
                     type="button"
-                    aria-label={`Remove ${attachment.name}`}
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={`Remove ${attachment.name || 'attachment'}`}
                     disabled={pending}
-                    onClick={() =>
-                      onAttachmentsChange(attachments.filter((_, current) => current !== index))
-                    }
+                    onClick={() => onExistingAttachmentDelete(attachment.index)}
                   >
                     <IconTrash />
                   </AttachmentAction>
@@ -304,16 +327,40 @@ export const EditContent = ({
             ))}
           </div>
         )}
-        <Input
-          type="file"
+        <FileUpload
+          value={attachments}
           multiple
           disabled={pending}
-          onChange={event => {
-            const selected = [...(event.currentTarget.files ?? [])];
-            onAttachmentsChange([...attachments, ...selected]);
-            event.currentTarget.value = '';
-          }}
-        />
+          onValueChange={onAttachmentsChange}
+        >
+          <FileUploadDropzone>
+            <IconFile className="text-2xl text-muted-foreground" />
+            <div className="text-muted-foreground text-center">
+              Drop attachments here<br />
+              or{' '}
+              <FileUploadTrigger className='font-semibold'>choose</FileUploadTrigger>
+              {' '}a file.
+            </div>
+          </FileUploadDropzone>
+          <FileUploadList>
+            {attachments.map((attachment, index) => (
+              <FileUploadItem key={`${attachment.name}:${index}`} value={attachment}>
+                <FileUploadItemPreview />
+                <FileUploadItemMetadata />
+                <FileUploadItemDelete
+                  aria-label={`Remove ${attachment.name}`}
+                  disabled={pending}
+                  render={<Button type="button" variant="ghost" size="icon-sm" />}
+                >
+                  <IconTrash />
+                </FileUploadItemDelete>
+              </FileUploadItem>
+            ))}
+          </FileUploadList>
+          <FileUploadClear render={<Button type="button" variant="outline" size="sm" />}>
+            Clear attachments
+          </FileUploadClear>
+        </FileUpload>
       </section>
       {(!hasExpiry || !hasTags) && (
         <section className="space-y-4">

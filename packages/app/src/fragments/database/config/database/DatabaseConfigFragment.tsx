@@ -1,12 +1,22 @@
 import { Button } from '@/components/button';
-import { Input } from '@/components/input';
+import {
+  FileUpload,
+  FileUploadClear,
+  FileUploadDropzone,
+  FileUploadItem,
+  FileUploadItemDelete,
+  FileUploadItemMetadata,
+  FileUploadItemPreview,
+  FileUploadList,
+  FileUploadTrigger,
+} from '@/components/file-upload';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
-import { IconFile, IconLoaderCircle } from '@/icons';
+import { IconFile, IconLoaderCircle, IconTrash } from '@/icons';
 import { CoreRequestError } from '@/utils/request';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, type ChangeEvent, type DragEvent } from 'react';
+import { useState, type DragEvent } from 'react';
 import { ConfigRow } from '../_components';
 
 const refreshOperations = [
@@ -66,6 +76,12 @@ export const DatabaseConfigFragment = () => {
       setFile(undefined);
       setError(fileError(nextError, 'The database file could not be selected.'));
     }
+  };
+
+  const clearFile = () => {
+    setFile(undefined);
+    setError(undefined);
+    setSummary(undefined);
   };
 
   const download = async (password?: string) => {
@@ -142,11 +158,6 @@ export const DatabaseConfigFragment = () => {
     }
   };
 
-  const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
-    selectFile(event.currentTarget.files?.[0]);
-    event.currentTarget.value = '';
-  };
-
   const dropFile = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const files = [...event.dataTransfer.files];
@@ -169,36 +180,32 @@ export const DatabaseConfigFragment = () => {
         </Button>
       </ConfigRow>
 
-      <div className="space-y-3 border-b py-4">
+      <div className="space-y-3 border-b last:border-b-0 py-4">
         <div>
           <h3 className="text-sm font-medium">Merge database</h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Drop another KDBX file to merge it into this database. Newer changes win conflicts.
+            Drop another KDBX file to merge it into this database.
           </p>
         </div>
-        <div
-          className="flex min-h-24 items-center gap-3 rounded-md border border-dashed p-4"
-          onDragOver={event => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'copy';
+        <FileUpload
+          value={file ? [file] : []}
+          accept=".kdbx,application/octet-stream"
+          disabled={pending !== undefined}
+          onValueChange={files => {
+            if (files.length === 0) {
+              clearFile();
+            }
           }}
-          onDrop={dropFile}
+          onAccept={files => selectFile(files[0])}
         >
-          <IconFile className="size-5 text-muted-foreground" />
-          <div className="min-w-0 flex-1 text-sm">
-            <p className="truncate font-medium">{file?.name ?? 'Drop one .kdbx file here'}</p>
-            <p className="text-muted-foreground">
-              {file ? `${file.size.toLocaleString()} bytes` : 'or choose a file'}
-            </p>
-          </div>
-          <Input
-            type="file"
-            accept=".kdbx,application/octet-stream"
-            disabled={pending !== undefined}
-            className="max-w-36"
-            onChange={chooseFile}
-          />
-        </div>
+          <FileUploadDropzone className="min-h-16 flex-row justify-start px-6" onDrop={dropFile}>
+            <IconFile className="size-5 text-muted-foreground" />
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="truncate font-medium">Drop one .kdbx file here</p>
+              <p className="text-muted-foreground">or choose a file</p>
+            </div>
+          </FileUploadDropzone>
+        </FileUpload>
         <Button
           type="button"
           disabled={pending !== undefined || !file}
