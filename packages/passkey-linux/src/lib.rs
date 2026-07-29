@@ -25,6 +25,7 @@ pub mod uhid;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use keeless_host_desktop_shared::DesktopLauncher;
 use thiserror::Error;
 
 /// The dialog helper's file name, looked for beside this executable.
@@ -38,6 +39,8 @@ pub enum VhidError {
     Session(#[from] session::SessionError),
     #[error("virtual HID device failed: {0}")]
     Device(std::io::Error),
+    #[error(transparent)]
+    Desktop(#[from] keeless_host_desktop_shared::LauncherError),
     #[error("this platform has no virtual HID support")]
     Unsupported,
 }
@@ -55,12 +58,13 @@ impl VhidError {
 pub type Result<T> = std::result::Result<T, VhidError>;
 
 const USAGE: &str = "\
-usage: keeless-passkey-linux [run] [--native-ui <path>]
+usage: keeless-passkey-linux [run] [--native-ui <path>] [--desktop <path>]
        keeless-passkey-linux setup
        keeless-passkey-linux doctor
        keeless-passkey-linux reset-pairing
 
   run            serve passkeys over a virtual HID device (default)
+  --desktop      absolute Keeless desktop executable to start when needed
   setup          print the commands that grant access to /dev/uhid
   doctor         report whether the device and the desktop app are reachable
   reset-pairing  forget the desktop app, so the next run asks for approval again";
@@ -93,11 +97,16 @@ struct Options {
     /// Only the daemon spawns dialogs, and only Linux has a daemon.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     native_ui: PathBuf,
+    /// Optional because direct users may prefer requests to fail while the app
+    /// is closed rather than permit this daemon to launch it.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    desktop: Option<DesktopLauncher>,
 }
 
 impl Options {
     fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self> {
         let mut native_ui = None;
+        let mut desktop = None;
         let mut args = args.into_iter();
         while let Some(argument) = args.next() {
             match argument.to_str() {
@@ -106,6 +115,13 @@ impl Options {
                         Some(PathBuf::from(args.next().ok_or_else(|| {
                             VhidError::Usage("--native-ui requires a path".into())
                         })?));
+                }
+                Some("--desktop") => {
+                    let path = PathBuf::from(
+                        args.next()
+                            .ok_or_else(|| VhidError::Usage("--desktop requires a path".into()))?,
+                    );
+                    desktop = Some(DesktopLauncher::new(path)?);
                 }
                 _ => {
                     return Err(VhidError::Usage(format!(
@@ -117,6 +133,7 @@ impl Options {
         }
         Ok(Self {
             native_ui: native_ui.map(Ok).unwrap_or_else(default_native_ui)?,
+            desktop,
         })
     }
 }
@@ -201,7 +218,7 @@ fn run_command(options: Options) -> Result<()> {
         .build()
         .map_err(VhidError::Device)?
         .block_on(async move {
-            let session = session::Session::load().await?;
+            let session = session::Session::load_with_launcher(options.desktop).await?;
             let consent =
                 consent::ConsentPrompt::new(options.native_ui).map_err(VhidError::Device)?;
             let authenticator = authenticator::Authenticator::new(session, consent);
@@ -270,11 +287,29 @@ mod tests {
     }
 
     #[test]
+    fn accepts_an_absolute_desktop_executable() {
+        let executable = std::env::current_exe().unwrap();
+        assert!(
+            options(&["--desktop", executable.to_str().unwrap()])
+                .unwrap()
+                .desktop
+                .is_some()
+        );
+        assert!(matches!(
+            options(&["--desktop", "keeless"]),
+            Err(VhidError::Desktop(
+                keeless_host_desktop_shared::LauncherError::InvalidPath(_)
+            ))
+        ));
+    }
+
+    #[test]
     fn rejects_unknown_and_incomplete_arguments() {
         assert!(matches!(
             options(&["--native-ui"]),
             Err(VhidError::Usage(_))
         ));
+        assert!(matches!(options(&["--desktop"]), Err(VhidError::Usage(_))));
         assert!(matches!(options(&["--nope"]), Err(VhidError::Usage(_))));
         assert!(matches!(options(&["stray"]), Err(VhidError::Usage(_))));
     }

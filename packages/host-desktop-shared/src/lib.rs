@@ -8,7 +8,9 @@
 pub mod client;
 pub mod fs;
 pub mod ipc;
+pub mod launcher;
 pub mod state;
 
 pub use client::{ClientError, CoreClient};
+pub use launcher::{DesktopLauncher, LauncherError};
 pub use state::{ClientState, FileStore};

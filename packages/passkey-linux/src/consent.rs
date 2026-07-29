@@ -223,7 +223,7 @@ impl ConsentPrompt {
         let captured = Arc::new(StdMutex::new(None));
         let output = captured.clone();
         recipient
-            .handle_frame(&frame, move |plaintext| {
+            .handle_frame(&frame, move |_owner, plaintext| {
                 *output.lock().expect("consent output lock poisoned") = Some(plaintext.to_vec());
                 async { Ok::<Option<Vec<u8>>, String>(None) }
             })

@@ -9,7 +9,8 @@ Keeless as an ordinary security key with no extension or patched build.
 - Linux with the `uhid` driver (`CONFIG_UHID`), which mainstream distributions ship
 - Either membership of a group with write access to `/dev/uhid`, which `setup`
   explains, or a systemd service that passes the device as a named descriptor
-- The Keeless desktop app running, since it owns the database
+- The Keeless desktop app running, since it owns the database, or its absolute
+  executable path supplied with `--desktop`
 
 ## Setup
 
@@ -39,6 +40,18 @@ by the app, and whether the app is reachable.
 ```sh
 keeless-passkey-linux run
 ```
+
+To start the app on demand when a CTAP request arrives, run the daemon as the
+logged-in desktop user and give it the installed desktop executable:
+
+```sh
+keeless-passkey-linux run --desktop /absolute/path/to/keeless
+```
+
+The daemon starts that executable with `--minimized` and waits for its
+current-user IPC endpoint before serving the request. It must run as the same
+user as the desktop app, not as root; a service must likewise be configured for
+that user's desktop session.
 
 The consent dialog helper is expected beside the `keeless-passkey-linux` executable;
 `--native-ui` names it elsewhere, and must be an absolute path. It is never
@@ -89,9 +102,9 @@ they name no accounts. They do require the database to be unlocked.
 
 ## Limitations
 
-- The app must be running. Requests that arrive while it is closed are refused
-  with a CTAP error rather than taking the device down, so the browser can fall
-  back to another authenticator.
+- Without `--desktop`, the app must be running. Requests that arrive while it
+  is closed are refused with a CTAP error rather than taking the device down,
+  so the browser can fall back to another authenticator.
 - Signature counters stay at zero, which is the usual choice for passkeys that
   sync between devices.
 - There is no PIN. User verification is the database's own password plus the

@@ -47,6 +47,7 @@
 - [ ] auto save 및 dirty status 보여주기
 - [ ] desktop에서 register client가 blindly register 시키는 것 막기
   - renderer에 otp 주고, 그 otp 기반으로 이전의 client revoke시키고 새 client로 등록, otp reuse 시 전체 revoke
+- [ ] icon picker 수정
 
 ## Installation
 

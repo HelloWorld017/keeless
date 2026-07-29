@@ -170,7 +170,11 @@ const shutdown = async () => {
 if (!hasLock) {
   app.quit();
 } else {
-  app.on('second-instance', showWindow);
+  app.on('second-instance', (_event, commandLine) => {
+    if (!commandLine.includes('--minimized')) {
+      showWindow();
+    }
+  });
   app.on('before-quit', event => {
     quitting = true;
     if (!shutdownComplete) {

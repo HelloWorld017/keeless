@@ -8,6 +8,7 @@ use keeless_schema::{
 };
 
 use crate::ipc::{self, IpcError, Request, Response};
+use crate::launcher::LauncherError;
 use crate::state::{ClientState, StateError};
 
 #[derive(Debug, thiserror::Error)]
@@ -18,6 +19,8 @@ pub enum ClientError {
     Wire(#[from] keeless_lesswire::Error),
     #[error(transparent)]
     State(#[from] StateError),
+    #[error(transparent)]
+    Launcher(#[from] LauncherError),
     #[error("host response could not be parsed: {0}")]
     Malformed(#[from] serde_json::Error),
     /// The host dropped the frame, which means it no longer trusts this client.
