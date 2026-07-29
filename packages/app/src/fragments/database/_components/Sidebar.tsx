@@ -146,7 +146,7 @@ const TrashMenuItem = ({
 type DatabaseSidebarProps = {
   onSearch: () => void;
   onConfigOpen: () => void;
-}
+};
 
 const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const [location, setLocation] = useLocation();
@@ -310,7 +310,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                   </div>
                 </div>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className='max-w-40'>
+              <DropdownMenuContent className="max-w-40">
                 <DropdownMenuItem
                   disabled={lockDatabase.isPending}
                   onClick={() => lockDatabase.mutate()}

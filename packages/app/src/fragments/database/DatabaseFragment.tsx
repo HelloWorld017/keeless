@@ -29,8 +29,8 @@ import { GroupDragOverlay } from './_components/GroupTree';
 import { SearchCommand } from './_components/SearchCommand';
 import { Sidebar } from './_components/Sidebar';
 import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
+import { ConfigDialog } from './config';
 import type { MoveEntryArgs } from '@keeless/schema';
-import {ConfigDialog} from './config';
 
 const collisionDetection: CollisionDetection = args =>
   args.active.data.current?.type === 'entry' && args.pointerCoordinates

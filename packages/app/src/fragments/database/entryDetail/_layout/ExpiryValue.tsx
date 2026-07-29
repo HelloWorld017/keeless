@@ -1,5 +1,5 @@
-import { FieldPlain } from '../_components/FieldPlain';
 import { formatDate } from '@/utils/format';
+import { FieldPlain } from '../_components/FieldPlain';
 
 export const ExpiryValue = ({
   label,

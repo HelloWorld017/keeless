@@ -1,10 +1,10 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/select';
+import { Switch } from '@/components/switch';
 import { Toggle } from '@/components/toggle';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ConfigRow } from '../_components';
 import type { KeelessConfigPatch } from '@keeless/schema';
-import {Switch} from '@/components/switch';
 
 const autoLockOptions: ReadonlyArray<{ value: string; label: string; timeout: number | null }> = [
   { value: 'off', label: 'Off', timeout: null },

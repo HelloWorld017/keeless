@@ -94,7 +94,9 @@ export const useProtectedReveal = ({
   const reveal = (password?: string) =>
     requestClient.data!.request(
       'revealEntryFields',
-      hasNativePasswordInput ? { entryId, fieldIds: [fieldId] } : { entryId, fieldIds: [fieldId], password },
+      hasNativePasswordInput
+        ? { entryId, fieldIds: [fieldId] }
+        : { entryId, fieldIds: [fieldId], password },
     );
 
   const toggleReveal = async () => {

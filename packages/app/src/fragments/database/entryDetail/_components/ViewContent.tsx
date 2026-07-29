@@ -13,11 +13,11 @@ import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvid
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { IconChevronRight, IconFile, IconInfo, IconLoaderCircle } from '@/icons';
 import { cn } from '@/utils/css';
+import { formatBytes, formatDate } from '@/utils/format';
 import { useState, type ReactNode } from 'react';
 import { Tag } from '../../_components/Tag';
 import { ExpiryValue } from '../_layout/ExpiryValue';
 import { FieldDivider } from '../_layout/FieldDivider';
-import { formatBytes, formatDate } from '@/utils/format';
 import { getFieldName } from '../_utils/getFieldName';
 import { EntryFieldValue } from './EntryFieldValue';
 import { FieldCopyButton } from './FieldCopyButton';

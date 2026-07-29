@@ -376,16 +376,15 @@ export const EditContent = ({
           <FileUploadDropzone>
             <IconFile className="text-2xl text-muted-foreground" />
             <div className="text-muted-foreground text-center">
-              Drop attachments here<br />
-              or{' '}
-              <FileUploadTrigger className='font-semibold'>choose</FileUploadTrigger>
-              {' '}a file.
+              Drop attachments here
+              <br />
+              or <FileUploadTrigger className="font-semibold">choose</FileUploadTrigger> a file.
             </div>
           </FileUploadDropzone>
           <FileUploadList>
             {attachments.map((attachment, index) => (
               <FileUploadItem key={`${attachment.name}:${index}`} value={attachment}>
-                <FileUploadItemPreview className='[:has(svg)]:border-none' />
+                <FileUploadItemPreview className="[:has(svg)]:border-none" />
                 <FileUploadItemMetadata
                   sizeEndAdornment={
                     attachment.size > LARGE_ATTACHMENT_SIZE ? <AttachmentSizeWarning /> : undefined
