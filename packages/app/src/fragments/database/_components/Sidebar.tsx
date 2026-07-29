@@ -60,6 +60,7 @@ const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
 const groupDeletionQueryNames = [
   'getEntries',
   'searchEntries',
+  'searchFuzzy',
   'getGroupEntries',
   'getTagEntries',
   'getTrashEntries',
@@ -143,7 +144,7 @@ const TrashMenuItem = ({
 };
 
 type DatabaseSidebarProps = {
-  onSearch: () => void;
+  onSearch: (initialQuery?: string) => void;
   onConfigOpen: () => void;
 };
 

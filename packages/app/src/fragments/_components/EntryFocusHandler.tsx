@@ -18,6 +18,7 @@ export const EntryFocusHandler = () => {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
         queryClient.invalidateQueries({ queryKey: ['request', 'searchEntries'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'searchFuzzy'] }),
         queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
         queryClient.invalidateQueries({ queryKey: ['request', 'getEntryTemplates'] }),
         queryClient.invalidateQueries({ queryKey: ['request', 'getTagEntries'] }),

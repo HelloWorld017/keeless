@@ -14,7 +14,7 @@ use keeless_schema::{
     EntryFieldUpdate as SchemaEntryFieldUpdate, EntryPropertiesUpdate, FieldControl,
     GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, IconReference,
     MoveEntryArgs, MoveGroupArgs, Operation, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,
-    TagStyle, UpdateGroupArgs, UpdateTagStyleArgs,
+    SearchFuzzyArgs, TagStyle, UpdateGroupArgs, UpdateTagStyleArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,

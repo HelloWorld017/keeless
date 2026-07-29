@@ -64,8 +64,8 @@ pub use kdbx::file::writer::DatabaseWriter;
 
 // ─── Queries ──────────────────────────────────────────────────────────
 pub use kdbx::query::{
-    SearchHelper, SearchParameters, SearchResult, TagQuery, TagResult, UrlMatchParameters,
-    UrlMatchResult, UrlMatcher,
+    FuzzySearchHelper, FuzzySearchResult, SearchFilter, SearchHelper, SearchParameters,
+    SearchQuery, SearchResult, TagQuery, TagResult, UrlMatchParameters, UrlMatchResult, UrlMatcher,
 };
 
 // ─── Merge ────────────────────────────────────────────────────────────

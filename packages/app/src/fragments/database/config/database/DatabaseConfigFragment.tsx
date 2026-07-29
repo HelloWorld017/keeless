@@ -13,6 +13,7 @@ const refreshOperations = [
   'getDatabaseStatus',
   'getEntries',
   'searchEntries',
+  'searchFuzzy',
   'getGroupHierarchy',
   'getGroupEntries',
   'getTagEntries',

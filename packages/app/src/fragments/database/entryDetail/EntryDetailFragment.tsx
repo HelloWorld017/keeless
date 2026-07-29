@@ -49,6 +49,7 @@ import type { EntryAttachmentUpdate, EntrySummary } from '@keeless/schema';
 const REFRESH_OPERATIONS = [
   'getEntries',
   'searchEntries',
+  'searchFuzzy',
   'getGroupEntries',
   'getTagEntries',
   'getTrashEntries',

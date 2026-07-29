@@ -43,6 +43,7 @@ fn generate() -> String {
     export::<SetConfigArgs>(&mut output);
     export::<GetEntriesArgs>(&mut output);
     export::<SearchEntriesArgs>(&mut output);
+    export::<SearchFuzzyArgs>(&mut output);
     export_empty("GetGroupHierarchyArgs", &mut output);
     export::<GetGroupEntriesArgs>(&mut output);
     export::<GetTagEntriesArgs>(&mut output);
@@ -81,6 +82,7 @@ fn generate() -> String {
     export::<StorageDescriptorResult>(&mut output);
     export::<ConfigResult>(&mut output);
     export::<EntriesResult>(&mut output);
+    export::<SearchFuzzyResult>(&mut output);
     export::<GroupHierarchyResult>(&mut output);
     export::<TagsResult>(&mut output);
     export::<EntryDetailResult>(&mut output);

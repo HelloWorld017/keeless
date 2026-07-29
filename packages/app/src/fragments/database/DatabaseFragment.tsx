@@ -68,6 +68,7 @@ const announcements = {
 const entryQueryNames = [
   'getEntries',
   'searchEntries',
+  'searchFuzzy',
   'getGroupEntries',
   'getTagEntries',
   'getTrashEntries',
@@ -83,6 +84,7 @@ const DatabaseFragmentContents = () => {
   const [configOpen, setConfigOpen] = useState(false);
   const [activeDrag, setActiveDrag] = useState<DragDropData | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchInitialQuery, setSearchInitialQuery] = useState('');
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
   const [entryOverGroup, setEntryOverGroup] = useState(false);
   const [movingEntry, setMovingEntry] = useState<Pick<EntryDragData, 'entryId' | 'source'>>();
@@ -116,6 +118,19 @@ const DatabaseFragmentContents = () => {
       }
     },
   });
+
+  const openSearch = (initialQuery = '') => {
+    setSearchInitialQuery(initialQuery);
+    setSearchOpen(true);
+  };
+  const handleSearchOpenChange = (open: boolean) => {
+    if (open) {
+      openSearch();
+      return;
+    }
+    setSearchOpen(false);
+    setSearchInitialQuery('');
+  };
 
   const clearDrag = () => {
     setEntryOverGroup(false);
@@ -209,10 +224,11 @@ const DatabaseFragmentContents = () => {
       onDragEnd={handleDragEnd}
     >
       <SidebarProvider className="[--sidebar-width:16rem]! xl:[--sidebar-width:18rem]!">
-        <Sidebar onSearch={() => setSearchOpen(true)} onConfigOpen={() => setConfigOpen(true)} />
+        <Sidebar onSearch={openSearch} onConfigOpen={() => setConfigOpen(true)} />
         <SearchCommand
           open={searchOpen}
-          onOpenChange={setSearchOpen}
+          initialQuery={searchInitialQuery}
+          onOpenChange={handleSearchOpenChange}
           onSearch={query => {
             const search = crypto.randomUUID();
             setSearchQueries(current => ({ ...current, [search]: query }));
@@ -226,6 +242,7 @@ const DatabaseFragmentContents = () => {
               moveError={moveEntry.isError}
               hiddenEntry={movingEntry}
               searchQueries={searchQueries}
+              onOpenSearch={openSearch}
             />
           </div>
         </SidebarInset>

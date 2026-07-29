@@ -134,6 +134,19 @@ fn storage_descriptor_operation_supports_unselected_and_selected_storage() {
         }),
     );
     assert_roundtrip(
+        OperationRequest {
+            request_id: "fuzzy-1".into(),
+            operation: Operation::SearchFuzzy(SearchFuzzyArgs {
+                query: "tag:work pass".into(),
+            }),
+        },
+        json!({
+            "requestId": "fuzzy-1",
+            "op": "searchFuzzy",
+            "args": { "query": "tag:work pass" }
+        }),
+    );
+    assert_roundtrip(
         OperationResponse {
             request_id: "storage-2".into(),
             outcome: OperationOutcome::Success {
@@ -151,6 +164,32 @@ fn storage_descriptor_operation_supports_unselected_and_selected_storage() {
             "op": "getStorageDescriptor",
             "result": {
                 "storage": { "provider": "webdav", "path": "vault.kdbx" }
+            }
+        }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "fuzzy-2".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::SearchFuzzy(SearchFuzzyResult {
+                    entries: vec![],
+                    groups: vec![],
+                    tags: vec![],
+                    trash_matches: false,
+                    filter_tokens: vec!["tag:work".into()],
+                }),
+            },
+        },
+        json!({
+            "requestId": "fuzzy-2",
+            "status": "success",
+            "op": "searchFuzzy",
+            "result": {
+                "entries": [],
+                "groups": [],
+                "tags": [],
+                "trashMatches": false,
+                "filterTokens": ["tag:work"]
             }
         }),
     );

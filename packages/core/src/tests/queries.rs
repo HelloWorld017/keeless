@@ -398,3 +398,21 @@ async fn search_entries_preserves_relevance_and_applies_visibility_and_protectio
         .is_empty()
     );
 }
+
+#[tokio::test]
+async fn search_fuzzy_applies_direct_group_and_tag_filters() {
+    let (mut core, ids) = query_core().await;
+
+    let result = operations::search_fuzzy::run(
+        &mut core,
+        SearchFuzzyArgs {
+            query: "in:Child tag:shared".into(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.entries.len(), 1);
+    assert_eq!(result.entries[0].id, schema_id(ids.child_entry));
+    assert_eq!(result.entries[0].name, None);
+    assert_eq!(result.filter_tokens, vec!["in:Child", "tag:shared"]);
+}

@@ -115,6 +115,8 @@ export type GetEntriesArgs = { excludeTrash?: boolean };
 
 export type SearchEntriesArgs = { query: string };
 
+export type SearchFuzzyArgs = { query: string };
+
 export type GetGroupHierarchyArgs = Record<string, never>;
 
 export type GetGroupEntriesArgs = { groupId: DatabaseNodeId };
@@ -246,6 +248,7 @@ export type Operation =
   | { op: 'setConfig'; args: SetConfigArgs }
   | { op: 'getEntries'; args: GetEntriesArgs }
   | { op: 'searchEntries'; args: SearchEntriesArgs }
+  | { op: 'searchFuzzy'; args: SearchFuzzyArgs }
   | { op: 'getGroupHierarchy'; args: GetGroupHierarchyArgs }
   | { op: 'getGroupEntries'; args: GetGroupEntriesArgs }
   | { op: 'getTagEntries'; args: GetTagEntriesArgs }
@@ -286,6 +289,7 @@ export type OperationRequest = (
   | { op: 'setConfig'; args: SetConfigArgs }
   | { op: 'getEntries'; args: GetEntriesArgs }
   | { op: 'searchEntries'; args: SearchEntriesArgs }
+  | { op: 'searchFuzzy'; args: SearchFuzzyArgs }
   | { op: 'getGroupHierarchy'; args: GetGroupHierarchyArgs }
   | { op: 'getGroupEntries'; args: GetGroupEntriesArgs }
   | { op: 'getTagEntries'; args: GetTagEntriesArgs }
@@ -330,6 +334,14 @@ export type StorageDescriptorResult = { storage: StorageDescriptor | null };
 export type ConfigResult = { config: KeelessConfig };
 
 export type EntriesResult = { entries: EntrySummary[] };
+
+export type SearchFuzzyResult = {
+  entries: EntrySummary[];
+  groups: GroupHierarchyItem[];
+  tags: TagSummary[];
+  trashMatches: boolean;
+  filterTokens: string[];
+};
 
 export type GroupHierarchyResult = {
   databaseName: string;
@@ -413,6 +425,7 @@ export type OperationSuccess =
   | { op: 'setConfig'; result: EmptyResult }
   | { op: 'getEntries'; result: EntriesResult }
   | { op: 'searchEntries'; result: EntriesResult }
+  | { op: 'searchFuzzy'; result: SearchFuzzyResult }
   | { op: 'getGroupHierarchy'; result: GroupHierarchyResult }
   | { op: 'getGroupEntries'; result: EntriesResult }
   | { op: 'getTagEntries'; result: EntriesResult }

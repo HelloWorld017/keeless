@@ -1,14 +1,12 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
-import { Button } from '@/components/button';
 import { Skeleton } from '@/components/skeleton';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useHistoryBack } from '@/fragments/_providers/RouterProvider';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { IconAlertCircle, IconChevronDown, IconLoaderCircle, IconPlus } from '@/icons';
+import { IconAlertCircle } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
-import { Menu } from '@base-ui/react/menu';
 import { useDraggable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -22,7 +20,8 @@ import {
 } from '../_utils/dragAndDrop';
 import { EntryDetailFragment } from '../entryDetail/EntryDetailFragment';
 import { EntryItem, getEntryItemSize, getEntryTitle } from './EntryItem';
-import { ItemIcon } from './ItemIcon';
+import { EntryListHeader } from './EntryListHeader';
+import { searchFilterToken } from './searchQuery';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type {
   AddEntryArgs,
@@ -193,6 +192,8 @@ const EntryQuery = <TName extends EntryOperationName>({
   hiddenEntry,
   creationParentId,
   preserveOrder = false,
+  searchQuery,
+  onOpenSearch,
 }: {
   name: TName;
   args: OperationArgs<TName>;
@@ -203,6 +204,8 @@ const EntryQuery = <TName extends EntryOperationName>({
   hiddenEntry?: HiddenEntry;
   creationParentId?: DatabaseNodeId;
   preserveOrder?: boolean;
+  searchQuery?: string;
+  onOpenSearch?: (initialQuery: string) => void;
 }) => {
   const entries = useRequest(name, args);
   const templates = useRequest('getEntryTemplates', {});
@@ -217,6 +220,7 @@ const EntryQuery = <TName extends EntryOperationName>({
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
       queryClient.invalidateQueries({ queryKey: ['request', 'searchEntries'] }),
+      queryClient.invalidateQueries({ queryKey: ['request', 'searchFuzzy'] }),
       queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
       queryClient.invalidateQueries({ queryKey: ['request', 'getEntryTemplates'] }),
       queryClient.invalidateQueries({ queryKey: ['request', 'getTagEntries'] }),
@@ -273,97 +277,21 @@ const EntryQuery = <TName extends EntryOperationName>({
         )}
       >
         <div className="flex flex-col xl:px-6">
-          <header className="flex min-h-16 items-start justify-between gap-3 px-4 py-3 xl:py-6 xl:pb-4">
-            <div className="min-w-0">
-              <h1 className="truncate text-xl font-semibold">{title}</h1>
-              {result && (
-                <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                  {result.entries.length} {result.entries.length === 1 ? 'Entry' : 'Entries'}
-                </span>
-              )}
-            </div>
-            {creationParentId !== undefined && (
-              <div className="flex shrink-0">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="rounded-r-none"
-                  aria-label="Add entry"
-                  disabled={movePending || addPending}
-                  onClick={() => addEntry.mutate({ parentGroupId: creationParentId })}
-                >
-                  {addPending ? <IconLoaderCircle className="animate-spin" /> : <IconPlus />}
-                </Button>
-                <Menu.Root>
-                  <Menu.Trigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="-ml-px rounded-l-none"
-                        aria-label="Add entry from template"
-                      />
-                    }
-                    disabled={movePending || addPending}
-                  >
-                    <IconChevronDown />
-                  </Menu.Trigger>
-                  <Menu.Portal>
-                    <Menu.Positioner align="end" sideOffset={4} className="isolate z-50">
-                      <Menu.Popup className="max-h-(--available-height) min-w-52 origin-(--transform-origin) overflow-y-auto rounded-lg bg-popover/90 p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 backdrop-blur-xl duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
-                        {templates.isPending && (
-                          <Menu.Item
-                            disabled
-                            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-none"
-                          >
-                            <IconLoaderCircle className="animate-spin" />
-                            Loading templates
-                          </Menu.Item>
-                        )}
-                        {templates.isError && (
-                          <Menu.Item
-                            disabled
-                            className="rounded-md px-2 py-1.5 text-sm text-destructive outline-none"
-                          >
-                            Templates could not be loaded
-                          </Menu.Item>
-                        )}
-                        {templates.data?.entries.length === 0 && (
-                          <Menu.Item
-                            disabled
-                            className="rounded-md px-2 py-1.5 text-sm text-muted-foreground outline-none"
-                          >
-                            No templates
-                          </Menu.Item>
-                        )}
-                        {templates.data?.entries.map(template => (
-                          <Menu.Item
-                            key={String(template.id)}
-                            className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none data-highlighted:bg-foreground/10"
-                            onClick={() =>
-                              addEntryFromTemplate.mutate({
-                                parentGroupId: creationParentId,
-                                templateEntryId: template.id,
-                              })
-                            }
-                          >
-                            <ItemIcon
-                              icon={template.icon}
-                              fallback="entry"
-                              className="size-4 shrink-0 text-muted-foreground"
-                            />
-                            <span className="min-w-0 truncate">{getEntryTitle(template)}</span>
-                          </Menu.Item>
-                        ))}
-                      </Menu.Popup>
-                    </Menu.Positioner>
-                  </Menu.Portal>
-                </Menu.Root>
-              </div>
-            )}
-          </header>
+          <EntryListHeader
+            title={title}
+            result={result}
+            creationParentId={creationParentId}
+            movePending={movePending}
+            addPending={addPending}
+            templates={templates}
+            onAdd={() => creationParentId && addEntry.mutate({ parentGroupId: creationParentId })}
+            onAddFromTemplate={templateEntryId =>
+              creationParentId &&
+              addEntryFromTemplate.mutate({ parentGroupId: creationParentId, templateEntryId })
+            }
+            searchQuery={searchQuery}
+            onOpenSearch={onOpenSearch}
+          />
 
           {moveError && (
             <Alert variant="destructive" className="m-3 mb-0 w-auto">
@@ -426,11 +354,13 @@ const GroupEntries = ({
   movePending,
   moveError,
   hiddenEntry,
+  onOpenSearch,
 }: {
   groupParam: string;
   movePending: boolean;
   moveError: boolean;
   hiddenEntry?: HiddenEntry;
+  onOpenSearch: (initialQuery: string) => void;
 }) => {
   const hierarchy = useRequest('getGroupHierarchy', {});
 
@@ -471,6 +401,8 @@ const GroupEntries = ({
       moveError={moveError}
       hiddenEntry={hiddenEntry}
       creationParentId={group.id}
+      searchQuery={searchFilterToken('in', group.name)}
+      onOpenSearch={onOpenSearch}
     />
   );
 };
@@ -480,11 +412,13 @@ export const EntryList = ({
   moveError,
   hiddenEntry,
   searchQueries,
+  onOpenSearch,
 }: {
   movePending: boolean;
   moveError: boolean;
   hiddenEntry?: HiddenEntry;
   searchQueries: Record<string, string>;
+  onOpenSearch: (initialQuery: string) => void;
 }) => {
   const hierarchy = useRequest('getGroupHierarchy', {});
   const [searchMatch, searchParams] = useRoute<{ search: string }>(getRoute('search'));
@@ -506,6 +440,7 @@ export const EntryList = ({
         movePending={movePending}
         moveError={moveError}
         hiddenEntry={hiddenEntry}
+        onOpenSearch={onOpenSearch}
         preserveOrder
       />
     );
@@ -517,6 +452,7 @@ export const EntryList = ({
         movePending={movePending}
         moveError={moveError}
         hiddenEntry={hiddenEntry}
+        onOpenSearch={onOpenSearch}
       />
     );
   }
@@ -531,6 +467,8 @@ export const EntryList = ({
         movePending={movePending}
         moveError={moveError}
         hiddenEntry={hiddenEntry}
+        searchQuery={searchFilterToken('tag', tag)}
+        onOpenSearch={onOpenSearch}
       />
     );
   }
@@ -544,6 +482,7 @@ export const EntryList = ({
         movePending={movePending}
         moveError={moveError}
         hiddenEntry={hiddenEntry}
+        onOpenSearch={onOpenSearch}
       />
     );
   }
@@ -557,6 +496,7 @@ export const EntryList = ({
       moveError={moveError}
       hiddenEntry={hiddenEntry}
       creationParentId={hierarchy.data?.rootGroupId}
+      onOpenSearch={onOpenSearch}
     />
   );
 };

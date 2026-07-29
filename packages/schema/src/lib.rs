@@ -291,6 +291,12 @@ pub struct SearchEntriesArgs {
     pub query: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SearchFuzzyArgs {
+    pub query: String,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
 pub struct GetGroupHierarchyArgs {}
@@ -574,6 +580,7 @@ pub enum Operation {
     SetConfig(SetConfigArgs),
     GetEntries(GetEntriesArgs),
     SearchEntries(SearchEntriesArgs),
+    SearchFuzzy(SearchFuzzyArgs),
     GetGroupHierarchy(GetGroupHierarchyArgs),
     GetGroupEntries(GetGroupEntriesArgs),
     GetTagEntries(GetTagEntriesArgs),
@@ -643,6 +650,16 @@ pub struct ConfigResult {
 #[serde(rename_all = "camelCase")]
 pub struct EntriesResult {
     pub entries: Vec<EntrySummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFuzzyResult {
+    pub entries: Vec<EntrySummary>,
+    pub groups: Vec<GroupHierarchyItem>,
+    pub tags: Vec<TagSummary>,
+    pub trash_matches: bool,
+    pub filter_tokens: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -788,6 +805,7 @@ pub enum OperationSuccess {
     SetConfig(EmptyResult),
     GetEntries(EntriesResult),
     SearchEntries(EntriesResult),
+    SearchFuzzy(SearchFuzzyResult),
     GetGroupHierarchy(GroupHierarchyResult),
     GetGroupEntries(EntriesResult),
     GetTagEntries(EntriesResult),

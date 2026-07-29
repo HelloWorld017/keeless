@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use keeless_kdbx::{
-    Database, Entry, IconImage, IconUpdate, NUMBER_STANDARD_ICONS, NodeId, StandardField,
+    Database, Entry, Group, IconImage, IconUpdate, NUMBER_STANDARD_ICONS, NodeId, StandardField,
     kdbx::template,
 };
 use keeless_schema::{
@@ -86,6 +86,15 @@ pub(super) fn entry_summary(entry: &Entry) -> EntrySummary {
         url_is_protected: entry.url().is_protected(),
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),
         tags: entry.tags.clone(),
+    }
+}
+
+pub(super) fn group_hierarchy_item(group: &Group) -> GroupHierarchyItem {
+    GroupHierarchyItem {
+        id: node_id(group.id),
+        name: group.title.clone(),
+        icon: icon_reference(&group.icon, group.custom_icon_uuid),
+        child_group_ids: group.child_group_ids.iter().copied().map(node_id).collect(),
     }
 }
 
@@ -190,12 +199,7 @@ pub(super) fn group_hierarchy(database: &Database) -> Result<GroupHierarchyResul
             return;
         };
 
-        groups.push(GroupHierarchyItem {
-            id: node_id(group.id),
-            name: group.title.clone(),
-            icon: icon_reference(&group.icon, group.custom_icon_uuid),
-            child_group_ids: group.child_group_ids.iter().copied().map(node_id).collect(),
-        });
+        groups.push(group_hierarchy_item(group));
         for child_group_id in &group.child_group_ids {
             visit_group(database, child_group_id, visited, groups);
         }
