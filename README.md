@@ -35,9 +35,9 @@
 - [ ] 설정 UI
 - [ ] Attachment 다운로드 가능
 - [ ] setuplayout에서 위에 <- Back으로 하게, router로 이동하게
-- [ ] enforce_auto_lock을 dispatch 시에 구현하지말고 자체 timeout으로 작업하게
+- [x] enforce_auto_lock을 dispatch 시에 구현하지말고 자체 timeout으로 작업하게
 - [ ] per-database config store
-- [ ] desktop용 cache + journal로 저장하는 storage wrapper
+- [x] desktop용 cache + journal로 저장하는 storage wrapper
 - [x] vhid 구현 (Linux)
 - [ ] Windows WebAuthn plugin authenticator 구현
 - [ ] extension + native messaging host 구현
@@ -102,6 +102,6 @@ An approval dialog ensures that only explicitly authorized devices can establish
   Buuuuut, if you have a < 1.5k LOC diff and if you can write the description in your own words, you can give it a shot.
   However, if I smell any slop in the code, I can close it without any further comments.
 
-* **Can you guarantee that the memory protection thing works well?**
+* **Can you guarantee that the memory protection thing works well?**  
   No, I can not. But I tested for a few basic smoke tests manually on Windows.
   If you are concerned about it, just test it yourself and share the results with me via issues.

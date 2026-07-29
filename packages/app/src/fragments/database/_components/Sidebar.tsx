@@ -12,6 +12,12 @@ import {
 } from '@/components/alert-dialog';
 import { Button } from '@/components/button';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/dropdown-menu';
+import {
   Sidebar,
   SidebarContent,
   SidebarEmpty,
@@ -29,14 +35,15 @@ import {
   useSidebar,
 } from '@/components/sidebar';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { IconList, IconPlus, IconSearch, IconTrash } from '@/icons';
+import { IconList, IconLockKeyhole, IconPlus, IconSearch, IconSettings, IconTrash } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
 import { databaseNodeKey, type RootDropData, type TrashDropData } from '../_utils/dragAndDrop';
+import { ConfigDialog } from '../config';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import { Tag } from './Tag';
 import { TagStyleEditor } from './TagStyleEditor';
@@ -138,6 +145,7 @@ const TrashMenuItem = ({
 
 const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
   const [location, setLocation] = useLocation();
+  const [configOpen, setConfigOpen] = useState(false);
   const [groupMatch, groupParams] = useRoute<{ group: string }>(getRoute('group'));
   const hierarchy = useRequest('getGroupHierarchy', {});
   const tags = useRequest('getTags', {});
@@ -264,6 +272,15 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
       ]);
     },
   });
+  const lockDatabase = useMutation({
+    mutationFn: async () => {
+      await requestClient.data!.request('lock', {});
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['request', 'getDatabaseStatus', {}] });
+      closeMobile();
+    },
+  });
   const groupParentId = activeGroup?.id ?? hierarchy.data?.rootGroupId;
   const groupsPending =
     moveGroup.isPending || addGroup.isPending || updateGroup.isPending || deleteGroup.isPending;
@@ -273,19 +290,36 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" disabled={!databaseName}>
-              <div className="flex gap-3 items-center w-full">
-                <div className="aspect-square size-8">
-                  <img src={Logo} alt="" />
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<SidebarMenuButton size="lg" disabled={!databaseName} />}
+              >
+                <div className="flex gap-3 items-center w-full">
+                  <div className="aspect-square size-8">
+                    <img src={Logo} alt="" />
+                  </div>
+                  <div className="flex flex-[1_1_0] min-w-0 flex-col">
+                    <span className="font-semibold truncate">
+                      {databaseName ?? 'Loading database'}
+                    </span>
+                    <span>{storageName}</span>
+                  </div>
                 </div>
-                <div className="flex flex-[1_1_0] min-w-0 flex-col">
-                  <span className="font-semibold truncate">
-                    {databaseName ?? 'Loading database'}
-                  </span>
-                  <span>{storageName}</span>
-                </div>
-              </div>
-            </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  disabled={lockDatabase.isPending}
+                  onClick={() => lockDatabase.mutate()}
+                >
+                  <IconLockKeyhole />
+                  Lock
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setConfigOpen(true)}>
+                  <IconSettings />
+                  Config
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -454,6 +488,7 @@ const DatabaseSidebar = ({ onSearch }: { onSearch: () => void }) => {
           />
         </SidebarMenu>
       </SidebarFooter>
+      <ConfigDialog open={configOpen} onOpenChange={setConfigOpen} />
     </Sidebar>
   );
 };

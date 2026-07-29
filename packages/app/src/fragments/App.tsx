@@ -1,4 +1,5 @@
 import { ToastList } from '@/fragments/_components/ToastList';
+import { AppIntegrationProvider } from '@/fragments/_providers/AppIntegrationProvider';
 import { HostProvider } from '@/fragments/_providers/HostProvider';
 import { QueryProvider } from '@/fragments/_providers/QueryProvider';
 import { RouterProvider } from '@/fragments/_providers/RouterProvider';
@@ -29,16 +30,18 @@ type AppProps = {
 
 export const App = ({ integration }: AppProps) => (
   <StrictMode>
-    <HostProvider integration={integration}>
-      <QueryProvider>
-        <ToastProvider>
-          <RouterProvider fallback="open">
-            <AppContents />
-            <EntryFocusHandler />
-          </RouterProvider>
-          <ToastList />
-        </ToastProvider>
-      </QueryProvider>
-    </HostProvider>
+    <AppIntegrationProvider integration={integration}>
+      <HostProvider integration={integration}>
+        <QueryProvider>
+          <ToastProvider>
+            <RouterProvider fallback="open">
+              <AppContents />
+              <EntryFocusHandler />
+            </RouterProvider>
+            <ToastList />
+          </ToastProvider>
+        </QueryProvider>
+      </HostProvider>
+    </AppIntegrationProvider>
   </StrictMode>
 );
