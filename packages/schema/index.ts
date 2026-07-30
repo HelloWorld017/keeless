@@ -163,6 +163,8 @@ export type PrepareEntryAttachmentDownloadArgs = {
 
 export type DeleteEntryArgs = { entryId: DatabaseNodeId; permanent: boolean };
 
+export type EmptyRecycleBinArgs = Record<string, never>;
+
 export type SaveDatabaseArgs = { password?: string | null };
 
 export type PrepareDatabaseExportArgs = { password?: string | null };
@@ -212,9 +214,6 @@ export type RevealEntryFieldsArgs = {
 
 export type GetPasskeysArgs = { rpId?: string | null; allowCredentialIds?: string[] };
 
-/**
- * Registration inputs from a CTAP2 `authenticatorMakeCredential` request.
- */
 export type RegisterPasskeyArgs = {
   rpId: string;
   rpName?: string | null;
@@ -226,9 +225,6 @@ export type RegisterPasskeyArgs = {
   userVerified: boolean;
 };
 
-/**
- * Assertion inputs from a CTAP2 `authenticatorGetAssertion` request.
- */
 export type AssertPasskeyArgs = {
   entryId: DatabaseNodeId;
   rpId: string;
@@ -465,3 +461,61 @@ export type OperationOutcome =
   | { status: 'error'; error: OperationError };
 
 export type OperationResponse = OperationOutcome & { requestId: string };
+
+export type OperationResource =
+  | 'databaseStatus'
+  | 'storageDescriptor'
+  | 'config'
+  | 'entry'
+  | 'group'
+  | 'tag'
+  | 'customIcon';
+
+export type OperationMetadata = {
+  queries?: readonly OperationResource[];
+  fetches?: readonly OperationResource[];
+  mutates?: readonly OperationResource[];
+};
+
+export const operationMetadata = {
+  open: { mutates: ['databaseStatus'] },
+  create: { mutates: ['databaseStatus'] },
+  unlock: { mutates: ['databaseStatus'] },
+  lock: { mutates: ['databaseStatus'] },
+  getDatabaseStatus: { queries: ['databaseStatus'] },
+  getStorageDescriptor: { queries: ['storageDescriptor'] },
+  getConfig: { queries: ['config'] },
+  setConfig: { mutates: ['config', 'databaseStatus'] },
+  getEntries: { queries: ['entry'] },
+  searchEntries: { queries: ['entry'] },
+  searchFuzzy: { queries: ['entry', 'group', 'tag'] },
+  getGroupHierarchy: { queries: ['group'] },
+  getGroupEntries: { queries: ['entry'] },
+  getTagEntries: { queries: ['entry', 'tag'] },
+  getTrashEntries: { queries: ['entry'] },
+  getTags: { queries: ['tag'] },
+  getEntryDetail: { queries: ['entry'] },
+  updateEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
+  prepareEntryAttachmentDownload: { fetches: ['entry'] },
+  deleteEntry: { mutates: ['entry', 'tag'] },
+  emptyRecycleBin: { mutates: ['databaseStatus', 'entry', 'group', 'tag'] },
+  saveDatabase: { mutates: ['databaseStatus'] },
+  prepareDatabaseExport: { fetches: ['entry', 'group', 'tag', 'customIcon'] },
+  mergeTransferredDatabase: { mutates: ['databaseStatus', 'entry', 'group', 'tag', 'customIcon'] },
+  getCustomIcons: { queries: ['customIcon'] },
+  getEntryTemplates: { queries: ['entry'] },
+  moveGroup: { mutates: ['databaseStatus', 'group'] },
+  moveEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
+  addEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
+  addEntryFromTemplate: { mutates: ['databaseStatus', 'entry', 'tag'] },
+  addGroup: { mutates: ['databaseStatus', 'group'] },
+  deleteGroup: { mutates: ['databaseStatus', 'entry', 'group', 'tag'] },
+  renameGroup: { mutates: ['databaseStatus', 'group'] },
+  updateGroup: { mutates: ['databaseStatus', 'group'] },
+  updateTagStyle: { mutates: ['databaseStatus', 'tag'] },
+  deleteTag: { mutates: ['databaseStatus', 'tag'] },
+  revealEntryFields: { fetches: ['entry'] },
+  getPasskeys: { queries: ['entry'] },
+  registerPasskey: { mutates: ['databaseStatus', 'entry'] },
+  assertPasskey: { fetches: ['entry'] },
+} as const satisfies Record<Operation['op'], OperationMetadata>;

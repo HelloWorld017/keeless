@@ -5,11 +5,11 @@ use specta::{NamedType, ts};
 
 fn main() {
     let generated = generate();
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("index.d.ts");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("index.ts");
 
     if env::args().any(|arg| arg == "--check") {
-        let checked = fs::read_to_string(&path).expect("read checked TypeScript declarations");
-        assert_eq!(checked, generated, "index.d.ts is stale; run the exporter");
+        let checked = fs::read_to_string(&path).expect("read checked TypeScript schema");
+        assert_eq!(checked, generated, "index.ts is stale; run the exporter");
     } else {
         fs::write(path, generated).expect("write TypeScript declarations");
     }
@@ -56,6 +56,7 @@ fn generate() -> String {
     export::<UpdateEntryArgs>(&mut output);
     export::<PrepareEntryAttachmentDownloadArgs>(&mut output);
     export::<DeleteEntryArgs>(&mut output);
+    export_empty("EmptyRecycleBinArgs", &mut output);
     export::<SaveDatabaseArgs>(&mut output);
     export::<PrepareDatabaseExportArgs>(&mut output);
     export::<MergeTransferredDatabaseArgs>(&mut output);
@@ -103,6 +104,7 @@ fn generate() -> String {
         "export type OperationOutcome = ({ status: \"success\" } & OperationSuccess) | { status: \"error\"; error: OperationError }\n\n",
     );
     output.push_str("export type OperationResponse = OperationOutcome & { requestId: string }\n\n");
+    export_operation_metadata(&mut output);
     output.truncate(output.trim_end().len());
     output.push('\n');
     output
@@ -117,4 +119,51 @@ fn export<T: NamedType>(output: &mut String) {
 // Specta 1.0.5 renders zero-field structs as invalid `Type<> = null` declarations.
 fn export_empty(name: &str, output: &mut String) {
     output.push_str(&format!("export type {name} = Record<string, never>\n\n"));
+}
+
+fn export_operation_metadata(output: &mut String) {
+    output.push_str("export type OperationResource =\n");
+    for resource in OPERATION_RESOURCES {
+        output.push_str(&format!("  | {:?}\n", resource.name()));
+    }
+    output.push('\n');
+    output.push_str(
+        "export type OperationMetadata = {\n  queries?: readonly OperationResource[];\n  fetches?: readonly OperationResource[];\n  mutates?: readonly OperationResource[];\n}\n\n",
+    );
+    output.push_str("export const operationMetadata = {\n");
+    for definition in Operation::definitions() {
+        output.push_str(&format!("  {}: {{", definition.name));
+        if !definition.metadata.queries.is_empty() {
+            output.push_str(" queries: [");
+            for (index, resource) in definition.metadata.queries.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("{:?}", resource.name()));
+            }
+            output.push_str("],");
+        }
+        if !definition.metadata.fetches.is_empty() {
+            output.push_str(" fetches: [");
+            for (index, resource) in definition.metadata.fetches.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("{:?}", resource.name()));
+            }
+            output.push_str("],");
+        }
+        if !definition.metadata.mutates.is_empty() {
+            output.push_str(" mutates: [");
+            for (index, resource) in definition.metadata.mutates.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&format!("{:?}", resource.name()));
+            }
+            output.push_str("],");
+        }
+        output.push_str(" },\n");
+    }
+    output.push_str("} as const satisfies Record<Operation['op'], OperationMetadata>\n\n");
 }

@@ -5,22 +5,23 @@
   "description": "shared protocol types for keeless",
   "license": "MIT",
   "type": "module",
-  "types": "./index.d.ts",
+  "types": "./index.ts",
   "exports": {
     ".": {
-      "default": "./index.d.ts"
+      "types": "./index.ts",
+      "default": "./index.ts"
     }
   },
   "files": [
-    "index.d.ts"
+    "index.ts"
   ],
   "scripts": {
     "check": "pnpm run \"/^check:.*/\"",
-    "check:format": "cargo fmt --check && oxfmt --check index.d.ts",
+    "check:format": "cargo fmt --check && oxfmt --check index.ts",
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
-    "format": "cargo fmt && oxfmt index.d.ts",
-    "generate": "cargo run --bin export-types && oxfmt index.d.ts",
+    "format": "cargo fmt && oxfmt index.ts",
+    "generate": "cargo run --bin export-types && oxfmt index.ts",
     "lint": "cargo clippy -p keeless_schema --all-targets -- -D warnings",
     "test": "cargo test -p keeless_schema",
     "typecheck": "pnpm run \"/^typecheck:.*/\"",

@@ -64,6 +64,64 @@ fn request_is_flat_with_stable_op_and_args() {
 }
 
 #[test]
+fn operations_expose_query_fetch_and_mutation_metadata() {
+    let get_tags = Operation::GetTags(GetTagsArgs {}).metadata();
+    assert_eq!(get_tags.queries, &[OperationResource::Tag]);
+    assert!(get_tags.fetches.is_empty());
+    assert!(get_tags.mutates.is_empty());
+
+    let update_tag = Operation::UpdateTagStyle(UpdateTagStyleArgs {
+        name: "Work".into(),
+        style: TagStyle {
+            icon: IconReference {
+                standard_id: 0,
+                custom_uuid: None,
+            },
+            color: "blue".into(),
+        },
+    })
+    .metadata();
+    assert!(update_tag.queries.is_empty());
+    assert!(update_tag.fetches.is_empty());
+    assert_eq!(
+        update_tag.mutates,
+        &[OperationResource::DatabaseStatus, OperationResource::Tag]
+    );
+
+    let fetches = Operation::definitions()
+        .iter()
+        .filter(|definition| !definition.metadata.fetches.is_empty())
+        .map(|definition| (definition.name, definition.metadata.fetches))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        fetches,
+        vec![
+            (
+                "prepareEntryAttachmentDownload",
+                &[OperationResource::Entry][..]
+            ),
+            (
+                "prepareDatabaseExport",
+                &[
+                    OperationResource::Entry,
+                    OperationResource::Group,
+                    OperationResource::Tag,
+                    OperationResource::CustomIcon,
+                ][..],
+            ),
+            ("revealEntryFields", &[OperationResource::Entry][..]),
+            ("assertPasskey", &[OperationResource::Entry][..]),
+        ]
+    );
+
+    assert!(
+        Operation::definitions()
+            .iter()
+            .any(|definition| definition.name == "getTags" && definition.metadata == get_tags)
+    );
+}
+
+#[test]
 fn create_request_and_response_have_stable_shapes() {
     assert_roundtrip(
         OperationRequest {
