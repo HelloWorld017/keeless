@@ -36,7 +36,7 @@
 - [x] 설정 UI
 - [x] Attachment 다운로드 가능
 - [x] icon picker 수정
-- [ ] 엔트리 검색 로직 러스트로 일원화 [skim](https://github.com/skim-rs/skim)사용, `tag:` 쿼리, `in:` 쿼리
+- [x] 엔트리 검색 로직 러스트로 일원화 [skim](https://github.com/skim-rs/skim)사용, `tag:` 쿼리, `in:` 쿼리
 - [ ] Trash에 전부 삭제 추가
 - [ ] WebDAV 싱크 테스트 하기
 - [ ] setuplayout에서 위에 <- Back으로 하게, router로 이동하게

@@ -401,7 +401,7 @@ const GroupEntries = ({
       moveError={moveError}
       hiddenEntry={hiddenEntry}
       creationParentId={group.id}
-      searchQuery={searchFilterToken('in', group.name)}
+      searchQuery={`${searchFilterToken('in', group.name)} `}
       onOpenSearch={onOpenSearch}
     />
   );
@@ -467,7 +467,7 @@ export const EntryList = ({
         movePending={movePending}
         moveError={moveError}
         hiddenEntry={hiddenEntry}
-        searchQuery={searchFilterToken('tag', tag)}
+        searchQuery={`${searchFilterToken('tag', tag)} `}
         onOpenSearch={onOpenSearch}
       />
     );

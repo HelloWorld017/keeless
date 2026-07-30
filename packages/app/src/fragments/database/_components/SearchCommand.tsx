@@ -9,14 +9,33 @@ import {
 } from '@/components/command';
 import { useRequest } from '@/fragments/_providers/QueryProvider';
 import { useNavigate } from '@/fragments/_providers/RouterProvider';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useDebouncedValue, useThrottledValue } from '@/hooks/useDebouncedValue';
 import { IconSearch, IconTag, IconTrash } from '@/icons';
 import { buildRoute } from '@/utils/route';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { getEntryTitle } from './EntryItem';
 import { ItemIcon } from './ItemIcon';
 import { searchFilterToken } from './searchQuery';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
+
+type CommandItemType = {
+  value: string,
+  group: 'entry' | 'group' | 'search' | 'tag' | 'navigation',
+  completion?: string,
+  onSelect: () => void,
+  icon: ReactNode,
+  label: string,
+  description?: string,
+  shortcut?: ReactNode,
+};
+
+const GROUP_HEADINGS = {
+  entry: 'Entries',
+  group: 'Groups',
+  search: 'Search',
+  tag: 'Tags',
+  navigation: 'Navigation',
+} satisfies Record<CommandItemType['group'], string>;
 
 const CommandResult = ({
   icon,
@@ -49,44 +68,138 @@ const SearchCommandResults = ({
   onSearch: (query: string) => void;
 }) => {
   const [query, setQuery] = useState(initialQuery);
-  const debouncedQuery = useDebouncedValue(query, 150, initialQuery);
-  const search = useRequest('searchFuzzy', { query: debouncedQuery });
+  const debouncedQuery = useThrottledValue(query, 150, initialQuery);
+  const search = useRequest('searchFuzzy', { query: debouncedQuery }, {
+    enabled: !!debouncedQuery.trim(),
+    gcTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
+  });
   const navigate = useNavigate();
   const isCurrentQuery = query === debouncedQuery;
   const loading = !isCurrentQuery || search.isPending || search.isFetching;
-  const result = isCurrentQuery && !loading ? search.data : undefined;
+  const result = search.data;
   const trimmedQuery = query.trim();
 
   const select = (href: string) => {
     onOpenChange(false);
     navigate(href);
   };
+
   const complete = (prefix: 'in' | 'tag', name: string) => {
     const tokens = result?.filterTokens ?? [];
-    setQuery([...tokens, searchFilterToken(prefix, name)].join(' '));
+    setQuery([...tokens, searchFilterToken(prefix, name)].join(' ') + ' ');
+  };
+
+  const items = useMemo<CommandItemType[]>(() => [
+    ...(result?.entries.map(entry => ({
+      value: `entry:${String(entry.id)}`,
+      group: 'entry' as const,
+      onSelect: () =>
+        select(`${buildRoute('database')}?entry=${encodeURIComponent(String(entry.id))}`),
+      icon: <ItemIcon icon={entry.icon} fallback="entry" />,
+      label: getEntryTitle(entry),
+      description: [entry.username, entry.url].filter(Boolean).join(' | '),
+    })) ?? []),
+    {
+      value: `search:${trimmedQuery}`,
+      group: 'search' as const,
+      onSelect: () => {
+        onOpenChange(false);
+        onSearch(query);
+      },
+      icon: <IconSearch />,
+      label: `Search for "${query}"`,
+      shortcut: 'Enter',
+    },
+    ...(result?.groups.map(group => ({
+      value: `group:${String(group.id)}`,
+      group: 'group' as const,
+      completion: `in:${group.name}`,
+      onSelect: () =>
+        select(buildRoute('group', { group: String(group.id) })),
+      icon: <ItemIcon icon={group.icon} fallback="group" />,
+      label: group.name || 'Untitled group',
+      shortcut: "Tab"
+    })) ?? []),
+    ...(result?.tags.map(tag => ({
+      value: `tag:${tag.name}`,
+      group: 'tag' as const,
+      completion: `tag:${tag.name}`,
+      onSelect: () => select(buildRoute('tag', { tag: tag.name })),
+      icon: <IconTag />,
+      label: tag.name,
+      description: `${tag.entryCount} ${tag.entryCount === 1 ? 'entry' : 'entries'}`,
+      shortcut: "Tab",
+    })) ?? []),
+    ...(result?.trashMatches ? [{
+      value: 'navigation:trash',
+      group: 'navigation' as const,
+      onSelect: () => select(buildRoute('trash')),
+      icon: <IconTrash />,
+      label: 'Trash',
+    }] : []),
+  ], [result]);
+
+  const itemsRendered =
+    items
+      .reduce<{ key: CommandItemType['group'], children: CommandItemType[] }[]>((groups, item) => {
+        const lastGroup = groups.at(-1);
+        if (lastGroup?.key === item.group) {
+          lastGroup.children.push(item);
+          return groups;
+        }
+
+        return [...groups, { key: item.group, children: [item] }];
+      }, [])
+      .map(({ key, children }) => (
+        <CommandGroup key={key} heading={GROUP_HEADINGS[key]}>
+          {children.map(item => (
+            <CommandItem
+              key={item.value}
+              value={item.value}
+              onSelect={item.onSelect}
+            >
+              <CommandResult
+                icon={item.icon}
+                label={item.label}
+                description={item.description}
+                shortcut={item.shortcut}
+              />
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      ));
+
+  const [value, setValue] = useState<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    setValue(items?.[0].value);
+  }, [query, items]);
+
+  const onKeyDown = (event: ReactKeyboardEvent) => {
+    if (event.key !== 'Tab') {
+      return;
+    }
+
+    const selected = items.find(item => item.value === value);
+    const completion = selected?.completion;
+    if (!completion) {
+      return;
+    }
+
+    const [prefix, ...name] = completion.split(':');
+    if ((prefix === 'in' || prefix === 'tag') && name.length > 0) {
+      event.preventDefault();
+      complete(prefix, name.join(':'));
+    }
   };
 
   return (
     <Command
       shouldFilter={false}
+      value={value}
+      onValueChange={setValue}
       loop
-      onKeyDown={event => {
-        if (event.key !== 'Tab') {
-          return;
-        }
-        const selected = event.currentTarget.querySelector<HTMLElement>(
-          '[cmdk-item][data-selected="true"][data-completion]',
-        );
-        const completion = selected?.dataset.completion;
-        if (!completion) {
-          return;
-        }
-        const [prefix, ...name] = completion.split(':');
-        if ((prefix === 'in' || prefix === 'tag') && name.length > 0) {
-          event.preventDefault();
-          complete(prefix, name.join(':'));
-        }
-      }}
+      onKeyDown={onKeyDown}
     >
       <CommandInput
         value={query}
@@ -95,92 +208,13 @@ const SearchCommandResults = ({
         placeholder="Search entries, groups, and tags..."
       />
       <CommandList>
-        {!trimmedQuery && !loading && (
+        {!trimmedQuery && (
           <p className="px-3 py-8 text-center text-sm text-muted-foreground">
             Type to search entries, groups, tags, and Trash.
           </p>
         )}
-        {trimmedQuery && result?.entries.length ? (
-          <CommandGroup heading="Entries">
-            {result.entries.map(entry => (
-              <CommandItem
-                key={String(entry.id)}
-                value={`entry:${String(entry.id)}`}
-                onSelect={() =>
-                  select(`${buildRoute('database')}?entry=${encodeURIComponent(String(entry.id))}`)
-                }
-              >
-                <CommandResult
-                  icon={<ItemIcon icon={entry.icon} fallback="entry" />}
-                  label={getEntryTitle(entry)}
-                  description={[entry.username, entry.url].filter(Boolean).join(' | ')}
-                />
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        ) : null}
-        {trimmedQuery && (
-          <CommandGroup heading="Search">
-            <CommandItem
-              value={`search:${trimmedQuery}`}
-              onSelect={() => {
-                onOpenChange(false);
-                onSearch(query);
-              }}
-            >
-              <CommandResult
-                icon={<IconSearch />}
-                label={`Search for "${query}"`}
-                shortcut="Enter"
-              />
-            </CommandItem>
-          </CommandGroup>
-        )}
-        {trimmedQuery && result?.groups.length ? (
-          <CommandGroup heading="Groups">
-            {result.groups.map(group => (
-              <CommandItem
-                key={String(group.id)}
-                value={`group:${String(group.id)}`}
-                data-completion={`in:${group.name}`}
-                onSelect={() => select(buildRoute('group', { group: String(group.id) }))}
-              >
-                <CommandResult
-                  icon={<ItemIcon icon={group.icon} fallback="group" />}
-                  label={group.name || 'Untitled group'}
-                  shortcut="Tab"
-                />
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        ) : null}
-        {trimmedQuery && result?.tags.length ? (
-          <CommandGroup heading="Tags">
-            {result.tags.map(tag => (
-              <CommandItem
-                key={tag.name}
-                value={`tag:${tag.name}`}
-                data-completion={`tag:${tag.name}`}
-                onSelect={() => select(buildRoute('tag', { tag: tag.name }))}
-              >
-                <CommandResult
-                  icon={<IconTag />}
-                  label={tag.name}
-                  description={`${tag.entryCount} ${tag.entryCount === 1 ? 'entry' : 'entries'}`}
-                  shortcut="Tab"
-                />
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        ) : null}
-        {trimmedQuery && result?.trashMatches && (
-          <CommandGroup heading="Navigation">
-            <CommandItem value="navigation:trash" onSelect={() => select(buildRoute('trash'))}>
-              <CommandResult icon={<IconTrash />} label="Trash" />
-            </CommandItem>
-          </CommandGroup>
-        )}
-        {loading && (
+        {trimmedQuery && itemsRendered}
+        {trimmedQuery && !result && (
           <p className="px-3 pb-3 text-center text-xs text-muted-foreground">
             Loading quick results...
           </p>
@@ -190,16 +224,11 @@ const SearchCommandResults = ({
             Search could not be loaded.
           </p>
         )}
-        {trimmedQuery &&
-          result &&
-          result.entries.length === 0 &&
-          result.groups.length === 0 &&
-          result.tags.length === 0 &&
-          !result.trashMatches && (
-            <p className="px-3 pb-3 text-center text-xs text-muted-foreground">
-              No quick results. Press Enter to search all entries.
-            </p>
-          )}
+        {trimmedQuery && !items.filter(item => item.group !== 'search').length && (
+          <p className="px-3 pb-3 text-center text-xs text-muted-foreground">
+            No quick results. Press Enter to search all entries.
+          </p>
+        )}
       </CommandList>
     </Command>
   );

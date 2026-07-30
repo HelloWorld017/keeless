@@ -1,8 +1,8 @@
 import { getRequestClient } from '@/utils/request';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useHost } from './HostProvider';
-import type { OperationArgs, OperationName } from '@/utils/request';
+import type { OperationArgs, OperationName, OperationResult } from '@/utils/request';
 import type { ReactNode } from 'react';
 
 export const QueryProvider = ({ children }: { children: ReactNode }) => {
@@ -27,15 +27,18 @@ export const useRequestClient = () => {
     staleTime: Infinity,
   });
 };
+
 export const useRequest = <TName extends OperationName>(
   name: TName,
   args: OperationArgs<TName>,
+  config: Omit<UseQueryOptions<OperationResult<TName>>, 'queryKey' | 'queryFn'> = {},
 ) => {
   const requestClient = useRequestClient();
 
   return useQuery({
+    enabled: requestClient.isSuccess,
+    ...config,
     queryKey: ['request', name, args],
     queryFn: () => requestClient.data!.request(name, args),
-    enabled: requestClient.isSuccess,
   });
 };

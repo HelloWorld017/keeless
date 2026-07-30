@@ -416,3 +416,31 @@ async fn search_fuzzy_applies_direct_group_and_tag_filters() {
     assert_eq!(result.entries[0].name, None);
     assert_eq!(result.filter_tokens, vec!["in:Child", "tag:shared"]);
 }
+
+#[tokio::test]
+async fn search_fuzzy_matches_the_recycle_bin_title() {
+    let (mut core, _) = query_core().await;
+    {
+        let database = core.handle.as_mut().unwrap().database_mut();
+        let recycle_bin_id = database.create_recycle_bin();
+        database.get_group_mut(&recycle_bin_id).unwrap().title = "Discarded Items".into();
+    }
+
+    let result = operations::search_fuzzy::run(
+        &mut core,
+        SearchFuzzyArgs {
+            query: "discarded".into(),
+        },
+    )
+    .unwrap();
+    assert!(result.trash_matches);
+
+    let result = operations::search_fuzzy::run(
+        &mut core,
+        SearchFuzzyArgs {
+            query: "trash".into(),
+        },
+    )
+    .unwrap();
+    assert!(!result.trash_matches);
+}

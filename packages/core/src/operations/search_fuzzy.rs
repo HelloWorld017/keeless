@@ -82,7 +82,12 @@ pub(crate) fn run(core: &mut KeelessCore, args: SearchFuzzyArgs) -> Result<Searc
             entries,
             groups,
             tags,
-            trash_matches: helper.has_free_text() && helper.score("Trash Recycle Bin").is_some(),
+            trash_matches: helper.has_free_text()
+                && database
+                    .recycle_bin_uuid
+                    .map(NodeId::from_uuid)
+                    .and_then(|id| database.get_group(&id))
+                    .is_some_and(|group| helper.score(&group.title).is_some()),
             filter_tokens: query.filter_tokens,
         }
     };

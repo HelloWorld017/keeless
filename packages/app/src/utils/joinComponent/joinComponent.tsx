@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 
-export const joinComponent = (elements: ReactNode[], separator: ReactNode) =>
+export const joinComponent = (elements: ReactNode[], separator: ReactNode): ReactNode[] =>
   elements.flatMap((element, index) =>
     index === 0 ? [element] : [<Fragment key={index}>{separator}</Fragment>, element],
   );

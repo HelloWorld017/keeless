@@ -56,7 +56,7 @@ export const EntryItem = ({
       <ItemContent className="min-w-0 gap-0.5">
         <ItemTitle className={cx(selected && 'text-primary-foreground')}>{title}</ItemTitle>
         <ItemDescription className="flex flex-col gap-0.5 min-h-5.5">
-          {description && (
+          {!!description.length && (
             <div className="flex h-5.5 items-center gap-1 overflow-hidden">
               <span
                 className={cx(
@@ -69,7 +69,7 @@ export const EntryItem = ({
             </div>
           )}
           {!!entry.tags.length && (
-            <div className="flex h-5.5 items-center gap-1 overflow-hidden">
+            <div className="flex h-5.5 mt-1 items-center gap-1 overflow-hidden">
               {entry.tags.map(name => (
                 <Tag
                   key={name}

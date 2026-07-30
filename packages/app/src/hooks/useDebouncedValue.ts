@@ -1,4 +1,4 @@
-import { debounce } from 'es-toolkit';
+import { debounce, throttle } from 'es-toolkit';
 import { useEffect, useState } from 'react';
 
 export const useDebouncedValue = <T>(value: T, delayMs: number, initialValue: T = value) => {
@@ -12,4 +12,17 @@ export const useDebouncedValue = <T>(value: T, delayMs: number, initialValue: T 
   }, [delayMs, value]);
 
   return debouncedValue;
+};
+
+export const useThrottledValue = <T>(value: T, delayMs: number, initialValue: T = value) => {
+  const [throttledValue, setThrottledValue] = useState(initialValue);
+
+  useEffect(() => {
+    const updateValue = throttle(() => setThrottledValue(value), delayMs);
+    updateValue();
+
+    return updateValue.cancel;
+  }, [delayMs, value]);
+
+  return throttledValue;
 };
