@@ -1,4 +1,5 @@
 use keeless_schema::{EmptyResult, LockArgs, OperationSuccess};
+use zeroize::Zeroizing;
 
 use crate::{KeelessCore, Result};
 
@@ -17,7 +18,18 @@ pub(crate) fn run(core: &mut KeelessCore) {
     }
 }
 
-pub(super) fn execute(core: &mut KeelessCore, _args: LockArgs) -> Result<OperationSuccess> {
+pub(super) async fn execute(
+    core: &mut KeelessCore,
+    mut args: LockArgs,
+) -> Result<OperationSuccess> {
+    let password = args
+        .password
+        .take()
+        .map(|password| Zeroizing::new(password.into_bytes()));
+    if core.handle.is_some() {
+        core.sync(password.as_ref().map(|password| password.as_slice()))
+            .await?;
+    }
     run(core);
     Ok(OperationSuccess::Lock(EmptyResult {}))
 }

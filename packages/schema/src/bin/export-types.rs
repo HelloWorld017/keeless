@@ -36,7 +36,7 @@ fn generate() -> String {
     export::<OpenArgs>(&mut output);
     export::<CreateArgs>(&mut output);
     export::<UnlockArgs>(&mut output);
-    export_empty("LockArgs", &mut output);
+    export::<LockArgs>(&mut output);
     export_empty("GetDatabaseStatusArgs", &mut output);
     export_empty("GetStorageDescriptorArgs", &mut output);
     export_empty("GetConfigArgs", &mut output);

@@ -38,7 +38,7 @@ pub(crate) async fn execute(
         Operation::Open(args) => open::execute(core, args).await,
         Operation::Create(args) => create::execute(core, args).await,
         Operation::Unlock(args) => unlock::execute(core, args).await,
-        Operation::Lock(args) => lock::execute(core, args),
+        Operation::Lock(args) => lock::execute(core, args).await,
         Operation::GetDatabaseStatus(args) => get_database_status::execute(core, args),
         Operation::GetStorageDescriptor(args) => get_storage_descriptor::execute(core, args),
         Operation::GetConfig(args) => get_config::execute(core, args),

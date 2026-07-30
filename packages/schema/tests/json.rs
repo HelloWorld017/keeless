@@ -144,7 +144,7 @@ fn create_request_and_response_have_stable_shapes() {
 }
 
 #[test]
-fn create_and_unlock_passwords_are_optional_and_nullable() {
+fn create_unlock_and_lock_passwords_are_optional_and_nullable() {
     for (operation, expected) in [
         (
             Operation::Create(CreateArgs { password: None }),
@@ -153,6 +153,10 @@ fn create_and_unlock_passwords_are_optional_and_nullable() {
         (
             Operation::Unlock(UnlockArgs { password: None }),
             json!({ "op": "unlock", "args": { "password": null } }),
+        ),
+        (
+            Operation::Lock(LockArgs { password: None }),
+            json!({ "op": "lock", "args": { "password": null } }),
         ),
     ] {
         assert_roundtrip(operation, expected);
@@ -164,6 +168,7 @@ fn create_and_unlock_passwords_are_optional_and_nullable() {
     assert!(
         serde_json::from_value::<UnlockArgs>(json!({})).unwrap() == UnlockArgs { password: None }
     );
+    assert!(serde_json::from_value::<LockArgs>(json!({})).unwrap() == LockArgs { password: None });
 }
 
 #[test]
@@ -1036,10 +1041,10 @@ fn error_response_is_flat_and_excludes_success() {
 }
 
 #[test]
-fn all_request_and_success_variants_have_explicit_empty_objects() {
+fn all_request_and_success_variants_have_explicit_objects() {
     let requests = [
         json!({ "requestId": "1", "op": "open", "args": { "storage": { "provider": "file", "path": "/vault.kdbx" } } }),
-        json!({ "requestId": "2", "op": "lock", "args": {} }),
+        json!({ "requestId": "2", "op": "lock", "args": { "password": null } }),
         json!({ "requestId": "3", "op": "getConfig", "args": {} }),
         json!({ "requestId": "4", "op": "setConfig", "args": { "config": { "paranoiaMode": true } } }),
         json!({ "requestId": "5", "op": "getEntries", "args": { "excludeTrash": true } }),

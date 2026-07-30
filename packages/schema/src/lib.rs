@@ -366,9 +366,13 @@ operation_schema! {
 
     Lock("lock") {
         args {
-            #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-            #[serde(deny_unknown_fields)]
-            pub struct LockArgs {}
+            #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct LockArgs {
+                #[serde(default, deserialize_with = "deserialize_nullable")]
+                #[specta(optional = true)]
+                pub password: Option<String>,
+            }
         }
         result EmptyResult
         mutates: [DatabaseStatus],
@@ -664,7 +668,7 @@ operation_schema! {
             }
         }
         result EmptyResult
-        mutates: [Entry, Tag],
+        mutates: [DatabaseStatus, Entry, Tag],
     }
 
     EmptyRecycleBin("emptyRecycleBin") {

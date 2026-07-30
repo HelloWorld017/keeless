@@ -1,4 +1,5 @@
 use super::*;
+use keeless_schema::LockArgs;
 
 #[tokio::test]
 async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
@@ -92,6 +93,58 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         DatabaseStatus::Locked
     );
     operations::lock::run(&mut core);
+    assert_eq!(
+        operations::get_database_status::run(&mut core),
+        DatabaseStatus::Locked
+    );
+}
+
+#[tokio::test]
+async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage);
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval),
+            Arc::new(FakeClock::new(100)),
+        )
+    })
+    .await
+    .unwrap();
+    operations::open::run(
+        &mut core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "vault.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+    core.credential = None;
+
+    assert!(matches!(
+        operations::execute(&mut core, Operation::Lock(LockArgs { password: None })).await,
+        Err(CoreError::PasswordRequired)
+    ));
+    assert_eq!(
+        operations::get_database_status::run(&mut core),
+        DatabaseStatus::Unlocked
+    );
+
+    operations::execute(
+        &mut core,
+        Operation::Lock(LockArgs {
+            password: Some("correct".into()),
+        }),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Locked

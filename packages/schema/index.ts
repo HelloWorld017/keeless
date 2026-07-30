@@ -101,7 +101,7 @@ export type CreateArgs = { password?: string | null };
 
 export type UnlockArgs = { password?: string | null };
 
-export type LockArgs = Record<string, never>;
+export type LockArgs = { password?: string | null };
 
 export type GetDatabaseStatusArgs = Record<string, never>;
 
@@ -497,7 +497,7 @@ export const operationMetadata = {
   getEntryDetail: { queries: ['entry'] },
   updateEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
   prepareEntryAttachmentDownload: { fetches: ['entry'] },
-  deleteEntry: { mutates: ['entry', 'tag'] },
+  deleteEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
   emptyRecycleBin: { mutates: ['databaseStatus', 'entry', 'group', 'tag'] },
   saveDatabase: { mutates: ['databaseStatus'] },
   prepareDatabaseExport: { fetches: ['entry', 'group', 'tag', 'customIcon'] },
