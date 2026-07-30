@@ -34,40 +34,25 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/sidebar';
-import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import {
+  useRequest,
+  useRequestClient,
+  useRequestMutation,
+} from '@/fragments/_providers/QueryProvider';
 import { IconList, IconLockKeyhole, IconPlus, IconSearch, IconSettings, IconTrash } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
 import { databaseNodeKey, type RootDropData, type TrashDropData } from '../_utils/dragAndDrop';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import { Tag } from './Tag';
 import { TagStyleEditor } from './TagStyleEditor';
-import type {
-  AddGroupArgs,
-  DatabaseNodeId,
-  DeleteGroupArgs,
-  GroupHierarchyResult,
-  MoveGroupArgs,
-  TagStyle,
-  UpdateGroupArgs,
-} from '@keeless/schema';
+import type { DatabaseNodeId, GroupHierarchyResult } from '@keeless/schema';
 
 const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
-const groupDeletionQueryNames = [
-  'getEntries',
-  'searchEntries',
-  'searchFuzzy',
-  'getGroupEntries',
-  'getTagEntries',
-  'getTrashEntries',
-  'getTags',
-  'getEntryDetail',
-] as const;
-
 const AllEntriesMenuItem = ({
   rootGroupId,
   location,
@@ -162,8 +147,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
     }
   };
 
-  const moveGroup = useMutation({
-    mutationFn: (args: MoveGroupArgs) => requestClient.data!.request('moveGroup', args),
+  const moveGroup = useRequestMutation('moveGroup', {
     onMutate: async args => {
       const cancellation = queryClient.cancelQueries({ queryKey: hierarchyQueryKey });
       const previous = queryClient.getQueryData<GroupHierarchyResult>(hierarchyQueryKey);
@@ -178,22 +162,16 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
         queryClient.setQueryData(hierarchyQueryKey, context.previous);
       }
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
   });
 
-  const addGroup = useMutation({
-    mutationFn: (args: AddGroupArgs) => requestClient.data!.request('addGroup', args),
-    onSuccess: async result => {
-      await queryClient.invalidateQueries({ queryKey: hierarchyQueryKey });
+  const addGroup = useRequestMutation('addGroup', {
+    onSuccess: result => {
       setLocation(buildRoute('group', { group: String(result.id) }));
       closeMobile();
     },
   });
 
-  const updateGroup = useMutation({
-    mutationFn: async (args: UpdateGroupArgs) => {
-      await requestClient.data!.request('updateGroup', args);
-    },
+  const updateGroup = useRequestMutation('updateGroup', {
     onMutate: async args => {
       await queryClient.cancelQueries({ queryKey: hierarchyQueryKey });
       const previous = queryClient.getQueryData<GroupHierarchyResult>(hierarchyQueryKey);
@@ -214,24 +192,14 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
         queryClient.setQueryData(hierarchyQueryKey, context.previous);
       }
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
   });
-  const updateTagStyle = useMutation({
-    mutationFn: async ({ name, style }: { name: string; style: TagStyle }) => {
-      await requestClient.data!.request('updateTagStyle', { name, style });
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] }),
-  });
-  const deleteTag = useMutation({
-    mutationFn: async (name: string) => {
-      await requestClient.data!.request('deleteTag', { name });
-    },
-    onSuccess: async (_result, name) => {
+  const updateTagStyle = useRequestMutation('updateTagStyle');
+  const deleteTag = useRequestMutation('deleteTag', {
+    onSuccess: (_result, { name }) => {
       const href = buildRoute('tag', { tag: name });
       if (location === href) {
         setLocation(buildRoute('database'), { replace: true });
       }
-      await queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] });
     },
   });
 
@@ -257,9 +225,8 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
           group.childGroupIds.some(id => databaseNodeKey(id) === databaseNodeKey(activeGroup.id)),
         )
       : undefined;
-  const deleteGroup = useMutation({
-    mutationFn: (args: DeleteGroupArgs) => requestClient.data!.request('deleteGroup', args),
-    onSuccess: async () => {
+  const deleteGroup = useRequestMutation('deleteGroup', {
+    onSuccess: () => {
       const destination =
         activeGroupParent &&
         hierarchy.data &&
@@ -268,20 +235,10 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
           : buildRoute('database');
       setLocation(destination, { replace: true });
       closeMobile();
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: hierarchyQueryKey }),
-        ...groupDeletionQueryNames.map(name =>
-          queryClient.invalidateQueries({ queryKey: ['request', name] }),
-        ),
-      ]);
     },
   });
-  const lockDatabase = useMutation({
-    mutationFn: async () => {
-      await requestClient.data!.request('lock', {});
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['request', 'getDatabaseStatus', {}] });
+  const lockDatabase = useRequestMutation('lock', {
+    onSuccess: () => {
       closeMobile();
     },
   });
@@ -313,7 +270,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
               <DropdownMenuContent className="max-w-40">
                 <DropdownMenuItem
                   disabled={lockDatabase.isPending}
-                  onClick={() => lockDatabase.mutate()}
+                  onClick={() => lockDatabase.mutate({})}
                 >
                   <IconLockKeyhole />
                   Lock
@@ -426,7 +383,9 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                       <TagStyleEditor
                         tag={tag}
                         disabled={updateTagStyle.isPending || deleteTag.isPending}
-                        onSave={style => updateTagStyle.mutateAsync({ name: tag.name, style })}
+                        onSave={async style => {
+                          await updateTagStyle.mutateAsync({ name: tag.name, style });
+                        }}
                       />
                       {tag.canDelete && (
                         <AlertDialog>
@@ -456,7 +415,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
                                 variant="destructive"
-                                onClick={() => deleteTag.mutate(tag.name)}
+                                onClick={() => deleteTag.mutate({ name: tag.name })}
                               >
                                 Delete
                               </AlertDialogAction>

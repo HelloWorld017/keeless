@@ -1,9 +1,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/select';
 import { Switch } from '@/components/switch';
-import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRequest, useRequestMutation } from '@/fragments/_providers/QueryProvider';
 import { ConfigRow } from '../_components';
-import type { KeelessConfigPatch } from '@keeless/schema';
 
 const autoLockOptions: ReadonlyArray<{ value: string; label: string; timeout: number | null }> = [
   { value: 'off', label: 'Off', timeout: null },
@@ -23,21 +21,8 @@ const getAutoLockOptions = (timeout: number | null | undefined) => {
 };
 
 export const GeneralConfigFragment = () => {
-  const queryClient = useQueryClient();
-  const requestClient = useRequestClient();
   const config = useRequest('getConfig', {});
-  const setConfig = useMutation({
-    mutationFn: (patch: KeelessConfigPatch) =>
-      requestClient.data!.request('setConfig', { config: patch }),
-    onSuccess: async (_result, patch) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['request', 'getConfig', {}] }),
-        ...(patch.paranoiaMode === undefined
-          ? []
-          : [queryClient.invalidateQueries({ queryKey: ['request', 'getDatabaseStatus', {}] })]),
-      ]);
-    },
-  });
+  const setConfig = useRequestMutation('setConfig');
 
   if (config.isError) {
     return (
@@ -63,7 +48,7 @@ export const GeneralConfigFragment = () => {
           onValueChange={value => {
             const option = availableAutoLockOptions.find(candidate => candidate.value === value);
             if (option) {
-              setConfig.mutate({ autoLockTimeoutMs: option.timeout });
+              setConfig.mutate({ config: { autoLockTimeoutMs: option.timeout } });
             }
           }}
         >
@@ -87,7 +72,7 @@ export const GeneralConfigFragment = () => {
       >
         <Switch
           checked={currentConfig?.paranoiaMode ?? false}
-          onCheckedChange={paranoiaMode => setConfig.mutate({ paranoiaMode })}
+          onCheckedChange={paranoiaMode => setConfig.mutate({ config: { paranoiaMode } })}
           disabled={disabled}
         />
       </ConfigRow>

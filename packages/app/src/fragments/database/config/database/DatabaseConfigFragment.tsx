@@ -1,28 +1,12 @@
 import { Button } from '@/components/button';
 import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
-import { useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useRequestClient, useRequestMutation } from '@/fragments/_providers/QueryProvider';
 import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
 import { IconFile, IconLoaderCircle } from '@/icons';
 import { CoreRequestError } from '@/utils/request';
-import { useQueryClient } from '@tanstack/react-query';
 import { useState, type DragEvent } from 'react';
 import { ConfigRow } from '../_components';
-
-const refreshOperations = [
-  'getDatabaseStatus',
-  'getEntries',
-  'searchEntries',
-  'searchFuzzy',
-  'getGroupHierarchy',
-  'getGroupEntries',
-  'getTagEntries',
-  'getTrashEntries',
-  'getTags',
-  'getEntryDetail',
-  'getCustomIcons',
-  'getEntryTemplates',
-] as const;
 
 const fileError = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -42,7 +26,7 @@ const validFile = (file: File) => {
 
 export const DatabaseConfigFragment = () => {
   const requestClient = useRequestClient();
-  const queryClient = useQueryClient();
+  const mergeDatabase = useRequestMutation('mergeTransferredDatabase');
   const hasNativePasswordInput = useHasNativePasswordInput();
   const [file, setFile] = useState<File>();
   const [pending, setPending] = useState<'export' | 'merge'>();
@@ -119,7 +103,7 @@ export const DatabaseConfigFragment = () => {
     setSummary(undefined);
     try {
       const transferId = await requestClient.data!.upload(file);
-      const result = await requestClient.data!.request('mergeTransferredDatabase', {
+      const result = await mergeDatabase.mutateAsync({
         transferId,
         sourcePassword,
         password: password ?? null,
@@ -128,11 +112,6 @@ export const DatabaseConfigFragment = () => {
         `Merged ${result.entriesAdded} added, ${result.entriesModified} modified, and ${result.entriesDeleted} deleted entries.`,
       );
       setError(result.syncError?.message);
-      await Promise.all(
-        refreshOperations.map(name =>
-          queryClient.invalidateQueries({ queryKey: ['request', name] }),
-        ),
-      );
     } catch (nextError) {
       if (!hasNativePasswordInput && needsPassword(nextError)) {
         setPasswordRequest({

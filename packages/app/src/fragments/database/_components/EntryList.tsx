@@ -1,6 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
 import { Skeleton } from '@/components/skeleton';
-import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useRequest, useRequestMutation } from '@/fragments/_providers/QueryProvider';
 import { useHistoryBack } from '@/fragments/_providers/RouterProvider';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -8,7 +8,6 @@ import { IconAlertCircle } from '@/icons';
 import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDraggable } from '@dnd-kit/core';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef } from 'react';
 import { Redirect, useRoute, useSearchParams } from 'wouter';
@@ -23,14 +22,7 @@ import { EntryItem, getEntryItemSize, getEntryTitle } from './EntryItem';
 import { EntryListHeader } from './EntryListHeader';
 import { searchFilterToken } from './searchQuery';
 import type { OperationArgs, OperationName } from '@/utils/request';
-import type {
-  AddEntryArgs,
-  AddEntryFromTemplateArgs,
-  DatabaseNodeId,
-  EntriesResult,
-  EntrySummary,
-  TagSummary,
-} from '@keeless/schema';
+import type { DatabaseNodeId, EntriesResult, EntrySummary, TagSummary } from '@keeless/schema';
 
 type EntryOperationName = Extract<
   OperationName,
@@ -210,49 +202,22 @@ const EntryQuery = <TName extends EntryOperationName>({
   const entries = useRequest(name, args);
   const templates = useRequest('getEntryTemplates', {});
   const tags = useRequest('getTags', {});
-  const requestClient = useRequestClient();
-  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const historyBack = useHistoryBack();
   const selectedEntry = searchParams.get('entry');
-  const onAddSuccess = async (result: { id: DatabaseNodeId }) => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
-      queryClient.invalidateQueries({ queryKey: ['request', 'searchEntries'] }),
-      queryClient.invalidateQueries({ queryKey: ['request', 'searchFuzzy'] }),
-      queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
-      queryClient.invalidateQueries({ queryKey: ['request', 'getEntryTemplates'] }),
-      queryClient.invalidateQueries({ queryKey: ['request', 'getTagEntries'] }),
-      queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] }),
-    ]);
+  const onAddSuccess = (result: { id: DatabaseNodeId }) => {
     setSearchParams({ entry: String(result.id) }, { replace: !isMobile });
   };
-  const addEntry = useMutation({
-    mutationFn: (addArgs: AddEntryArgs) => requestClient.data!.request('addEntry', addArgs),
+  const addEntry = useRequestMutation('addEntry', {
     onSuccess: onAddSuccess,
   });
-  const addEntryFromTemplate = useMutation({
-    mutationFn: (addArgs: AddEntryFromTemplateArgs) =>
-      requestClient.data!.request('addEntryFromTemplate', addArgs),
+  const addEntryFromTemplate = useRequestMutation('addEntryFromTemplate', {
     onSuccess: onAddSuccess,
   });
-  const emptyTrash = useMutation({
-    mutationFn: () => requestClient.data!.request('emptyRecycleBin', {}),
-    onSuccess: async () => {
+  const emptyTrash = useRequestMutation('emptyRecycleBin', {
+    onSuccess: () => {
       setSearchParams({}, { replace: !isMobile });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'searchEntries'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'searchFuzzy'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getGroupHierarchy'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getEntryTemplates'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getTagEntries'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getTrashEntries'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] }),
-        queryClient.invalidateQueries({ queryKey: ['request', 'getEntryDetail'] }),
-      ]);
     },
   });
   const addPending = addEntry.isPending || addEntryFromTemplate.isPending;
@@ -310,7 +275,7 @@ const EntryQuery = <TName extends EntryOperationName>({
             searchQuery={searchQuery}
             onOpenSearch={onOpenSearch}
             emptyTrashPending={emptyTrash.isPending}
-            onEmptyTrash={source.type === 'trash' ? () => emptyTrash.mutate() : undefined}
+            onEmptyTrash={source.type === 'trash' ? () => emptyTrash.mutate({}) : undefined}
           />
 
           {moveError && (

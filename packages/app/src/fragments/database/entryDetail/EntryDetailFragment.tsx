@@ -19,7 +19,11 @@ import {
 } from '@/components/dropdown-menu';
 import { Skeleton } from '@/components/skeleton';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
-import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import {
+  useRequest,
+  useRequestClient,
+  useRequestMutation,
+} from '@/fragments/_providers/QueryProvider';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
@@ -45,18 +49,6 @@ import { useEntryEditor } from './_hooks/useEntryEditor';
 import { EntryFieldValuesProvider, useEntryFieldValues } from './_hooks/useEntryFieldValues';
 import { usePasswordConfirmations } from './_hooks/usePasswordConfirmations';
 import type { EntryAttachmentUpdate, EntrySummary } from '@keeless/schema';
-
-const REFRESH_OPERATIONS = [
-  'getEntries',
-  'searchEntries',
-  'searchFuzzy',
-  'getGroupEntries',
-  'getTagEntries',
-  'getTrashEntries',
-  'getEntryTemplates',
-  'getTags',
-  'getEntryDetail',
-] as const;
 
 type PasswordRequest = {
   error?: string;
@@ -109,6 +101,12 @@ const EntryDetailQuery = ({
   const detail = useRequest('getEntryDetail', { entryId: entry.id });
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
+  const saveDatabase = useRequestMutation('saveDatabase');
+  const updateEntry = useRequestMutation('updateEntry');
+  const deleteEntryMutation = useRequestMutation('deleteEntry', {
+    onSuccess: (_result, { entryId }) =>
+      queryClient.removeQueries({ queryKey: ['request', 'getEntryDetail', { entryId }] }),
+  });
   const hasNativePasswordInput = useHasNativePasswordInput();
   const showToast = useShowToast();
   const mountedRef = useRef(true);
@@ -138,17 +136,6 @@ const EntryDetailQuery = ({
       passwordRequestRef.current = undefined;
     };
   }, []);
-
-  const refresh = async (removeDetail = false) => {
-    if (removeDetail) {
-      queryClient.removeQueries({ queryKey: ['request', 'getEntryDetail', { entryId: entry.id }] });
-    }
-    await Promise.all(
-      REFRESH_OPERATIONS.filter(name => !removeDetail || name !== 'getEntryDetail').map(name =>
-        queryClient.invalidateQueries({ queryKey: ['request', name] }),
-      ),
-    );
-  };
 
   const isCurrentOperation = (operation: number) =>
     mountedRef.current && operation === operationRef.current;
@@ -213,8 +200,8 @@ const EntryDetailQuery = ({
       const saved = await requestWithPassword(
         nextPassword =>
           hasNativePasswordInput
-            ? requestClient.data!.request('saveDatabase', {})
-            : requestClient.data!.request('saveDatabase', { password: nextPassword }),
+            ? saveDatabase.mutateAsync({})
+            : saveDatabase.mutateAsync({ password: nextPassword }),
         operation,
         password,
       );
@@ -284,14 +271,14 @@ const EntryDetailQuery = ({
       const updated = await requestWithPassword(
         password =>
           hasNativePasswordInput
-            ? requestClient.data!.request('updateEntry', {
+            ? updateEntry.mutateAsync({
                 entryId: entry.id,
                 fields,
                 properties: propertiesUpdate,
                 attachments: attachmentUpdates,
                 removedAttachmentIndices,
               })
-            : requestClient.data!.request('updateEntry', {
+            : updateEntry.mutateAsync({
                 entryId: entry.id,
                 fields,
                 properties: propertiesUpdate,
@@ -310,13 +297,11 @@ const EntryDetailQuery = ({
         clearEditing();
       }
 
-      await refresh();
       await saveAfterMutation(
         'The changes could not be saved to storage. Changes remain in memory.',
         operation,
         updated.password,
       );
-      await refresh();
     } catch (nextError) {
       if (isCurrentOperation(operation)) {
         setError(operationError(nextError, 'The entry could not be updated. Try again.'));
@@ -334,7 +319,7 @@ const EntryDetailQuery = ({
     setPending(true);
     setError(undefined);
     try {
-      await requestClient.data!.request('deleteEntry', { entryId: entry.id, permanent: inTrash });
+      await deleteEntryMutation.mutateAsync({ entryId: entry.id, permanent: inTrash });
       await saveAfterMutation(
         'The deletion could not be saved to storage. The deletion remains in memory.',
         operation,
@@ -343,8 +328,6 @@ const EntryDetailQuery = ({
       if (isCurrentOperation(operation)) {
         onClose();
       }
-
-      await refresh(true);
     } catch (nextError) {
       if (isCurrentOperation(operation)) {
         setError(

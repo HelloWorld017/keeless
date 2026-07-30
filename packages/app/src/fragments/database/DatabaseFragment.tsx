@@ -1,5 +1,5 @@
 import { SidebarInset, SidebarProvider } from '@/components/sidebar';
-import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useRequest, useRequestMutation } from '@/fragments/_providers/QueryProvider';
 import { useNavigate } from '@/fragments/_providers/RouterProvider';
 import { cx } from '@/utils/css';
 import { buildRoute } from '@/utils/route';
@@ -20,7 +20,6 @@ import {
 } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Redirect, useSearchParams } from 'wouter';
 import { EntryItem } from './_components/EntryItem';
@@ -30,7 +29,6 @@ import { SearchCommand } from './_components/SearchCommand';
 import { Sidebar } from './_components/Sidebar';
 import { databaseNodeKey, type DragDropData, type EntryDragData } from './_utils/dragAndDrop';
 import { ConfigDialog } from './config';
-import type { MoveEntryArgs } from '@keeless/schema';
 
 const collisionDetection: CollisionDetection = args =>
   args.active.data.current?.type === 'entry' && args.pointerCoordinates
@@ -65,20 +63,7 @@ const announcements = {
   },
 };
 
-const entryQueryNames = [
-  'getEntries',
-  'searchEntries',
-  'searchFuzzy',
-  'getGroupEntries',
-  'getTagEntries',
-  'getTrashEntries',
-  'getTags',
-  'getEntryDetail',
-] as const;
-
 const DatabaseFragmentContents = () => {
-  const requestClient = useRequestClient();
-  const queryClient = useQueryClient();
   const tags = useRequest('getTags', {});
   const navigate = useNavigate();
   const [configOpen, setConfigOpen] = useState(false);
@@ -104,18 +89,9 @@ const DatabaseFragmentContents = () => {
     },
   };
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const moveEntry = useMutation({
-    mutationFn: (args: MoveEntryArgs) => requestClient.data!.request('moveEntry', args),
-    onSettled: async () => {
-      try {
-        await Promise.all(
-          entryQueryNames.map(name =>
-            queryClient.invalidateQueries({ queryKey: ['request', name] }),
-          ),
-        );
-      } finally {
-        setMovingEntry(undefined);
-      }
+  const moveEntry = useRequestMutation('moveEntry', {
+    onSettled: () => {
+      setMovingEntry(undefined);
     },
   });
 
