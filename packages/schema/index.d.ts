@@ -258,6 +258,7 @@ export type Operation =
   | { op: 'updateEntry'; args: UpdateEntryArgs }
   | { op: 'prepareEntryAttachmentDownload'; args: PrepareEntryAttachmentDownloadArgs }
   | { op: 'deleteEntry'; args: DeleteEntryArgs }
+  | { op: 'emptyRecycleBin'; args: EmptyRecycleBinArgs }
   | { op: 'saveDatabase'; args: SaveDatabaseArgs }
   | { op: 'prepareDatabaseExport'; args: PrepareDatabaseExportArgs }
   | { op: 'mergeTransferredDatabase'; args: MergeTransferredDatabaseArgs }
@@ -299,6 +300,7 @@ export type OperationRequest = (
   | { op: 'updateEntry'; args: UpdateEntryArgs }
   | { op: 'prepareEntryAttachmentDownload'; args: PrepareEntryAttachmentDownloadArgs }
   | { op: 'deleteEntry'; args: DeleteEntryArgs }
+  | { op: 'emptyRecycleBin'; args: EmptyRecycleBinArgs }
   | { op: 'saveDatabase'; args: SaveDatabaseArgs }
   | { op: 'prepareDatabaseExport'; args: PrepareDatabaseExportArgs }
   | { op: 'mergeTransferredDatabase'; args: MergeTransferredDatabaseArgs }
@@ -435,6 +437,7 @@ export type OperationSuccess =
   | { op: 'updateEntry'; result: EmptyResult }
   | { op: 'prepareEntryAttachmentDownload'; result: PrepareEntryAttachmentDownloadResult }
   | { op: 'deleteEntry'; result: EmptyResult }
+  | { op: 'emptyRecycleBin'; result: EmptyResult }
   | { op: 'saveDatabase'; result: EmptyResult }
   | { op: 'prepareDatabaseExport'; result: PrepareDatabaseExportResult }
   | { op: 'mergeTransferredDatabase'; result: MergeTransferredDatabaseResult }

@@ -404,6 +404,10 @@ pub struct DeleteEntryArgs {
     pub permanent: bool,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(deny_unknown_fields)]
+pub struct EmptyRecycleBinArgs {}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveDatabaseArgs {
@@ -590,6 +594,7 @@ pub enum Operation {
     UpdateEntry(UpdateEntryArgs),
     PrepareEntryAttachmentDownload(PrepareEntryAttachmentDownloadArgs),
     DeleteEntry(DeleteEntryArgs),
+    EmptyRecycleBin(EmptyRecycleBinArgs),
     SaveDatabase(SaveDatabaseArgs),
     PrepareDatabaseExport(PrepareDatabaseExportArgs),
     MergeTransferredDatabase(MergeTransferredDatabaseArgs),
@@ -815,6 +820,7 @@ pub enum OperationSuccess {
     UpdateEntry(EmptyResult),
     PrepareEntryAttachmentDownload(PrepareEntryAttachmentDownloadResult),
     DeleteEntry(EmptyResult),
+    EmptyRecycleBin(EmptyResult),
     SaveDatabase(EmptyResult),
     PrepareDatabaseExport(PrepareDatabaseExportResult),
     MergeTransferredDatabase(MergeTransferredDatabaseResult),

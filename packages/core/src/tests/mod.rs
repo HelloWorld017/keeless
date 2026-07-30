@@ -10,7 +10,7 @@ use keeless_kdbx::{
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DeleteEntryArgs,
-    DeleteGroupArgs, DeleteTagArgs, EntryFieldInformation,
+    DeleteGroupArgs, DeleteTagArgs, EmptyRecycleBinArgs, EntryFieldInformation,
     EntryFieldUpdate as SchemaEntryFieldUpdate, EntryPropertiesUpdate, FieldControl,
     GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, IconReference,
     MoveEntryArgs, MoveGroupArgs, Operation, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,

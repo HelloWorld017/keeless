@@ -1,5 +1,7 @@
 use super::*;
 
+mod empty_recycle_bin;
+
 #[tokio::test]
 async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_secrets() {
     let (mut core, ids) = query_core().await;

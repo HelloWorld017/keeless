@@ -237,6 +237,24 @@ const EntryQuery = <TName extends EntryOperationName>({
       requestClient.data!.request('addEntryFromTemplate', addArgs),
     onSuccess: onAddSuccess,
   });
+  const emptyTrash = useMutation({
+    mutationFn: () => requestClient.data!.request('emptyRecycleBin', {}),
+    onSuccess: async () => {
+      setSearchParams({}, { replace: !isMobile });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['request', 'getEntries'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'searchEntries'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'searchFuzzy'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getGroupHierarchy'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getGroupEntries'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getEntryTemplates'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getTagEntries'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getTrashEntries'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getTags'] }),
+        queryClient.invalidateQueries({ queryKey: ['request', 'getEntryDetail'] }),
+      ]);
+    },
+  });
   const addPending = addEntry.isPending || addEntryFromTemplate.isPending;
   const result = entries.data as EntriesResult | undefined;
   const resultSorted = useMemo(() => {
@@ -291,6 +309,8 @@ const EntryQuery = <TName extends EntryOperationName>({
             }
             searchQuery={searchQuery}
             onOpenSearch={onOpenSearch}
+            emptyTrashPending={emptyTrash.isPending}
+            onEmptyTrash={source.type === 'trash' ? () => emptyTrash.mutate() : undefined}
           />
 
           {moveError && (
@@ -305,6 +325,13 @@ const EntryQuery = <TName extends EntryOperationName>({
               <IconAlertCircle />
               <AlertTitle>Entry could not be added</AlertTitle>
               <AlertDescription>Try adding the entry again.</AlertDescription>
+            </Alert>
+          )}
+          {emptyTrash.isError && (
+            <Alert variant="destructive" className="m-3 mb-0 w-auto">
+              <IconAlertCircle />
+              <AlertTitle>Trash could not be emptied</AlertTitle>
+              <AlertDescription>Try emptying Trash again.</AlertDescription>
             </Alert>
           )}
 

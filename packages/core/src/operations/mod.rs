@@ -57,6 +57,7 @@ pub(crate) async fn execute(
             prepare_entry_attachment_download::execute(core, args)
         }
         Operation::DeleteEntry(args) => mutations::delete_entry::execute(core, args).await,
+        Operation::EmptyRecycleBin(args) => mutations::empty_recycle_bin::execute(core, args).await,
         Operation::SaveDatabase(args) => save_database::execute(core, args).await,
         Operation::PrepareDatabaseExport(args) => {
             prepare_database_export::execute(core, args).await

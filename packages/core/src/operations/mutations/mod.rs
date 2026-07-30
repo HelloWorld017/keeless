@@ -4,6 +4,7 @@ pub(crate) mod add_group;
 pub(crate) mod delete_entry;
 pub(crate) mod delete_group;
 pub(crate) mod delete_tag;
+pub(crate) mod empty_recycle_bin;
 pub(crate) mod move_entry;
 pub(crate) mod move_group;
 mod persistence;
@@ -29,6 +30,7 @@ enum Mutation {
     AddGroup(add_group::Mutation),
     DeleteEntry(delete_entry::Mutation),
     DeleteGroup(delete_group::Mutation),
+    EmptyRecycleBin(empty_recycle_bin::Mutation),
     MoveEntry(move_entry::Mutation),
     MoveGroup(move_group::Mutation),
     RegisterPasskey(register_passkey::Mutation),
@@ -47,6 +49,7 @@ fn apply(database: &mut Database, mutation: &Mutation, key: &CompositeKey) -> Re
         Mutation::AddGroup(mutation) => add_group::apply(database, mutation),
         Mutation::DeleteEntry(mutation) => delete_entry::apply(database, mutation),
         Mutation::DeleteGroup(mutation) => delete_group::apply(database, mutation),
+        Mutation::EmptyRecycleBin(mutation) => empty_recycle_bin::apply(database, mutation),
         Mutation::MoveEntry(mutation) => move_entry::apply(database, mutation),
         Mutation::MoveGroup(mutation) => move_group::apply(database, mutation),
         Mutation::RegisterPasskey(mutation) => register_passkey::apply(database, mutation, key),

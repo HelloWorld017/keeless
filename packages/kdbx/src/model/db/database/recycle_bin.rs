@@ -215,6 +215,11 @@ impl Database {
 
     /// Empty the recycle bin, permanently deleting all contained items.
     pub fn empty_recycle_bin(&mut self) {
+        self.empty_recycle_bin_at(chrono::Utc::now().timestamp_millis());
+    }
+
+    /// Empty the recycle bin with a caller-supplied deletion timestamp.
+    pub fn empty_recycle_bin_at(&mut self, timestamp_ms: i64) {
         let Some(recycle_id) = self.recycle_bin_uuid.map(NodeId::from_uuid) else {
             return;
         };
@@ -226,18 +231,21 @@ impl Database {
 
         for entry_id in entries_to_delete {
             self.entries.remove(&entry_id);
-            self.deleted_objects.push(DeletedObject::new(entry_id));
+            self.deleted_objects
+                .push(DeletedObject::new_at(entry_id, timestamp_ms));
         }
         for group_id in groups_to_delete {
             for descendant_id in self.collect_descendant_groups(&group_id) {
                 if let Some(group) = self.groups.get(&descendant_id) {
                     for entry_id in &group.child_entry_ids {
                         self.entries.remove(entry_id);
-                        self.deleted_objects.push(DeletedObject::new(*entry_id));
+                        self.deleted_objects
+                            .push(DeletedObject::new_at(*entry_id, timestamp_ms));
                     }
                 }
                 self.groups.remove(&descendant_id);
-                self.deleted_objects.push(DeletedObject::new(descendant_id));
+                self.deleted_objects
+                    .push(DeletedObject::new_at(descendant_id, timestamp_ms));
             }
         }
         if let Some(recycle) = self.groups.get_mut(&recycle_id) {

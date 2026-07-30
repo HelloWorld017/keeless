@@ -330,6 +330,10 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
         json!({ "op": "deleteEntry", "args": { "entryId": 42, "permanent": false } }),
     );
     assert_roundtrip(
+        Operation::EmptyRecycleBin(EmptyRecycleBinArgs {}),
+        json!({ "op": "emptyRecycleBin", "args": {} }),
+    );
+    assert_roundtrip(
         Operation::PrepareEntryAttachmentDownload(PrepareEntryAttachmentDownloadArgs {
             entry_id: DatabaseNodeId::Int(42),
             attachment_index: 3,
