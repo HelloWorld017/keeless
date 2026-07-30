@@ -178,8 +178,8 @@ impl DesktopHost {
         })
     }
 
-    #[napi(js_name = "registerClient")]
-    pub async fn register_client(&self, bundle: String) -> napi::Result<()> {
+    #[napi(js_name = "replaceClient")]
+    pub async fn replace_client(&self, bundle: String) -> napi::Result<()> {
         self.ensure_open()?;
         self.runtime
             .state
@@ -187,7 +187,7 @@ impl DesktopHost {
             .lock()
             .await
             .server
-            .add_runtime_approval(&bundle)
+            .replace_runtime_approval(&bundle)
             .map_err(|error| napi_error(error.to_string()))
     }
 

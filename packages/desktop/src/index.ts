@@ -17,6 +17,8 @@ let tray: Tray | undefined;
 let host: DesktopHostType | undefined;
 let quitting = false;
 let shutdownComplete = false;
+let registrationCompromised = false;
+let clientRegistered = false;
 
 const iconPath = () => (__PLATFORM__ === 'win32' ? iconIco : iconPng);
 
@@ -37,6 +39,21 @@ const assertSender = (event: Electron.IpcMainInvokeEvent) => {
   if (!browserWindow || event.sender !== browserWindow.webContents) {
     throw new Error('Untrusted desktop IPC sender');
   }
+  if (registrationCompromised) {
+    throw new Error('Desktop client registration is disabled');
+  }
+};
+
+const terminateForRepeatedClientRegistration = () => {
+  registrationCompromised = true;
+  void dialog
+    .showMessageBox({
+      type: 'error',
+      title: 'Security error',
+      message: 'Client registration was attempted more than once.',
+      detail: 'Keeless will now exit.',
+    })
+    .finally(() => app.exit(1));
 };
 
 const waitForOnline = (url: string) => {
@@ -59,7 +76,16 @@ const installIpc = () => {
     if (typeof bundle !== 'string') {
       throw new Error('Invalid client bundle');
     }
-    await host?.registerClient(bundle);
+    if (!host) {
+      throw new Error('Desktop host is unavailable');
+    }
+    if (clientRegistered) {
+      terminateForRepeatedClientRegistration();
+      throw new Error('Client registration was attempted more than once');
+    }
+
+    clientRegistered = true;
+    await host.replaceClient(bundle);
   });
 
   ipcMain.handle('desktop:relay-frame', async (event, frame: unknown) => {
@@ -99,6 +125,7 @@ const installIpc = () => {
 };
 
 const createWindow = async () => {
+  clientRegistered = false;
   browserWindow = new BrowserWindow({
     title: 'keeless',
     width: 1440,

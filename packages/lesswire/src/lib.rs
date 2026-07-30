@@ -301,6 +301,15 @@ impl Server {
         Ok(())
     }
 
+    /// Replaces all process-local approvals with one validated client bundle.
+    pub fn replace_runtime_approval(&mut self, bundle: &str) -> Result<()> {
+        let bundle = PublicKeyBundle::parse(bundle)
+            .ok_or_else(|| Error::InvalidState("invalid approved client bundle".into()))?;
+        self.runtime_approved.clear();
+        self.runtime_approved.push(bundle.as_str().to_owned());
+        Ok(())
+    }
+
     pub async fn handle_frame<F, Fut, E>(
         &mut self,
         frame: &MessageFrame,

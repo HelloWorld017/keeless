@@ -214,6 +214,47 @@ async fn dynamic_runtime_approval_is_validated_and_not_persisted() {
     );
 }
 
+#[tokio::test]
+async fn replacing_runtime_approval_revokes_the_previous_client() {
+    let store = Arc::new(MemoryStore::default());
+    let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
+    let first_identity = Identity::from_secrets([41; 32], [43; 32]);
+    let second_identity = Identity::from_secrets([47; 32], [53; 32]);
+    let first_client = Client::new(first_identity, None, clock.clone()).unwrap();
+    let mut second_client = Client::new(second_identity, None, clock.clone()).unwrap();
+    let mut server = Server::new(ServerHost {
+        store,
+        approval_provider: Arc::new(Approval(AtomicBool::new(false))),
+        clock,
+        runtime_approved_clients: vec![first_client.public_key_bundle()],
+    })
+    .await
+    .unwrap();
+
+    server
+        .replace_runtime_approval(&second_client.public_key_bundle())
+        .unwrap();
+
+    assert!(
+        server
+            .handle_frame(&first_client.handshake_frame().unwrap(), |_, _| async {
+                Ok::<_, ()>(None)
+            })
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let response = server
+        .handle_frame(&second_client.handshake_frame().unwrap(), |_, _| async {
+            Ok::<_, ()>(None)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    second_client.accept_handshake(&response).unwrap();
+}
+
 #[test]
 fn rejects_weak_signing_and_noncanonical_bundles() {
     let weak = format!(
