@@ -40,7 +40,7 @@ export const PopoutFieldEditor = ({
         <SheetContent className="p-4 sm:max-w-xl sm:p-6">
           <SheetHeader className="p-0">
             <SheetTitle>{label}</SheetTitle>
-            <SheetDescription>Edit the expanded field value.</SheetDescription>
+            <SheetDescription>Edit the field contents.</SheetDescription>
           </SheetHeader>
           <FieldNoteEditor
             entryId={entryId}

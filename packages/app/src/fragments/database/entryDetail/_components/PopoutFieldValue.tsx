@@ -53,7 +53,7 @@ export const PopoutFieldValue = ({ field, label }: { field: EntryField; label: s
         <SheetContent className="p-4 sm:max-w-xl sm:p-6">
           <SheetHeader className="p-0">
             <SheetTitle>{label || 'Untitled field'}</SheetTitle>
-            <SheetDescription>Expanded field value</SheetDescription>
+            <SheetDescription>Field contents</SheetDescription>
           </SheetHeader>
           <div className={cx('whitespace-pre-wrap break-words', !value && 'text-muted-foreground')}>
             {value || 'Empty'}
