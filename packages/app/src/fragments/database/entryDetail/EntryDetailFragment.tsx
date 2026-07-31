@@ -36,7 +36,7 @@ import {
   IconTrash,
 } from '@/icons';
 import { cx } from '@/utils/css';
-import { CoreRequestError } from '@/utils/request';
+import { CoreRequestError, queryKey } from '@/utils/request';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { getEntryTitle } from '../_components/EntryItem';
@@ -105,7 +105,7 @@ const EntryDetailQuery = ({
   const updateEntry = useRequestMutation('updateEntry');
   const deleteEntryMutation = useRequestMutation('deleteEntry', {
     onSuccess: (_result, { entryId }) =>
-      queryClient.removeQueries({ queryKey: ['request', 'getEntryDetail', { entryId }] }),
+      queryClient.removeQueries({ queryKey: queryKey('getEntryDetail', { entryId }) }),
   });
   const hasNativePasswordInput = useHasNativePasswordInput();
   const showToast = useShowToast();

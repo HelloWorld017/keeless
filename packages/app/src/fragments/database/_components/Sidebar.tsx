@@ -53,7 +53,7 @@ import {
   IconTrash,
 } from '@/icons';
 import { cx } from '@/utils/css';
-import { CoreRequestError } from '@/utils/request';
+import { CoreRequestError, queryKey } from '@/utils/request';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
@@ -65,7 +65,7 @@ import { Tag } from './Tag';
 import { TagStyleEditor } from './TagStyleEditor';
 import type { DatabaseNodeId, GroupHierarchyResult } from '@keeless/schema';
 
-const hierarchyQueryKey = ['request', 'getGroupHierarchy', {}] as const;
+const hierarchyQueryKey = queryKey('getGroupHierarchy', {});
 
 type PasswordRequest = {
   action: 'lock' | 'sync';

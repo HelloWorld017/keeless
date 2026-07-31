@@ -1,4 +1,4 @@
-import { getRequestClient } from '@/utils/request';
+import { getRequestClient, invalidateByResource, queryKey } from '@/utils/request';
 import { operationMetadata, type OperationMetadata } from '@keeless/schema';
 import {
   QueryClient,
@@ -47,7 +47,7 @@ export const useRequest = <TName extends OperationName>(
   return useQuery({
     enabled: requestClient.isSuccess,
     ...config,
-    queryKey: ['request', name, args],
+    queryKey: queryKey(name as OperationName, args),
     queryFn: () => requestClient.data!.request(name, args),
   });
 };
@@ -70,26 +70,7 @@ export const useRequestMutation = <TName extends OperationName, TOnMutateResult 
     ...mutationOptions,
     mutationFn: (args: OperationArgs<TName>) => requestClient.data!.request(name, args),
     onSuccess: async (data, args, onMutateResult, context) => {
-      if (mutatedResources?.length) {
-        await queryClient.invalidateQueries({
-          predicate: query => {
-            const operation = query.queryKey[1];
-            if (
-              query.queryKey[0] !== 'request' ||
-              typeof operation !== 'string' ||
-              !(operation in operationMetadata)
-            ) {
-              return false;
-            }
-
-            return (
-              (operationMetadata[operation as OperationName] as OperationMetadata).queries?.some(
-                resource => mutatedResources.includes(resource),
-              ) ?? false
-            );
-          },
-        });
-      }
+      await invalidateByResource(queryClient, mutatedResources ?? []);
       return onSuccess?.(data, args, onMutateResult, context);
     },
   });
