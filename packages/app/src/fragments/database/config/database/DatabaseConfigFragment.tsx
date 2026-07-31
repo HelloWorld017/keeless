@@ -1,9 +1,19 @@
 import { Button } from '@/components/button';
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@/components/attachment';
 import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient, useRequestMutation } from '@/fragments/_providers/QueryProvider';
 import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
-import { IconFile, IconLoaderCircle } from '@/icons';
+import { IconFile, IconLoaderCircle, IconX } from '@/icons';
+import { formatBytes } from '@/utils/format';
 import { CoreRequestError } from '@/utils/request';
 import { useState, type DragEvent } from 'react';
 import { ConfigRow } from '../_components';
@@ -168,13 +178,39 @@ export const DatabaseConfigFragment = () => {
           }}
           onAccept={files => selectFile(files[0])}
         >
-          <FileUploadDropzone className="min-h-16 flex-row justify-start px-6" onDrop={dropFile}>
-            <IconFile className="size-5 text-muted-foreground" />
-            <div className="min-w-0 flex-1 text-sm">
-              <p className="truncate font-medium">Drop one .kdbx file here</p>
-              <p className="text-muted-foreground">or choose a file</p>
-            </div>
-          </FileUploadDropzone>
+          {file ? (
+            <Attachment className="w-full">
+              <AttachmentMedia>
+                <IconFile />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{file.name}</AttachmentTitle>
+                <AttachmentDescription>{formatBytes(file.size)}</AttachmentDescription>
+              </AttachmentContent>
+              <AttachmentActions>
+                <AttachmentAction
+                  type="button"
+                  size="icon-sm"
+                  aria-label={`Remove ${file.name}`}
+                  disabled={pending !== undefined}
+                  onClick={clearFile}
+                >
+                  <IconX />
+                </AttachmentAction>
+              </AttachmentActions>
+            </Attachment>
+          ) : (
+            <FileUploadDropzone
+              className="min-h-16 flex-row justify-start px-6"
+              onDrop={dropFile}
+            >
+              <IconFile className="size-5 text-muted-foreground" />
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="truncate font-medium">Drop one .kdbx file here</p>
+                <p className="text-muted-foreground">or choose a file</p>
+              </div>
+            </FileUploadDropzone>
+          )}
         </FileUpload>
         <Button
           type="button"

@@ -14,7 +14,7 @@
 
     // Types
     "target": "es2023",
-    "lib": ["es2023", "dom"],
+    "lib": ["es2023", "dom", "dom.iterable"],
 
     // Others
     "jsx": "react-jsx",

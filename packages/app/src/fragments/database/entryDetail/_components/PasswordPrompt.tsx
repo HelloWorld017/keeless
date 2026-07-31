@@ -1,6 +1,13 @@
 import { Button } from '@/components/button';
 import { Input } from '@/components/input';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/sheet';
+import {
+  AdaptiveSheet,
+  AdaptiveSheetContent,
+  AdaptiveSheetDescription,
+  AdaptiveSheetHeader,
+  AdaptiveSheetOverlay,
+  AdaptiveSheetTitle,
+} from '@/fragments/_components/AdaptiveSheet';
 import { IconLoaderCircle } from '@/icons';
 import { useEffect, useRef, type SubmitEvent } from 'react';
 
@@ -34,12 +41,13 @@ export const PasswordPrompt = ({
   }, [open]);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="mx-auto rounded-t-2xl p-4 sm:max-w-md sm:p-6">
-        <SheetHeader className="p-0">
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>{description}</SheetDescription>
-        </SheetHeader>
+    <AdaptiveSheet open={open} onOpenChange={onOpenChange}>
+      <AdaptiveSheetOverlay forceRender />
+      <AdaptiveSheetContent className="p-4 sm:p-6">
+        <AdaptiveSheetHeader className="p-0">
+          <AdaptiveSheetTitle>{title}</AdaptiveSheetTitle>
+          <AdaptiveSheetDescription>{description}</AdaptiveSheetDescription>
+        </AdaptiveSheetHeader>
         <form
           className="space-y-3"
           onSubmit={(event: SubmitEvent<HTMLFormElement>) => {
@@ -73,7 +81,7 @@ export const PasswordPrompt = ({
             {action}
           </Button>
         </form>
-      </SheetContent>
-    </Sheet>
+      </AdaptiveSheetContent>
+    </AdaptiveSheet>
   );
 };
