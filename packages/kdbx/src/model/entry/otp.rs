@@ -1,6 +1,7 @@
 //! OTP/HOTP/TOTP token calculation
 //!
 
+use base64::Engine;
 use hmac::{Hmac, Mac};
 use percent_encoding::percent_decode_str;
 use sha1::Sha1;
@@ -9,6 +10,35 @@ use sha2::{Sha256, Sha512};
 type HmacSha1 = Hmac<Sha1>;
 type HmacSha256 = Hmac<Sha256>;
 type HmacSha512 = Hmac<Sha512>;
+
+/// KeePass custom fields that configure a time-based OTP.
+pub const KEEPASS_TIMEOTP_FIELD_NAMES: [&str; 7] = [
+    "TimeOtp-Secret",
+    "TimeOtp-Secret-Hex",
+    "TimeOtp-Secret-Base32",
+    "TimeOtp-Secret-Base64",
+    "TimeOtp-Algorithm",
+    "TimeOtp-Length",
+    "TimeOtp-Period",
+];
+
+/// KeePass custom fields that may contain a time-based OTP secret.
+pub const KEEPASS_TIMEOTP_SECRET_FIELD_NAMES: [&str; 4] = [
+    "TimeOtp-Secret",
+    "TimeOtp-Secret-Hex",
+    "TimeOtp-Secret-Base32",
+    "TimeOtp-Secret-Base64",
+];
+
+/// Returns whether a custom field is in the KeePass time-based OTP namespace.
+pub fn is_keepass_timeotp_field(name: &str) -> bool {
+    name.starts_with("TimeOtp-")
+}
+
+/// Returns whether a custom field may contain a KeePass time-based OTP secret.
+pub fn is_keepass_timeotp_secret_field(name: &str) -> bool {
+    KEEPASS_TIMEOTP_SECRET_FIELD_NAMES.contains(&name)
+}
 
 /// OTP type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,6 +242,111 @@ pub fn parse_otpauth_uri(uri: &str) -> Option<OtpParameters> {
     })
 }
 
+/// Parse KeePass `TimeOtp-*` custom fields into TOTP parameters.
+///
+/// KeePass supports raw UTF-8, hexadecimal, Base32, and Base64 secrets. Exactly one secret
+/// field must be present to avoid silently choosing between conflicting OTP configurations.
+pub fn parse_keepass_timeotp_fields<'a>(
+    fields: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Option<OtpParameters> {
+    let fields = fields.into_iter().collect::<Vec<_>>();
+    if KEEPASS_TIMEOTP_FIELD_NAMES.iter().any(|name| {
+        fields
+            .iter()
+            .filter(|(candidate, _)| candidate == name)
+            .nth(1)
+            .is_some()
+    }) {
+        return None;
+    }
+    let secret_fields = KEEPASS_TIMEOTP_SECRET_FIELD_NAMES
+        .iter()
+        .filter_map(|name| unique_field_value(&fields, name).map(|value| (*name, value)))
+        .collect::<Vec<_>>();
+    let [(secret_name, secret_value)] = secret_fields.as_slice() else {
+        return None;
+    };
+    let secret = match *secret_name {
+        "TimeOtp-Secret" => secret_value.as_bytes().to_vec(),
+        "TimeOtp-Secret-Hex" => decode_hex(secret_value)?,
+        "TimeOtp-Secret-Base32" => decode_base32(secret_value)?,
+        "TimeOtp-Secret-Base64" => base64::engine::general_purpose::STANDARD
+            .decode(secret_value.trim())
+            .or_else(|_| {
+                base64::engine::general_purpose::STANDARD_NO_PAD.decode(secret_value.trim())
+            })
+            .ok()?,
+        _ => return None,
+    };
+    if secret.is_empty() {
+        return None;
+    }
+
+    let algorithm = match unique_field_value(&fields, "TimeOtp-Algorithm") {
+        None | Some("") => OtpHashAlgorithm::Sha1,
+        Some(value) => match value.to_ascii_uppercase().as_str() {
+            "HMAC-SHA-1" | "SHA1" => OtpHashAlgorithm::Sha1,
+            "HMAC-SHA-256" | "SHA256" => OtpHashAlgorithm::Sha256,
+            "HMAC-SHA-512" | "SHA512" => OtpHashAlgorithm::Sha512,
+            _ => return None,
+        },
+    };
+    let digits = match unique_field_value(&fields, "TimeOtp-Length") {
+        None | Some("") => 6,
+        Some(value) => value.parse().ok()?,
+    };
+    let period = match unique_field_value(&fields, "TimeOtp-Period") {
+        None | Some("") => 30,
+        Some(value) => value.parse().ok()?,
+    };
+    if !(1..=9).contains(&digits) || period == 0 {
+        return None;
+    }
+
+    Some(OtpParameters {
+        otp_type: OtpType::Totp,
+        secret,
+        algorithm,
+        digits,
+        period,
+        counter: 0,
+        issuer: String::new(),
+        account: String::new(),
+    })
+}
+
+fn unique_field_value<'a>(fields: &[(&'a str, &'a str)], name: &str) -> Option<&'a str> {
+    let mut values = fields
+        .iter()
+        .filter_map(|(candidate, value)| (*candidate == name).then_some(*value));
+    let value = values.next()?;
+    values.next().is_none().then_some(value)
+}
+
+fn decode_base32(value: &str) -> Option<Vec<u8>> {
+    let normalized = value.replace([' ', '-'], "").to_ascii_uppercase();
+    base32::decode(
+        base32::Alphabet::Rfc4648 { padding: false },
+        normalized.trim_end_matches('='),
+    )
+}
+
+fn decode_hex(value: &str) -> Option<Vec<u8>> {
+    let value = value.trim();
+    if value.len() % 2 != 0 {
+        return None;
+    }
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let high = (pair[0] as char).to_digit(16)?;
+            let low = (pair[1] as char).to_digit(16)?;
+            Some((high << 4 | low) as u8)
+        })
+        .collect()
+}
+
 fn decode_component(value: &str) -> Option<String> {
     percent_decode_str(&value.replace('+', " "))
         .decode_utf8()
@@ -250,6 +385,59 @@ mod tests {
         assert_eq!(params.issuer, "Test");
         assert_eq!(params.account, "Test:user@example.com");
         assert_eq!(params.secret, b"Hello!\xde\xad\xbe\xef");
+    }
+
+    #[test]
+    fn parses_keepass_timeotp_secret_encodings() {
+        let expected = b"12345678901234567890";
+        for (name, value) in [
+            ("TimeOtp-Secret", "12345678901234567890"),
+            (
+                "TimeOtp-Secret-Hex",
+                "3132333435363738393031323334353637383930",
+            ),
+            ("TimeOtp-Secret-Base32", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"),
+            ("TimeOtp-Secret-Base64", "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA="),
+        ] {
+            let params = parse_keepass_timeotp_fields([(name, value)]).unwrap();
+            assert_eq!(params.secret, expected);
+            assert_eq!(params.algorithm, OtpHashAlgorithm::Sha1);
+            assert_eq!(params.digits, 6);
+            assert_eq!(params.period, 30);
+        }
+    }
+
+    #[test]
+    fn parses_keepass_timeotp_options() {
+        let params = parse_keepass_timeotp_fields([
+            ("TimeOtp-Secret-Base32", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"),
+            ("TimeOtp-Algorithm", "HMAC-SHA-512"),
+            ("TimeOtp-Length", "8"),
+            ("TimeOtp-Period", "60"),
+        ])
+        .unwrap();
+        assert_eq!(params.algorithm, OtpHashAlgorithm::Sha512);
+        assert_eq!(params.digits, 8);
+        assert_eq!(params.period, 60);
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_invalid_keepass_timeotp_fields() {
+        assert!(parse_keepass_timeotp_fields([
+            ("TimeOtp-Secret", "first"),
+            ("TimeOtp-Secret-Base32", "JBSWY3DPEHPK3PXP"),
+        ])
+        .is_none());
+        assert!(parse_keepass_timeotp_fields([
+            ("TimeOtp-Secret-Base32", "JBSWY3DPEHPK3PXP"),
+            ("TimeOtp-Length", "10"),
+        ])
+        .is_none());
+        assert!(parse_keepass_timeotp_fields([
+            ("TimeOtp-Secret-Base32", "JBSWY3DPEHPK3PXP"),
+            ("TimeOtp-Period", "0"),
+        ])
+        .is_none());
     }
 
     #[test]

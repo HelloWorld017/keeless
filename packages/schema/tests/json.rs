@@ -702,6 +702,17 @@ fn entry_field_layout_and_entry_properties_roundtrip() {
 }
 
 #[test]
+fn virtual_timeotp_field_roundtrips() {
+    assert_roundtrip(
+        EntryFieldInformation::TimeOtp {
+            order: 4,
+            label: "OTP".into(),
+        },
+        json!({ "type": "timeOtp", "order": 4, "label": "OTP" }),
+    );
+}
+
+#[test]
 fn database_editing_operations_have_stable_shapes() {
     let style = TagStyle {
         icon: IconReference {
@@ -898,12 +909,14 @@ fn database_editing_operations_have_stable_shapes() {
             request_id: "totp-1".into(),
             operation: Operation::GetEntryTotp(GetEntryTotpArgs {
                 entry_id: DatabaseNodeId::Int(8),
-                field_id: "custom:OTP".into(),
+                field_id: Some("custom:OTP".into()),
                 password: None,
             }),
         },
         json!({ "requestId": "totp-1", "op": "getEntryTotp", "args": { "entryId": 8, "fieldId": "custom:OTP", "password": null } }),
     );
+    let omitted: GetEntryTotpArgs = serde_json::from_value(json!({ "entryId": 8 })).unwrap();
+    assert_eq!(omitted.field_id, None);
     assert_roundtrip(
         OperationResponse {
             request_id: "totp-1".into(),

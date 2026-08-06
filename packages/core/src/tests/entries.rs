@@ -694,6 +694,7 @@ async fn entry_detail_resolves_layout_and_ignores_invalid_links() {
             EntryFieldInformation::Expiry { .. } => "expiry",
             EntryFieldInformation::Tags { .. } => "tags",
             EntryFieldInformation::Divider { .. } => "divider",
+            EntryFieldInformation::TimeOtp { .. } => "timeOtp",
             EntryFieldInformation::Field { .. } => unreachable!(),
         })
         .collect::<Vec<_>>();
@@ -703,6 +704,7 @@ async fn entry_detail_resolves_layout_and_ignores_invalid_links() {
     );
     assert!(detail.fields.iter().all(|field| match field {
         EntryFieldInformation::Field { order, .. }
+        | EntryFieldInformation::TimeOtp { order, .. }
         | EntryFieldInformation::PasswordConfirmation { order, .. }
         | EntryFieldInformation::OverrideUrl { order, .. }
         | EntryFieldInformation::Expiry { order, .. }

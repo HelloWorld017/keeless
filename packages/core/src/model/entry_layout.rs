@@ -1,10 +1,12 @@
 use keeless_kdbx::kdbx::template::{self, FieldControl as KdbxControl, LayoutTarget as KdbxTarget};
-use keeless_kdbx::{Database, Entry, StandardField};
+use keeless_kdbx::{
+    Database, Entry, StandardField, is_keepass_timeotp_field, is_keepass_timeotp_secret_field,
+};
 use keeless_schema::{EntryFieldInformation, EntryFieldKind, FieldControl};
 
 /// Core presentation policy for fields that are not ordinary user fields.
 pub(super) fn is_internal_field(name: &str) -> bool {
-    template::is_template_field(name)
+    template::is_template_field(name) || is_keepass_timeotp_field(name)
 }
 
 pub(super) fn build_entry_fields(database: &Database, entry: &Entry) -> Vec<EntryFieldInformation> {
@@ -147,6 +149,16 @@ pub(super) fn build_entry_fields(database: &Database, entry: &Entry) -> Vec<Entr
         }
     }
 
+    if entry
+        .custom_fields()
+        .any(|(_, field)| is_keepass_timeotp_secret_field(field.name()))
+    {
+        fields.push(EntryFieldInformation::TimeOtp {
+            order: 0,
+            label: "OTP".into(),
+        });
+    }
+
     let mut display_order = Vec::with_capacity(fields.len());
     for kind in [
         EntryFieldKind::Title,
@@ -195,6 +207,7 @@ fn is_standard_field(field: &EntryFieldInformation) -> bool {
 fn set_order(field: &mut EntryFieldInformation, value: u64) {
     match field {
         EntryFieldInformation::Field { order, .. }
+        | EntryFieldInformation::TimeOtp { order, .. }
         | EntryFieldInformation::PasswordConfirmation { order, .. }
         | EntryFieldInformation::OverrideUrl { order, .. }
         | EntryFieldInformation::Expiry { order, .. }
@@ -225,6 +238,8 @@ mod tests {
     #[test]
     fn template_metadata_is_initially_internal() {
         assert!(is_internal_field("_etm_template_uuid"));
+        assert!(is_internal_field("TimeOtp-Secret-Base32"));
+        assert!(is_internal_field("TimeOtp-Extension"));
         assert!(!is_internal_field("Custom"));
     }
 }

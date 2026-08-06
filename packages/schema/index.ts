@@ -64,6 +64,7 @@ export type EntryFieldInformation =
       isInternal: boolean;
       control: FieldControl | null;
     }
+  | { type: 'timeOtp'; order: number; label: string }
   | {
       type: 'passwordConfirmation';
       order: number;
@@ -214,7 +215,7 @@ export type RevealEntryFieldsArgs = {
 
 export type GetEntryTotpArgs = {
   entryId: DatabaseNodeId;
-  fieldId: string;
+  fieldId?: string | null;
   password?: string | null;
 };
 

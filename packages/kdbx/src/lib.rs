@@ -75,7 +75,9 @@ pub use kdbx::merge::{
 
 // ─── OTP ──────────────────────────────────────────────────────────────
 pub use model::entry::otp::{
+    is_keepass_timeotp_field, is_keepass_timeotp_secret_field, parse_keepass_timeotp_fields,
     parse_otpauth_uri, OtpHashAlgorithm, OtpParameters, OtpType, TokenCalculator,
+    KEEPASS_TIMEOTP_FIELD_NAMES,
 };
 
 // ─── Passkeys ─────────────────────────────────────────────────────────

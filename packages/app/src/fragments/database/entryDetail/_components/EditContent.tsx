@@ -151,6 +151,9 @@ export const EditContent = ({
     if (item.type === 'template') {
       const { field } = item;
       const id = `template-${field.order}`;
+      if (field.type === 'timeOtp') {
+        return null;
+      }
       if (field.type === 'divider') {
         return <FieldDivider key={id} label={field.label} editing />;
       }

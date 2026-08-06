@@ -174,7 +174,7 @@ async fn get_entry_totp_requires_a_protected_totp_field_and_valid_credentials() 
     };
 
     let result =
-        operations::get_entry_totp::run(&mut core, entry_id.clone(), field_id("TOTP"), None)
+        operations::get_entry_totp::run(&mut core, entry_id.clone(), Some(field_id("TOTP")), None)
             .await
             .unwrap();
     assert_eq!(result.digits, 8);
@@ -182,20 +182,85 @@ async fn get_entry_totp_requires_a_protected_totp_field_and_valid_credentials() 
     assert_eq!(result.expires_at_ms, 30_000);
     assert_eq!(result.code.len(), 8);
     assert!(matches!(
-        operations::get_entry_totp::run(&mut core, entry_id, field_id("HOTP"), Some(b"wrong"))
-            .await,
+        operations::get_entry_totp::run(
+            &mut core,
+            entry_id,
+            Some(field_id("HOTP")),
+            Some(b"wrong"),
+        )
+        .await,
         Err(CoreError::InvalidCredentials)
     ));
     assert!(matches!(
         operations::get_entry_totp::run(
             &mut core,
             schema_id(ids.root_entry),
-            field_id("HOTP"),
+            Some(field_id("HOTP")),
             None,
         )
         .await,
         Err(CoreError::InvalidTotp)
     ));
+}
+
+#[tokio::test]
+async fn get_entry_totp_reads_keepass_timeotp_fields_without_exposing_them() {
+    let (mut core, ids) = query_core().await;
+    let entry_id = schema_id(ids.root_entry);
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let entry = core
+        .handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
+        .unwrap();
+    entry.add_custom_field(
+        "TimeOtp-Secret-Base64",
+        ProtectedString::new_protected("MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="),
+    );
+    entry.add_custom_field(
+        "TimeOtp-Algorithm",
+        ProtectedString::new_plain("HMAC-SHA-256"),
+    );
+    entry.add_custom_field("TimeOtp-Length", ProtectedString::new_plain("8"));
+    entry.add_custom_field("TimeOtp-Period", ProtectedString::new_plain("60"));
+    core.handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .protect_entry_strings(&key)
+        .unwrap();
+
+    let detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap();
+    assert!(detail.fields.iter().any(|field| {
+        matches!(
+            field,
+            EntryFieldInformation::TimeOtp { label, .. } if label == "OTP"
+        )
+    }));
+    assert!(
+        detail
+            .fields
+            .iter()
+            .filter_map(detail_field)
+            .filter(|field| field.name.starts_with("TimeOtp-"))
+            .all(|field| field.is_internal)
+    );
+
+    let result = operations::get_entry_totp::run(&mut core, entry_id, None, None)
+        .await
+        .unwrap();
+    assert_eq!(result.digits, 8);
+    assert_eq!(result.period, 60);
+    assert_eq!(result.expires_at_ms, 60_000);
+    assert_eq!(result.code.len(), 8);
 }
 
 #[tokio::test]

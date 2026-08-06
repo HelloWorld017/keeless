@@ -12,7 +12,7 @@ export const FieldTotp = ({
   name,
 }: {
   entryId: DatabaseNodeId;
-  fieldId: string;
+  fieldId?: string;
   name: string;
 }) => {
   const [now, setNow] = useState(Date.now());
@@ -37,7 +37,9 @@ export const FieldTotp = ({
     try {
       const next = await requestClient.data.request(
         'getEntryTotp',
-        hasNativePasswordInput ? { entryId, fieldId } : { entryId, fieldId, password },
+        hasNativePasswordInput
+          ? { entryId, ...(fieldId ? { fieldId } : {}) }
+          : { entryId, ...(fieldId ? { fieldId } : {}), password },
       );
       if (operation === operationRef.current) {
         setResult(next);

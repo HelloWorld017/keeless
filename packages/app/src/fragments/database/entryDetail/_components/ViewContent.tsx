@@ -22,6 +22,7 @@ import { getFieldName } from '../_utils/getFieldName';
 import { EntryFieldValue } from './EntryFieldValue';
 import { FieldCopyButton } from './FieldCopyButton';
 import { FieldPlain } from './FieldPlain';
+import { FieldTotp } from './FieldTotp';
 import type {
   EntryAttachmentInformation,
   EntryDetailResult,
@@ -157,6 +158,8 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
         );
       case 'tags':
         return tagList(key, field.label);
+      case 'timeOtp':
+        return <FieldTotp key={key} entryId={detail.id} name={field.label} />;
       case 'field':
         return (
           <EntryFieldValue

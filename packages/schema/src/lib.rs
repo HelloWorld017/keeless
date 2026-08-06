@@ -151,6 +151,10 @@ pub enum EntryFieldInformation {
         #[serde(deserialize_with = "deserialize_nullable")]
         control: Option<FieldControl>,
     },
+    TimeOtp {
+        order: u64,
+        label: String,
+    },
     PasswordConfirmation {
         order: u64,
         label: String,
@@ -939,7 +943,9 @@ operation_schema! {
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
             pub struct GetEntryTotpArgs {
                 pub entry_id: DatabaseNodeId,
-                pub field_id: String,
+                #[serde(default, deserialize_with = "deserialize_nullable")]
+                #[specta(optional = true)]
+                pub field_id: Option<String>,
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
