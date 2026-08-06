@@ -1,276 +1,233 @@
-import { Button } from '@/components/button';
+import { Button, buttonVariants } from '@/components/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/dropdown-menu';
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/empty';
 import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/select';
-import { useLatestRef } from '@/hooks/useLatestRef';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs';
 import { IconCamera, IconImages, IconMonitor, IconScanLine } from '@/icons';
-import jsQR from 'jsqr';
-import { useEffect, useRef, useState } from 'react';
+import { QRescan, wechatDecoder } from 'qrescan';
+import { type ReactNode, useState } from 'react';
 
-type Source = 'camera' | 'capture';
-type Tracker = { x: number; y: number; width: number; height: number };
-
-const decodeImage = (source: CanvasImageSource, width: number, height: number) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context || !width || !height) {
-    return undefined;
-  }
-  context.drawImage(source, 0, 0, width, height);
-  return jsQR(context.getImageData(0, 0, width, height).data, width, height, {
-    inversionAttempts: 'dontInvert',
-  });
+type AdditionalTab = {
+  value: string;
+  label: ReactNode;
+  children: ReactNode;
 };
+
+const outlineButtonClass = buttonVariants({ variant: 'outline' });
 
 export const QRScanner = ({
   active,
-  mode,
   onScan,
+  additionalTabs = [],
 }: {
   active: boolean;
-  mode: 'scan' | 'upload';
   onScan: (value: string) => string | undefined;
+  additionalTabs?: AdditionalTab[];
 }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const animationRef = useRef<number | undefined>(undefined);
-  const scanTimeoutRef = useRef<number | undefined>(undefined);
-  const streamRef = useRef<MediaStream | undefined>(undefined);
-  const [stream, setStream] = useState<MediaStream>();
-  const [source, setSource] = useState<Source>();
-  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [selectedCamera, setSelectedCamera] = useState<string>();
-  const [tracker, setTracker] = useState<Tracker>();
   const [error, setError] = useState<string>();
   const [files, setFiles] = useState<File[]>([]);
-  const onScanRef = useLatestRef(onScan);
+  const tabCount = 3 + additionalTabs.length;
 
-  const stopStream = () => {
-    cancelAnimationFrame(animationRef.current ?? 0);
-    window.clearTimeout(scanTimeoutRef.current);
-    streamRef.current?.getTracks().forEach(track => track.stop());
-    streamRef.current = undefined;
-    setStream(undefined);
-    setSource(undefined);
-    setTracker(undefined);
-  };
-
-  const handleScan = (value: string) => {
-    const nextError = onScanRef.current(value);
-    if (nextError) {
-      setError(nextError);
-      return false;
-    }
-    stopStream();
-    return true;
-  };
-  const handleScanRef = useLatestRef(handleScan);
-
-  const attachStream = async (nextStream: MediaStream, nextSource: Source) => {
-    stopStream();
-    streamRef.current = nextStream;
-    setStream(nextStream);
-    setSource(nextSource);
-    setError(undefined);
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    setCameras(devices.filter(device => device.kind === 'videoinput'));
-  };
-
-  const startCamera = async (deviceId?: string) => {
-    try {
-      const nextStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: deviceId
-          ? { deviceId: { exact: deviceId } }
-          : { facingMode: { ideal: 'environment' } },
-      });
-      setSelectedCamera(deviceId ?? nextStream.getVideoTracks()[0]?.getSettings().deviceId);
-      await attachStream(nextStream, 'camera');
-    } catch {
-      setError('Camera access could not be started. Check browser and system permissions.');
-    }
-  };
-
-  const startCapture = async () => {
-    try {
-      const nextStream = await navigator.mediaDevices.getDisplayMedia({
-        audio: false,
-        video: true,
-      });
-      nextStream.getVideoTracks()[0]?.addEventListener('ended', stopStream, { once: true });
-      await attachStream(nextStream, 'capture');
-    } catch {
-      setError('Screen capture was cancelled or is unavailable.');
-    }
-  };
-
-  useEffect(() => {
-    if (!stream || !videoRef.current) {
-      return undefined;
-    }
-    const video = videoRef.current;
-    video.srcObject = stream;
-    void video.play();
-    const scan = () => {
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        const result = decodeImage(video, video.videoWidth, video.videoHeight);
-        if (result) {
-          const points = Object.values(result.location);
-          const xs = points.map(point => point.x);
-          const ys = points.map(point => point.y);
-          setTracker({
-            x: (Math.min(...xs) / video.videoWidth) * 100,
-            y: (Math.min(...ys) / video.videoHeight) * 100,
-            width: ((Math.max(...xs) - Math.min(...xs)) / video.videoWidth) * 100,
-            height: ((Math.max(...ys) - Math.min(...ys)) / video.videoHeight) * 100,
-          });
-          window.clearTimeout(scanTimeoutRef.current);
-          scanTimeoutRef.current = window.setTimeout(() => {
-            if (!handleScanRef.current(result.data)) {
-              animationRef.current = requestAnimationFrame(scan);
-            }
-          }, 450);
-          return;
-        }
-      }
-      animationRef.current = requestAnimationFrame(scan);
-    };
-    animationRef.current = requestAnimationFrame(scan);
-    return () => cancelAnimationFrame(animationRef.current ?? 0);
-  }, [stream, handleScanRef]);
-
-  useEffect(() => {
-    if (!active) {
-      stopStream();
-    }
-  }, [active]);
-
-  useEffect(() => () => stopStream(), []);
-
-  const upload = async (file: File) => {
-    let url: string | undefined;
-    try {
-      setError(undefined);
-      const image = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      url = objectUrl;
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('Invalid image'));
-        image.src = objectUrl;
-      });
-      const result = decodeImage(image, image.naturalWidth, image.naturalHeight);
-      if (!result) {
-        setError('No QR code was found in this image.');
-        return;
-      }
-      handleScan(result.data);
-    } catch {
-      setError('The image could not be read.');
-    } finally {
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
-    }
-  };
-
-  if (mode === 'upload') {
-    return (
-      <>
-        <FileUpload
-          value={files}
-          accept="image/*"
-          maxFiles={1}
-          onValueChange={setFiles}
-          onAccept={acceptedFiles => acceptedFiles[0] && void upload(acceptedFiles[0])}
-        >
-          <FileUploadDropzone>
-            <IconImages className="size-8 text-muted-foreground" />
-            <p className="font-medium text-foreground">Upload a QR image</p>
-            <p className="text-sm text-muted-foreground">Drop, paste, or choose an image file.</p>
-          </FileUploadDropzone>
-        </FileUpload>
-        {error && (
-          <p className="mt-3 text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        )}
-      </>
-    );
+  if (!active) {
+    return null;
   }
 
   return (
-    <>
-      {!stream ? (
-        <Empty>
-          <IconScanLine className="size-8" />
-          <EmptyTitle>Scan a QR code</EmptyTitle>
-          <EmptyDescription>
-            Use a camera or share a screen containing the QR code.
-          </EmptyDescription>
-          <div className="flex flex-wrap justify-center gap-2">
-            <Button type="button" variant="outline" onClick={() => void startCamera()}>
-              <IconCamera />
-              Camera
-            </Button>
-            <Button type="button" variant="outline" onClick={() => void startCapture()}>
-              <IconMonitor />
-              Capture
-            </Button>
-          </div>
-        </Empty>
-      ) : (
-        <div className="relative overflow-hidden rounded-lg bg-black">
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            className="aspect-video w-full object-contain"
-          />
-          {tracker && (
-            <div
-              className="pointer-events-none absolute border-2 border-primary shadow-[0_0_0_9999px_rgb(0_0_0_/_0.15)]"
-              style={{
-                left: `${tracker.x}%`,
-                top: `${tracker.y}%`,
-                width: `${tracker.width}%`,
-                height: `${tracker.height}%`,
-              }}
-            />
+    <QRescan
+      decoderClient={wechatDecoder}
+      options={{ mobile: { enabled: true } }}
+      onScan={value => setError(onScan(value))}
+    >
+      <QRescan.Tabs render={({ children }) => <Tabs>{children}</Tabs>}>
+        <QRescan.TabList
+          render={({ children }) => (
+            <TabsList style={{ gridTemplateColumns: `repeat(${tabCount}, minmax(0, 1fr))` }}>
+              {children}
+            </TabsList>
           )}
-          <Select
-            value={
-              source === 'capture' ? 'capture' : selectedCamera ? `camera:${selectedCamera}` : null
+        >
+          <QRescan.TabTrigger
+            value="scan"
+            render={({ children, disabled, isActive, onSelect }) => (
+              <TabsTrigger active={isActive} disabled={disabled} onClick={onSelect}>
+                {children}
+              </TabsTrigger>
+            )}
+          />
+          <QRescan.TabTrigger
+            value="upload"
+            render={({ children, disabled, isActive, onSelect }) => (
+              <TabsTrigger active={isActive} disabled={disabled} onClick={onSelect}>
+                {children}
+              </TabsTrigger>
+            )}
+          />
+          <QRescan.TabTrigger
+            value="mobile"
+            render={({ children, disabled, isActive, onSelect }) => (
+              <TabsTrigger active={isActive} disabled={disabled} onClick={onSelect}>
+                {children}
+              </TabsTrigger>
+            )}
+          />
+          {additionalTabs.map(tab => (
+            <QRescan.TabTrigger
+              key={tab.value}
+              value={tab.value}
+              render={({ children, disabled, isActive, onSelect }) => (
+                <TabsTrigger active={isActive} disabled={disabled} onClick={onSelect}>
+                  {children}
+                </TabsTrigger>
+              )}
+            >
+              {tab.label}
+            </QRescan.TabTrigger>
+          ))}
+        </QRescan.TabList>
+
+        <QRescan.Tab
+          value="scan"
+          render={({ children, isActive }) =>
+            isActive ? <TabsContent>{children}</TabsContent> : null
+          }
+        >
+          <QRescan.Scan>
+            <QRescan.ViewFinder sourceType="stream">
+              <QRescan.ViewFinderHighlight />
+              <QRescan.CameraSelect
+                render={({ items, selectedItem, onSelectItem }) => (
+                  <div className="absolute right-3 bottom-3">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={<Button type="button" variant="outline" size="sm" />}
+                      >
+                        {selectedItem?.kind === 'screen'
+                          ? 'Screen capture'
+                          : (selectedItem?.label ?? 'Camera')}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {items.map(item => (
+                          <DropdownMenuItem
+                            key={item.value}
+                            onClick={() => onSelectItem(item.value)}
+                          >
+                            {item.kind === 'screen' ? 'Screen capture' : item.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+              />
+            </QRescan.ViewFinder>
+            <QRescan.ScanInitialize>
+              <Empty>
+                <IconScanLine className="size-8" />
+                <EmptyTitle>Scan a QR code</EmptyTitle>
+                <EmptyDescription>
+                  Use a camera or share a screen containing the QR code.
+                </EmptyDescription>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <QRescan.ScanInitializeCamera className={outlineButtonClass}>
+                    <IconCamera />
+                    Camera
+                  </QRescan.ScanInitializeCamera>
+                  <QRescan.ScanInitializeScreen className={outlineButtonClass}>
+                    <IconMonitor />
+                    Capture
+                  </QRescan.ScanInitializeScreen>
+                </div>
+                <QRescan.ScanInitializeError className="text-sm text-destructive" />
+              </Empty>
+            </QRescan.ScanInitialize>
+          </QRescan.Scan>
+        </QRescan.Tab>
+
+        <QRescan.Tab
+          value="upload"
+          render={({ children, isActive }) =>
+            isActive ? <TabsContent>{children}</TabsContent> : null
+          }
+        >
+          <QRescan.Upload>
+            <QRescan.Dropzone
+              render={({ error: uploadError, processFiles }) => (
+                <>
+                  <FileUpload
+                    value={files}
+                    accept="image/*"
+                    maxFiles={1}
+                    onValueChange={setFiles}
+                    onAccept={processFiles}
+                  >
+                    <FileUploadDropzone>
+                      <IconImages className="size-8 text-muted-foreground" />
+                      <p className="font-medium text-foreground">Upload a QR image</p>
+                      <p className="text-sm text-muted-foreground">
+                        Drop, paste, or choose an image file.
+                      </p>
+                    </FileUploadDropzone>
+                  </FileUpload>
+                  {uploadError ? (
+                    <p className="mt-3 text-sm text-destructive" role="alert">
+                      {uploadError}
+                    </p>
+                  ) : null}
+                </>
+              )}
+            />
+          </QRescan.Upload>
+        </QRescan.Tab>
+
+        <QRescan.Tab
+          value="mobile"
+          render={({ children, isActive }) =>
+            isActive ? <TabsContent>{children}</TabsContent> : null
+          }
+        >
+          <QRescan.Mobile>
+            <QRescan.MobileDescription />
+            <QRescan.MobileError />
+            <QRescan.MobileConnection
+              render={() => (
+                <div className="flex items-center gap-3 rounded-lg border bg-card p-4 text-card-foreground">
+                  <span className="size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                  <div>
+                    <p className="text-sm font-medium">Connected</p>
+                    <p className="text-sm text-muted-foreground">
+                      Your mobile device is ready to scan QR codes.
+                    </p>
+                  </div>
+                </div>
+              )}
+            />
+            <QRescan.MobileLink />
+            <QRescan.MobileQR />
+          </QRescan.Mobile>
+        </QRescan.Tab>
+
+        {additionalTabs.map(tab => (
+          <QRescan.Tab
+            key={tab.value}
+            value={tab.value}
+            render={({ children, isActive }) =>
+              isActive ? <TabsContent className="space-y-4">{children}</TabsContent> : null
             }
-            onValueChange={value => {
-              if (value === 'capture') {
-                void startCapture();
-              } else if (value?.startsWith('camera:')) {
-                void startCamera(value.slice('camera:'.length));
-              }
-            }}
           >
-            <SelectTrigger className="absolute right-3 bottom-3 w-44 bg-background/90 backdrop-blur">
-              <SelectValue placeholder="Choose source" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="capture">Screen capture</SelectItem>
-              {cameras.map(camera => (
-                <SelectItem key={camera.deviceId} value={`camera:${camera.deviceId}`}>
-                  {camera.label || 'Camera'}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-      {error && (
+            {tab.children}
+          </QRescan.Tab>
+        ))}
+      </QRescan.Tabs>
+      {error ? (
         <p className="mt-3 text-sm text-destructive" role="alert">
           {error}
         </p>
-      )}
-    </>
+      ) : null}
+    </QRescan>
   );
 };

@@ -1,3 +1,4 @@
+@import 'qrescan/style.css';
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
@@ -117,6 +118,23 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+[data-qrescan] {
+  --qrescan-background: var(--background);
+  --qrescan-foreground: var(--foreground);
+  --qrescan-card: var(--card);
+  --qrescan-primary: var(--primary);
+  --qrescan-primary-foreground: var(--primary-foreground);
+  --qrescan-muted: var(--muted-foreground);
+  --qrescan-muted-background: var(--muted);
+  --qrescan-accent: var(--accent);
+  --qrescan-border: var(--border);
+  --qrescan-input: var(--input);
+  --qrescan-ring: var(--ring);
+  --qrescan-destructive: var(--destructive);
+  --qrescan-destructive-background: color-mix(in oklch, var(--destructive), transparent 90%);
+  --qrescan-radius: var(--radius);
 }
 
 @layer base {

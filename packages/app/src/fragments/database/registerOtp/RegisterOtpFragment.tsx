@@ -3,7 +3,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Field, FieldDescription, FieldLabel } from '@/components/field';
 import { Input } from '@/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs';
 import {
   AdaptiveSheet,
   AdaptiveSheetContent,
@@ -16,8 +15,6 @@ import { QRScanner } from '@/fragments/_components/QRScanner';
 import { IconChevronRight } from '@/icons';
 import { cx } from '@/utils/css';
 import { useState } from 'react';
-
-type Tab = 'scan' | 'upload' | 'paste';
 
 const base32 = (value: string) => value.replace(/[\s-]/g, '').toUpperCase().replace(/=+$/, '');
 
@@ -84,7 +81,6 @@ export const RegisterOtpFragment = ({
   onOpenChange: (open: boolean) => void;
   onConfirm: (uri: string) => void;
 }) => {
-  const [tab, setTab] = useState<Tab>('scan');
   const [paste, setPaste] = useState('');
   const [secret, setSecret] = useState('');
   const [advanced, setAdvanced] = useState(false);
@@ -125,114 +121,112 @@ export const RegisterOtpFragment = ({
             Add a TOTP setup from a QR code or secret key.
           </AdaptiveSheetDescription>
         </AdaptiveSheetHeader>
-        <Tabs>
-          <TabsList>
-            {(['scan', 'upload', 'paste'] as const).map(value => (
-              <TabsTrigger key={value} active={tab === value} onClick={() => setTab(value)}>
-                {value[0].toUpperCase() + value.slice(1)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          {tab !== 'paste' && (
-            <TabsContent>
-              <QRScanner active={open} mode={tab} onScan={finish} />
-            </TabsContent>
-          )}
-          {tab === 'paste' && (
-            <TabsContent className="space-y-4">
-              <Field>
-                <FieldLabel htmlFor="otp-uri">TOTP URI</FieldLabel>
-                <Input
-                  id="otp-uri"
-                  value={paste}
-                  placeholder="otpauth://totp/..."
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={event => {
-                    setPaste(event.target.value);
-                    setPasteError(undefined);
-                  }}
-                />
-                <FieldDescription>
-                  Paste the full provisioning URI, or enter a Base32 secret below.
-                </FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="otp-secret">Base32 secret</FieldLabel>
-                <Input
-                  id="otp-secret"
-                  value={secret}
-                  placeholder="JBSWY3DPEHPK3PXP"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={event => {
-                    setSecret(event.target.value);
-                    setPasteError(undefined);
-                  }}
-                />
-              </Field>
-              {!paste.trim() && (
-                <Collapsible open={advanced} onOpenChange={setAdvanced}>
-                  <CollapsibleTrigger render={<Button type="button" variant="ghost" size="sm" />}>
-                    <IconChevronRight
-                      className={cx('transition-transform', advanced && 'rotate-90')}
+        <QRScanner
+          active={open}
+          onScan={finish}
+          additionalTabs={[
+            {
+              value: 'paste',
+              label: 'Paste',
+              children: (
+                <>
+                  <Field>
+                    <FieldLabel htmlFor="otp-uri">TOTP URI</FieldLabel>
+                    <Input
+                      id="otp-uri"
+                      value={paste}
+                      placeholder="otpauth://totp/..."
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={event => {
+                        setPaste(event.target.value);
+                        setPasteError(undefined);
+                      }}
                     />
-                    Advanced options
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="grid gap-3 pt-3 sm:grid-cols-3">
-                    <Field>
-                      <FieldLabel>Algorithm</FieldLabel>
-                      <Select
-                        value={algorithm}
-                        onValueChange={value => value && setAlgorithm(value)}
+                    <FieldDescription>
+                      Paste the full provisioning URI, or enter a Base32 secret below.
+                    </FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="otp-secret">Base32 secret</FieldLabel>
+                    <Input
+                      id="otp-secret"
+                      value={secret}
+                      placeholder="JBSWY3DPEHPK3PXP"
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={event => {
+                        setSecret(event.target.value);
+                        setPasteError(undefined);
+                      }}
+                    />
+                  </Field>
+                  {!paste.trim() && (
+                    <Collapsible open={advanced} onOpenChange={setAdvanced}>
+                      <CollapsibleTrigger
+                        render={<Button type="button" variant="ghost" size="sm" />}
                       >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="SHA1">SHA-1</SelectItem>
-                          <SelectItem value="SHA256">SHA-256</SelectItem>
-                          <SelectItem value="SHA512">SHA-512</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="otp-period">Time step</FieldLabel>
-                      <Input
-                        id="otp-period"
-                        type="number"
-                        min="1"
-                        value={period}
-                        onChange={event => setPeriod(event.target.value)}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Code size</FieldLabel>
-                      <Select value={digits} onValueChange={value => value && setDigits(value)}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="6">6 digits</SelectItem>
-                          <SelectItem value="7">7 digits</SelectItem>
-                          <SelectItem value="8">8 digits</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
-              {pasteError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {pasteError}
-                </p>
-              )}
-              <Button type="button" className="w-full" onClick={submitPaste}>
-                Use OTP setup
-              </Button>
-            </TabsContent>
-          )}
-        </Tabs>
+                        <IconChevronRight
+                          className={cx('transition-transform', advanced && 'rotate-90')}
+                        />
+                        Advanced options
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="grid gap-3 pt-3 sm:grid-cols-3">
+                        <Field>
+                          <FieldLabel>Algorithm</FieldLabel>
+                          <Select
+                            value={algorithm}
+                            onValueChange={value => value && setAlgorithm(value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="SHA1">SHA-1</SelectItem>
+                              <SelectItem value="SHA256">SHA-256</SelectItem>
+                              <SelectItem value="SHA512">SHA-512</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="otp-period">Time step</FieldLabel>
+                          <Input
+                            id="otp-period"
+                            type="number"
+                            min="1"
+                            value={period}
+                            onChange={event => setPeriod(event.target.value)}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel>Code size</FieldLabel>
+                          <Select value={digits} onValueChange={value => value && setDigits(value)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="6">6 digits</SelectItem>
+                              <SelectItem value="7">7 digits</SelectItem>
+                              <SelectItem value="8">8 digits</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+                  {pasteError && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {pasteError}
+                    </p>
+                  )}
+                  <Button type="button" className="w-full" onClick={submitPaste}>
+                    Use OTP setup
+                  </Button>
+                </>
+              ),
+            },
+          ]}
+        />
       </AdaptiveSheetContent>
     </AdaptiveSheet>
   );
