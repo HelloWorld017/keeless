@@ -159,7 +159,7 @@ async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_
     assert_eq!(
         entry
             .custom_fields()
-            .filter(|(_, field)| !template::is_internal_field(field.name()))
+            .filter(|(_, field)| !template::is_template_field(field.name()))
             .map(|(_, field)| field.name())
             .collect::<Vec<_>>(),
         ["Renamed", "Duplicate", "Added"]

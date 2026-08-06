@@ -1,12 +1,11 @@
+mod entry_layout;
+
 use std::collections::HashSet;
 
-use keeless_kdbx::{
-    Database, Entry, Group, IconImage, IconUpdate, NUMBER_STANDARD_ICONS, NodeId, StandardField,
-    kdbx::template,
-};
+use keeless_kdbx::{Database, Entry, Group, IconImage, IconUpdate, NUMBER_STANDARD_ICONS, NodeId};
 use keeless_schema::{
-    DatabaseNodeId, EntryAttachmentInformation, EntryDetailResult, EntryFieldInformation,
-    EntryFieldKind, EntrySummary, GroupHierarchyItem, GroupHierarchyResult, IconReference,
+    DatabaseNodeId, EntryAttachmentInformation, EntryDetailResult, EntrySummary,
+    GroupHierarchyItem, GroupHierarchyResult, IconReference,
 };
 use uuid::Uuid;
 
@@ -235,39 +234,13 @@ pub(super) fn group_hierarchy(database: &Database) -> Result<GroupHierarchyResul
     })
 }
 
-pub(super) fn entry_detail(entry: &Entry) -> EntryDetailResult {
-    let fields = entry
-        .fields()
-        .map(|(id, field)| {
-            let is_protected = field.value().is_protected();
-            let kind = match field.standard() {
-                Some(StandardField::Title) => EntryFieldKind::Title,
-                Some(StandardField::UserName) => EntryFieldKind::UserName,
-                Some(StandardField::Password) => EntryFieldKind::Password,
-                Some(StandardField::Url) => EntryFieldKind::Url,
-                Some(StandardField::Notes) => EntryFieldKind::Notes,
-                None => EntryFieldKind::Custom,
-            };
-            EntryFieldInformation::Field {
-                order: 0,
-                field_id: Some(id.to_string()),
-                kind,
-                name: field.name().to_string(),
-                label: field.name().to_string(),
-                value: (!is_protected).then(|| field.value().as_str().to_string()),
-                is_protected,
-                is_internal: template::is_internal_field(field.name()),
-                control: None,
-            }
-        })
-        .collect();
-
+pub(super) fn entry_detail(database: &Database, entry: &Entry) -> EntryDetailResult {
     EntryDetailResult {
         id: node_id(entry.id),
         is_template: false,
         icon: icon_reference(&entry.icon, entry.custom_icon_uuid),
         tags: entry.tags.clone(),
-        fields,
+        fields: entry_layout::build_entry_fields(database, entry),
         background_color: entry.background_color.clone(),
         foreground_color: entry.foreground_color.clone(),
         override_url: entry.override_url.clone(),

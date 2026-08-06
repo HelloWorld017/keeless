@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::metadata::{self, FieldType};
 
-pub fn is_internal_field(name: &str) -> bool {
+pub fn is_template_field(name: &str) -> bool {
     name.starts_with(metadata::PREFIX)
 }
 
@@ -96,7 +96,7 @@ pub fn prepare_instantiation_at(
     };
     entry.prepare_duplicate_at(options.new_entry_id, unlock.as_mut(), options.timestamp)?;
     entry.retain_custom_fields(|field| {
-        !is_internal_field(field.name()) && !field.name().starts_with('@')
+        !is_template_field(field.name()) && !field.name().starts_with('@')
     });
     standard_fields_first(&mut entry);
     entry.add_custom_field_with_id(
@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(
             child
                 .custom_fields()
-                .filter(|(_, field)| is_internal_field(field.name()))
+                .filter(|(_, field)| is_template_field(field.name()))
                 .count(),
             1
         );
@@ -313,5 +313,11 @@ mod tests {
             database.add_entry(entry, &templates_id);
             assert!(!is_template(&database, &id));
         }
+    }
+
+    #[test]
+    fn template_field_uses_enhanced_template_namespace() {
+        assert!(is_template_field(metadata::TEMPLATE_UUID));
+        assert!(!is_template_field("Custom"));
     }
 }

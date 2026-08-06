@@ -84,7 +84,7 @@ async fn add_entry_from_template_uses_credentials_or_redacts_protected_content()
         assert_eq!(
             copied
                 .custom_fields()
-                .filter(|(_, field)| template::is_internal_field(field.name()))
+                .filter(|(_, field)| template::is_template_field(field.name()))
                 .map(|(_, field)| field.name())
                 .collect::<Vec<_>>(),
             ["_etm_template_uuid"]
