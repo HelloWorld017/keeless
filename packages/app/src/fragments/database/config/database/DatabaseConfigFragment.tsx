@@ -1,4 +1,3 @@
-import { Button } from '@/components/button';
 import {
   Attachment,
   AttachmentAction,
@@ -8,6 +7,7 @@ import {
   AttachmentMedia,
   AttachmentTitle,
 } from '@/components/attachment';
+import { Button } from '@/components/button';
 import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient, useRequestMutation } from '@/fragments/_providers/QueryProvider';
@@ -200,10 +200,7 @@ export const DatabaseConfigFragment = () => {
               </AttachmentActions>
             </Attachment>
           ) : (
-            <FileUploadDropzone
-              className="min-h-16 flex-row justify-start px-6"
-              onDrop={dropFile}
-            >
+            <FileUploadDropzone className="min-h-16 flex-row justify-start px-6" onDrop={dropFile}>
               <IconFile className="size-5 text-muted-foreground" />
               <div className="min-w-0 flex-1 text-sm">
                 <p className="truncate font-medium">Drop one .kdbx file here</p>

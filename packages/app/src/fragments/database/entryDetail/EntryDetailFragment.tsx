@@ -484,6 +484,7 @@ const EntryDetailQuery = ({
                 onLoad={editor.load}
                 onAdd={editor.add}
                 onAddOtp={editor.addOtp}
+                onAddUrl={editor.addUrl}
                 onChange={editor.change}
                 onDelete={editor.remove}
                 onPropertiesChange={editor.changeProperties}

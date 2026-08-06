@@ -103,6 +103,32 @@ export const useEntryEditor = () => {
       },
     ]);
 
+  const addUrl = () =>
+    setDrafts(current => {
+      let suffix = 1;
+      const names = new Set(current.map(field => field.name));
+      while (names.has(`KP2A_URL_${suffix}`)) {
+        suffix += 1;
+      }
+      return [
+        ...current,
+        {
+          key: `new-${nextKey.current++}`,
+          order: nextOrder.current++,
+          fieldId: null,
+          kind: 'custom',
+          name: `KP2A_URL_${suffix}`,
+          label: `KP2A_URL_${suffix}`,
+          control: null,
+          value: '',
+          isProtected: false,
+          isInternal: false,
+          originalIsProtected: false,
+          valueChanged: true,
+        },
+      ];
+    });
+
   const load = (key: string, value: string) =>
     setDrafts(current =>
       current.map(field =>
@@ -157,6 +183,7 @@ export const useEntryEditor = () => {
     clear,
     add,
     addOtp,
+    addUrl,
     load,
     change,
     remove,

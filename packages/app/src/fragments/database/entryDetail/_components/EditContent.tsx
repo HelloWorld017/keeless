@@ -37,7 +37,6 @@ import {
   IconFile,
   IconLockKeyhole,
   IconLockKeyholeOpen,
-  IconPlus,
   IconTrash,
   IconTriangleAlert,
 } from '@/icons';
@@ -49,6 +48,7 @@ import { ExpiryEditor } from '../_layout/ExpiryEditor';
 import { FieldDivider } from '../_layout/FieldDivider';
 import { PasswordConfirmationEditor } from '../_layout/PasswordConfirmationEditor';
 import { getFieldName } from '../_utils/getFieldName';
+import { AddField } from './AddField';
 import { EntryFieldEditor } from './EntryFieldEditor';
 import type { EntryPropertiesDraft } from '../_types/EntryPropertiesDraft';
 import type { FieldDraft } from '../_types/FieldDraft';
@@ -104,6 +104,7 @@ export const EditContent = ({
   pending,
   onAdd,
   onAddOtp,
+  onAddUrl,
   onLoad,
   onChange,
   onDelete,
@@ -125,6 +126,7 @@ export const EditContent = ({
   pending: boolean;
   onAdd: () => void;
   onAddOtp: () => void;
+  onAddUrl: () => void;
   onLoad: (key: string, value: string) => void;
   onChange: (key: string, patch: Partial<FieldDraft>) => void;
   onDelete: (key: string) => void;
@@ -319,28 +321,7 @@ export const EditContent = ({
           </CollapsibleContent>
         </Collapsible>
       )}
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full border-dashed text-muted-foreground hover:text-foreground"
-          disabled={pending}
-          onClick={onAdd}
-        >
-          <IconPlus />
-          Add field
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full border-dashed text-muted-foreground hover:text-foreground"
-          disabled={pending}
-          onClick={onAddOtp}
-        >
-          <IconPlus />
-          Add OTP
-        </Button>
-      </div>
+      <AddField pending={pending} onAddGeneric={onAdd} onAddOtp={onAddOtp} onAddUrl={onAddUrl} />
       <section className="space-y-4">
         <div>
           <h2 className="text-sm font-semibold">Attachments</h2>
