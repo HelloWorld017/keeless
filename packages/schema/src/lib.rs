@@ -933,6 +933,31 @@ operation_schema! {
         fetches: [Entry],
     }
 
+    GetEntryTotp("getEntryTotp") {
+        args {
+            #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct GetEntryTotpArgs {
+                pub entry_id: DatabaseNodeId,
+                pub field_id: String,
+                #[serde(default, deserialize_with = "deserialize_nullable")]
+                #[specta(optional = true)]
+                pub password: Option<String>,
+            }
+        }
+        result {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase")]
+            pub struct GetEntryTotpResult {
+                pub code: String,
+                pub digits: u32,
+                pub period: u32,
+                pub expires_at_ms: i64,
+            }
+        }
+        fetches: [Entry],
+    }
+
     GetPasskeys("getPasskeys") {
         args {
             #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

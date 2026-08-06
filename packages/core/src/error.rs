@@ -41,6 +41,8 @@ pub enum CoreError {
     InvalidGroupName,
     #[error("entry field is invalid or is not protected")]
     InvalidEntryField,
+    #[error("entry field does not contain a valid TOTP URI")]
+    InvalidTotp,
     #[error("entry update is invalid")]
     InvalidEntryUpdate,
     #[error("entry cannot be deleted in the requested mode")]
@@ -165,6 +167,10 @@ impl From<&CoreError> for OperationError {
             CoreError::InvalidEntryField => (
                 "invalid_entry_field",
                 "Entry field is invalid or is not protected",
+            ),
+            CoreError::InvalidTotp => (
+                "invalid_totp",
+                "Entry field does not contain a valid TOTP URI",
             ),
             CoreError::InvalidEntryUpdate => ("invalid_entry_update", "Entry update is invalid"),
             CoreError::InvalidEntryDelete => (

@@ -161,6 +161,7 @@ export const ViewContent = ({ detail }: { detail: EntryDetailResult }) => {
         return (
           <EntryFieldValue
             key={key}
+            entryId={detail.id}
             field={field}
             label={field.control ? field.label : getFieldName(field.kind, field.name)}
             control={field.control}

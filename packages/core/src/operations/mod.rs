@@ -6,6 +6,7 @@ pub(crate) mod get_database_status;
 pub(crate) mod get_entries;
 pub(crate) mod get_entry_detail;
 pub(crate) mod get_entry_templates;
+pub(crate) mod get_entry_totp;
 pub(crate) mod get_group_entries;
 pub(crate) mod get_group_hierarchy;
 pub(crate) mod get_passkeys;
@@ -52,6 +53,7 @@ pub(crate) async fn execute(
         Operation::GetTrashEntries(args) => get_trash_entries::execute(core, args),
         Operation::GetTags(args) => get_tags::execute(core, args),
         Operation::GetEntryDetail(args) => get_entry_detail::execute(core, args),
+        Operation::GetEntryTotp(args) => get_entry_totp::execute(core, args).await,
         Operation::UpdateEntry(args) => mutations::update_entry::execute(core, args).await,
         Operation::PrepareEntryAttachmentDownload(args) => {
             prepare_entry_attachment_download::execute(core, args)

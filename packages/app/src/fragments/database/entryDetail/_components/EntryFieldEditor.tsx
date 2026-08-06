@@ -4,6 +4,7 @@ import { DateInput } from './DateInput';
 import { FieldNoteEditor } from './FieldNoteEditor';
 import { FieldPasswordEditor } from './FieldPasswordEditor';
 import { FieldPlainEditor } from './FieldPlainEditor';
+import { FieldTotpEditor } from './FieldTotpEditor';
 import { PopoutFieldEditor } from './PopoutFieldEditor';
 import type { FieldDraft } from '../_types/FieldDraft';
 import type { DatabaseNodeId, FieldControl } from '@keeless/schema';
@@ -32,6 +33,10 @@ export const EntryFieldEditor = ({
   const value = draft.value ?? '';
   const existing = draft.fieldId !== null && draft.originalIsProtected && !draft.valueChanged;
   const protectedEditor = draft.originalIsProtected || draft.isProtected;
+
+  if (draft.kind === 'custom' && draft.name === 'OTP' && draft.isProtected) {
+    return <FieldTotpEditor disabled={pending} onChange={onChange} />;
+  }
 
   if (control?.type === 'popout') {
     return (

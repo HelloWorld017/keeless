@@ -74,7 +74,9 @@ pub use kdbx::merge::{
 };
 
 // ─── OTP ──────────────────────────────────────────────────────────────
-pub use model::entry::otp::{OtpHashAlgorithm, OtpParameters, OtpType, TokenCalculator};
+pub use model::entry::otp::{
+    parse_otpauth_uri, OtpHashAlgorithm, OtpParameters, OtpType, TokenCalculator,
+};
 
 // ─── Passkeys ─────────────────────────────────────────────────────────
 pub use model::entry::passkey::{

@@ -73,6 +73,7 @@ fn generate() -> String {
     export::<UpdateTagStyleArgs>(&mut output);
     export::<DeleteTagArgs>(&mut output);
     export::<RevealEntryFieldsArgs>(&mut output);
+    export::<GetEntryTotpArgs>(&mut output);
     export::<GetPasskeysArgs>(&mut output);
     export::<RegisterPasskeyArgs>(&mut output);
     export::<AssertPasskeyArgs>(&mut output);
@@ -94,6 +95,7 @@ fn generate() -> String {
     export::<PrepareEntryAttachmentDownloadResult>(&mut output);
     export::<MergeTransferredDatabaseResult>(&mut output);
     export::<RevealEntryFieldsResult>(&mut output);
+    export::<GetEntryTotpResult>(&mut output);
     export::<PasskeySummary>(&mut output);
     export::<PasskeysResult>(&mut output);
     export::<RegisterPasskeyResult>(&mut output);

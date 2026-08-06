@@ -103,6 +103,7 @@ export const EditContent = ({
   errors,
   pending,
   onAdd,
+  onAddOtp,
   onLoad,
   onChange,
   onDelete,
@@ -123,6 +124,7 @@ export const EditContent = ({
   errors: Set<string>;
   pending: boolean;
   onAdd: () => void;
+  onAddOtp: () => void;
   onLoad: (key: string, value: string) => void;
   onChange: (key: string, patch: Partial<FieldDraft>) => void;
   onDelete: (key: string) => void;
@@ -317,16 +319,28 @@ export const EditContent = ({
           </CollapsibleContent>
         </Collapsible>
       )}
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full border-dashed text-muted-foreground hover:text-foreground"
-        disabled={pending}
-        onClick={onAdd}
-      >
-        <IconPlus />
-        Add field
-      </Button>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed text-muted-foreground hover:text-foreground"
+          disabled={pending}
+          onClick={onAdd}
+        >
+          <IconPlus />
+          Add field
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-dashed text-muted-foreground hover:text-foreground"
+          disabled={pending}
+          onClick={onAddOtp}
+        >
+          <IconPlus />
+          Add OTP
+        </Button>
+      </div>
       <section className="space-y-4">
         <div>
           <h2 className="text-sm font-semibold">Attachments</h2>

@@ -212,6 +212,12 @@ export type RevealEntryFieldsArgs = {
   password?: string | null;
 };
 
+export type GetEntryTotpArgs = {
+  entryId: DatabaseNodeId;
+  fieldId: string;
+  password?: string | null;
+};
+
 export type GetPasskeysArgs = { rpId?: string | null; allowCredentialIds?: string[] };
 
 export type RegisterPasskeyArgs = {
@@ -271,6 +277,7 @@ export type Operation =
   | { op: 'updateTagStyle'; args: UpdateTagStyleArgs }
   | { op: 'deleteTag'; args: DeleteTagArgs }
   | { op: 'revealEntryFields'; args: RevealEntryFieldsArgs }
+  | { op: 'getEntryTotp'; args: GetEntryTotpArgs }
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
   | { op: 'assertPasskey'; args: AssertPasskeyArgs };
@@ -313,6 +320,7 @@ export type OperationRequest = (
   | { op: 'updateTagStyle'; args: UpdateTagStyleArgs }
   | { op: 'deleteTag'; args: DeleteTagArgs }
   | { op: 'revealEntryFields'; args: RevealEntryFieldsArgs }
+  | { op: 'getEntryTotp'; args: GetEntryTotpArgs }
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
   | { op: 'assertPasskey'; args: AssertPasskeyArgs }
@@ -392,6 +400,13 @@ export type MergeTransferredDatabaseResult = {
 
 export type RevealEntryFieldsResult = { values: string[] };
 
+export type GetEntryTotpResult = {
+  code: string;
+  digits: number;
+  period: number;
+  expiresAtMs: number;
+};
+
 /**
  * One stored passkey, as much as can be shown without signing anything.
  */
@@ -450,6 +465,7 @@ export type OperationSuccess =
   | { op: 'updateTagStyle'; result: EmptyResult }
   | { op: 'deleteTag'; result: EmptyResult }
   | { op: 'revealEntryFields'; result: RevealEntryFieldsResult }
+  | { op: 'getEntryTotp'; result: GetEntryTotpResult }
   | { op: 'getPasskeys'; result: PasskeysResult }
   | { op: 'registerPasskey'; result: RegisterPasskeyResult }
   | { op: 'assertPasskey'; result: AssertPasskeyResult };
@@ -515,6 +531,7 @@ export const operationMetadata = {
   updateTagStyle: { mutates: ['databaseStatus', 'tag'] },
   deleteTag: { mutates: ['databaseStatus', 'tag'] },
   revealEntryFields: { fetches: ['entry'] },
+  getEntryTotp: { fetches: ['entry'] },
   getPasskeys: { queries: ['entry'] },
   registerPasskey: { mutates: ['databaseStatus', 'entry'] },
   assertPasskey: { fetches: ['entry'] },

@@ -110,6 +110,7 @@ fn operations_expose_query_fetch_and_mutation_metadata() {
                 ][..],
             ),
             ("revealEntryFields", &[OperationResource::Entry][..]),
+            ("getEntryTotp", &[OperationResource::Entry][..]),
             ("assertPasskey", &[OperationResource::Entry][..]),
         ]
     );
@@ -891,6 +892,32 @@ fn database_editing_operations_have_stable_shapes() {
     }))
     .unwrap();
     assert_eq!(omitted.password, None);
+
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "totp-1".into(),
+            operation: Operation::GetEntryTotp(GetEntryTotpArgs {
+                entry_id: DatabaseNodeId::Int(8),
+                field_id: "custom:OTP".into(),
+                password: None,
+            }),
+        },
+        json!({ "requestId": "totp-1", "op": "getEntryTotp", "args": { "entryId": 8, "fieldId": "custom:OTP", "password": null } }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "totp-1".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::GetEntryTotp(GetEntryTotpResult {
+                    code: "012345".into(),
+                    digits: 6,
+                    period: 30,
+                    expires_at_ms: 1_700_000_010_000,
+                }),
+            },
+        },
+        json!({ "requestId": "totp-1", "status": "success", "op": "getEntryTotp", "result": { "code": "012345", "digits": 6, "period": 30, "expiresAtMs": 1_700_000_010_000i64 } }),
+    );
 }
 
 #[test]

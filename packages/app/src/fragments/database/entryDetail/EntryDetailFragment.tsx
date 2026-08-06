@@ -483,6 +483,7 @@ const EntryDetailQuery = ({
                 pending={pending}
                 onLoad={editor.load}
                 onAdd={editor.add}
+                onAddOtp={editor.addOtp}
                 onChange={editor.change}
                 onDelete={editor.remove}
                 onPropertiesChange={editor.changeProperties}

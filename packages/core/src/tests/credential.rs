@@ -127,6 +127,78 @@ async fn reveal_entry_fields_handles_ids_duplicates_and_credentials() {
 }
 
 #[tokio::test]
+async fn get_entry_totp_requires_a_protected_totp_field_and_valid_credentials() {
+    let (mut core, ids) = query_core().await;
+    let entry_id = schema_id(ids.root_entry);
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let entry = core
+        .handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
+        .unwrap();
+    entry.add_custom_field(
+        "TOTP",
+        ProtectedString::new_protected(
+            "otpauth://totp/test?secret=JBSWY3DPEHPK3PXP&algorithm=SHA256&digits=8&period=30",
+        ),
+    );
+    entry.add_custom_field(
+        "HOTP",
+        ProtectedString::new_protected("otpauth://hotp/test?secret=JBSWY3DPEHPK3PXP&counter=1"),
+    );
+    core.handle
+        .as_mut()
+        .unwrap()
+        .database_mut()
+        .protect_entry_strings(&key)
+        .unwrap();
+    let detail = operations::get_entry_detail::run(
+        &mut core,
+        GetEntryDetailArgs {
+            entry_id: entry_id.clone(),
+        },
+    )
+    .unwrap();
+    let field_id = |name: &str| {
+        detail
+            .fields
+            .iter()
+            .filter_map(detail_field)
+            .find(|field| field.name == name)
+            .unwrap()
+            .field_id
+            .unwrap()
+            .to_string()
+    };
+
+    let result =
+        operations::get_entry_totp::run(&mut core, entry_id.clone(), field_id("TOTP"), None)
+            .await
+            .unwrap();
+    assert_eq!(result.digits, 8);
+    assert_eq!(result.period, 30);
+    assert_eq!(result.expires_at_ms, 30_000);
+    assert_eq!(result.code.len(), 8);
+    assert!(matches!(
+        operations::get_entry_totp::run(&mut core, entry_id, field_id("HOTP"), Some(b"wrong"))
+            .await,
+        Err(CoreError::InvalidCredentials)
+    ));
+    assert!(matches!(
+        operations::get_entry_totp::run(
+            &mut core,
+            schema_id(ids.root_entry),
+            field_id("HOTP"),
+            None,
+        )
+        .await,
+        Err(CoreError::InvalidTotp)
+    ));
+}
+
+#[tokio::test]
 async fn database_query_operations_report_lookup_errors_and_require_unlock() {
     let (mut core, _) = query_core().await;
     let missing = schema_id(Uuid::from_u128(999));

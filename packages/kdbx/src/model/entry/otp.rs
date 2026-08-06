@@ -102,12 +102,17 @@ impl TokenCalculator {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
+        Self::totp_at(params, now)
+    }
+
+    /// Calculate a TOTP code for a Unix timestamp in seconds.
+    pub fn totp_at(params: &OtpParameters, time: u64) -> u32 {
         if params.period == 0 {
             return 0;
         }
         Self::hotp_with_algorithm(
             &params.secret,
-            now / params.period as u64,
+            time / params.period as u64,
             params.digits,
             params.algorithm,
         )

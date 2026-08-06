@@ -2,8 +2,9 @@ import { FieldCopyButton } from './FieldCopyButton';
 import { FieldNote } from './FieldNote';
 import { FieldPassword } from './FieldPassword';
 import { FieldPlain } from './FieldPlain';
+import { FieldTotp } from './FieldTotp';
 import { PopoutFieldValue } from './PopoutFieldValue';
-import type { EntryFieldInformation, FieldControl } from '@keeless/schema';
+import type { DatabaseNodeId, EntryFieldInformation, FieldControl } from '@keeless/schema';
 
 type EntryField = Extract<EntryFieldInformation, { type: 'field' }>;
 
@@ -20,14 +21,19 @@ const safeUrl = (value: string | null) => {
 };
 
 export const EntryFieldValue = ({
+  entryId,
   field,
   label,
   control,
 }: {
+  entryId: DatabaseNodeId;
   field: EntryField;
   label: string;
   control?: FieldControl | null;
 }) => {
+  if (field.kind === 'custom' && field.name === 'OTP' && field.isProtected && field.fieldId) {
+    return <FieldTotp entryId={entryId} fieldId={field.fieldId} name={label} />;
+  }
   if (control?.type === 'popout') {
     return <PopoutFieldValue field={field} label={label} />;
   }
