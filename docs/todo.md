@@ -27,3 +27,7 @@
 ### Good to have
 - [ ] Yubikey Support
 - [ ] SSH Agent
+- [ ] Field Reference (= spr)
+  - kdbx 쪽에 파싱 기능 추가
+  - entry detail build할 때 치환 (resolved_value로), View 시에만 작동하게
+  - is_resolve_protected로 protected field가 있을 때 protected여부를 전파시키게

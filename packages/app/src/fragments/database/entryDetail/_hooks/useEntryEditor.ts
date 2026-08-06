@@ -85,23 +85,27 @@ export const useEntryEditor = () => {
     ]);
 
   const addOtp = () =>
-    setDrafts(current => [
-      ...current,
-      {
-        key: `new-${nextKey.current++}`,
-        order: nextOrder.current++,
-        fieldId: null,
-        kind: 'custom',
-        name: 'OTP',
-        label: 'OTP',
-        control: null,
-        value: '',
-        isProtected: true,
-        isInternal: false,
-        originalIsProtected: false,
-        valueChanged: true,
-      },
-    ]);
+    setDrafts(current =>
+      current.find(field => field.name === 'OTP')
+        ? current
+        : [
+            ...current,
+            {
+              key: `new-${nextKey.current++}`,
+              order: nextOrder.current++,
+              fieldId: null,
+              kind: 'custom',
+              name: 'OTP',
+              label: 'OTP',
+              control: null,
+              value: '',
+              isProtected: true,
+              isInternal: false,
+              originalIsProtected: false,
+              valueChanged: true,
+            },
+          ],
+    );
 
   const addUrl = () =>
     setDrafts(current => {

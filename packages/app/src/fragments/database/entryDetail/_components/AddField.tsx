@@ -34,8 +34,8 @@ export const AddField = ({
     </DropdownMenuTrigger>
     <DropdownMenuContent className="min-w-44">
       <DropdownMenuItem onClick={onAddGeneric}>Generic</DropdownMenuItem>
-      <DropdownMenuItem onClick={onAddOtp}>OTP</DropdownMenuItem>
-      <DropdownMenuItem onClick={onAddUrl}>URL (KP2A_URL_*)</DropdownMenuItem>
+      <DropdownMenuItem onClick={onAddUrl}>URL</DropdownMenuItem>
+      <DropdownMenuItem onClick={onAddOtp}>One-time Password</DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 );
