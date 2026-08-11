@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use crate::extensions::passkey::PasskeyExtension;
 use crate::features::passkeys;
 use crate::model::node_id;
-use crate::{CoreError, KeelessCore, PasswordInputMode, Result};
+use crate::{
+    CoreError, KeelessCore, PasskeyConsentMode, PasskeyConsentRequest, PasswordInputMode, Result,
+};
 
 use super::{Mutation as JournalMutation, add_entry, mutate, update_entry};
 
@@ -65,9 +67,7 @@ pub(crate) async fn run(
     core: &mut KeelessCore,
     args: RegisterPasskeyArgs,
 ) -> Result<RegisterPasskeyResult> {
-    if core.handle.is_none() {
-        return Err(CoreError::DatabaseLocked);
-    }
+    passkeys::ensure_database_unlocked(core).await?;
     let client_data_hash = passkeys::decode(&args.client_data_hash)?;
     let user_handle = passkeys::decode(&args.user_handle)?;
     let exclude_credential_ids = args
@@ -87,6 +87,15 @@ pub(crate) async fn run(
         && !passkeys::visible_credentials(core, Some(&args.rp_id), &exclude_credential_ids)?
             .is_empty()
     {
+        // An excluded credential still needs user presence before the caller is
+        // told it exists. The outward answer is deliberately identical either way.
+        let _ = core
+            .request_passkey_consent(PasskeyConsentRequest {
+                mode: PasskeyConsentMode::Register,
+                rp_id: args.rp_id.clone(),
+                accounts: vec![args.user_name.clone()],
+            })
+            .await;
         return Err(CoreError::PasskeyExcluded);
     }
     let result = PasskeyAuthenticator::create_ctap(&CtapRegistrationRequest {
@@ -100,8 +109,14 @@ pub(crate) async fn run(
             .iter()
             .map(Vec::as_slice)
             .collect::<Vec<_>>(),
-        user_verification: passkeys::user_verification(args.user_verified),
+        user_verification: passkeys::user_verification(true),
     })?;
+    core.request_passkey_consent(PasskeyConsentRequest {
+        mode: PasskeyConsentMode::Register,
+        rp_id: args.rp_id.clone(),
+        accounts: vec![args.user_name.clone()],
+    })
+    .await?;
     let title = args
         .rp_name
         .as_deref()

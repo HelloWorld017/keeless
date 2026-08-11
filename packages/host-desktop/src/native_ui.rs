@@ -5,7 +5,10 @@ use std::{
     time::Duration,
 };
 
-use keeless_core::{CoreError, HostFuture, PasswordInputMode, PasswordInputProvider};
+use keeless_core::{
+    CoreError, HostFuture, PasskeyConsentMode, PasskeyConsentProvider, PasskeyConsentRequest,
+    PasswordInputMode, PasswordInputProvider,
+};
 use keeless_lesswire::{
     ApprovalProvider, MessageFrame, Server, ServerHost, StateStore, SystemClock, WireFuture,
 };
@@ -84,6 +87,50 @@ impl NativeUi {
                     "connection",
                 )?;
                 Ok(response.result.allowed)
+            }
+        }
+    }
+
+    async fn request_passkey_consent_ui(
+        &self,
+        request: PasskeyConsentRequest,
+    ) -> Result<Option<usize>, String> {
+        let accounts = request
+            .accounts
+            .iter()
+            .enumerate()
+            .map(|(index, username)| PasskeyAccount {
+                id: index.to_string(),
+                username: sanitize_label(username),
+            })
+            .collect::<Vec<_>>();
+        let request = PasskeyRequest {
+            mode: match request.mode {
+                PasskeyConsentMode::Register => "register",
+                PasskeyConsentMode::Assert => "assert",
+                PasskeyConsentMode::Selection => "selection",
+            },
+            rp_id: sanitize_label(&request.rp_id),
+            accounts,
+        };
+        let arguments = serde_json::to_string(&request).map_err(|error| error.to_string())?;
+        let plaintext = self.invoke("passkey", &arguments).await?;
+        match response_status(&plaintext, "passkey")? {
+            ResponseStatus::Cancelled => Ok(None),
+            ResponseStatus::Error(error) => Err(error),
+            ResponseStatus::Selected => {
+                let response: PasskeySelected<'_> = decode_response(&plaintext)?;
+                validate_selected(response.version, response.kind, response.status, "passkey")?;
+                let index =
+                    response.result.account_id.parse::<usize>().map_err(|_| {
+                        "native UI returned an invalid passkey selection".to_owned()
+                    })?;
+                if response.result.account_id != index.to_string()
+                    || index >= request.accounts.len()
+                {
+                    return Err("native UI returned an invalid passkey selection".into());
+                }
+                Ok(Some(index))
             }
         }
     }
@@ -193,6 +240,19 @@ impl PasswordInputProvider for NativeUi {
     }
 }
 
+impl PasskeyConsentProvider for NativeUi {
+    fn request_passkey_consent(
+        &self,
+        request: PasskeyConsentRequest,
+    ) -> HostFuture<'_, keeless_core::Result<Option<usize>>> {
+        Box::pin(async move {
+            self.request_passkey_consent_ui(request)
+                .await
+                .map_err(CoreError::Host)
+        })
+    }
+}
+
 impl ApprovalProvider for NativeUi {
     fn approve(&self, public_key_bundle: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
         let bundle = public_key_bundle.to_owned();
@@ -291,6 +351,20 @@ struct PasswordRequest {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PasskeyRequest {
+    mode: &'static str,
+    rp_id: String,
+    accounts: Vec<PasskeyAccount>,
+}
+
+#[derive(Serialize)]
+struct PasskeyAccount {
+    id: String,
+    username: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ConnectionRequest<'a> {
     public_key: &'a str,
 }
@@ -381,6 +455,24 @@ struct PasswordResult {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PasskeySelected<'a> {
+    version: u8,
+    #[serde(borrow)]
+    kind: &'a str,
+    #[serde(borrow)]
+    status: &'a str,
+    result: PasskeyResult<'a>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PasskeyResult<'a> {
+    #[serde(borrow)]
+    account_id: &'a str,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ConnectionSelected<'a> {
     version: u8,
     #[serde(borrow)]
@@ -394,6 +486,37 @@ struct ConnectionSelected<'a> {
 #[serde(deny_unknown_fields)]
 struct ConnectionResult {
     allowed: bool,
+}
+
+/// Replace values native-ui would reject without changing their account ordering.
+fn sanitize_label(value: &str) -> String {
+    const MAX_LABEL_BYTES: usize = 256;
+
+    let mut cleaned: String = value
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(character,
+                    '\u{061c}' | '\u{200e}' | '\u{200f}'
+                    | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+            {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        return "(unnamed)".into();
+    }
+    if trimmed.len() != cleaned.len() {
+        cleaned = trimmed.to_string();
+    }
+    while cleaned.len() > MAX_LABEL_BYTES {
+        cleaned.pop();
+    }
+    cleaned
 }
 
 #[cfg(test)]
@@ -454,5 +577,16 @@ mod tests {
             ),
             Ok(ResponseStatus::Error(error)) if error == "native UI ui_unavailable: display unavailable"
         ));
+    }
+
+    #[test]
+    fn decodes_only_indexed_passkey_selections() {
+        let selected: PasskeySelected<'_> = decode_response(
+            br#"{"version":1,"kind":"passkey","status":"selected","result":{"accountId":"1"}}"#,
+        )
+        .unwrap();
+        validate_selected(selected.version, selected.kind, selected.status, "passkey").unwrap();
+        assert_eq!(selected.result.account_id, "1");
+        assert_eq!(sanitize_label("safe\u{202e}evil"), "safe evil");
     }
 }

@@ -53,11 +53,9 @@ current-user IPC endpoint before serving the request. It must run as the same
 user as the desktop app, not as root; a service must likewise be configured for
 that user's desktop session.
 
-The consent dialog helper is expected beside the `keeless-passkey-linux` executable;
-`--native-ui` names it elsewhere, and must be an absolute path. It is never
-searched for on `PATH`, because whatever answers that prompt decides which
-signatures get made. The daemon serves requests until it is stopped; only one
-instance runs at a time.
+The daemon never launches dialogs. It sends CTAP ceremony inputs to the desktop
+host, which owns both the database and `keeless-native-ui`. The daemon serves
+requests until it is stopped; only one instance runs at a time.
 
 ### systemd descriptor passing
 
@@ -86,14 +84,14 @@ visible rather than silently trusted. `keeless-passkey-linux reset-pairing` forg
 
 1. A site asks the browser for a passkey, and the browser sends CTAP2 over the
    virtual device.
-2. If the database is locked, the app prompts for the master password. The daemon
-   keeps the browser informed while that happens.
-3. The daemon shows its own prompt naming the site, and — when several passkeys
-   match — the accounts to choose between.
+2. Core unlocks the database through the app's password prompt when necessary.
+   The daemon keeps the browser informed while that happens.
+3. Core asks the desktop host to show a prompt naming the site, and — when
+   several passkeys match — the accounts to choose between.
 4. The chosen credential signs, in the app's process. The private key never
    leaves it.
 
-If the browser withdraws the request, the prompt closes with it.
+If the browser withdraws the request, the desktop host cancels the prompt with it.
 
 Browsers also ask, without prompting anyone, which of a site's credentials this
 authenticator holds — that is how they decide whether to offer Keeless at all.

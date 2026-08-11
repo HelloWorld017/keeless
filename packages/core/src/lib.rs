@@ -25,8 +25,9 @@ use zeroize::Zeroizing;
 
 pub use error::{CoreError, Result};
 pub use host::{
-    Clock, ConfigProvider, DatabasePersistence, HostFuture, KeelessHost, PasswordInputMode,
-    PasswordInputProvider, SystemClock, TaskSpawner, TransferProvider,
+    Clock, ConfigProvider, DatabasePersistence, HostFuture, KeelessHost, PasskeyConsentMode,
+    PasskeyConsentProvider, PasskeyConsentRequest, PasswordInputMode, PasswordInputProvider,
+    SystemClock, TaskSpawner, TransferProvider,
 };
 pub use keeless_schema;
 pub use keeless_schema::{
@@ -63,6 +64,7 @@ type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageE
 pub struct KeelessCore {
     config_provider: Arc<dyn ConfigProvider>,
     password_input: Option<Arc<dyn PasswordInputProvider>>,
+    passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     clock: Arc<dyn Clock>,
     storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
     settings: KeelessConfig,
@@ -112,6 +114,7 @@ impl KeelessCore {
         let core = Self {
             config_provider: host.config_provider,
             password_input: host.password_input,
+            passkey_consent: host.passkey_consent,
             clock: host.clock,
             storage_providers: host.storage_providers,
             settings,
@@ -380,6 +383,20 @@ impl KeelessCore {
             .request_password(mode)
             .await?
             .ok_or(CoreError::PasswordRequired)
+    }
+
+    pub(crate) async fn request_passkey_consent(
+        &self,
+        request: PasskeyConsentRequest,
+    ) -> Result<usize> {
+        let provider = self
+            .passkey_consent
+            .as_ref()
+            .ok_or(CoreError::PasskeyConsentRequired)?;
+        provider
+            .request_passkey_consent(request)
+            .await?
+            .ok_or(CoreError::PasskeyConsentDenied)
     }
 
     async fn persist(&self) -> Result<()> {

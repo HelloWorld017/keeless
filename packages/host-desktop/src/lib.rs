@@ -151,6 +151,7 @@ impl DesktopHost {
             storage_providers: providers,
             config_provider: core_config,
             password_input: Some(native_ui.clone()),
+            passkey_consent: Some(native_ui.clone()),
             clock: Arc::new(SystemClock),
             database_persistence: Some(database_persistence),
             task_spawner: Some(Arc::new(TokioTaskSpawner)),
@@ -355,8 +356,15 @@ async fn run_ipc(
                     let state = state.clone();
                     connections.spawn(async move {
                         let Ok(request) = connection.receive().await else { return };
-                        let response = handle_request(request, &state).await;
-                        let _ = connection.send(&response).await;
+                        tokio::select! {
+                            response = handle_request(request, &state) => {
+                                let _ = connection.send(&response).await;
+                            }
+                            _ = connection.wait_for_disconnect() => {
+                                // Dropping the request future also drops a native-ui child
+                                // spawned for it, taking down a CTAP ceremony on CANCEL.
+                            }
+                        }
                     });
                 }
                 Err(error) => {

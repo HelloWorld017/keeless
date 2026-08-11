@@ -1,5 +1,6 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use keeless_schema::SelectPasskeyArgs;
 use sha2::{Digest, Sha256};
 
 use super::*;
@@ -50,7 +51,6 @@ fn register_request(request_id: &str, user_name: &str) -> serde_json::Value {
             "clientDataHash": URL_SAFE_NO_PAD.encode([7u8; 32]),
             "algorithms": [-7],
             "excludeCredentialIds": [],
-            "userVerified": true,
         },
     })
 }
@@ -149,11 +149,10 @@ async fn passkey_operations_register_enumerate_and_assert() {
             "requestId": "request-5",
             "op": "assertPasskey",
             "args": {
-                "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "allowCredentialIds": [credential_id],
                 "userPresent": true,
-                "userVerified": true,
             },
         }),
     )
@@ -164,6 +163,8 @@ async fn passkey_operations_register_enumerate_and_assert() {
         asserted["result"]["userHandle"],
         URL_SAFE_NO_PAD.encode(b"alice").as_str()
     );
+    assert_eq!(asserted["result"]["userName"], "alice");
+    assert!(!asserted["result"]["userSelected"].as_bool().unwrap());
     let assertion_data = URL_SAFE_NO_PAD
         .decode(asserted["result"]["authenticatorData"].as_str().unwrap())
         .unwrap();
@@ -182,7 +183,7 @@ async fn a_silent_assertion_signs_without_the_user_presence_flag() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let mut core = passkey_core(storage).await;
     let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
-    let entry_id = registered["result"]["entryId"]
+    let credential_id = registered["result"]["credentialId"]
         .as_str()
         .unwrap()
         .to_string();
@@ -193,11 +194,10 @@ async fn a_silent_assertion_signs_without_the_user_presence_flag() {
             "requestId": "request-2",
             "op": "assertPasskey",
             "args": {
-                "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "allowCredentialIds": [credential_id],
                 "userPresent": false,
-                "userVerified": false,
             },
         }),
     )
@@ -210,15 +210,27 @@ async fn a_silent_assertion_signs_without_the_user_presence_flag() {
 }
 
 #[tokio::test]
+async fn passkey_selection_requires_host_consent() {
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let mut core = passkey_core(storage).await;
+    let consent = Arc::new(PasskeyConsent::cancelled());
+    core.passkey_consent = Some(consent.clone());
+
+    assert!(matches!(
+        operations::select_passkey::run(&mut core, SelectPasskeyArgs {}).await,
+        Err(CoreError::PasskeyConsentDenied)
+    ));
+    let requests = consent.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].mode, PasskeyConsentMode::Selection);
+}
+
+#[tokio::test]
 async fn passkey_operations_reject_invalid_requests() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let mut core = passkey_core(storage).await;
 
     let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
-    let entry_id = registered["result"]["entryId"]
-        .as_str()
-        .unwrap()
-        .to_string();
     let credential_id = registered["result"]["credentialId"]
         .as_str()
         .unwrap()
@@ -236,7 +248,6 @@ async fn passkey_operations_reject_invalid_requests() {
                 "clientDataHash": URL_SAFE_NO_PAD.encode([7u8; 32]),
                 "algorithms": [-7],
                 "excludeCredentialIds": [credential_id],
-                "userVerified": true,
             },
         }),
     )
@@ -255,7 +266,6 @@ async fn passkey_operations_reject_invalid_requests() {
                 "clientDataHash": URL_SAFE_NO_PAD.encode([7u8; 32]),
                 "algorithms": [-36],
                 "excludeCredentialIds": [],
-                "userVerified": true,
             },
         }),
     )
@@ -271,11 +281,9 @@ async fn passkey_operations_reject_invalid_requests() {
             "requestId": "request-4",
             "op": "assertPasskey",
             "args": {
-                "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 16]),
                 "userPresent": true,
-                "userVerified": true,
             },
         }),
     )
@@ -288,11 +296,9 @@ async fn passkey_operations_reject_invalid_requests() {
             "requestId": "request-5",
             "op": "assertPasskey",
             "args": {
-                "entryId": entry_id,
                 "rpId": "example.net",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
                 "userPresent": true,
-                "userVerified": true,
             },
         }),
     )
@@ -305,11 +311,9 @@ async fn passkey_operations_reject_invalid_requests() {
             "getPasskeys" => serde_json::json!({}),
             "registerPasskey" => register_request("locked", "alice")["args"].clone(),
             _ => serde_json::json!({
-                "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
                 "userPresent": true,
-                "userVerified": true,
             }),
         };
         let response = dispatch_json(
@@ -317,7 +321,12 @@ async fn passkey_operations_reject_invalid_requests() {
             serde_json::json!({ "requestId": "locked", "op": op, "args": args }),
         )
         .await;
-        assert_eq!(response["error"]["code"], "database_locked", "{op}");
+        let expected = if op == "getPasskeys" {
+            "database_locked"
+        } else {
+            "password_required"
+        };
+        assert_eq!(response["error"]["code"], expected, "{op}");
     }
 }
 
@@ -416,11 +425,9 @@ async fn registered_passkey_survives_journal_replay() {
             "requestId": "request-3",
             "op": "assertPasskey",
             "args": {
-                "entryId": entry_id,
                 "rpId": "example.com",
                 "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
                 "userPresent": true,
-                "userVerified": true,
             },
         }),
     )

@@ -239,8 +239,9 @@ fn spawn_command(
 ///
 /// Returns whether a command was abandoned, which is also whether the channel
 /// still owes an answer. Dropping the cancel sender drops the command's future,
-/// taking any consent prompt down with it; the authenticator comes back through
-/// the completion channel, and its response is discarded.
+/// closes its desktop IPC request, and lets the host take any prompt down; the
+/// authenticator comes back through the completion channel, and its response is
+/// discarded.
 fn abandon(state: &mut State, channel: u32) -> bool {
     let State::Busy(command) = state else {
         return false;

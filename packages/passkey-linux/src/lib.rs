@@ -4,12 +4,10 @@
 //! Keeless as an ordinary security key. Requests arriving over CTAPHID become
 //! Keeless operations sent to the running desktop app, which owns the database.
 //!
-//! User presence is collected here rather than by the app: only the process that
-//! owns the prompt can take it down when the browser cancels, and the app's own
-//! request lock would otherwise stall its whole UI for the length of a ceremony.
+//! CTAP parsing, framing, keepalive, and cancellation live here. Core owns every
+//! ceremony decision and asks the desktop host to present user consent.
 
 pub mod authenticator;
-pub mod consent;
 pub mod ctaphid;
 pub mod session;
 
@@ -22,14 +20,9 @@ pub mod setup;
 #[cfg(target_os = "linux")]
 pub mod uhid;
 
-use std::ffi::OsString;
-use std::path::PathBuf;
-
 use keeless_host_desktop_shared::DesktopLauncher;
+use std::ffi::OsString;
 use thiserror::Error;
-
-/// The dialog helper's file name, looked for beside this executable.
-const NATIVE_UI_NAME: &str = "keeless-native-ui";
 
 #[derive(Debug, Error)]
 pub enum VhidError {
@@ -58,7 +51,7 @@ impl VhidError {
 pub type Result<T> = std::result::Result<T, VhidError>;
 
 const USAGE: &str = "\
-usage: keeless-passkey-linux [run] [--native-ui <path>] [--desktop <path>]
+usage: keeless-passkey-linux [run] [--desktop <path>]
        keeless-passkey-linux setup
        keeless-passkey-linux doctor
        keeless-passkey-linux reset-pairing
@@ -94,9 +87,6 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> Result<()> {
 }
 
 struct Options {
-    /// Only the daemon spawns dialogs, and only Linux has a daemon.
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-    native_ui: PathBuf,
     /// Optional because direct users may prefer requests to fail while the app
     /// is closed rather than permit this daemon to launch it.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -105,19 +95,12 @@ struct Options {
 
 impl Options {
     fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self> {
-        let mut native_ui = None;
         let mut desktop = None;
         let mut args = args.into_iter();
         while let Some(argument) = args.next() {
             match argument.to_str() {
-                Some("--native-ui") => {
-                    native_ui =
-                        Some(PathBuf::from(args.next().ok_or_else(|| {
-                            VhidError::Usage("--native-ui requires a path".into())
-                        })?));
-                }
                 Some("--desktop") => {
-                    let path = PathBuf::from(
+                    let path = std::path::PathBuf::from(
                         args.next()
                             .ok_or_else(|| VhidError::Usage("--desktop requires a path".into()))?,
                     );
@@ -131,25 +114,8 @@ impl Options {
                 }
             }
         }
-        Ok(Self {
-            native_ui: native_ui.map(Ok).unwrap_or_else(default_native_ui)?,
-            desktop,
-        })
+        Ok(Self { desktop })
     }
-}
-
-/// The dialog helper installed beside this executable.
-///
-/// Resolved from the daemon's own location rather than looked up on `PATH`: the
-/// helper is the only thing standing between a web page and a signature, and a
-/// `PATH` entry the user can write to is a place anyone can put a program that
-/// approves everything.
-fn default_native_ui() -> Result<PathBuf> {
-    let executable = std::env::current_exe().map_err(VhidError::Device)?;
-    let directory = executable.parent().ok_or_else(|| {
-        VhidError::Usage("cannot locate the directory holding keeless-passkey-linux".into())
-    })?;
-    Ok(directory.join(NATIVE_UI_NAME))
 }
 
 fn block_on<T>(future: impl Future<Output = Result<T>>) -> Result<T> {
@@ -219,9 +185,7 @@ fn run_command(options: Options) -> Result<()> {
         .map_err(VhidError::Device)?
         .block_on(async move {
             let session = session::Session::load_with_launcher(options.desktop).await?;
-            let consent =
-                consent::ConsentPrompt::new(options.native_ui).map_err(VhidError::Device)?;
-            let authenticator = authenticator::Authenticator::new(session, consent);
+            let authenticator = authenticator::Authenticator::new(session);
             daemon::run(authenticator, shutdown_signal())
                 .await
                 .map_err(VhidError::Device)
@@ -269,24 +233,6 @@ mod tests {
     }
 
     #[test]
-    fn looks_for_the_dialog_helper_beside_this_executable() {
-        let default = options(&[]).unwrap().native_ui;
-        assert!(default.is_absolute(), "a bare name would be found on PATH");
-        assert_eq!(default.file_name().unwrap(), NATIVE_UI_NAME);
-        assert_eq!(
-            default.parent().unwrap(),
-            std::env::current_exe().unwrap().parent().unwrap()
-        );
-
-        assert_eq!(
-            options(&["--native-ui", "/opt/keeless/ui"])
-                .unwrap()
-                .native_ui,
-            PathBuf::from("/opt/keeless/ui")
-        );
-    }
-
-    #[test]
     fn accepts_an_absolute_desktop_executable() {
         let executable = std::env::current_exe().unwrap();
         assert!(
@@ -305,10 +251,6 @@ mod tests {
 
     #[test]
     fn rejects_unknown_and_incomplete_arguments() {
-        assert!(matches!(
-            options(&["--native-ui"]),
-            Err(VhidError::Usage(_))
-        ));
         assert!(matches!(options(&["--desktop"]), Err(VhidError::Usage(_))));
         assert!(matches!(options(&["--nope"]), Err(VhidError::Usage(_))));
         assert!(matches!(options(&["stray"]), Err(VhidError::Usage(_))));

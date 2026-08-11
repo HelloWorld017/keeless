@@ -10,7 +10,6 @@ use std::io::{Read, Write};
 use std::time::Duration;
 
 use keeless_passkey_linux::authenticator::Authenticator;
-use keeless_passkey_linux::consent::ConsentPrompt;
 use keeless_passkey_linux::session::Session;
 
 /// The USB identifiers `uhid.rs` creates the device with.
@@ -22,10 +21,7 @@ async fn a_host_can_initialize_a_channel_and_read_the_authenticator_info() {
     let (shutdown, stop) = tokio::sync::oneshot::channel::<()>();
     let daemon = tokio::spawn(async move {
         let session = Session::load().await.expect("load the daemon state");
-        // getInfo needs neither the app nor a prompt, so any real file is
-        // enough to satisfy the helper check for this exchange.
-        let consent = ConsentPrompt::new("/bin/true".into()).expect("bind the consent prompt");
-        keeless_passkey_linux::daemon::run(Authenticator::new(session, consent), async {
+        keeless_passkey_linux::daemon::run(Authenticator::new(session), async {
             let _ = stop.await;
         })
         .await

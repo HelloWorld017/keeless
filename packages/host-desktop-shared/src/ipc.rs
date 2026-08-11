@@ -112,6 +112,16 @@ impl Connection {
             response => Ok(response),
         }
     }
+
+    /// Resolve once the peer closes its half of this one-request connection.
+    pub async fn wait_for_disconnect(&mut self) -> Result<()> {
+        let mut byte = [0_u8; 1];
+        loop {
+            if self.stream.read(&mut byte).await? == 0 {
+                return Ok(());
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -162,6 +172,20 @@ impl Connection {
         match response {
             Response::Error(message) => Err(IpcError::Remote(message)),
             response => Ok(response),
+        }
+    }
+
+    /// Resolve once the peer closes its half of this one-request connection.
+    pub async fn wait_for_disconnect(&mut self) -> Result<()> {
+        let mut byte = [0_u8; 1];
+        loop {
+            let read = match &mut self.stream {
+                WindowsStream::Client(stream) => stream.read(&mut byte).await?,
+                WindowsStream::Server(stream) => stream.read(&mut byte).await?,
+            };
+            if read == 0 {
+                return Ok(());
+            }
         }
     }
 }
@@ -365,5 +389,14 @@ mod tests {
         write_message(&mut bytes, &request).await.unwrap();
         let decoded: Request = read_message(&mut bytes.as_slice()).await.unwrap();
         assert!(matches!(decoded, Request::HandleFrame(value) if value == vec![0, 1, 2, 255]));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn observes_a_requester_disconnect() {
+        let (server, client) = tokio::net::UnixStream::pair().unwrap();
+        let mut connection = Connection { stream: server };
+        drop(client);
+        connection.wait_for_disconnect().await.unwrap();
     }
 }

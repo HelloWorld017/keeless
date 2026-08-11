@@ -1008,8 +1008,6 @@ operation_schema! {
                 pub algorithms: Vec<i32>,
                 // Credential IDs from the CTAP2 `excludeList`, base64url without padding.
                 pub exclude_credential_ids: Vec<String>,
-                // Whether the caller completed its user-verification ceremony.
-                pub user_verified: bool,
             }
         }
 
@@ -1033,17 +1031,17 @@ operation_schema! {
             #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
             pub struct AssertPasskeyArgs {
-                // Entry holding the credential, chosen from a prior `getPasskeys`.
-                pub entry_id: DatabaseNodeId,
                 pub rp_id: String,
                 // SHA-256 of the client data, base64url without padding.
                 pub client_data_hash: String,
-                // Whether the user approved this ceremony. A silent assertion, which a
-                // platform uses to discover credentials before prompting, sets this false
-                // and produces an assertion relying parties reject.
+                // Credential IDs from CTAP2 `allowList`, base64url without padding.
+                #[serde(default)]
+                pub allow_credential_ids: Vec<String>,
+                // Whether CTAP requested user presence. Core asks the host for consent when
+                // this is true. A silent assertion, which a platform uses to discover
+                // credentials before prompting, sets this false and produces an assertion
+                // relying parties reject.
                 pub user_present: bool,
-                // Whether the caller completed its user-verification ceremony.
-                pub user_verified: bool,
             }
         }
         result {
@@ -1058,9 +1056,24 @@ operation_schema! {
                 pub signature: String,
                 // User handle, base64url without padding.
                 pub user_handle: String,
+                // Account name selected during an interactive assertion.
+                #[serde(default, deserialize_with = "deserialize_nullable")]
+                #[specta(optional = true)]
+                pub user_name: Option<String>,
+                // Whether the user selected among multiple credentials.
+                pub user_selected: bool,
             }
         }
         fetches: [Entry],
+    }
+
+    SelectPasskey("selectPasskey") {
+        args {
+            #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(deny_unknown_fields)]
+            pub struct SelectPasskeyArgs {}
+        }
+        result EmptyResult
     }
 }
 

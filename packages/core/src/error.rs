@@ -67,6 +67,10 @@ pub enum CoreError {
     PasskeyExcluded,
     #[error("passkey does not exist")]
     PasskeyNotFound,
+    #[error("passkey consent is unavailable")]
+    PasskeyConsentRequired,
+    #[error("passkey consent was denied")]
+    PasskeyConsentDenied,
     #[error("cryptographic operation failed")]
     Crypto,
     #[error("mutation journal is invalid")]
@@ -198,6 +202,9 @@ impl From<&CoreError> for OperationError {
                 ("passkey_excluded", "An excluded passkey already exists")
             }
             CoreError::PasskeyNotFound => ("passkey_not_found", "Passkey does not exist"),
+            CoreError::PasskeyConsentRequired | CoreError::PasskeyConsentDenied => {
+                ("passkey_consent_denied", "Passkey use was not approved")
+            }
             CoreError::Storage(_) | CoreError::Sync(_) => {
                 ("storage_error", "Storage operation failed")
             }

@@ -25,6 +25,10 @@ fn parses_each_ui_kind() {
             "passkey",
             r#"{"mode":"assert","rpId":"example.com","accounts":[{"id":"1","username":"alice"}]}"#,
         ),
+        (
+            "passkey",
+            r#"{"mode":"selection","rpId":"this device","accounts":[{"id":"0","username":"Use Keeless"}]}"#,
+        ),
     ] {
         let arguments = Arguments::parse(arguments(&key, kind, json)).unwrap();
         assert!(matches!(

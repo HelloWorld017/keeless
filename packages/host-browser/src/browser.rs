@@ -110,6 +110,7 @@ impl BrowserCore {
                 key: CORE_CONFIG_KEY,
             }),
             password_input: None,
+            passkey_consent: None,
             clock: Arc::new(BrowserClock),
             database_persistence: None,
             task_spawner: Some(Arc::new(BrowserTaskSpawner)),

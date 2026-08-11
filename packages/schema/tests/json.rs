@@ -1125,3 +1125,69 @@ fn all_request_and_success_variants_have_explicit_objects() {
         assert_eq!(serde_json::to_value(parsed).unwrap(), value);
     }
 }
+
+#[test]
+fn core_owned_passkey_ceremonies_have_stable_shapes() {
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "passkey-1".into(),
+            operation: Operation::AssertPasskey(AssertPasskeyArgs {
+                rp_id: "example.com".into(),
+                client_data_hash: "hash".into(),
+                allow_credential_ids: vec!["credential".into()],
+                user_present: true,
+            }),
+        },
+        json!({
+            "requestId": "passkey-1",
+            "op": "assertPasskey",
+            "args": {
+                "rpId": "example.com",
+                "clientDataHash": "hash",
+                "allowCredentialIds": ["credential"],
+                "userPresent": true
+            }
+        }),
+    );
+    assert_roundtrip(
+        OperationResponse {
+            request_id: "passkey-2".into(),
+            outcome: OperationOutcome::Success {
+                success: OperationSuccess::AssertPasskey(AssertPasskeyResult {
+                    credential_id: "credential".into(),
+                    authenticator_data: "data".into(),
+                    signature: "signature".into(),
+                    user_handle: "user".into(),
+                    user_name: Some("alice".into()),
+                    user_selected: true,
+                }),
+            },
+        },
+        json!({
+            "requestId": "passkey-2",
+            "status": "success",
+            "op": "assertPasskey",
+            "result": {
+                "credentialId": "credential",
+                "authenticatorData": "data",
+                "signature": "signature",
+                "userHandle": "user",
+                "userName": "alice",
+                "userSelected": true
+            }
+        }),
+    );
+    assert_roundtrip(
+        Operation::SelectPasskey(SelectPasskeyArgs {}),
+        json!({ "op": "selectPasskey", "args": {} }),
+    );
+    assert!(
+        serde_json::from_value::<AssertPasskeyArgs>(json!({
+            "entryId": "caller-selected",
+            "rpId": "example.com",
+            "clientDataHash": "hash",
+            "userPresent": true
+        }))
+        .is_err()
+    );
+}

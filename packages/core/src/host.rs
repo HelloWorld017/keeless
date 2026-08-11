@@ -72,6 +72,31 @@ pub trait PasswordInputProvider: HostProviderRequirements {
     ) -> HostFuture<'_, Result<Option<Zeroizing<Vec<u8>>>>>;
 }
 
+/// The user-presence ceremony Core asks the native host to present.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PasskeyConsentMode {
+    Register,
+    Assert,
+    Selection,
+}
+
+/// Trusted context Core supplies for a passkey user-presence prompt.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasskeyConsentRequest {
+    pub mode: PasskeyConsentMode,
+    pub rp_id: String,
+    /// Account names in display order. The host returns an index into this list.
+    pub accounts: Vec<String>,
+}
+
+pub trait PasskeyConsentProvider: HostProviderRequirements {
+    /// Returns the selected account index, or `None` when the user declined.
+    fn request_passkey_consent(
+        &self,
+        request: PasskeyConsentRequest,
+    ) -> HostFuture<'_, Result<Option<usize>>>;
+}
+
 pub trait Clock: HostProviderRequirements {
     /// Unix time in milliseconds, used only for protocol timestamps.
     fn now_millis(&self) -> i64;
@@ -111,6 +136,7 @@ pub struct KeelessHost {
     pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
     pub config_provider: Arc<dyn ConfigProvider>,
     pub password_input: Option<Arc<dyn PasswordInputProvider>>,
+    pub passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     pub clock: Arc<dyn Clock>,
     pub database_persistence: Option<Arc<dyn DatabasePersistence>>,
     pub task_spawner: Option<Arc<dyn TaskSpawner>>,
@@ -122,6 +148,7 @@ impl std::fmt::Debug for KeelessHost {
         f.debug_struct("KeelessHost")
             .field("storage_provider_names", &self.storage_providers.keys())
             .field("has_password_input", &self.password_input.is_some())
+            .field("has_passkey_consent", &self.passkey_consent.is_some())
             .field(
                 "has_database_persistence",
                 &self.database_persistence.is_some(),

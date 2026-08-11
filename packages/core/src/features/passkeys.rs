@@ -1,9 +1,4 @@
-//! Shared plumbing for the CTAP-facing passkey operations.
-//!
-//! The operations here are deliberately UI-free: user presence and verification
-//! are the transport's job (a virtual HID daemon on Linux, Windows Hello behind
-//! the plugin authenticator), so `userVerified` arrives as a caller assertion and
-//! is only translated into the authenticator-data flag.
+//! Shared plumbing for Core-owned CTAP-facing passkey operations.
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -64,6 +59,21 @@ pub(crate) async fn unlock(
         .ok_or(CoreError::DatabaseLocked)?
         .verify_credentials(&key)?;
     Ok(key)
+}
+
+/// Open the selected database for an interactive passkey ceremony.
+///
+/// A silent assertion deliberately never uses this path: a page can issue one
+/// without user interaction, so it must not cause a password prompt.
+pub(crate) async fn ensure_database_unlocked(core: &mut KeelessCore) -> Result<()> {
+    match crate::operations::get_database_status::run(core) {
+        crate::DatabaseStatus::Unlocked => Ok(()),
+        crate::DatabaseStatus::NotExist => Err(CoreError::PasskeyNotFound),
+        crate::DatabaseStatus::Locked => {
+            let password = core.request_password(PasswordInputMode::Unlock).await?;
+            crate::operations::unlock::run(core, &password).await
+        }
+    }
 }
 
 /// Credentials reachable from the group tree, excluding trashed entries.

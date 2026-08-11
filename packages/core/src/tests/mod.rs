@@ -178,6 +178,37 @@ pub(super) struct PasswordInput {
     pub(super) modes: Mutex<Vec<PasswordInputMode>>,
 }
 
+pub(super) struct PasskeyConsent {
+    pub(super) selected: Option<usize>,
+    pub(super) requests: Mutex<Vec<PasskeyConsentRequest>>,
+}
+
+impl PasskeyConsent {
+    pub(super) fn approve(selected: usize) -> Self {
+        Self {
+            selected: Some(selected),
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub(super) fn cancelled() -> Self {
+        Self {
+            selected: None,
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl PasskeyConsentProvider for PasskeyConsent {
+    fn request_passkey_consent(
+        &self,
+        request: PasskeyConsentRequest,
+    ) -> HostFuture<'_, Result<Option<usize>>> {
+        self.requests.lock().unwrap().push(request);
+        Box::pin(async { Ok(self.selected) })
+    }
+}
+
 impl PasswordInput {
     pub(super) fn new(password: &[u8]) -> Self {
         Self {
@@ -490,6 +521,7 @@ pub(super) async fn query_core_with_persistence(
         storage_providers: providers,
         config_provider: Arc::new(MemoryConfig::default()),
         password_input: None,
+        passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock: Arc::new(FakeClock::new(1234)),
         database_persistence: Some(persistence),
         task_spawner: None,
@@ -532,6 +564,7 @@ pub(super) fn host(
         storage_providers: HashMap::new(),
         config_provider: config,
         password_input: None,
+        passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock,
         database_persistence: None,
         task_spawner: None,

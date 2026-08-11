@@ -229,16 +229,16 @@ export type RegisterPasskeyArgs = {
   clientDataHash: string;
   algorithms: number[];
   excludeCredentialIds: string[];
-  userVerified: boolean;
 };
 
 export type AssertPasskeyArgs = {
-  entryId: DatabaseNodeId;
   rpId: string;
   clientDataHash: string;
+  allowCredentialIds?: string[];
   userPresent: boolean;
-  userVerified: boolean;
 };
+
+export type SelectPasskeyArgs = Record<string, never>;
 
 export type Operation =
   | { op: 'open'; args: OpenArgs }
@@ -281,7 +281,8 @@ export type Operation =
   | { op: 'getEntryTotp'; args: GetEntryTotpArgs }
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
-  | { op: 'assertPasskey'; args: AssertPasskeyArgs };
+  | { op: 'assertPasskey'; args: AssertPasskeyArgs }
+  | { op: 'selectPasskey'; args: SelectPasskeyArgs };
 
 export type OperationRequest = (
   | { op: 'open'; args: OpenArgs }
@@ -325,6 +326,7 @@ export type OperationRequest = (
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
   | { op: 'assertPasskey'; args: AssertPasskeyArgs }
+  | { op: 'selectPasskey'; args: SelectPasskeyArgs }
 ) & { requestId: string };
 
 export type EmptyResult = Record<string, never>;
@@ -426,6 +428,8 @@ export type AssertPasskeyResult = {
   authenticatorData: string;
   signature: string;
   userHandle: string;
+  userName?: string | null;
+  userSelected: boolean;
 };
 
 export type OperationSuccess =
@@ -469,7 +473,8 @@ export type OperationSuccess =
   | { op: 'getEntryTotp'; result: GetEntryTotpResult }
   | { op: 'getPasskeys'; result: PasskeysResult }
   | { op: 'registerPasskey'; result: RegisterPasskeyResult }
-  | { op: 'assertPasskey'; result: AssertPasskeyResult };
+  | { op: 'assertPasskey'; result: AssertPasskeyResult }
+  | { op: 'selectPasskey'; result: EmptyResult };
 
 export type OperationError = { code: string; message: string };
 
@@ -516,7 +521,7 @@ export const operationMetadata = {
   prepareEntryAttachmentDownload: { fetches: ['entry'] },
   deleteEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
   emptyRecycleBin: { mutates: ['databaseStatus', 'entry', 'group', 'tag'] },
-  saveDatabase: { mutates: ['databaseStatus'] },
+  saveDatabase: { mutates: ['databaseStatus', 'entry', 'group', 'tag', 'customIcon'] },
   prepareDatabaseExport: { fetches: ['entry', 'group', 'tag', 'customIcon'] },
   mergeTransferredDatabase: { mutates: ['databaseStatus', 'entry', 'group', 'tag', 'customIcon'] },
   getCustomIcons: { queries: ['customIcon'] },
@@ -536,4 +541,5 @@ export const operationMetadata = {
   getPasskeys: { queries: ['entry'] },
   registerPasskey: { mutates: ['databaseStatus', 'entry'] },
   assertPasskey: { fetches: ['entry'] },
+  selectPasskey: {},
 } as const satisfies Record<Operation['op'], OperationMetadata>;

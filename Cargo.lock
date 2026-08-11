@@ -2445,12 +2445,9 @@ dependencies = [
  "base64",
  "keeless_host_desktop_shared",
  "keeless_kdbx",
- "keeless_lesswire",
  "keeless_passkey_ctap",
  "keeless_schema",
  "libc",
- "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]

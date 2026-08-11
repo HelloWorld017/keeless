@@ -10,12 +10,9 @@ description = "Virtual FIDO2 authenticator serving Keeless passkeys on Linux"
 base64 = "0.22"
 keeless_passkey_ctap = { path = "../passkey-ctap" }
 keeless_host_desktop_shared = { path = "../host-desktop-shared" }
-keeless_lesswire = { path = "../lesswire" }
 keeless_schema = { path = "../schema" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
