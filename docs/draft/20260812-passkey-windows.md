@@ -15,12 +15,12 @@ Windows Hello는 passkey 개인키나 KDBX master key를 소유하거나 보관�
 포함:
 
 - Windows 11 WebAuthn Plugin API를 통한 system passkey manager 등록
-- packaged COM local server인 `keeless-passkey-windows.exe`
+- classic out-of-process COM local server인 `keeless-passkey-windows.exe`
 - `IPluginAuthenticator`의 `MakeCredential`, `GetAssertion`, `CancelOperation`,
   `GetLockStatus` 구현
 - 요청과 Windows Hello UV 응답의 cryptographic verification
 - 기존 desktop host로의 authenticated local IPC와 passkey Core operation 재사용
-- MSIX packaged COM activation과 enable/disable UI
+- NSIS per-machine COM registration과 enable/disable UI
 
 제외:
 
@@ -61,7 +61,7 @@ browser -> virtual CTAPHID -> keeless-passkey-linux
 Windows 경로는 transport만 교체한다.
 
 ```text
-browser -> Windows WebAuthn service -> packaged COM server
+browser -> Windows WebAuthn service -> COM local server
         -> Windows Hello -> CoreClient -> desktop host -> KeelessCore -> KDBX
 ```
 
@@ -141,7 +141,7 @@ packages/passkey-windows/
     com.rs                # class factory, COM lifetime, activation loop
     authenticator.rs      # IPluginAuthenticator callback adapter
     ceremony.rs           # decode -> Hello -> Core operation -> encode
-    session.rs            # CoreClient state와 package-aware desktop launcher
+    session.rs            # CoreClient state와 installed desktop launcher
     verify.rs             # request/UV signature verification
     registration.rs       # add/remove/state/status callback
 ```
@@ -156,25 +156,38 @@ workspace test를 실행할 때 새 package가 Windows API 때문에 실패하�
 
 ## COM Activation과 등록
 
-### MSIX
+### NSIS per-machine install
 
-plugin은 packaged COM local server로 배포한다. `Package.appxmanifest`에
-`windows.comServer` extension과 `com:ExeServer`를 추가해 Windows가 요청 시
-`keeless-passkey-windows.exe -PluginActivated`를 실행하도록 한다.
+plugin은 classic out-of-process COM local server로 배포한다. signed NSIS installer가
+관리자 권한으로 `HKLM\\Software\\Classes\\CLSID\\{CLSID}\\LocalServer32`의 64-bit view에
+server를 등록한다. Windows WebAuthn service는 CLSID로 COM activation을 수행하고
+`keeless-passkey-windows.exe -PluginActivated -Embedding`을 실행한다.
 
-- CLSID는 새로 한 번 생성하고 manifest와 Rust constant에서 동일하게 유지한다.
-- CLSID와 Keeless AAGUID는 release 후 변경하지 않는다.
-- COM server와 Electron desktop executable은 같은 signed MSIX package 안에 둔다.
-- 현재 `packages/desktop/electron-builder.yml`의 NSIS target은 plugin 기능을 제공하지
-  않는다. Windows passkey manager 지원 배포물은 MSIX/AppX target과 code signing을
-  추가해야 한다.
-- NSIS-only 설치에서는 UI에 기능을 숨기고, MSIX 설치를 요구하는 안내만 표시한다.
+- CLSID `13ABEFF0-71C5-49E3-9F2F-C207A28CDB9D`와 Keeless AAGUID는 release 후 변경하지
+  않는다. CLSID는 Rust `COM_CLASS_ID`와 NSIS
+  `packages/desktop/build/installer.nsh`에서 동일해야 한다.
+- installer는 `keeless-passkey-windows.exe`를
+  `$INSTDIR\\resources\\bin`에 설치하고, `LocalServer32` default value와
+  `ServerExecutable` 모두에 absolute installed path를 쓴다. 전자는 quote하고 후자는
+  quote하지 않아 COM command-path ambiguity를 막는다.
+- `packages/desktop/electron-builder.yml`는 `nsis.perMachine: true`와 elevation을
+  요구한다. Electron desktop host는 HKLM을 직접 수정하지 않는다.
+- server executable과 설치 directory는 administrator만 수정할 수 있어야 하며,
+  installer와 sidecar는 code signed여야 한다. user-writable path, config, `PATH`는
+  registration이나 launcher에 사용하지 않는다.
+- uninstall은 sidecar의 idempotent `--disable` command로
+  `WebAuthNPluginRemoveAuthenticator`를 먼저 호출한다. 성공했을 때만 installer가
+  CLSID key를 제거하며, disable 실패 시 uninstall을 중단해 stale provider를 남기지
+  않는다.
+- MSIX는 package identity나 enterprise deployment가 필요해질 때 선택적으로 추가할 수
+  있지만 passkey provider의 전제 조건은 아니다.
 
 ### Activation
 
 `-PluginActivated` process는 COM apartment와 security를 초기화하고 class factory를
-`CoRegisterClassObject`로 등록한다. Windows가 callback을 호출하는 동안 process와
-factory lifetime을 유지한다.
+`CoRegisterClassObject`로 등록한다. COM이 `LocalServer32` command 뒤에 붙이는
+`-Embedding`도 허용한다. Windows가 callback을 호출하는 동안 process와 factory lifetime을
+유지한다.
 
 COM boundary의 원칙:
 
@@ -275,8 +288,9 @@ COM server는 Linux sidecar와 동일하게 `CoreClient`를 사용한다. client
 `passkey-windows-state.json`에 owner-only로 저장하고 desktop host key를 pin한다.
 
 - 최초 연결은 기존 native approval prompt를 거친다.
-- desktop host가 꺼져 있으면 packaged desktop executable을 package root에서 해석해
-  `--minimized`로 시작하고 named pipe가 열릴 때까지 기다린다.
+- desktop host가 꺼져 있으면 installed COM server의 fixed install path를 기준으로
+  desktop executable을 해석해 `--minimized`로 시작하고 named pipe가 열릴 때까지
+  기다린다.
 - production package에서는 user-writable config나 `PATH`로 desktop executable을 찾지
   않는다. 개발 모드에서만 explicit absolute `--desktop` override를 허용한다.
 - private key와 decrypted KDBX field는 COM process에 전달하지 않는다.
@@ -349,7 +363,7 @@ detail을 포함하지 않는다.
 
 지원 build의 깨끗한 Windows 11 VM에서 다음을 수행한다.
 
-1. signed MSIX를 설치하고 Settings에서 Keeless provider를 enable한다.
+1. signed per-machine NSIS installer를 설치하고 Settings에서 Keeless provider를 enable한다.
 2. Edge와 Chrome에서 Keeless를 명시적으로 선택해 passkey 등록과 assertion을 수행한다.
 3. database unlocked/locked/paranoia mode에서 각각 Hello, native password, native account
    selection의 순서를 확인한다.

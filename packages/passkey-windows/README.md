@@ -13,3 +13,16 @@ that contract before a COM server can safely verify requests and be enabled.
 `keeless_passkey_ctap::response::authenticator_info_cbor` supplies the raw
 `authenticatorGetInfo` CBOR used by the later registration adapter; it does not
 include CTAPHID's leading status byte.
+
+## Installation
+
+The Windows NSIS installer registers the future COM local server under the
+stable `COM_CLASS_ID` in the 64-bit `HKLM\\Software\\Classes\\CLSID` view. It
+only does so when `keeless-passkey-windows.exe` is present at
+`$INSTDIR\\resources\\bin`; the current package does not yet produce that
+server. The installer owns machine-wide registry writes. The desktop app must
+never self-register from an unelevated process.
+
+The server's future `--disable` command must idempotently call
+`WebAuthNPluginRemoveAuthenticator`. The uninstaller invokes it before removing
+the COM class and leaves the application installed if disabling fails.

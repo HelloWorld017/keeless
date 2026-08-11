@@ -21,3 +21,8 @@ win:
   icon: icons/icon.ico
   target:
     - nsis
+nsis:
+  include: build/installer.nsh
+  oneClick: false
+  perMachine: true
+  allowElevation: true

@@ -4,6 +4,12 @@
 //! before using these helpers. Keeping the Core translation and transaction
 //! state here lets that boundary stay narrowly unsafe and Windows-specific.
 
+/// Stable CLSID registered by the per-machine NSIS installer.
+///
+/// Do not change after a release: Windows WebAuthn registration and the classic
+/// COM registration in `packages/desktop/build/installer.nsh` both use it.
+pub const COM_CLASS_ID: &str = "{13ABEFF0-71C5-49E3-9F2F-C207A28CDB9D}";
+
 pub mod cancellation;
 pub mod ceremony;
 pub mod error;
