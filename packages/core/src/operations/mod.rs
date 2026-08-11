@@ -24,7 +24,6 @@ pub(crate) mod reveal_entry_fields;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;
 pub(crate) mod search_fuzzy;
-pub(crate) mod select_passkey;
 pub(crate) mod set_config;
 pub(crate) mod unlock;
 
@@ -86,6 +85,5 @@ pub(crate) async fn execute(
         Operation::GetPasskeys(args) => get_passkeys::execute(core, args).await,
         Operation::RegisterPasskey(args) => mutations::register_passkey::execute(core, args).await,
         Operation::AssertPasskey(args) => assert_passkey::execute(core, args).await,
-        Operation::SelectPasskey(args) => select_passkey::execute(core, args).await,
     }
 }

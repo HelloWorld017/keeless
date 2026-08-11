@@ -77,7 +77,6 @@ pub trait PasswordInputProvider: HostProviderRequirements {
 pub enum PasskeyConsentMode {
     Register,
     Assert,
-    Selection,
 }
 
 /// Trusted context Core supplies for a passkey user-presence prompt.

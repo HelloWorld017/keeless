@@ -18,7 +18,7 @@ pub(crate) async fn run(
     } else if core.handle.is_none() || core.credential.is_none() {
         // A silent assertion may not make a user enter their password, including
         // in paranoia mode where the database remains open but no key is cached.
-        return Err(CoreError::PasskeyNotFound);
+        return Err(CoreError::DatabaseLocked);
     }
     let client_data_hash = passkeys::decode(&args.client_data_hash)?;
     let allowed_credential_ids = args

@@ -1177,10 +1177,6 @@ fn core_owned_passkey_ceremonies_have_stable_shapes() {
             }
         }),
     );
-    assert_roundtrip(
-        Operation::SelectPasskey(SelectPasskeyArgs {}),
-        json!({ "op": "selectPasskey", "args": {} }),
-    );
     assert!(
         serde_json::from_value::<AssertPasskeyArgs>(json!({
             "entryId": "caller-selected",

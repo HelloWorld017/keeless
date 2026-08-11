@@ -129,8 +129,6 @@ pub enum PasskeyMode {
     Register,
     /// Confirm signing in, choosing among the accounts for a relying party.
     Assert,
-    /// Confirm using this authenticator before a platform starts a ceremony.
-    Selection,
 }
 
 #[derive(Debug, Deserialize)]
@@ -153,14 +151,14 @@ impl PasskeyRequest {
     fn validate(&self) -> Result<(), Error> {
         validate_label(Some(&self.rp_id), "rpId")?;
         let expected = match self.mode {
-            PasskeyMode::Register | PasskeyMode::Selection => self.accounts.len() == 1,
+            PasskeyMode::Register => self.accounts.len() == 1,
             PasskeyMode::Assert => (1..=MAX_PASSKEY_ACCOUNTS).contains(&self.accounts.len()),
         };
         if !expected {
             return Err(Error::InvalidRequest(format!(
                 "passkey accounts must contain {} entries",
                 match self.mode {
-                    PasskeyMode::Register | PasskeyMode::Selection => "exactly 1".to_string(),
+                    PasskeyMode::Register => "exactly 1".to_string(),
                     PasskeyMode::Assert => format!("1 to {MAX_PASSKEY_ACCOUNTS}"),
                 }
             )));

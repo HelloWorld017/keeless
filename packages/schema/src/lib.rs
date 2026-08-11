@@ -1067,14 +1067,6 @@ operation_schema! {
         fetches: [Entry],
     }
 
-    SelectPasskey("selectPasskey") {
-        args {
-            #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-            #[serde(deny_unknown_fields)]
-            pub struct SelectPasskeyArgs {}
-        }
-        result EmptyResult
-    }
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]

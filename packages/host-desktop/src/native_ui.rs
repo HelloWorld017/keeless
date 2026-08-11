@@ -108,31 +108,13 @@ impl NativeUi {
             mode: match request.mode {
                 PasskeyConsentMode::Register => "register",
                 PasskeyConsentMode::Assert => "assert",
-                PasskeyConsentMode::Selection => "selection",
             },
             rp_id: sanitize_label(&request.rp_id),
             accounts,
         };
         let arguments = serde_json::to_string(&request).map_err(|error| error.to_string())?;
         let plaintext = self.invoke("passkey", &arguments).await?;
-        match response_status(&plaintext, "passkey")? {
-            ResponseStatus::Cancelled => Ok(None),
-            ResponseStatus::Error(error) => Err(error),
-            ResponseStatus::Selected => {
-                let response: PasskeySelected<'_> = decode_response(&plaintext)?;
-                validate_selected(response.version, response.kind, response.status, "passkey")?;
-                let index =
-                    response.result.account_id.parse::<usize>().map_err(|_| {
-                        "native UI returned an invalid passkey selection".to_owned()
-                    })?;
-                if response.result.account_id != index.to_string()
-                    || index >= request.accounts.len()
-                {
-                    return Err("native UI returned an invalid passkey selection".into());
-                }
-                Ok(Some(index))
-            }
-        }
+        selected_passkey_index(&plaintext, request.accounts.len())
     }
 
     async fn invoke(&self, kind: &str, arguments: &str) -> Result<Zeroizing<Vec<u8>>, String> {
@@ -409,6 +391,26 @@ fn validate_selected(
     }
 }
 
+fn selected_passkey_index(bytes: &[u8], account_count: usize) -> Result<Option<usize>, String> {
+    match response_status(bytes, "passkey")? {
+        ResponseStatus::Cancelled => Ok(None),
+        ResponseStatus::Error(error) => Err(error),
+        ResponseStatus::Selected => {
+            let response: PasskeySelected<'_> = decode_response(bytes)?;
+            validate_selected(response.version, response.kind, response.status, "passkey")?;
+            let index = response
+                .result
+                .account_id
+                .parse::<usize>()
+                .map_err(|_| "native UI returned an invalid passkey selection".to_owned())?;
+            if response.result.account_id != index.to_string() || index >= account_count {
+                return Err("native UI returned an invalid passkey selection".into());
+            }
+            Ok(Some(index))
+        }
+    }
+}
+
 fn decode_response<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> Result<T, String> {
     serde_json::from_slice(bytes).map_err(|error| format!("invalid native UI response: {error}"))
 }
@@ -588,5 +590,40 @@ mod tests {
         validate_selected(selected.version, selected.kind, selected.status, "passkey").unwrap();
         assert_eq!(selected.result.account_id, "1");
         assert_eq!(sanitize_label("safe\u{202e}evil"), "safe evil");
+    }
+
+    #[test]
+    fn accepts_only_a_canonical_in_range_passkey_selection() {
+        assert_eq!(
+            selected_passkey_index(
+                br#"{"version":1,"kind":"passkey","status":"selected","result":{"accountId":"1"}}"#,
+                2,
+            )
+            .unwrap(),
+            Some(1)
+        );
+        assert!(
+            selected_passkey_index(
+                br#"{"version":1,"kind":"passkey","status":"selected","result":{"accountId":"2"}}"#,
+                2,
+            )
+            .is_err()
+        );
+        assert!(selected_passkey_index(
+            br#"{"version":1,"kind":"passkey","status":"selected","result":{"accountId":"01"}}"#,
+            2,
+        )
+        .is_err());
+        assert_eq!(
+            selected_passkey_index(br#"{"version":1,"kind":"passkey","status":"cancelled"}"#, 2,)
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn sanitizes_labels_without_changing_account_order() {
+        assert_eq!(sanitize_label("alice\nbob"), "alice bob");
+        assert_eq!(sanitize_label("\u{202e}"), "(unnamed)");
     }
 }

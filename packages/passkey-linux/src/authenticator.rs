@@ -10,9 +10,7 @@ use keeless_passkey_ctap::error::{CtapError, CtapStatus};
 use keeless_passkey_ctap::request::{Command, GetAssertionRequest, MakeCredentialRequest};
 use keeless_passkey_ctap::response::{self, Assertion, AuthenticatorInfo};
 use keeless_passkey_ctap::{KEELESS_AAGUID, parse_command};
-use keeless_schema::{
-    AssertPasskeyArgs, Operation, OperationSuccess, RegisterPasskeyArgs, SelectPasskeyArgs,
-};
+use keeless_schema::{AssertPasskeyArgs, Operation, OperationSuccess, RegisterPasskeyArgs};
 
 use crate::ctaphid::KeepaliveStatus;
 use crate::session::Session;
@@ -86,12 +84,7 @@ impl Authenticator {
     }
 
     async fn selection(&mut self, progress: &Progress) -> Result<Vec<u8>, CtapError> {
-        let result = self
-            .request_interactive(progress, Operation::SelectPasskey(SelectPasskeyArgs {}))
-            .await?;
-        if !matches!(result, OperationSuccess::SelectPasskey(_)) {
-            return Err(CtapStatus::Other.into());
-        }
+        let _ = progress;
         Ok(response::status(CtapStatus::Success))
     }
 
@@ -188,7 +181,7 @@ fn client_error(error: ClientError) -> CtapError {
             CtapStatus::OperationDenied
         }
         "database_locked" | "database_not_selected" | "database_not_found" => {
-            CtapStatus::NoCredentials
+            CtapStatus::OperationDenied
         }
         "invalid_passkey_request" => CtapStatus::InvalidParameter,
         _ => CtapStatus::Other,
@@ -218,7 +211,7 @@ mod tests {
         };
         assert_eq!(
             client_error(operation("database_locked")).status,
-            CtapStatus::NoCredentials
+            CtapStatus::OperationDenied
         );
         assert_eq!(
             client_error(operation("passkey_excluded")).status,

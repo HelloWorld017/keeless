@@ -96,7 +96,8 @@ If the browser withdraws the request, the desktop host cancels the prompt with i
 Browsers also ask, without prompting anyone, which of a site's credentials this
 authenticator holds — that is how they decide whether to offer Keeless at all.
 Those answers carry no user-presence flag, so a relying party rejects them, and
-they name no accounts. They do require the database to be unlocked.
+they name no accounts. They require an unlocked database with a cached credential;
+in paranoia mode they remain unavailable until the user starts an interactive ceremony.
 
 ## Limitations
 
@@ -107,6 +108,7 @@ they name no accounts. They do require the database to be unlocked.
   sync between devices.
 - There is no PIN. User verification is the database's own password plus the
   consent prompt, and `authenticatorGetInfo` reports no `clientPin` option.
+- `authenticatorSelection` succeeds without showing a separate prompt.
 - No extensions are implemented; `hmac-secret` and `prf` requests are ignored
   rather than refused, so a ceremony that merely prefers them still completes.
 

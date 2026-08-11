@@ -31,9 +31,9 @@ type ConnectionArgs = {
 };
 
 type PasskeyArgs = {
-  mode: 'register' | 'assert' | 'selection';
+  mode: 'register' | 'assert';
   rpId: string;
-  // Exactly one account when registering or selecting; 1 to 32 when signing in.
+  // Exactly one account when registering; 1 to 32 when signing in.
   accounts: { id: string; username: string }[];
 };
 ```

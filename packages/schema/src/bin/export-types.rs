@@ -77,7 +77,6 @@ fn generate() -> String {
     export::<GetPasskeysArgs>(&mut output);
     export::<RegisterPasskeyArgs>(&mut output);
     export::<AssertPasskeyArgs>(&mut output);
-    export_empty("SelectPasskeyArgs", &mut output);
     export::<Operation>(&mut output);
     export::<OperationRequest>(&mut output);
     export_empty("EmptyResult", &mut output);

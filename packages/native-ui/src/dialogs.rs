@@ -47,7 +47,6 @@ pub fn prompt_passkey(request: PasskeyRequest) -> DialogResult<String> {
     let title = match request.mode {
         PasskeyMode::Register => "Keeless passkey creation",
         PasskeyMode::Assert => "Keeless passkey sign-in",
-        PasskeyMode::Selection => "Use Keeless passkeys",
     };
     let height = 200.0 + 24.0 * request.accounts.len().saturating_sub(1) as f32;
     let app = PasskeyApp {
@@ -343,11 +342,6 @@ impl eframe::App for PasskeyApp {
                     ui.heading("Sign in with a passkey?");
                     ui.add_space(8.0);
                     ui.label("A site asked Keeless to sign in to:");
-                }
-                PasskeyMode::Selection => {
-                    ui.heading("Use Keeless passkeys?");
-                    ui.add_space(8.0);
-                    ui.label("A platform asked to use:");
                 }
             }
             ui.monospace(&self.rp_id);

@@ -1,6 +1,5 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use keeless_schema::SelectPasskeyArgs;
 use sha2::{Digest, Sha256};
 
 use super::*;
@@ -210,19 +209,52 @@ async fn a_silent_assertion_signs_without_the_user_presence_flag() {
 }
 
 #[tokio::test]
-async fn passkey_selection_requires_host_consent() {
+async fn consent_decline_and_silent_locked_assertion_do_not_sign() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let mut core = passkey_core(storage).await;
+    let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
+    let credential_id = registered["result"]["credentialId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let consent = Arc::new(PasskeyConsent::cancelled());
     core.passkey_consent = Some(consent.clone());
 
-    assert!(matches!(
-        operations::select_passkey::run(&mut core, SelectPasskeyArgs {}).await,
-        Err(CoreError::PasskeyConsentDenied)
-    ));
-    let requests = consent.requests.lock().unwrap();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].mode, PasskeyConsentMode::Selection);
+    let denied = dispatch_json(
+        &mut core,
+        serde_json::json!({
+            "requestId": "request-2",
+            "op": "assertPasskey",
+            "args": {
+                "rpId": "example.com",
+                "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "allowCredentialIds": [credential_id],
+                "userPresent": true,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(denied["error"]["code"], "passkey_consent_denied");
+    assert_eq!(consent.requests.lock().unwrap().len(), 1);
+
+    core.credential = None;
+    consent.requests.lock().unwrap().clear();
+    let silent = dispatch_json(
+        &mut core,
+        serde_json::json!({
+            "requestId": "request-3",
+            "op": "assertPasskey",
+            "args": {
+                "rpId": "example.com",
+                "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "allowCredentialIds": [credential_id],
+                "userPresent": false,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(silent["error"]["code"], "database_locked");
+    assert!(consent.requests.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

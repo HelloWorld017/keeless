@@ -238,8 +238,6 @@ export type AssertPasskeyArgs = {
   userPresent: boolean;
 };
 
-export type SelectPasskeyArgs = Record<string, never>;
-
 export type Operation =
   | { op: 'open'; args: OpenArgs }
   | { op: 'create'; args: CreateArgs }
@@ -281,8 +279,7 @@ export type Operation =
   | { op: 'getEntryTotp'; args: GetEntryTotpArgs }
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
-  | { op: 'assertPasskey'; args: AssertPasskeyArgs }
-  | { op: 'selectPasskey'; args: SelectPasskeyArgs };
+  | { op: 'assertPasskey'; args: AssertPasskeyArgs };
 
 export type OperationRequest = (
   | { op: 'open'; args: OpenArgs }
@@ -326,7 +323,6 @@ export type OperationRequest = (
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
   | { op: 'assertPasskey'; args: AssertPasskeyArgs }
-  | { op: 'selectPasskey'; args: SelectPasskeyArgs }
 ) & { requestId: string };
 
 export type EmptyResult = Record<string, never>;
@@ -473,8 +469,7 @@ export type OperationSuccess =
   | { op: 'getEntryTotp'; result: GetEntryTotpResult }
   | { op: 'getPasskeys'; result: PasskeysResult }
   | { op: 'registerPasskey'; result: RegisterPasskeyResult }
-  | { op: 'assertPasskey'; result: AssertPasskeyResult }
-  | { op: 'selectPasskey'; result: EmptyResult };
+  | { op: 'assertPasskey'; result: AssertPasskeyResult };
 
 export type OperationError = { code: string; message: string };
 
@@ -541,5 +536,4 @@ export const operationMetadata = {
   getPasskeys: { queries: ['entry'] },
   registerPasskey: { mutates: ['databaseStatus', 'entry'] },
   assertPasskey: { fetches: ['entry'] },
-  selectPasskey: {},
 } as const satisfies Record<Operation['op'], OperationMetadata>;
