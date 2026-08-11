@@ -46,6 +46,10 @@ export class RequestClient {
     }
     try {
       const response = JSON.parse(decoder.decode(responseBytes)) as OperationResponse;
+      if (typeof __DEV__ === 'boolean' && __DEV__) {
+        console.log(`Operation ${requestId}: ${op}(`, args, `) -> `, response);
+      }
+
       if (response.requestId !== requestId) {
         throw new Error('Server returned a mismatched request ID');
       }

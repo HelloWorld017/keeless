@@ -1,4 +1,4 @@
-import { Button, buttonVariants } from '@/components/button';
+import { Button } from '@/components/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,8 +17,6 @@ type AdditionalTab = {
   label: ReactNode;
   children: ReactNode;
 };
-
-const outlineButtonClass = buttonVariants({ variant: 'outline' });
 
 export const QRScanner = ({
   active,
@@ -42,6 +40,7 @@ export const QRScanner = ({
       decoderClient={wechatDecoder}
       options={{ mobile: { enabled: true } }}
       onScan={value => setError(onScan(value))}
+      onSourceChange={() => setError(undefined)}
     >
       <QRescan.Tabs render={({ children }) => <Tabs>{children}</Tabs>}>
         <QRescan.TabList
@@ -97,7 +96,7 @@ export const QRScanner = ({
           }
         >
           <QRescan.Scan>
-            <QRescan.ViewFinder sourceType="stream">
+            <QRescan.ViewFinder sourceType="stream" style={{ maxHeight: '240px' }} className='mx-auto'>
               <QRescan.ViewFinderHighlight />
               <QRescan.CameraSelect
                 render={({ items, selectedItem, onSelectItem }) => (
@@ -129,18 +128,22 @@ export const QRScanner = ({
               <Empty>
                 <IconScanLine className="size-8" />
                 <EmptyTitle>Scan a QR code</EmptyTitle>
-                <EmptyDescription>
+                <EmptyDescription className='-mt-2'>
                   Use a camera or share a screen containing the QR code.
                 </EmptyDescription>
-                <div className="flex flex-wrap justify-center gap-2">
-                  <QRescan.ScanInitializeCamera className={outlineButtonClass}>
-                    <IconCamera />
-                    Camera
-                  </QRescan.ScanInitializeCamera>
-                  <QRescan.ScanInitializeScreen className={outlineButtonClass}>
-                    <IconMonitor />
-                    Capture
-                  </QRescan.ScanInitializeScreen>
+                <div className="flex flex-wrap justify-center gap-2 mt-2">
+                  <QRescan.ScanInitializeCamera render={({ requestCamera }) => (
+                    <Button type="button" onClick={requestCamera}>
+                      <IconCamera />
+                      Camera
+                    </Button>
+                  )} />
+                  <QRescan.ScanInitializeScreen render={({ requestScreen }) => (
+                    <Button type="button" variant="ghost" onClick={requestScreen}>
+                      <IconMonitor />
+                      Capture
+                    </Button>
+                  )} />
                 </div>
                 <QRescan.ScanInitializeError className="text-sm text-destructive" />
               </Empty>
@@ -190,13 +193,13 @@ export const QRScanner = ({
             isActive ? <TabsContent>{children}</TabsContent> : null
           }
         >
-          <QRescan.Mobile>
-            <QRescan.MobileDescription />
-            <QRescan.MobileError />
+          <QRescan.Mobile className="flex flex-col min-w-0">
+            <QRescan.MobileDescription className="m-0 text-base font-semibold" />
+            <QRescan.MobileError className="mt-2" />
             <QRescan.MobileConnection
               render={() => (
-                <div className="flex items-center gap-3 rounded-lg border bg-card p-4 text-card-foreground">
-                  <span className="size-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                <div className="flex items-center gap-4 rounded-lg border bg-card p-4 text-card-foreground mt-4">
+                  <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden />
                   <div>
                     <p className="text-sm font-medium">Connected</p>
                     <p className="text-sm text-muted-foreground">
@@ -206,8 +209,15 @@ export const QRScanner = ({
                 </div>
               )}
             />
-            <QRescan.MobileLink />
-            <QRescan.MobileQR />
+            <QRescan.MobileLink
+              className="inline-flex w-fit max-w-full items-center rounded bg-accent
+                px-2.5 py-1.5 font-mono text-sm [overflow-wrap:anywhere] mt-2"
+            />
+            <QRescan.MobileQR
+              className="grid place-items-center rounded-lg border bg-card p-2 mt-4 min-h-44
+                [&>canvas]:aspect-square [&>canvas]:w-auto [&>canvas]:min-h-40 [&>canvas]:rounded
+                [&>canvas]:[image-rendering:pixelated]"
+            />
           </QRescan.Mobile>
         </QRescan.Tab>
 

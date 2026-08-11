@@ -50,7 +50,7 @@
     "date-fns": "4.4.0",
     "es-toolkit": "1.49.0",
     "lucide-react": "1.26.0",
-    "qrescan": "0.4.0",
+    "qrescan": "0.6.0",
     "react": "catalog:",
     "react-day-picker": "10.0.1",
     "react-dom": "catalog:",

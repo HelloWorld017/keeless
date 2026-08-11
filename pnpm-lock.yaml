@@ -110,8 +110,8 @@ importers:
         specifier: 1.26.0
         version: 1.26.0(@types/react@19.2.17)(react@19.2.8)
       qrescan:
-        specifier: 0.4.0
-        version: 0.4.0(react@19.2.8)
+        specifier: 0.6.0
+        version: 0.6.0(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -4007,8 +4007,8 @@ packages:
     resolution: {integrity: sha512-KTqnxsgGiQ6ZAzZCVlJH5eOjSnvlyEgx1m8bkRJfOhmGRqfo5KLvmAlACQkrjEtOQ4B7wF9TdSLIs9O90MX9xA==}
     engines: {node: '>=16.0.0'}
 
-  qrescan@0.4.0:
-    resolution: {integrity: sha512-LyR42yvXc07e04hOctB9RS18o64UToGa91CxWUn3bbk8zgyLClpiOgXr6L+1XOBDZj8Onst/wqMm/3ue56g9rA==}
+  qrescan@0.6.0:
+    resolution: {integrity: sha512-SxMoZW2sFiVVsq7xAGQRqJmHo2DOuADGDTF6oEMnMuWDhPzHI65LjUDPhu0tN8kM6KgvSzYy3oTlTI1g4Zgl1g==}
     peerDependencies:
       react: '>=18'
 
@@ -8082,7 +8082,7 @@ snapshots:
 
   pvutils@1.1.5: {}
 
-  qrescan@0.4.0(react@19.2.8):
+  qrescan@0.6.0(react@19.2.8):
     dependencies:
       react: 19.2.8
 

@@ -22,4 +22,4 @@ catalog:
 
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
-  - qrescan@0.4.0
+  - qrescan

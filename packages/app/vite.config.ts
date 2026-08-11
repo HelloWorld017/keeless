@@ -35,7 +35,7 @@ const asset = (): Plugin => ({
   },
 });
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => ({
   build: {
     outDir: 'dist/app',
     ...(mode === 'lib' && {
@@ -54,6 +54,9 @@ export default defineConfig(({ mode }) => ({
   },
 
   define: {
+    ...(command === 'serve' && {
+      __DEV__: 'true',
+    }),
     ...(mode !== 'lib' && {
       __KEELESS_BROWSER_HOST_DISABLED__: 'false',
     }),

@@ -12,19 +12,21 @@
 - [x] Trash에 전부 삭제 추가
 - [x] auto save 및 dirty status 보여주기
 - [x] desktop에서 register client가 blindly register 시키는 것 막기
+- [x] TOTP 구현
 - [ ] WebDAV 싱크 테스트 하기
 - [ ] setuplayout에서 위에 <- Back으로 하게, router로 이동하게
 - [ ] per-database config store, per-database lesswire key upgrade
 - [ ] scoped approved lesswire key (app, passkey, extension)
-- [ ] Windows WebAuthn plugin authenticator 구현
 - [ ] extension + native messaging host 구현
 - [ ] 화면 캡쳐 방어
-- [ ] SetSecurityInfo (메인 프로세스 / 렌더러 프로세스 원격 스레드, 덤프 차단)
+- [ ] [windows process hardening](./draft/20260731-windows-hardening.md)
 - [ ] config에 systemd 서비스 등록화면
 - [ ] operation별 rate limiting 추가
-- [ ] TOTP 구현
+- [ ] native-ui 디자인 개선
+- [ ] Windows WebAuthn plugin authenticator 구현
 
 ### Good to have
+- [ ] Google Authenticator Import
 - [ ] Yubikey Support
 - [ ] SSH Agent
 - [ ] Field Reference (= spr)
