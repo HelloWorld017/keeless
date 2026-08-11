@@ -1,9 +1,25 @@
 import { Client as WireClient } from '@keeless/lesswire';
 import type { Host } from '@/types/Host';
+import type { ClientStore } from '@keeless/lesswire';
 import type { Operation, OperationResponse, OperationSuccess } from '@keeless/schema';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder(undefined, { fatal: true });
+
+let memoryClientStore: ClientStore;
+
+const createMemoryClientStore = (): ClientStore => {
+  const deviceKey = crypto.getRandomValues(new Uint8Array(32));
+  const trustedServers = new Map<string, string>();
+
+  return {
+    loadDeviceKey: async () => deviceKey.slice(),
+    loadTrustedServer: async relayId => trustedServers.get(relayId),
+    saveTrustedServer: async (relayId, bundle) => {
+      trustedServers.set(relayId, bundle);
+    },
+  };
+};
 
 export type OperationName = Operation['op'];
 export type OperationArgs<TName extends OperationName> = Extract<Operation, { op: TName }>['args'];
@@ -29,7 +45,8 @@ export class RequestClient {
   ) {}
 
   static async connect(host: Host) {
-    return new RequestClient(host, await WireClient.connect(host));
+    memoryClientStore ??= createMemoryClientStore();
+    return new RequestClient(host, await WireClient.connect(host, memoryClientStore));
   }
 
   async request<TName extends OperationName>(
