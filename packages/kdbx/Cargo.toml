@@ -42,7 +42,7 @@ sha2 = "0.10"
 thiserror = "2"
 twofish = "0.7"
 url = "2"
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
 zeroize = "1"
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
@@ -53,7 +53,7 @@ keeless_secure_types = { path = "../secure-types", default-features = false, fea
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
-uuid = { version = "1", features = ["v4", "serde", "js"] }
+uuid = { version = "1", features = ["v4", "v5", "serde", "js"] }
 
 [dev-dependencies]
 hex = "0.4"

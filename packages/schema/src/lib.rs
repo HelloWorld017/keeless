@@ -696,7 +696,7 @@ operation_schema! {
             }
         }
         result EmptyResult
-        mutates: [DatabaseStatus],
+        mutates: [DatabaseStatus, Entry, Group, Tag, CustomIcon],
     }
 
     PrepareDatabaseExport("prepareDatabaseExport") {

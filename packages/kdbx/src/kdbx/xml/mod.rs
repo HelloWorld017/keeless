@@ -269,7 +269,6 @@ mod tests {
                     properties: None,
                     attachments: vec![],
                     removed_attachment_indices: vec![],
-                    new_custom_field_ids: vec![Uuid::new_v4()],
                     last_modification_time: DateInstant::now(),
                 },
             )

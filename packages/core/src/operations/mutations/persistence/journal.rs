@@ -235,7 +235,6 @@ mod tests {
             properties: None,
             attachments: Vec::new(),
             removed_attachment_indices: Vec::new(),
-            new_custom_field_ids: Vec::new(),
             timestamp_ms: 1,
         });
 
@@ -265,7 +264,6 @@ mod tests {
             properties: None,
             attachments: Vec::new(),
             removed_attachment_indices: Vec::new(),
-            new_custom_field_ids: Vec::new(),
             timestamp_ms: 1,
         });
         let encoded = coordinator.encode(&mutation).unwrap();

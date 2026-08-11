@@ -5,7 +5,6 @@ use crate::model::{
 };
 use crate::{DatabaseError, DatabaseResult};
 use indexmap::IndexMap;
-use uuid::Uuid;
 
 use super::metadata::{self, FieldType};
 
@@ -52,7 +51,6 @@ pub enum TemplateCopyMode {
 
 pub struct TemplateInstantiationOptions<'a> {
     pub new_entry_id: NodeId,
-    pub link_field_id: EntryFieldId,
     pub timestamp: DateInstant,
     pub copy_mode: TemplateCopyMode,
     pub composite_key: Option<&'a CompositeKey>,
@@ -72,7 +70,6 @@ pub fn prepare_instantiation_at(
 ) -> DatabaseResult<Option<PreparedTemplateInstantiation>> {
     if !database.can_add_entry(&options.new_entry_id, parent_group_id)
         || !is_template(database, source_entry_id)
-        || !matches!(options.link_field_id, EntryFieldId::Custom(_))
     {
         return Ok(None);
     }
@@ -80,9 +77,6 @@ pub fn prepare_instantiation_at(
     let Some(source_uuid) = source.id.as_uuid().copied() else {
         return Ok(None);
     };
-    if source.field(options.link_field_id).is_some() {
-        return Ok(None);
-    }
     let mut entry = source.clone();
     let mut unlock = match options.copy_mode {
         TemplateCopyMode::PreserveProtected => Some(MemoryUnlockSession::new(
@@ -99,8 +93,7 @@ pub fn prepare_instantiation_at(
         !is_template_field(field.name()) && !field.name().starts_with('@')
     });
     standard_fields_first(&mut entry);
-    entry.add_custom_field_with_id(
-        options.link_field_id,
+    entry.add_custom_field(
         metadata::TEMPLATE_UUID,
         ProtectedString::new_plain(&source_uuid.simple().to_string().to_ascii_uppercase()),
     );
@@ -136,7 +129,6 @@ pub fn instantiate(
         parent_group_id,
         TemplateInstantiationOptions {
             new_entry_id: NodeId::new_uuid(),
-            link_field_id: EntryFieldId::Custom(Uuid::new_v4()),
             timestamp: DateInstant::now(),
             copy_mode,
             composite_key,

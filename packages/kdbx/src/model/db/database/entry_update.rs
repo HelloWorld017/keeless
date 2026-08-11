@@ -10,7 +10,8 @@ use crate::model::core::node::NodeId;
 use crate::model::core::security::ProtectedString;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::entry::{
-    memory_field, EntryBinary, EntryField, EntryFieldId, EntryFields, StandardField,
+    custom_field_id, memory_field, EntryBinary, EntryField, EntryFieldId, EntryFields,
+    StandardField,
 };
 use crate::model::exception::{DatabaseError, DatabaseResult};
 use crate::model::meta::icon::{IconImage, IconImageStandard};
@@ -51,13 +52,12 @@ pub struct EntryPropertiesUpdate {
     pub icon: Option<IconUpdate>,
 }
 
-/// Complete desired entry update, including deterministic mutation metadata.
+/// Complete desired entry update.
 pub struct EntryUpdate {
     pub fields: Vec<EntryFieldUpdate>,
     pub properties: Option<EntryPropertiesUpdate>,
     pub attachments: Vec<EntryBinary>,
     pub removed_attachment_indices: Vec<u64>,
-    pub new_custom_field_ids: Vec<Uuid>,
     pub last_modification_time: DateInstant,
 }
 
@@ -95,7 +95,6 @@ impl Database {
             properties,
             attachments,
             removed_attachment_indices,
-            new_custom_field_ids,
             last_modification_time,
         } = update;
         let original = self
@@ -104,6 +103,7 @@ impl Database {
             .ok_or_else(|| DatabaseError::InvalidFormat("entry does not exist".into()))?;
         let mut source_ids = HashSet::new();
         let mut standard_seen = HashSet::new();
+        let mut custom_names = HashSet::new();
         for field in fields {
             match field.field_id {
                 Some(id) if source_ids.insert(id) => {
@@ -148,6 +148,13 @@ impl Database {
                 }
                 None => {}
             }
+            if !matches!(field.field_id, Some(EntryFieldId::Standard(_)))
+                && !custom_names.insert(field.name.as_str())
+            {
+                return Err(DatabaseError::InvalidFormat(
+                    "custom entry field name is duplicated".into(),
+                ));
+            }
         }
         if !StandardField::ALL
             .into_iter()
@@ -157,22 +164,6 @@ impl Database {
                 "all standard entry fields are required".into(),
             ));
         }
-        let expected_new_ids = fields
-            .iter()
-            .filter(|field| field.field_id.is_none())
-            .count();
-        let unique_new_ids = new_custom_field_ids.iter().copied().collect::<HashSet<_>>();
-        if new_custom_field_ids.len() != expected_new_ids
-            || unique_new_ids.len() != new_custom_field_ids.len()
-            || new_custom_field_ids
-                .iter()
-                .any(|id| original.fields.0.contains_key(&EntryFieldId::Custom(*id)))
-        {
-            return Err(DatabaseError::InvalidFormat(
-                "new custom entry field IDs are invalid or duplicated".into(),
-            ));
-        }
-
         let context = self
             .memory_protection_context
             .clone()
@@ -181,12 +172,16 @@ impl Database {
                 self.create_memory_context(composite_key)
                     .map(|(context, _)| context)
             })?;
-        let requested_ids = fields
+        let final_ids = fields
             .iter()
-            .filter_map(|field| field.field_id)
+            .map(|field| {
+                StandardField::from_name(&field.name)
+                    .map(EntryFieldId::Standard)
+                    .unwrap_or_else(|| custom_field_id(&field.name, 0))
+            })
             .collect::<Vec<_>>();
         let original_ids = original.fields.0.keys().copied().collect::<Vec<_>>();
-        let mut changed = requested_ids != original_ids
+        let mut changed = final_ids != original_ids
             || fields.iter().any(|field| field.field_id.is_none())
             || !attachments.is_empty()
             || !removed_attachment_indices.is_empty();
@@ -236,13 +231,9 @@ impl Database {
 
         let mut updated = original.clone();
         let mut visible_fields = IndexMap::with_capacity(fields.len());
-        let mut new_ids = new_custom_field_ids.iter().copied();
         unlock.with_root(&context, |root| {
-            for (requested, plaintext) in fields.iter().zip(&plaintexts) {
-                let id = requested.field_id.unwrap_or_else(|| {
-                    EntryFieldId::Custom(new_ids.next().expect("new field IDs validated"))
-                });
-                let target_memory = memory_field(id, &requested.name);
+            for ((requested, plaintext), id) in fields.iter().zip(&plaintexts).zip(&final_ids) {
+                let target_memory = memory_field(*id, &requested.name);
                 let field = if let Some(source_id) = requested.field_id {
                     let source = original
                         .fields
@@ -294,7 +285,7 @@ impl Database {
                     )?;
                     EntryField::new(requested.name.clone(), target)
                 };
-                visible_fields.insert(id, field);
+                visible_fields.insert(*id, field);
             }
             Ok(())
         })?;

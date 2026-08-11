@@ -21,7 +21,6 @@ pub(super) struct Mutation {
     pub(super) properties: Option<JournalEntryProperties>,
     pub(super) attachments: Vec<JournalEntryAttachment>,
     pub(super) removed_attachment_indices: Vec<u64>,
-    pub(super) new_custom_field_ids: Vec<Uuid>,
     pub(super) timestamp_ms: i64,
 }
 
@@ -143,7 +142,6 @@ pub(super) fn prepare(
         properties,
         attachments,
         removed_attachment_indices: mutation.removed_attachment_indices.clone(),
-        new_custom_field_ids: mutation.new_custom_field_ids.clone(),
         last_modification_time: DateInstant::EpochMillis(mutation.timestamp_ms),
     };
     database
@@ -249,11 +247,6 @@ pub(crate) async fn run(
             .verify_credentials(&key)?;
         key
     };
-    let new_custom_field_ids = converted
-        .iter()
-        .filter(|field| field.field_id.is_none())
-        .map(|_| Uuid::new_v4())
-        .collect::<Vec<_>>();
     let timestamp_ms = core.clock.now_millis();
     let mut attachments = Vec::with_capacity(attachment_updates.len());
     for attachment in attachment_updates {
@@ -269,7 +262,6 @@ pub(crate) async fn run(
         properties,
         attachments,
         removed_attachment_indices,
-        new_custom_field_ids,
         last_modification_time: DateInstant::EpochMillis(timestamp_ms),
     };
     let prepared = core
@@ -317,7 +309,6 @@ pub(crate) async fn run(
             })
             .collect(),
         removed_attachment_indices: update.removed_attachment_indices.clone(),
-        new_custom_field_ids: update.new_custom_field_ids.clone(),
         timestamp_ms,
     };
     let mutation = JournalMutation::UpdateEntry(payload);

@@ -4,6 +4,20 @@ use super::*;
 async fn reveal_entry_fields_handles_ids_duplicates_and_credentials() {
     let (mut core, ids) = query_core().await;
     let entry_id = schema_id(ids.root_entry);
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let database = core.handle.as_mut().unwrap().database_mut();
+    let entry = database
+        .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
+        .unwrap();
+    entry.add_custom_field(
+        "Duplicate",
+        ProtectedString::new_protected("duplicate-first"),
+    );
+    entry.add_custom_field(
+        "Duplicate",
+        ProtectedString::new_protected("duplicate-second"),
+    );
+    database.protect_entry_strings(&key).unwrap();
     let detail = operations::get_entry_detail::run(
         &mut core,
         GetEntryDetailArgs {

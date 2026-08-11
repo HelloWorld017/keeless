@@ -2,8 +2,8 @@ use keeless_kdbx::kdbx::template::{
     instantiate_at, TemplateCopyMode, TemplateInstantiationOptions,
 };
 use keeless_kdbx::{
-    CompositeKey, CustomData, Database, DatabaseVersion, DateInstant, Entry, EntryFieldId,
-    EntryFieldUpdate, EntryUpdate, Group, NodeId, ProtectedString,
+    CompositeKey, CustomData, Database, DatabaseVersion, DateInstant, Entry, EntryFieldUpdate,
+    EntryUpdate, Group, NodeId, ProtectedString,
 };
 use uuid::Uuid;
 
@@ -85,7 +85,6 @@ fn prepared_entry_update_is_pure_and_commits_supplied_id_and_time() {
         value: Some("value".into()),
         is_protected: false,
     });
-    let custom_uuid = Uuid::from_u128(11);
     let modified = DateInstant::EpochMillis(99);
     let key = CompositeKey::new().with_password(b"test").unwrap();
 
@@ -98,7 +97,6 @@ fn prepared_entry_update_is_pure_and_commits_supplied_id_and_time() {
                 properties: None,
                 attachments: vec![],
                 removed_attachment_indices: vec![],
-                new_custom_field_ids: vec![custom_uuid],
                 last_modification_time: modified,
             },
         )
@@ -112,8 +110,10 @@ fn prepared_entry_update_is_pure_and_commits_supplied_id_and_time() {
     assert_eq!(updated.last_modification_time, modified);
     assert_eq!(
         updated
-            .field(EntryFieldId::Custom(custom_uuid))
+            .custom_fields()
+            .find(|(_, field)| field.name() == "journal-field")
             .unwrap()
+            .1
             .name(),
         "journal-field"
     );
@@ -166,7 +166,6 @@ fn custom_data_and_template_instantiation_are_fully_deterministic() {
     let templates_id = NodeId::from_uuid(templates_uuid);
     let source_id = NodeId::from_uuid(Uuid::from_u128(31));
     let child_id = NodeId::from_uuid(Uuid::from_u128(32));
-    let link_id = EntryFieldId::Custom(Uuid::from_u128(33));
     database.add_group_validated(Group::new_at(templates_id, timestamp), &root_id);
     database.entry_templates_uuid = Some(templates_uuid);
     let mut source = Entry::new_at(source_id, timestamp);
@@ -181,7 +180,6 @@ fn custom_data_and_template_instantiation_are_fully_deterministic() {
             &root_id,
             TemplateInstantiationOptions {
                 new_entry_id: child_id,
-                link_field_id: link_id,
                 timestamp,
                 copy_mode: TemplateCopyMode::RedactProtected,
                 composite_key: None,
@@ -194,5 +192,7 @@ fn custom_data_and_template_instantiation_are_fully_deterministic() {
     assert_eq!(child.creation_time, timestamp);
     assert_eq!(child.last_modification_time, timestamp);
     assert_eq!(child.password().as_str(), "");
-    assert_eq!(child.field(link_id).unwrap().name(), "_etm_template_uuid");
+    assert!(child
+        .custom_fields()
+        .any(|(_, field)| field.name() == "_etm_template_uuid"));
 }

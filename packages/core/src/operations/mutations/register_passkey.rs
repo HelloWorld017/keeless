@@ -4,7 +4,6 @@ use keeless_kdbx::{
 };
 use keeless_schema::{OperationSuccess, RegisterPasskeyArgs, RegisterPasskeyResult};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::extensions::passkey::PasskeyExtension;
 use crate::features::passkeys;
@@ -111,11 +110,6 @@ pub(crate) async fn run(
     let fields = entry_fields(title, &args.user_name, &result.credential)?;
     let key = passkeys::unlock(core, PasswordInputMode::Save).await?;
     let entry_id = keeless_kdbx::NodeId::new_uuid();
-    let new_custom_field_ids = fields
-        .iter()
-        .filter(|field| field.field_id.is_none())
-        .map(|_| Uuid::new_v4())
-        .collect();
     let payload = Mutation {
         parent: parent_group_id,
         entry: update_entry::Mutation {
@@ -124,7 +118,6 @@ pub(crate) async fn run(
             properties: None,
             attachments: Vec::new(),
             removed_attachment_indices: Vec::new(),
-            new_custom_field_ids,
             timestamp_ms: core.clock.now_millis(),
         },
     };

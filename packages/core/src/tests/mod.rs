@@ -476,20 +476,6 @@ pub(super) async fn query_core() -> (KeelessCore, QueryIds) {
     operations::unlock::run(&mut core, b"correct")
         .await
         .unwrap();
-    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
-    let database = core.handle.as_mut().unwrap().database_mut();
-    let entry = database
-        .get_entry_mut(&NodeId::from_uuid(ids.root_entry))
-        .unwrap();
-    entry.add_custom_field(
-        "Duplicate",
-        ProtectedString::new_protected("duplicate-first"),
-    );
-    entry.add_custom_field(
-        "Duplicate",
-        ProtectedString::new_protected("duplicate-second"),
-    );
-    database.protect_entry_strings(&key).unwrap();
     (core, ids)
 }
 

@@ -6,16 +6,22 @@ mod empty_recycle_bin;
 async fn update_entry_applies_one_atomic_history_change_and_preserves_duplicate_secrets() {
     let (mut core, ids) = query_core().await;
     let entry_id = schema_id(ids.root_entry);
-    core.handle
-        .as_mut()
-        .unwrap()
-        .database_mut()
-        .get_entry_mut(&model_id(entry_id.clone()))
-        .unwrap()
-        .add_custom_field(
-            "_etm_template_uuid",
-            ProtectedString::new_plain(&Uuid::from_u128(50).to_string()),
-        );
+    let key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let database = core.handle.as_mut().unwrap().database_mut();
+    let entry = database.get_entry_mut(&model_id(entry_id.clone())).unwrap();
+    entry.add_custom_field(
+        "_etm_template_uuid",
+        ProtectedString::new_plain(&Uuid::from_u128(50).to_string()),
+    );
+    entry.add_custom_field(
+        "Duplicate",
+        ProtectedString::new_protected("duplicate-first"),
+    );
+    entry.add_custom_field(
+        "Duplicate",
+        ProtectedString::new_protected("duplicate-second"),
+    );
+    database.protect_entry_strings(&key).unwrap();
     let detail = operations::get_entry_detail::run(
         &mut core,
         GetEntryDetailArgs {

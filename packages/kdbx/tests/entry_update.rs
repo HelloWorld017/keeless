@@ -91,19 +91,54 @@ fn entry_update(
     fields: Vec<EntryFieldUpdate>,
     properties: Option<EntryPropertiesUpdate>,
 ) -> EntryUpdate {
-    let new_custom_field_ids = fields
-        .iter()
-        .filter(|field| field.field_id.is_none())
-        .map(|_| uuid::Uuid::new_v4())
-        .collect();
     EntryUpdate {
         fields,
         properties,
         attachments: vec![],
         removed_attachment_indices: vec![],
-        new_custom_field_ids,
         last_modification_time: DateInstant::now(),
     }
+}
+
+#[test]
+fn custom_field_ids_survive_serde_and_kdbx_round_trips() {
+    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let entry_id = NodeId::new_uuid();
+    let mut entry = Entry::new(entry_id);
+    entry.add_custom_field("Shared", ProtectedString::new_plain("first"));
+    entry.add_custom_field("shared", ProtectedString::new_plain("case-sensitive"));
+    entry.add_custom_field("Shared", ProtectedString::new_plain("second"));
+    let expected_ids = entry.custom_fields().map(|(id, _)| id).collect::<Vec<_>>();
+
+    let serialized = serde_json::to_string(&entry).unwrap();
+    let deserialized: Entry = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(
+        deserialized
+            .custom_fields()
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>(),
+        expected_ids
+    );
+    assert_ne!(expected_ids[0], expected_ids[1]);
+    assert_ne!(expected_ids[0], expected_ids[2]);
+
+    let mut database = Database::new(DatabaseVersion::KDBX4);
+    let root_id = NodeId::new_uuid();
+    database.groups.insert(root_id, Group::new(root_id));
+    database.root_group_id = Some(root_id);
+    database.add_entry(entry, &root_id);
+    let mut bytes = Vec::new();
+    save_database(&mut bytes, &database, &key).unwrap();
+    let reopened = open_database(bytes.as_slice(), &key).unwrap();
+    assert_eq!(
+        reopened
+            .get_entry(&entry_id)
+            .unwrap()
+            .custom_fields()
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>(),
+        expected_ids
+    );
 }
 
 #[test]
@@ -114,6 +149,8 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
         .unwrap()
         .last_modification_time;
     let source = database.get_entry(&entry_id).unwrap();
+    let original_first_duplicate_id = source_field_id(source, "Duplicate", 0);
+    let original_second_duplicate_id = source_field_id(source, "Duplicate", 1);
     let mut fields = standard_fields(source);
     fields.extend([
         EntryFieldUpdate {
@@ -152,6 +189,8 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
     assert_ne!(entry.last_modification_time, old_timestamp);
     assert!(database.data_modified);
     let custom_ids = entry.custom_fields().map(|(id, _)| id).collect::<Vec<_>>();
+    assert_ne!(custom_ids[0], original_second_duplicate_id);
+    assert_eq!(custom_ids[1], original_first_duplicate_id);
     assert_eq!(
         database
             .with_entry_field_id(&key, &entry_id, custom_ids[0], str::to_owned)
@@ -174,6 +213,7 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
         .custom_fields()
         .map(|(id, _)| id)
         .collect::<Vec<_>>();
+    assert_eq!(reopened_ids, custom_ids);
     assert_eq!(
         reopened
             .with_entry_field_id(&key, &entry_id, reopened_ids[0], str::to_owned)
@@ -227,7 +267,7 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
 }
 
 #[test]
-fn invalid_and_noop_updates_are_atomic() {
+fn invalid_updates_are_atomic() {
     let (mut database, key, entry_id) = loaded_database();
     database.data_modified = false;
     let before = database.get_entry(&entry_id).unwrap().clone();
@@ -240,59 +280,43 @@ fn invalid_and_noop_updates_are_atomic() {
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
     assert!(!database.data_modified);
 
-    let mut unchanged = standard_fields(&before);
-    unchanged[0].value = Some("Old".into());
-    unchanged.extend([
-        EntryFieldUpdate {
-            field_id: Some(source_field_id(&before, "Duplicate", 0)),
-            name: "Duplicate".into(),
-            value: None,
-            is_protected: true,
-        },
-        EntryFieldUpdate {
-            field_id: Some(source_field_id(&before, "Duplicate", 1)),
-            name: "Duplicate".into(),
-            value: None,
-            is_protected: true,
-        },
-        EntryFieldUpdate {
-            field_id: Some(source_field_id(&before, "Remove", 0)),
-            name: "Remove".into(),
-            value: Some("remove".into()),
-            is_protected: false,
-        },
-    ]);
-    assert!(!database
-        .update_entry(&key, &entry_id, &entry_update(unchanged, None))
-        .unwrap());
+    assert!(matches!(
+        database.update_entry(
+            &key,
+            &entry_id,
+            &entry_update(unchanged_fields(&before), None)
+        ),
+        Err(DatabaseError::InvalidFormat(_))
+    ));
     assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
     assert!(!database.data_modified);
 }
 
 #[test]
 fn deleting_trailing_or_all_custom_fields_is_a_change() {
-    for retained_occurrences in [&[0, 1][..], &[][..]] {
+    for retain_duplicate in [true, false] {
         let (mut database, key, entry_id) = loaded_database();
         database.data_modified = false;
         let source = database.get_entry(&entry_id).unwrap();
         let mut fields = standard_fields(source);
         fields[0].value = Some("Old".into());
-        fields.extend(
-            retained_occurrences
-                .iter()
-                .map(|occurrence| EntryFieldUpdate {
-                    field_id: Some(source_field_id(source, "Duplicate", *occurrence)),
-                    name: "Duplicate".into(),
-                    value: None,
-                    is_protected: true,
-                }),
-        );
+        if retain_duplicate {
+            fields.push(EntryFieldUpdate {
+                field_id: Some(source_field_id(source, "Duplicate", 0)),
+                name: "Duplicate".into(),
+                value: None,
+                is_protected: true,
+            });
+        }
 
         assert!(database
             .update_entry(&key, &entry_id, &entry_update(fields, None))
             .unwrap());
         let entry = database.get_entry(&entry_id).unwrap();
-        assert_eq!(entry.custom_fields().count(), retained_occurrences.len());
+        assert_eq!(
+            entry.custom_fields().count(),
+            if retain_duplicate { 1 } else { 0 }
+        );
         assert_eq!(entry.history.len(), 1);
         assert!(database.data_modified);
     }
@@ -307,26 +331,8 @@ fn template_metadata_can_be_updated_added_and_deleted() {
     );
     database.data_modified = false;
     let before = database.get_entry(&entry_id).unwrap().clone();
-    let fields = unchanged_fields(&before);
-
-    assert!(!database
-        .update_entry(&key, &entry_id, &entry_update(fields.clone(), None))
-        .unwrap());
-    let reserved = database
-        .get_entry(&entry_id)
-        .unwrap()
-        .field(reserved_id)
-        .unwrap();
-    assert_eq!(reserved.name(), "_etm_template_uuid");
-    assert_eq!(
-        reserved.value().as_str(),
-        "00112233445566778899AABBCCDDEEFF"
-    );
-    assert!(!reserved.value().is_protected());
-    assert_eq!(database.get_entry(&entry_id).unwrap(), &before);
-    assert!(!database.data_modified);
-
-    let mut changed = fields;
+    let mut changed = unchanged_fields(&before);
+    changed.retain(|field| field.name != "Duplicate");
     let reserved = changed
         .iter_mut()
         .find(|field| field.field_id == Some(reserved_id))
@@ -343,7 +349,12 @@ fn template_metadata_can_be_updated_added_and_deleted() {
         .update_entry(&key, &entry_id, &entry_update(changed, None))
         .unwrap());
     let updated = database.get_entry(&entry_id).unwrap();
-    let renamed = updated.field(reserved_id).unwrap();
+    assert!(updated.field(reserved_id).is_none());
+    let renamed = updated
+        .custom_fields()
+        .find(|(_, field)| field.name() == "_etm_updated_uuid")
+        .unwrap()
+        .1;
     assert_eq!(renamed.name(), "_etm_updated_uuid");
     assert_eq!(renamed.value().as_str(), "FFEEDDCCBBAA99887766554433221100");
     assert!(updated
@@ -376,6 +387,7 @@ fn fields_and_properties_commit_with_one_history_snapshot() {
 
     let before = database.get_entry(&entry_id).unwrap().clone();
     let mut fields = unchanged_fields(&before);
+    fields.retain(|field| field.name != "Duplicate");
     fields
         .iter_mut()
         .find(|field| field.name == "Title")

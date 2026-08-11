@@ -88,6 +88,18 @@ fn operations_expose_query_fetch_and_mutation_metadata() {
         &[OperationResource::DatabaseStatus, OperationResource::Tag]
     );
 
+    let save_database = Operation::SaveDatabase(SaveDatabaseArgs { password: None }).metadata();
+    assert_eq!(
+        save_database.mutates,
+        &[
+            OperationResource::DatabaseStatus,
+            OperationResource::Entry,
+            OperationResource::Group,
+            OperationResource::Tag,
+            OperationResource::CustomIcon,
+        ]
+    );
+
     let fetches = Operation::definitions()
         .iter()
         .filter(|definition| !definition.metadata.fetches.is_empty())

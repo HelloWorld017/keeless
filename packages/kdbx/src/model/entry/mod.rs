@@ -82,6 +82,19 @@ pub enum EntryFieldId {
     Custom(Uuid),
 }
 
+/// Keeless custom field identity contract: UUID v5 in this namespace, named by
+/// the exact UTF-8 field name followed by NUL and a big-endian u64 occurrence.
+/// This private format must remain stable because field IDs cross RPC boundaries.
+const CUSTOM_FIELD_ID_NAMESPACE: Uuid = Uuid::from_u128(0xee8f01298e135d58b3a2a2e8833f4bb2);
+
+pub(crate) fn custom_field_id(name: &str, occurrence: usize) -> EntryFieldId {
+    let mut input = Vec::with_capacity(name.len() + 1 + std::mem::size_of::<u64>());
+    input.extend_from_slice(name.as_bytes());
+    input.push(0);
+    input.extend_from_slice(&(occurrence as u64).to_be_bytes());
+    EntryFieldId::Custom(Uuid::new_v5(&CUSTOM_FIELD_ID_NAMESPACE, &input))
+}
+
 impl fmt::Display for EntryFieldId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -130,9 +143,7 @@ impl<'de> Deserialize<'de> for EntryFields {
         let fields = Vec::<EntryField>::deserialize(deserializer)?;
         let mut result = Self::default();
         for field in fields {
-            let id = StandardField::from_name(&field.name)
-                .map(EntryFieldId::Standard)
-                .unwrap_or_else(|| EntryFieldId::Custom(Uuid::new_v4()));
+            let id = result.next_id(&field.name);
             if result.0.insert(id, field).is_some() {
                 return Err(serde::de::Error::custom("duplicate standard entry field"));
             }
@@ -155,6 +166,21 @@ impl EntryFields {
                 .entry(EntryFieldId::Standard(standard))
                 .or_insert_with(|| EntryField::new(standard.name(), standard.default_value()));
         }
+    }
+
+    fn next_id(&self, name: &str) -> EntryFieldId {
+        StandardField::from_name(name)
+            .map(EntryFieldId::Standard)
+            .unwrap_or_else(|| {
+                let occurrence = self
+                    .0
+                    .iter()
+                    .filter(|(id, field)| {
+                        matches!(id, EntryFieldId::Custom(_)) && field.name == name
+                    })
+                    .count();
+                custom_field_id(name, occurrence)
+            })
     }
 }
 
@@ -343,26 +369,15 @@ impl Entry {
         name: impl Into<String>,
         value: ProtectedString,
     ) -> EntryFieldId {
-        let id = EntryFieldId::Custom(Uuid::new_v4());
-        self.add_custom_field_with_id(id, name, value);
-        id
-    }
-
-    /// Add a custom field with a caller-supplied stable ID.
-    ///
-    /// Panics when `id` is standard, already exists, or `name` is reserved for
-    /// a standard field. These are caller-controlled invariants.
-    pub fn add_custom_field_with_id(
-        &mut self,
-        id: EntryFieldId,
-        name: impl Into<String>,
-        value: ProtectedString,
-    ) {
         let name = name.into();
-        assert!(matches!(id, EntryFieldId::Custom(_)));
         assert!(StandardField::from_name(&name).is_none());
-        assert!(!self.fields.0.contains_key(&id));
-        self.fields.0.insert(id, EntryField::new(name, value));
+        let id = self.fields.next_id(&name);
+        assert!(self
+            .fields
+            .0
+            .insert(id, EntryField::new(name, value))
+            .is_none());
+        id
     }
 
     pub(crate) fn retain_custom_fields(&mut self, keep: impl Fn(&EntryField) -> bool) {
@@ -398,9 +413,7 @@ impl Entry {
         value: ProtectedString,
         xml_extensions: Vec<PreservedXmlElement>,
     ) -> DatabaseResult<()> {
-        let id = StandardField::from_name(&name)
-            .map(EntryFieldId::Standard)
-            .unwrap_or_else(|| EntryFieldId::Custom(Uuid::new_v4()));
+        let id = self.fields.next_id(&name);
         let field = EntryField {
             name,
             value,

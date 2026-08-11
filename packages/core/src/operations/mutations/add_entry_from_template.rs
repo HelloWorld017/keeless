@@ -1,10 +1,9 @@
 use keeless_kdbx::{
-    CompositeKey, Database, DateInstant, EntryFieldId, NodeId,
+    CompositeKey, Database, DateInstant, NodeId,
     kdbx::template::{self, TemplateCopyMode, TemplateInstantiationOptions},
 };
 use keeless_schema::{AddEntryFromTemplateArgs, AddEntryResult, OperationSuccess};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use super::{Mutation as JournalMutation, mutate};
 use crate::model::{node_id, parse_node_id};
@@ -15,7 +14,6 @@ pub(super) struct Mutation {
     pub(super) parent: NodeId,
     pub(super) template: NodeId,
     pub(super) id: NodeId,
-    pub(super) link_field_id: Uuid,
     pub(super) timestamp_ms: i64,
     pub(super) preserve_protected: bool,
 }
@@ -31,7 +29,6 @@ pub(super) fn apply(
         &mutation.parent,
         TemplateInstantiationOptions {
             new_entry_id: mutation.id,
-            link_field_id: EntryFieldId::Custom(mutation.link_field_id),
             timestamp: DateInstant::EpochMillis(mutation.timestamp_ms),
             copy_mode: if mutation.preserve_protected {
                 TemplateCopyMode::PreserveProtected
@@ -75,7 +72,6 @@ pub(crate) async fn run(
         parent,
         template: source,
         id: NodeId::new_uuid(),
-        link_field_id: Uuid::new_v4(),
         timestamp_ms: core.clock.now_millis(),
         preserve_protected: key.is_some(),
     };
@@ -85,7 +81,6 @@ pub(crate) async fn run(
         &payload.parent,
         TemplateInstantiationOptions {
             new_entry_id: payload.id,
-            link_field_id: EntryFieldId::Custom(payload.link_field_id),
             timestamp: DateInstant::EpochMillis(payload.timestamp_ms),
             copy_mode: if payload.preserve_protected {
                 TemplateCopyMode::PreserveProtected
