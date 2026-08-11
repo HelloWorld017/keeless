@@ -115,7 +115,17 @@ pub fn get_assertion(assertion: &Assertion<'_>) -> Result<Vec<u8>> {
 /// to implement `hmac-secret`, `credProtect` and a PIN/UV auth token, none of
 /// which it has, and a platform may take code paths that assume them.
 pub fn get_info(info: &AuthenticatorInfo<'_>) -> Result<Vec<u8>> {
-    let mut encoder = Encoder::new(success_payload());
+    let mut response = success_payload();
+    response.extend(authenticator_info_cbor(info)?);
+    Ok(response)
+}
+
+/// Raw CBOR map for `authenticatorGetInfo`, without CTAPHID's status byte.
+///
+/// The Windows WebAuthn plugin registration API accepts this map directly,
+/// whereas the CTAPHID transport prepends a CTAP success status byte.
+pub fn authenticator_info_cbor(info: &AuthenticatorInfo<'_>) -> Result<Vec<u8>> {
+    let mut encoder = Encoder::new(Vec::new());
     encoder
         .map(8)
         .and_then(|encoder| encoder.u8(0x01))

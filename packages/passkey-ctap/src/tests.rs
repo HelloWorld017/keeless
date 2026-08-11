@@ -474,12 +474,12 @@ fn an_authenticator_chosen_credential_reports_user_selected() {
 
 #[test]
 fn encodes_get_info_without_a_client_pin_option() {
-    let encoded = response::get_info(&AuthenticatorInfo {
+    let info = AuthenticatorInfo {
         aaguid: &AAGUID,
         platform_device: false,
         transports: &["usb"],
-    })
-    .unwrap();
+    };
+    let encoded = response::get_info(&info).unwrap();
     assert_eq!(encoded[0], 0x00);
 
     let mut decoder = minicbor::Decoder::new(&encoded[1..]);
@@ -526,6 +526,9 @@ fn encodes_get_info_without_a_client_pin_option() {
         assert_eq!(decoder.str().unwrap(), "public-key");
     }
     assert_eq!(decoder.position(), encoded.len() - 1);
+
+    let raw = response::authenticator_info_cbor(&info).unwrap();
+    assert_eq!(raw, encoded[1..]);
 }
 
 #[test]

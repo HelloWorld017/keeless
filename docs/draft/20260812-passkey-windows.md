@@ -78,10 +78,10 @@ Windows COM callback의 request/response byte format은 Linux CTAPHID와 다르�
 `passkey-ctap`의 `parse_command`나 status-byte response를 callback에 직접 사용하지
 않는다. Windows SDK의 decode/encode API를 사용한다.
 
-`authenticatorGetInfo`는 plugin 등록에 raw CBOR payload가 필요하다. 현재
-`response::get_info`가 앞에 붙이는 CTAP success status byte는 등록 blob에 포함하면 안
-된다. 필요한 경우 `passkey-ctap`에 status 없는 `authenticator_info_cbor` encoder를
-추가하고 Linux response는 그 앞에 status byte를 붙이도록 정리한다.
+`authenticatorGetInfo`는 plugin 등록에 raw CBOR payload가 필요하다.
+`passkey-ctap::response::authenticator_info_cbor`는 status 없는 map을 제공하고,
+`response::get_info`만 CTAPHID용 CTAP success status byte를 앞에 붙인다. 등록 blob에는
+반드시 전자만 사용한다.
 
 ## SDK Binding
 
@@ -114,7 +114,7 @@ COM shim이나 C++ bridge는 만들지 않는다. Windows API와 COM server 모�
 - `WEBAUTHN_PLUGIN_OPERATION_REQUEST`, response, cancellation request, lock status
 - `WebAuthNPluginAddAuthenticator`, remove/update/state/status callback API
 - `WebAuthNPluginGetOperationSigningPublicKey`
-- `WebAuthNPluginPerformUserVerification2`, UV public key/count, free API
+- `EXPERIMENTAL_WebAuthNPluginPerformUserVerification2`, UV public key/count, free API
 - `WebAuthNDecodeMakeCredentialRequest`, `WebAuthNDecodeGetAssertionRequest`와 free API
 - `WebAuthNEncodeMakeCredentialResponse`, `WebAuthNEncodeGetAssertionResponse`
 - request/response와 authenticator-info 구조체 및 constants
@@ -213,14 +213,15 @@ metadata cache가 없으므로 remove 시 추가 credential cleanup은 필요 �
    `NTE_NOT_SUPPORTED`/invalid-parameter 오류로 끝낸다. 구현하지 않은 기능을
    `authenticatorGetInfo`에 광고하지 않는다.
 
-request signature와 user-verification signature 검증에는 CNG를 사용한다. key blob의
-algorithm과 padding을 검사한 뒤 SHA-256 digest에 대해 `NCryptVerifySignature`를
-수행한다. 임의의 public key format, signature format, oversized buffer는 실패로
-처리한다.
+request signature와 user-verification signature 검증에는 CNG를 사용한다. 지원 Windows
+build에서 capture한 fixture로 key blob format, signed bytes, signature algorithm과
+padding을 먼저 확정한다. 그 contract에 맞는 SHA-256 digest에
+`NCryptVerifySignature`를 수행하고, 임의의 public key format, signature format,
+처리하며 추정해서 허용하지 않는다.
 
 ### Windows Hello
 
-interactive ceremony는 `WebAuthNPluginPerformUserVerification2`를 호출한다.
+interactive ceremony는 `EXPERIMENTAL_WebAuthNPluginPerformUserVerification2`를 호출한다.
 
 - caller HWND와 transaction ID를 요청에서 가져온다.
 - custom buffer-to-sign에는 검증한 encoded request를 사용해 UV 결과를 현재 ceremony에

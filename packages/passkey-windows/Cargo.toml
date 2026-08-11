@@ -1,0 +1,15 @@
+[package]
+name = "keeless_passkey_windows"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "Windows WebAuthn plugin ceremony primitives for Keeless"
+
+[dependencies]
+base64 = "0.22"
+keeless_host_desktop_shared = { path = "../host-desktop-shared" }
+keeless_passkey_ctap = { path = "../passkey-ctap" }
+keeless_schema = { path = "../schema" }
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "net", "time"] }
