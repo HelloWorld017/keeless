@@ -105,20 +105,17 @@ pub(in crate::operations::mutations) async fn mutate(
     mutation: &Mutation,
     commit: impl FnOnce(&mut Database),
 ) -> Result<()> {
-    let persistence = core.persistence.clone();
-    if let Some(persistence) = persistence {
-        let line = core
-            .journal
-            .as_ref()
-            .ok_or(CoreError::DatabaseLocked)?
-            .encode(mutation)?;
-        persistence.append_journal(&line).await?;
-        core.journal
-            .as_mut()
-            .expect("journal checked")
-            .next_sequence += 1;
-        core.journal.as_mut().expect("journal checked").dirty = true;
-    }
+    let line = core
+        .journal
+        .as_ref()
+        .ok_or(CoreError::DatabaseLocked)?
+        .encode(mutation)?;
+    core.persistence.append_journal(&line).await?;
+    core.journal
+        .as_mut()
+        .expect("journal checked")
+        .next_sequence += 1;
+    core.journal.as_mut().expect("journal checked").dirty = true;
     core.handle
         .as_mut()
         .ok_or(CoreError::DatabaseLocked)?

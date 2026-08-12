@@ -67,14 +67,13 @@ const OpenFragmentContents = () => {
     setError(undefined);
     void requestClient.data
       .request('getCoreStatus', {})
-      .then(({ database }) => {
+      .then(async ({ database }) => {
         if (!active) {
           return;
         }
         if (database === 'unlocked') {
-          void requestClient.data?.upgrade().then(() => {
-            if (active) navigate(buildRoute('database'), { replace: true });
-          });
+          await requestClient.data.upgrade();
+          if (active) navigate(buildRoute('database'), { replace: true });
         } else {
           setStep(database === 'locked' ? 'unlock' : 'select');
         }

@@ -99,13 +99,12 @@ impl DesktopHost {
         providers.insert("local-file".into(), storage.clone());
         let core = KeelessCore::new(KeelessHost {
             storage_providers: providers,
-            config_provider: wire_config.clone(),
             untrusted_state: wire_config,
             connection_approval: native_ui.clone(),
             password_input: Some(native_ui.clone()),
             passkey_consent: Some(native_ui.clone()),
             clock: Arc::new(SystemClock),
-            database_persistence: Some(database_persistence),
+            database_persistence,
             task_spawner: Some(Arc::new(TokioTaskSpawner)),
             transfer_provider: None,
         })

@@ -33,8 +33,8 @@ export interface Relay {
 
 export interface ClientStore {
   loadDeviceKey(): Promise<Uint8Array>;
-  loadTrustedServer(relayId: string, recipient: string): Promise<string | undefined>;
-  saveTrustedServer(relayId: string, recipient: string, bundle: string): Promise<void>;
+  loadTrustedServer(endpointId: string): Promise<string | undefined>;
+  saveTrustedServer(endpointId: string, bundle: string): Promise<void>;
 }
 
 export const MAX_FRAME_SIZE = 1024 * 1024;
@@ -171,6 +171,7 @@ export class Client {
     scope: KeyScope,
     recipient?: string,
     store: ClientStore = new IndexedDbClientStore(),
+    endpointId = relay.id,
   ) {
     const identity = await deriveIdentity(store, scope);
     const advertised = await relay.connect();
@@ -179,7 +180,7 @@ export class Client {
     if (!recipient && advertised !== serverBundle) {
       throw new Error('Relay advertised an invalid server identity');
     }
-    const trusted = await store.loadTrustedServer(relay.id, serverBundle);
+    const trusted = await store.loadTrustedServer(endpointId);
     if (trusted && trusted !== serverBundle) {
       throw new Error('Server identity changed');
     }
@@ -205,7 +206,7 @@ export class Client {
     }
     verifyFrame(response, serverBundle);
     if (!trusted) {
-      await store.saveTrustedServer(relay.id, serverBundle, response.publicKey);
+      await store.saveTrustedServer(endpointId, response.publicKey);
     }
     return new Client(relay, identity, serverBundle, parseBundle(serverBundle));
   }
@@ -331,14 +332,13 @@ export class IndexedDbClientStore implements ClientStore {
     return key;
   }
 
-  loadTrustedServer(relayId: string, recipient: string) {
-    return this.read<string>(`trusted-server-v1:${relayId}:${recipient}`);
+  loadTrustedServer(endpointId: string) {
+    return this.read<string>(`trusted-server-v1:${endpointId}`);
   }
 
-  saveTrustedServer(relayId: string, recipient: string, bundle: string) {
-    parseBundle(recipient);
+  saveTrustedServer(endpointId: string, bundle: string) {
     parseBundle(bundle);
-    return this.write(`trusted-server-v1:${relayId}:${recipient}`, bundle);
+    return this.write(`trusted-server-v1:${endpointId}`, bundle);
   }
 
   private async read<T>(key: string) {

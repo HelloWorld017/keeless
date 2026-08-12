@@ -26,6 +26,16 @@ impl ApprovalProvider for Approval {
         Box::pin(async { Ok(self.0.load(Ordering::Relaxed)) })
     }
 }
+
+#[derive(Default)]
+struct RecordingApproval(Mutex<Vec<ApprovalRequest>>);
+
+impl ApprovalProvider for RecordingApproval {
+    fn approve(&self, request: ApprovalRequest) -> WireFuture<'_, Result<bool>> {
+        self.0.lock().unwrap().push(request);
+        Box::pin(async { Ok(true) })
+    }
+}
 struct TestClock(AtomicI64);
 impl Clock for TestClock {
     fn now_millis(&self) -> i64 {
@@ -222,6 +232,83 @@ async fn dynamic_runtime_approval_is_validated_and_not_persisted() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn upgrade_approval_uses_the_lesswire_provider_and_persists_only_after_approval() {
+    let store = Arc::new(MemoryStore::default());
+    let approvals = Arc::new(RecordingApproval::default());
+    let identity = Identity::from_secrets(KeyScope::App, [35; 32], [37; 32]);
+    let mut server = Server::new(ServerHost {
+        store: store.clone(),
+        approval_provider: approvals.clone(),
+        clock: Arc::new(TestClock(AtomicI64::new(10_000))),
+        scope: KeyScope::Core,
+        allow_transfers: false,
+        runtime_approved_clients: Vec::new(),
+    })
+    .await
+    .unwrap();
+
+    server
+        .approve_upgrade(&identity.public_key_bundle())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        approvals.0.lock().unwrap().as_slice(),
+        &[ApprovalRequest {
+            sender: identity.public_key_bundle(),
+            sender_scope: KeyScope::App,
+            recipient: server.public_key_bundle(),
+            recipient_scope: KeyScope::Core,
+            kind: ApprovalKind::Upgrade,
+        }]
+    );
+    let state: serde_json::Value =
+        serde_json::from_slice(store.0.lock().unwrap().as_ref().unwrap()).unwrap();
+    assert!(
+        state["approvedClientBundles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == identity.public_key_bundle().as_str())
+    );
+}
+
+#[tokio::test]
+async fn runtime_approval_is_exposed_to_the_payload_handler() {
+    let identity = Identity::from_secrets(KeyScope::App, [39; 32], [41; 32]);
+    let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
+    let mut server = Server::new(ServerHost {
+        store: Arc::new(MemoryStore::default()),
+        approval_provider: Arc::new(Approval(AtomicBool::new(false))),
+        clock: clock.clone(),
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
+        runtime_approved_clients: vec![identity.public_key_bundle()],
+    })
+    .await
+    .unwrap();
+    let mut client = Client::new(identity, &server.public_key_bundle(), clock).unwrap();
+    let handshake = server
+        .handle_frame(&client.handshake_frame().unwrap(), |_, _| async {
+            Ok::<_, ()>(None)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    client.accept_handshake(&handshake).unwrap();
+    let request = client.encrypt(b"request").unwrap();
+    let response = server
+        .handle_frame(&request, |sender, _| async move {
+            assert_eq!(sender.approval, SenderApproval::Runtime);
+            Ok::<_, ()>(Some(b"response".to_vec()))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&*client.decrypt(&response).unwrap().unwrap(), b"response");
 }
 
 #[tokio::test]

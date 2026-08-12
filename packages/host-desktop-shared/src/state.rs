@@ -4,7 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
-use keeless_lesswire::{Identity, KeyScope, StateStore, WireFuture};
+use keeless_lesswire::{Identity, KeyScope, PublicKeyBundle, StateStore, WireFuture};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
@@ -12,7 +12,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use crate::fs;
 
 pub const MAX_STATE_SIZE: usize = 64 * 1024;
-const STATE_VERSION: u8 = 2;
+const STATE_VERSION: u8 = 3;
 
 /// An owner-only file replaced atomically on every write.
 #[derive(Debug, Clone)]
@@ -121,7 +121,7 @@ struct PersistedClientState {
     identity: String,
     #[zeroize(skip)]
     scope: KeyScope,
-    /// Endpoint-specific server bundles pinned after an explicit handshake.
+    /// Stable endpoint IDs mapped to server bundles pinned after a handshake.
     #[serde(default)]
     #[zeroize(skip)]
     trusted_servers: std::collections::HashMap<String, String>,
@@ -155,6 +155,7 @@ impl ClientState {
                 .as_slice()
                 .try_into()
                 .map_err(|_| StateError::Malformed)?;
+            validate_trusted_servers(&persisted.trusted_servers)?;
             return Ok(Self {
                 store,
                 identity: Zeroizing::new(identity),
@@ -177,25 +178,26 @@ impl ClientState {
         Ok(Identity::from_bytes(self.scope, self.identity.as_slice())?)
     }
 
-    pub fn trusted_server(&self, recipient: &str) -> Option<&str> {
-        self.trusted_servers.get(recipient).map(String::as_str)
+    pub fn trusted_server(&self, endpoint_id: &str) -> Option<&str> {
+        self.trusted_servers.get(endpoint_id).map(String::as_str)
     }
 
     pub fn has_trusted_servers(&self) -> bool {
         !self.trusted_servers.is_empty()
     }
 
-    /// Pin the host key learned from a handshake.
+    /// Pin the host key learned from a handshake for a stable endpoint ID.
     pub async fn set_trusted_server(
         &mut self,
-        recipient: String,
+        endpoint_id: String,
         bundle: String,
     ) -> Result<(), StateError> {
-        let previous = self.trusted_servers.insert(recipient.clone(), bundle);
+        validate_bundle(&bundle)?;
+        let previous = self.trusted_servers.insert(endpoint_id.clone(), bundle);
         if let Err(error) = self.persist().await {
             match previous {
-                Some(value) => self.trusted_servers.insert(recipient, value),
-                None => self.trusted_servers.remove(&recipient),
+                Some(value) => self.trusted_servers.insert(endpoint_id, value),
+                None => self.trusted_servers.remove(&endpoint_id),
             };
             return Err(error);
         }
@@ -225,6 +227,21 @@ impl ClientState {
     }
 }
 
+fn validate_trusted_servers(
+    trusted_servers: &std::collections::HashMap<String, String>,
+) -> Result<(), StateError> {
+    trusted_servers
+        .values()
+        .try_for_each(|bundle| validate_bundle(bundle))
+}
+
+fn validate_bundle(bundle: &str) -> Result<(), StateError> {
+    let parsed = PublicKeyBundle::parse(bundle).ok_or(StateError::Malformed)?;
+    (parsed.as_str() == bundle)
+        .then_some(())
+        .ok_or(StateError::Malformed)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum StateError {
     #[error("client state I/O failed: {0}")]
@@ -249,21 +266,27 @@ mod tests {
         let mut state = ClientState::load(store.clone(), KeyScope::App)
             .await
             .unwrap();
-        let bundle = state.identity().unwrap().public_key_bundle();
-        assert!(state.trusted_server("v1.server.app").is_none());
+        let identity_bundle = state.identity().unwrap().public_key_bundle();
+        let server_bundle = Identity::generate(KeyScope::Core)
+            .unwrap()
+            .public_key_bundle();
+        assert!(state.trusted_server("core").is_none());
 
         state
-            .set_trusted_server("v1.server.app".into(), "v1.server.app".into())
+            .set_trusted_server("core".into(), server_bundle.clone())
             .await
             .unwrap();
 
         let reloaded = ClientState::load(store.clone(), KeyScope::App)
             .await
             .unwrap();
-        assert_eq!(reloaded.identity().unwrap().public_key_bundle(), bundle);
         assert_eq!(
-            reloaded.trusted_server("v1.server.app"),
-            Some("v1.server.app")
+            reloaded.identity().unwrap().public_key_bundle(),
+            identity_bundle
+        );
+        assert_eq!(
+            reloaded.trusted_server("core"),
+            Some(server_bundle.as_str())
         );
 
         let mut reloaded = reloaded;
@@ -272,16 +295,56 @@ mod tests {
             ClientState::load(store, KeyScope::App)
                 .await
                 .unwrap()
-                .trusted_server("v1.server.app")
+                .trusted_server("core")
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_noncanonical_trusted_server_bundles() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = FileStore::at(directory.path().join("state.json"));
+        let mut state = ClientState::load(store, KeyScope::App).await.unwrap();
+
+        let error = state
+            .set_trusted_server("core".into(), "not-a-bundle".into())
+            .await
+            .unwrap_err();
+        assert!(matches!(error, StateError::Malformed));
+    }
+
+    #[tokio::test]
+    async fn rejects_persisted_invalid_trusted_server_bundles() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("state.json");
+        let state = serde_json::json!({
+            "version": STATE_VERSION,
+            "identity": hex::encode(Identity::generate(KeyScope::App).unwrap().to_bytes()),
+            "scope": "app",
+            "trustedServers": { "core": "not-a-bundle" },
+        });
+        tokio::fs::write(&path, serde_json::to_vec(&state).unwrap())
+            .await
+            .unwrap();
+
+        let error = match ClientState::load(FileStore::at(path), KeyScope::App).await {
+            Ok(_) => panic!("an invalid trusted server bundle should be rejected"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, StateError::Malformed));
     }
 
     #[tokio::test]
     async fn rejects_malformed_state_instead_of_replacing_it() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("vhid-state.json");
-        tokio::fs::write(&path, b"{\"version\":9,\"identity\":\"00\"}")
+        let old_state = serde_json::json!({
+            "version": 2,
+            "identity": hex::encode(Identity::generate(KeyScope::App).unwrap().to_bytes()),
+            "scope": "app",
+            "trustedServers": {},
+        });
+        tokio::fs::write(&path, serde_json::to_vec(&old_state).unwrap())
             .await
             .unwrap();
         let error = ClientState::load(FileStore::at(path.clone()), KeyScope::App)

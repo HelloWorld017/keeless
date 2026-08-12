@@ -22,13 +22,7 @@ pub trait HostProviderRequirements {}
 #[cfg(target_arch = "wasm32")]
 impl<T: ?Sized> HostProviderRequirements for T {}
 
-pub trait ConfigProvider: HostProviderRequirements {
-    fn load(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>>;
-    /// Persist the versioned core settings.
-    fn save<'a>(&'a self, config: &'a [u8]) -> HostFuture<'a, Result<()>>;
-}
-
-/// Optional durable storage used for the local database cache and mutation journal.
+/// Durable storage used for the local database cache, mutation journal, and encrypted Core state.
 pub trait DatabasePersistence: HostProviderRequirements {
     /// Select the persistence namespace associated with a storage capability.
     fn select<'a>(
@@ -165,14 +159,13 @@ impl Clock for SystemClock {
 
 pub struct KeelessHost {
     pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
-    pub config_provider: Arc<dyn ConfigProvider>,
     /// Global plaintext state for the always-available untrusted Lesswire endpoint.
     pub untrusted_state: Arc<dyn StateStore>,
     pub connection_approval: Arc<dyn ConnectionApprovalProvider>,
     pub password_input: Option<Arc<dyn PasswordInputProvider>>,
     pub passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     pub clock: Arc<dyn Clock>,
-    pub database_persistence: Option<Arc<dyn DatabasePersistence>>,
+    pub database_persistence: Arc<dyn DatabasePersistence>,
     pub task_spawner: Option<Arc<dyn TaskSpawner>>,
     pub transfer_provider: Option<Arc<dyn TransferProvider>>,
 }
@@ -184,10 +177,7 @@ impl std::fmt::Debug for KeelessHost {
             .field("has_password_input", &self.password_input.is_some())
             .field("has_connection_approval", &true)
             .field("has_passkey_consent", &self.passkey_consent.is_some())
-            .field(
-                "has_database_persistence",
-                &self.database_persistence.is_some(),
-            )
+            .field("has_database_persistence", &true)
             .field("has_task_spawner", &self.task_spawner.is_some())
             .field("has_transfer_provider", &self.transfer_provider.is_some())
             .finish_non_exhaustive()

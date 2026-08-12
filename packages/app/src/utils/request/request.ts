@@ -1,7 +1,7 @@
 import { Client as WireClient } from '@keeless/lesswire';
 import type { Host } from '@/types/Host';
 import type { ClientStore } from '@keeless/lesswire';
-import type { Operation, OperationResponse, OperationSuccess } from '@keeless/schema';
+import { KeyScope, operationMetadata, type Operation, type OperationResponse, type OperationSuccess } from '@keeless/schema';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder(undefined, { fatal: true });
@@ -14,9 +14,9 @@ const createMemoryClientStore = (): ClientStore => {
 
   return {
     loadDeviceKey: async () => deviceKey.slice(),
-    loadTrustedServer: async (relayId, recipient) => trustedServers.get(`${relayId}:${recipient}`),
-    saveTrustedServer: async (relayId, recipient, bundle) => {
-      trustedServers.set(`${relayId}:${recipient}`, bundle);
+    loadTrustedServer: async endpointId => trustedServers.get(endpointId),
+    saveTrustedServer: async (endpointId, bundle) => {
+      trustedServers.set(endpointId, bundle);
     },
   };
 };
@@ -41,7 +41,8 @@ export class CoreRequestError extends Error {
 export class RequestClient {
   private constructor(
     readonly host: Host,
-    private wire: WireClient,
+    private readonly untrustedWire: WireClient,
+    private coreWire?: WireClient,
   ) {}
 
   static async connect(host: Host) {
@@ -49,7 +50,7 @@ export class RequestClient {
     const recipient = await host.connect();
     return new RequestClient(
       host,
-      await WireClient.connect(host, 'app', recipient, memoryClientStore),
+      await WireClient.connect(host, 'app', recipient, memoryClientStore, `${host.id}:untrusted`),
     );
   }
 
@@ -61,7 +62,7 @@ export class RequestClient {
     const plaintext = encoder.encode(JSON.stringify({ requestId, op, args }));
     let responseBytes: Uint8Array;
     try {
-      responseBytes = await this.wire.request(plaintext);
+      responseBytes = await this.getWire(op).request(plaintext);
     } finally {
       plaintext.fill(0);
     }
@@ -87,16 +88,34 @@ export class RequestClient {
   }
 
   upload(file: File) {
-    return this.wire.upload(file);
+    return this.getCoreWire().upload(file);
   }
 
   download(transferId: string) {
-    return this.wire.download(transferId);
+    return this.getCoreWire().download(transferId);
   }
 
   async upgrade() {
     const { publicKey } = await this.request('upgrade', {});
-    this.wire = await WireClient.connect(this.host, 'app', publicKey, memoryClientStore);
+    this.coreWire = await WireClient.connect(
+      this.host,
+      'app',
+      publicKey,
+      memoryClientStore,
+      `${this.host.id}:core`,
+    );
+  }
+
+  private getWire(op: OperationName) {
+    const isUntrustedOperation = (operationMetadata[op].recipients as readonly KeyScope[]).includes('core_untrusted');
+    return isUntrustedOperation ? this.untrustedWire : this.getCoreWire();
+  }
+
+  private getCoreWire() {
+    if (!this.coreWire) {
+      throw new Error('Core connection is not available');
+    }
+    return this.coreWire;
   }
 }
 

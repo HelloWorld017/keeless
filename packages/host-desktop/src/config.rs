@@ -1,11 +1,9 @@
 use std::{io, path::PathBuf};
 
 use directories::ProjectDirs;
-use keeless_core::{ConfigProvider, CoreError, HostFuture};
 use keeless_host_desktop_shared::{fs, state::FileStore};
 
 pub const MAX_CONFIG_SIZE: usize = 1024 * 1024;
-pub const CORE_SETTINGS_FILE: &str = "core-settings.json";
 pub const WIRE_STATE_FILE: &str = "wire-state.json";
 pub const DESKTOP_WIRE_STATE_FILE: &str = "desktop-wire-state.json";
 
@@ -30,46 +28,15 @@ impl DesktopConfig {
     pub fn directory(&self) -> io::Result<&std::path::Path> {
         self.store.directory()
     }
-
-    fn host_error(error: impl std::fmt::Display) -> CoreError {
-        CoreError::Host(error.to_string())
-    }
-}
-
-impl ConfigProvider for DesktopConfig {
-    fn load(&self) -> HostFuture<'_, keeless_core::Result<Option<Vec<u8>>>> {
-        Box::pin(async move {
-            self.store
-                .load(MAX_CONFIG_SIZE)
-                .await
-                .map(|config| config.map(|bytes| bytes.to_vec()))
-                .map_err(|error| {
-                    if error.kind() == io::ErrorKind::InvalidData {
-                        CoreError::InvalidConfig("configuration is too large".into())
-                    } else {
-                        Self::host_error(error)
-                    }
-                })
-        })
-    }
-
-    fn save<'a>(&'a self, config: &'a [u8]) -> HostFuture<'a, keeless_core::Result<()>> {
-        Box::pin(async move {
-            if config.len() > MAX_CONFIG_SIZE {
-                return Err(CoreError::InvalidConfig(
-                    "configuration is too large".into(),
-                ));
-            }
-            self.store.save(config).await.map_err(Self::host_error)
-        })
-    }
 }
 
 impl keeless_lesswire::StateStore for DesktopConfig {
     fn load(&self) -> keeless_lesswire::WireFuture<'_, keeless_lesswire::Result<Option<Vec<u8>>>> {
         Box::pin(async move {
-            ConfigProvider::load(self)
+            self.store
+                .load(MAX_CONFIG_SIZE)
                 .await
+                .map(|config| config.map(|bytes| bytes.to_vec()))
                 .map_err(|error| keeless_lesswire::Error::Host(error.to_string()))
         })
     }
@@ -79,7 +46,13 @@ impl keeless_lesswire::StateStore for DesktopConfig {
         state: &'a [u8],
     ) -> keeless_lesswire::WireFuture<'a, keeless_lesswire::Result<()>> {
         Box::pin(async move {
-            ConfigProvider::save(self, state)
+            if state.len() > MAX_CONFIG_SIZE {
+                return Err(keeless_lesswire::Error::Host(
+                    "wire state is too large".into(),
+                ));
+            }
+            self.store
+                .save(state)
                 .await
                 .map_err(|error| keeless_lesswire::Error::Host(error.to_string()))
         })
@@ -98,10 +71,20 @@ mod tests {
     async fn absent_config_and_atomic_round_trip() {
         let directory = tempfile::tempdir().unwrap();
         let provider = DesktopConfig::at(directory.path().join("nested/config.json"));
-        assert_eq!(provider.load().await.unwrap(), None);
-        provider.save(b"first").await.unwrap();
-        provider.save(b"second").await.unwrap();
-        assert_eq!(provider.load().await.unwrap(), Some(b"second".to_vec()));
+        assert_eq!(
+            keeless_lesswire::StateStore::load(&provider).await.unwrap(),
+            None
+        );
+        keeless_lesswire::StateStore::save(&provider, b"first")
+            .await
+            .unwrap();
+        keeless_lesswire::StateStore::save(&provider, b"second")
+            .await
+            .unwrap();
+        assert_eq!(
+            keeless_lesswire::StateStore::load(&provider).await.unwrap(),
+            Some(b"second".to_vec())
+        );
         let entries = std::fs::read_dir(provider.directory().unwrap())
             .unwrap()
             .count();
@@ -109,11 +92,8 @@ mod tests {
     }
 
     #[test]
-    fn core_and_wire_use_distinct_new_file_names() {
-        assert_eq!(CORE_SETTINGS_FILE, "core-settings.json");
+    fn wire_state_uses_the_current_file_name() {
         assert_eq!(WIRE_STATE_FILE, "wire-state.json");
-        assert_ne!(CORE_SETTINGS_FILE, WIRE_STATE_FILE);
-        assert!(![CORE_SETTINGS_FILE, WIRE_STATE_FILE].contains(&"core-config.json"));
         assert_ne!(DESKTOP_WIRE_STATE_FILE, WIRE_STATE_FILE);
     }
 
@@ -123,8 +103,16 @@ mod tests {
         let path = directory.path().join("config.json");
         std::fs::write(&path, vec![0; MAX_CONFIG_SIZE + 1]).unwrap();
         let provider = Arc::new(DesktopConfig::at(path));
-        assert!(provider.load().await.is_err());
-        assert!(provider.save(&vec![0; MAX_CONFIG_SIZE + 1]).await.is_err());
+        assert!(
+            keeless_lesswire::StateStore::load(&*provider)
+                .await
+                .is_err()
+        );
+        assert!(
+            keeless_lesswire::StateStore::save(&*provider, &vec![0; MAX_CONFIG_SIZE + 1])
+                .await
+                .is_err()
+        );
     }
 
     #[cfg(unix)]
@@ -134,7 +122,9 @@ mod tests {
 
         let directory = tempfile::tempdir().unwrap();
         let provider = DesktopConfig::at(directory.path().join("private/config.json"));
-        provider.save(b"secret").await.unwrap();
+        keeless_lesswire::StateStore::save(&provider, b"secret")
+            .await
+            .unwrap();
         assert_eq!(
             std::fs::metadata(provider.directory().unwrap())
                 .unwrap()

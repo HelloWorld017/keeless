@@ -30,14 +30,12 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
 
     let key = CompositeKey::new().with_password(password)?;
     let raw_key = key.build_raw_key()?;
-    if let Some(persistence) = &core.persistence {
-        persistence
-            .quarantine_journal("journal predates newly created database")
-            .await?;
-        persistence
-            .quarantine_cache("cache predates newly created database")
-            .await?;
-    }
+    core.persistence
+        .quarantine_journal("journal predates newly created database")
+        .await?;
+    core.persistence
+        .quarantine_cache("cache predates newly created database")
+        .await?;
     let journal = super::mutations::MutationCoordinator::new(&raw_key, database_id, 0)?;
     let mut database = Database::new(DatabaseVersion::KDBX4);
     let root_id = NodeId::new_uuid();
@@ -69,11 +67,9 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             }
             Err(error) => return Err(error.into()),
         };
-    if let Some(persistence) = &core.persistence {
-        let cache = journal.encode_cache(handle.checkpoint_bytes())?;
-        persistence.write_cache(&cache).await?;
-        persistence.clear_journal().await?;
-    }
+    let cache = journal.encode_cache(handle.checkpoint_bytes())?;
+    core.persistence.write_cache(&cache).await?;
+    core.persistence.clear_journal().await?;
     if let Err(error) = core.activate_database_state(&raw_key).await {
         core.core_server = None;
         core.core_transfers = None;

@@ -91,10 +91,6 @@ impl BrowserCore {
         );
         let host = KeelessHost {
             storage_providers,
-            config_provider: Arc::new(BrowserConfig {
-                idb: idb.clone(),
-                key: WIRE_CONFIG_KEY,
-            }),
             untrusted_state: Arc::new(BrowserConfig {
                 idb: idb.clone(),
                 key: WIRE_CONFIG_KEY,
@@ -103,7 +99,7 @@ impl BrowserCore {
             password_input: None,
             passkey_consent: None,
             clock: Arc::new(BrowserClock),
-            database_persistence: Some(Arc::new(BrowserDatabasePersistence::new(idb.clone()))),
+            database_persistence: Arc::new(BrowserDatabasePersistence::new(idb.clone())),
             task_spawner: Some(Arc::new(BrowserTaskSpawner)),
             transfer_provider: None,
         };

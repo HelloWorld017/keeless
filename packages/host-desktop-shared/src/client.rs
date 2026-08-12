@@ -11,6 +11,11 @@ use crate::ipc::{self, IpcError, Request, Response};
 use crate::launcher::LauncherError;
 use crate::state::{ClientState, StateError};
 
+/// Stable ID for the host's bootstrap endpoint.
+pub const UNTRUSTED_ENDPOINT_ID: &str = "untrusted";
+/// Stable ID for the host's upgraded core endpoint.
+pub const CORE_ENDPOINT_ID: &str = "core";
+
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error(transparent)]
@@ -28,6 +33,8 @@ pub enum ClientError {
     Rejected,
     #[error("host answered a different request")]
     MismatchedResponse,
+    #[error("the server identity for this endpoint changed; reset pairing to continue")]
+    ServerIdentityChanged,
     /// The host ran the operation and refused it. `code` matches the core's
     /// operation error codes, so callers can map it onto their own protocol.
     #[error("host reported {code}: {message}")]
@@ -46,20 +53,25 @@ pub struct CoreClient {
 }
 
 impl CoreClient {
-    /// Connect to a specific server recipient, pinning its advertised bundle on first use.
+    /// Connect to a stable endpoint and optional advertised recipient.
     ///
     /// Pairing sends a handshake the host answers only after the user approves this
     /// client, and the host key learned that way is pinned in `state`.
     pub async fn connect(
         state: &mut ClientState,
+        endpoint_id: &str,
         recipient: Option<String>,
     ) -> Result<Self, ClientError> {
         let recipient = match recipient {
             Some(recipient) => recipient,
             None => ipc::Client::bootstrap().await?,
         };
-        let mut wire = WireClient::new(state.identity()?, &recipient, Arc::new(SystemClock))?;
-        if state.trusted_server(&recipient).is_none() {
+        if let Some(pinned) = state.trusted_server(endpoint_id) {
+            if pinned != recipient {
+                return Err(ClientError::ServerIdentityChanged);
+            }
+        } else {
+            let mut wire = WireClient::new(state.identity()?, &recipient, Arc::new(SystemClock))?;
             let mut connection = ipc::Client::connect().await?;
             let frame = serde_json::to_vec(&wire.handshake_frame()?)?;
             connection
@@ -68,9 +80,10 @@ impl CoreClient {
             let response = expect_frame(connection.receive_response().await?)?;
             wire.accept_handshake(&parse_frame(&response)?)?;
             state
-                .set_trusted_server(recipient.clone(), recipient.clone())
+                .set_trusted_server(endpoint_id.into(), recipient.clone())
                 .await?;
         }
+        let wire = WireClient::new(state.identity()?, &recipient, Arc::new(SystemClock))?;
 
         let mut session = [0_u8; 8];
         getrandom::getrandom(&mut session)

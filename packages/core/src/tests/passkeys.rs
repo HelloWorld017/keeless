@@ -9,6 +9,7 @@ async fn passkey_core(storage: Arc<MemoryStorage>) -> KeelessCore {
     providers.insert("memory".into(), storage);
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
+        database_persistence: Arc::new(MemoryDatabasePersistence::default()),
         ..host(
             Arc::new(MemoryConfig::default()),
             Arc::new(Approval),
@@ -33,8 +34,42 @@ async fn passkey_core(storage: Arc<MemoryStorage>) -> KeelessCore {
 }
 
 async fn dispatch_json(core: &mut KeelessCore, request: serde_json::Value) -> serde_json::Value {
+    use keeless_lesswire::{Client, Identity, KeyScope};
+
+    let clock = Arc::new(FakeClock::new(100));
+    let recipient = core
+        .core_public_key_bundle()
+        .unwrap_or_else(|| core.untrusted_public_key_bundle());
+    let scope = if core.core_public_key_bundle().is_some() {
+        KeyScope::Passkey
+    } else {
+        KeyScope::App
+    };
+    let mut client = Client::new(
+        Identity::from_secrets(scope, [71; 32], [72; 32]),
+        &recipient,
+        clock,
+    )
+    .unwrap();
+    let handshake = core
+        .handle_frame(&serde_json::to_vec(&client.handshake_frame().unwrap()).unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    client
+        .accept_handshake(&serde_json::from_slice(&handshake).unwrap())
+        .unwrap();
     let payload = serde_json::to_vec(&request).unwrap();
-    let response = core.handle_payload(&payload).await.unwrap().unwrap();
+    let frame = client.encrypt(&payload).unwrap();
+    let response = core
+        .handle_frame(&serde_json::to_vec(&frame).unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    let response = client
+        .decrypt(&serde_json::from_slice(&response).unwrap())
+        .unwrap()
+        .unwrap();
     serde_json::from_slice(&response).unwrap()
 }
 
@@ -338,28 +373,7 @@ async fn passkey_operations_reject_invalid_requests() {
     assert_eq!(wrong_rp["error"]["code"], "passkey_not_found");
 
     operations::lock::run(&mut core);
-    for op in ["getPasskeys", "registerPasskey", "assertPasskey"] {
-        let args = match op {
-            "getPasskeys" => serde_json::json!({}),
-            "registerPasskey" => register_request("locked", "alice")["args"].clone(),
-            _ => serde_json::json!({
-                "rpId": "example.com",
-                "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
-                "userPresent": true,
-            }),
-        };
-        let response = dispatch_json(
-            &mut core,
-            serde_json::json!({ "requestId": "locked", "op": op, "args": args }),
-        )
-        .await;
-        let expected = if op == "getPasskeys" {
-            "database_locked"
-        } else {
-            "password_required"
-        };
-        assert_eq!(response["error"]["code"], expected, "{op}");
-    }
+    assert!(core.core_public_key_bundle().is_none());
 }
 
 #[tokio::test]
@@ -370,7 +384,7 @@ async fn registered_passkey_survives_journal_replay() {
     providers.insert("memory".into(), storage.clone());
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers.clone(),
-        database_persistence: Some(persistence.clone()),
+        database_persistence: persistence.clone(),
         ..host(
             Arc::new(MemoryConfig::default()),
             Arc::new(Approval),
@@ -410,7 +424,7 @@ async fn registered_passkey_survives_journal_replay() {
     );
     let mut replayed = KeelessCore::new(KeelessHost {
         storage_providers: providers,
-        database_persistence: Some(persistence),
+        database_persistence: persistence,
         ..host(
             Arc::new(MemoryConfig::default()),
             Arc::new(Approval),
@@ -475,7 +489,7 @@ async fn failed_passkey_registration_does_not_create_an_entry_or_index() {
     providers.insert("memory".into(), storage);
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
-        database_persistence: Some(persistence.clone()),
+        database_persistence: persistence.clone(),
         ..host(
             Arc::new(MemoryConfig::default()),
             Arc::new(Approval),

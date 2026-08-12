@@ -1,5 +1,6 @@
 //! Authenticated local IPC state for the Windows passkey provider.
 
+use keeless_host_desktop_shared::client::{CORE_ENDPOINT_ID, UNTRUSTED_ENDPOINT_ID};
 use keeless_host_desktop_shared::state::{ClientState, FileStore};
 use keeless_host_desktop_shared::{ClientError, CoreClient, DesktopLauncher};
 use keeless_lesswire::KeyScope;
@@ -49,15 +50,18 @@ impl Session {
             if let Some(launcher) = &self.launcher {
                 launcher.ensure_running().await?;
             }
-            let mut untrusted = CoreClient::connect(&mut self.state, None).await?;
+            let mut untrusted =
+                CoreClient::connect(&mut self.state, UNTRUSTED_ENDPOINT_ID, None).await?;
             let OperationSuccess::Upgrade(upgrade) = untrusted
                 .request(Operation::Upgrade(keeless_schema::UpgradeArgs {}))
                 .await?
             else {
                 return Err(ClientError::Rejected);
             };
-            self.client =
-                Some(CoreClient::connect(&mut self.state, Some(upgrade.public_key)).await?);
+            self.client = Some(
+                CoreClient::connect(&mut self.state, CORE_ENDPOINT_ID, Some(upgrade.public_key))
+                    .await?,
+            );
         }
         let client = self.client.as_mut().expect("client was just connected");
         match client.request(operation).await {

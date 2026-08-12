@@ -4,20 +4,6 @@ use keeless_schema::{KeyScope, Operation, OperationOutcome, OperationRequest, Op
 use crate::{CoreError, KeelessCore, MAX_REQUEST_ID_LENGTH, MAX_REQUEST_SIZE, Result, operations};
 
 impl KeelessCore {
-    pub async fn handle_payload(&mut self, plaintext: &[u8]) -> Result<Option<Vec<u8>>> {
-        self.handle_payload_from(None, plaintext).await
-    }
-
-    /// Legacy in-process dispatch remains unrestricted for direct Core callers and tests.
-    pub async fn handle_payload_from(
-        &mut self,
-        transfer_owner: Option<String>,
-        plaintext: &[u8],
-    ) -> Result<Option<Vec<u8>>> {
-        self.handle_payload_with_context(transfer_owner, None, None, plaintext)
-            .await
-    }
-
     pub async fn handle_frame(&mut self, bytes: &[u8]) -> Result<Option<Vec<u8>>> {
         if bytes.len() > keeless_lesswire::MAX_FRAME_SIZE {
             return Ok(None);
@@ -51,6 +37,7 @@ impl KeelessCore {
                 .expect("untrusted server is present"),
             Target::Core => self.core_server.take().expect("core server was selected"),
         };
+        let core_server_generation = self.core_server_generation;
         let response = server
             .handle_frame(&frame, |sender, plaintext| {
                 let core = &mut *self;
@@ -64,12 +51,15 @@ impl KeelessCore {
                     .await
                 }
             })
-            .await
-            .map_err(|error| CoreError::Host(error.to_string()))?;
+            .await;
         match target {
             Target::Untrusted => self.untrusted_server = Some(server),
-            Target::Core => self.core_server = Some(server),
+            Target::Core if self.core_server_generation == core_server_generation => {
+                self.core_server = Some(server)
+            }
+            Target::Core => {}
         }
+        let response = response.map_err(|error| CoreError::Host(error.to_string()))?;
         response
             .map(|frame| serde_json::to_vec(&frame).map_err(Into::into))
             .transpose()

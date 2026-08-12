@@ -5,6 +5,7 @@ use crate::{KeelessCore, Result};
 
 pub(crate) fn run(core: &mut KeelessCore) {
     core.clear_transfers();
+    core.core_server_generation = core.core_server_generation.wrapping_add(1);
     core.core_server = None;
     core.core_transfers = None;
     core.encrypted_state = None;

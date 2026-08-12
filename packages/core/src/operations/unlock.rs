@@ -23,10 +23,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     let raw_key = key.build_raw_key()?;
     let persistence = core.persistence.clone();
     let mut journal = super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
-    let cached = match &persistence {
-        Some(persistence) => persistence.read_cache().await?,
-        None => None,
-    };
+    let cached = persistence.read_cache().await?;
     let mut opened_from_cache = false;
     let mut recovered_error = None;
     let mut handle = if let Some(cache) = cached {
@@ -49,11 +46,9 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             Err(cache_error) => {
                 let remote =
                     open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
-                if let Some(persistence) = &persistence {
-                    persistence
-                        .quarantine_cache(&cache_error.to_string())
-                        .await?;
-                }
+                persistence
+                    .quarantine_cache(&cache_error.to_string())
+                    .await?;
                 recovered_error = Some(cache_error);
                 remote
             }
@@ -61,30 +56,11 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     } else {
         open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?
     };
-    if let Some(persistence) = &persistence {
-        match persistence.read_journal().await {
-            Ok(lines) => {
-                if let Err(error) = super::mutations::replay_lines(
-                    &mut journal,
-                    handle.replay_database(),
-                    &key,
-                    &lines,
-                ) {
-                    let remote =
-                        open_remote_selected(core, Arc::clone(&provider), path.clone(), &key)
-                            .await?;
-                    persistence.quarantine_journal(&error.to_string()).await?;
-                    handle = remote;
-                    opened_from_cache = false;
-                    recovered_error = Some(error);
-                    journal = super::mutations::MutationCoordinator::new(
-                        &raw_key,
-                        database_id.clone(),
-                        0,
-                    )?;
-                }
-            }
-            Err(error) => {
+    match persistence.read_journal().await {
+        Ok(lines) => {
+            if let Err(error) =
+                super::mutations::replay_lines(&mut journal, handle.replay_database(), &key, &lines)
+            {
                 let remote =
                     open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
                 persistence.quarantine_journal(&error.to_string()).await?;
@@ -95,16 +71,23 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
                     super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
             }
         }
+        Err(error) => {
+            let remote =
+                open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
+            persistence.quarantine_journal(&error.to_string()).await?;
+            handle = remote;
+            opened_from_cache = false;
+            recovered_error = Some(error);
+            journal = super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
+        }
     }
     if journal.is_dirty() {
         handle.mark_dirty();
     }
     let should_sync = opened_from_cache || journal.is_dirty();
     if !opened_from_cache && !journal.is_dirty() {
-        if let Some(persistence) = &persistence {
-            let cache = journal.encode_cache(handle.checkpoint_bytes())?;
-            persistence.write_cache(&cache).await?;
-        }
+        let cache = journal.encode_cache(handle.checkpoint_bytes())?;
+        persistence.write_cache(&cache).await?;
     }
     core.activate_database_state(&raw_key).await?;
     let credential = if core.settings.paranoia_mode {

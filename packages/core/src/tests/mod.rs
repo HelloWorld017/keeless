@@ -68,24 +68,14 @@ pub(super) fn detail_field(field: &EntryFieldInformation) -> Option<DetailField<
 }
 
 #[derive(Default)]
-pub(super) struct MemoryConfig(pub(super) Mutex<Option<Vec<u8>>>);
-
-impl ConfigProvider for MemoryConfig {
-    fn load(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>> {
-        Box::pin(async { Ok(self.0.lock().unwrap().clone()) })
-    }
-
-    fn save<'a>(&'a self, value: &'a [u8]) -> HostFuture<'a, Result<()>> {
-        Box::pin(async move {
-            *self.0.lock().unwrap() = Some(value.to_vec());
-            Ok(())
-        })
-    }
+pub(super) struct MemoryConfig {
+    pub(super) value: Mutex<Option<Vec<u8>>>,
+    pub(super) fail_save: AtomicBool,
 }
 
 impl keeless_lesswire::StateStore for MemoryConfig {
     fn load(&self) -> keeless_lesswire::WireFuture<'_, keeless_lesswire::Result<Option<Vec<u8>>>> {
-        Box::pin(async { Ok(self.0.lock().unwrap().clone()) })
+        Box::pin(async { Ok(self.value.lock().unwrap().clone()) })
     }
 
     fn save<'a>(
@@ -93,27 +83,8 @@ impl keeless_lesswire::StateStore for MemoryConfig {
         value: &'a [u8],
     ) -> keeless_lesswire::WireFuture<'a, keeless_lesswire::Result<()>> {
         Box::pin(async move {
-            *self.0.lock().unwrap() = Some(value.to_vec());
-            Ok(())
-        })
-    }
-}
-
-#[derive(Default)]
-pub(super) struct FailingConfig {
-    pub(super) value: Mutex<Option<Vec<u8>>>,
-    pub(super) fail_save: AtomicBool,
-}
-
-impl ConfigProvider for FailingConfig {
-    fn load(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>> {
-        Box::pin(async { Ok(self.value.lock().unwrap().clone()) })
-    }
-
-    fn save<'a>(&'a self, value: &'a [u8]) -> HostFuture<'a, Result<()>> {
-        Box::pin(async move {
             if self.fail_save.load(Ordering::Relaxed) {
-                return Err(CoreError::Host("save failed".into()));
+                return Err(keeless_lesswire::Error::Host("save failed".into()));
             }
             *self.value.lock().unwrap() = Some(value.to_vec());
             Ok(())
@@ -127,6 +98,7 @@ pub(super) struct MemoryDatabasePersistence {
     pub(super) journal: Mutex<Vec<Vec<u8>>>,
     pub(super) selected: Mutex<Option<StorageDescriptor>>,
     pub(super) fail_append: AtomicBool,
+    pub(super) fail_state_write: AtomicBool,
     pub(super) state: Mutex<std::collections::HashMap<String, Vec<u8>>>,
 }
 
@@ -197,6 +169,9 @@ impl DatabasePersistence for MemoryDatabasePersistence {
         bytes: &'a [u8],
     ) -> HostFuture<'a, Result<()>> {
         Box::pin(async move {
+            if self.fail_state_write.load(Ordering::Relaxed) {
+                return Err(CoreError::Host("state write failed".into()));
+            }
             self.state
                 .lock()
                 .unwrap()
@@ -570,13 +545,12 @@ pub(super) async fn query_core_with_persistence(
     providers.insert("memory".into(), storage);
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
-        config_provider: Arc::new(MemoryConfig::default()),
         untrusted_state: Arc::new(MemoryConfig::default()),
         connection_approval: Arc::new(Approval),
         password_input: None,
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock: Arc::new(FakeClock::new(1234)),
-        database_persistence: Some(persistence),
+        database_persistence: persistence,
         task_spawner: None,
         transfer_provider: None,
     })
@@ -609,19 +583,18 @@ pub(super) fn model_id(id: DatabaseNodeId) -> NodeId {
 }
 
 pub(super) fn host(
-    config: Arc<dyn ConfigProvider>,
+    config: Arc<dyn keeless_lesswire::StateStore>,
     _approval: Arc<Approval>,
     clock: Arc<FakeClock>,
 ) -> KeelessHost {
     KeelessHost {
         storage_providers: HashMap::new(),
-        config_provider: config,
-        untrusted_state: Arc::new(MemoryConfig::default()),
+        untrusted_state: config,
         connection_approval: Arc::new(Approval),
         password_input: None,
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock,
-        database_persistence: None,
+        database_persistence: Arc::new(MemoryDatabasePersistence::default()),
         task_spawner: None,
         transfer_provider: None,
     }

@@ -60,6 +60,13 @@ pub struct ApprovalRequest {
 pub struct AuthenticatedSender {
     pub public_key_bundle: String,
     pub scope: KeyScope,
+    pub approval: SenderApproval,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SenderApproval {
+    Persisted,
+    Runtime,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -386,6 +393,35 @@ impl Server {
         Ok(())
     }
 
+    /// Grants database access through the same approval path as an initial handshake.
+    pub async fn approve_upgrade(&mut self, bundle: &str) -> Result<()> {
+        let bundle = PublicKeyBundle::parse(bundle)
+            .ok_or_else(|| Error::InvalidState("invalid approved client bundle".into()))?;
+        if self.is_approved(bundle.as_str()) {
+            return Ok(());
+        }
+        if !self
+            .host
+            .approval_provider
+            .approve(ApprovalRequest {
+                sender: bundle.as_str().to_owned(),
+                sender_scope: bundle.scope,
+                recipient: self.identity.public_key_bundle(),
+                recipient_scope: self.identity.scope(),
+                kind: ApprovalKind::Upgrade,
+            })
+            .await?
+        {
+            return Err(Error::Host("database access was not approved".into()));
+        }
+        self.persisted_approved.push(bundle.as_str().to_owned());
+        if let Err(error) = self.persist().await {
+            self.persisted_approved.pop();
+            return Err(error);
+        }
+        Ok(())
+    }
+
     pub async fn handle_frame<F, Fut, E>(
         &mut self,
         frame: &MessageFrame,
@@ -398,7 +434,8 @@ impl Server {
         if frame_size(frame) > MAX_FRAME_SIZE {
             return Ok(None);
         }
-        let Some(sender) = self.authenticate(frame).await.map_err(HandleError::Wire)? else {
+        let Some((sender, approval)) = self.authenticate(frame).await.map_err(HandleError::Wire)?
+        else {
             return Ok(None);
         };
         if frame.payload.is_none() {
@@ -438,6 +475,7 @@ impl Server {
             AuthenticatedSender {
                 public_key_bundle: sender.as_str().to_owned(),
                 scope: sender.scope,
+                approval,
             },
             Zeroizing::new(plaintext),
         )
@@ -458,7 +496,10 @@ impl Server {
         .map_err(HandleError::Wire)
     }
 
-    async fn authenticate(&mut self, frame: &MessageFrame) -> Result<Option<PublicKeyBundle>> {
+    async fn authenticate(
+        &mut self,
+        frame: &MessageFrame,
+    ) -> Result<Option<(PublicKeyBundle, SenderApproval)>> {
         let handshake = frame.payload.is_none();
         if frame.recipient != self.identity.public_key_bundle()
             || frame.version != FRAME_VERSION
@@ -485,8 +526,8 @@ impl Server {
         {
             return Ok(None);
         }
-        let approved = self.is_approved(&frame.public_key);
-        if !handshake && !approved {
+        let approval = self.approval_for(&frame.public_key);
+        if !handshake && approval.is_none() {
             return Ok(None);
         }
         let accepted_at = self.host.clock.monotonic_millis();
@@ -499,7 +540,7 @@ impl Server {
             return Ok(None);
         }
         self.nonce_cache.insert(frame.nonce.clone(), accepted_at);
-        if handshake && !approved {
+        if handshake && approval.is_none() {
             if !self
                 .host
                 .approval_provider
@@ -520,12 +561,24 @@ impl Server {
                 return Err(error);
             }
         }
-        Ok(Some(sender))
+        Ok(Some((
+            sender,
+            approval.unwrap_or(SenderApproval::Persisted),
+        )))
     }
 
     fn is_approved(&self, bundle: &str) -> bool {
-        self.persisted_approved.iter().any(|value| value == bundle)
-            || self.runtime_approved.iter().any(|value| value == bundle)
+        self.approval_for(bundle).is_some()
+    }
+
+    fn approval_for(&self, bundle: &str) -> Option<SenderApproval> {
+        if self.runtime_approved.iter().any(|value| value == bundle) {
+            Some(SenderApproval::Runtime)
+        } else if self.persisted_approved.iter().any(|value| value == bundle) {
+            Some(SenderApproval::Persisted)
+        } else {
+            None
+        }
     }
 
     async fn persist(&self) -> Result<()> {

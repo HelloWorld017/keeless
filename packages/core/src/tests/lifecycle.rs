@@ -460,6 +460,8 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
     operations::unlock::run(&mut core, b"correct")
         .await
         .unwrap();
+    // Drop the cache so the retry must read the removed remote database.
+    core.persistence.quarantine_cache("test").await.unwrap();
     *storage.0.lock().unwrap() = None;
 
     assert!(matches!(

@@ -1,6 +1,6 @@
 use keeless_schema::{EmptyResult, OpenArgs, OperationSuccess};
 
-use crate::{CoreError, DatabaseId, KeelessCore, Result, Selection, StorageDescriptor};
+use crate::{CoreError, KeelessCore, Result, Selection, StorageDescriptor};
 
 pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -> Result<()> {
     let provider = core
@@ -12,36 +12,29 @@ pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -
     // selection before changing namespaces so a failed open cannot journal the old DB elsewhere.
     super::lock::run(core);
     core.selection = None;
-    let database_id = if let Some(persistence) = &core.persistence {
-        persistence.select(&descriptor).await?
-    } else {
-        DatabaseId::new(format!("{}\0{}", descriptor.provider, descriptor.path).into_bytes())
-    };
-    let (cache_exists, journal_dirty, persistence_error) =
-        if let Some(persistence) = &core.persistence {
-            let (cache_exists, mut error) = match persistence.read_cache().await {
-                Ok(cache) => (cache.is_some(), None),
-                Err(cache_error) => {
-                    persistence
-                        .quarantine_cache(&cache_error.to_string())
-                        .await?;
-                    (false, Some(cache_error))
-                }
-            };
-            let journal_dirty = match persistence.read_journal().await {
-                Ok(lines) => !lines.is_empty(),
-                Err(journal_error) => {
-                    if error.is_none() {
-                        error = Some(journal_error);
-                    }
-                    // Defer quarantine until unlock has successfully opened the source DB.
-                    true
-                }
-            };
-            (cache_exists, journal_dirty, error)
-        } else {
-            (false, false, None)
+    let database_id = core.persistence.select(&descriptor).await?;
+    let (cache_exists, journal_dirty, persistence_error) = {
+        let (cache_exists, mut error) = match core.persistence.read_cache().await {
+            Ok(cache) => (cache.is_some(), None),
+            Err(cache_error) => {
+                core.persistence
+                    .quarantine_cache(&cache_error.to_string())
+                    .await?;
+                (false, Some(cache_error))
+            }
         };
+        let journal_dirty = match core.persistence.read_journal().await {
+            Ok(lines) => !lines.is_empty(),
+            Err(journal_error) => {
+                if error.is_none() {
+                    error = Some(journal_error);
+                }
+                // Defer quarantine until unlock has successfully opened the source DB.
+                true
+            }
+        };
+        (cache_exists, journal_dirty, error)
+    };
     let (exists, mut sync_error) = match provider.stat(&descriptor.path).await {
         Ok(metadata) => (metadata.is_some() || cache_exists, None),
         Err(error) if cache_exists => {
