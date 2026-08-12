@@ -148,12 +148,19 @@
   }
 
   [data-qrescan-view-finder-highlight] {
-    border-radius:calc(10cqw * var(--qrescan-highlight-min-size-ratio));
-    pointer-events:none;
-    opacity:1;
-    border:2px solid #fff;
-    transition:top .18s ease-out,left .18s ease-out,width .18s ease-out,height .18s ease-out,opacity .4s;
-    box-shadow:0 0 0 9999px rgba(0, 0, 0, .1);
-    @starting-style{opacity:0}
+    border-radius: calc(10cqw * var(--qrescan-highlight-min-size-ratio));
+    pointer-events: none;
+    opacity: 1;
+    border: 2px solid #fff;
+    transition:
+      top 0.18s ease-out,
+      left 0.18s ease-out,
+      width 0.18s ease-out,
+      height 0.18s ease-out,
+      opacity 0.4s;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.1);
+    @starting-style {
+      opacity: 0;
+    }
   }
 }

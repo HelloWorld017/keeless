@@ -1,8 +1,9 @@
-import { OperationMetadata, operationMetadata, OperationResource } from '@keeless/schema';
-import { QueryClient } from '@tanstack/react-query';
+import { operationMetadata } from '@keeless/schema';
 import { isQueryKey } from './queryKey';
+import type { OperationMetadata, OperationResource } from '@keeless/schema';
+import type { QueryClient } from '@tanstack/react-query';
 
-export const invalidateByResource = (
+export const invalidateByResource = async (
   queryClient: QueryClient,
   resources: readonly OperationResource[],
 ) => {

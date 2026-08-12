@@ -314,9 +314,8 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                   <div className="relative aspect-square size-8">
                     <img src={Logo} alt="" />
                     {databaseStatus.data?.dirty && (
-                      <span
+                      <output
                         className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-amber-500 ring-2 ring-sidebar"
-                        role="status"
                         aria-label="Database has unsynchronized changes"
                       />
                     )}

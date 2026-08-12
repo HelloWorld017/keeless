@@ -1,7 +1,8 @@
 import { Client as WireClient } from '@keeless/lesswire';
+import { operationMetadata } from '@keeless/schema';
 import type { Host } from '@/types/Host';
 import type { ClientStore } from '@keeless/lesswire';
-import { KeyScope, operationMetadata, type Operation, type OperationResponse, type OperationSuccess } from '@keeless/schema';
+import type { KeyScope, Operation, OperationResponse, OperationSuccess } from '@keeless/schema';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder(undefined, { fatal: true });
@@ -69,6 +70,7 @@ export class RequestClient {
     try {
       const response = JSON.parse(decoder.decode(responseBytes)) as OperationResponse;
       if (typeof __DEV__ === 'boolean' && __DEV__) {
+        // oxlint-disable-next-line no-console
         console.log(`Operation ${requestId}: ${op}(`, args, `) -> `, response);
       }
 
@@ -107,7 +109,9 @@ export class RequestClient {
   }
 
   private getWire(op: OperationName) {
-    const isUntrustedOperation = (operationMetadata[op].recipients as readonly KeyScope[]).includes('core_untrusted');
+    const isUntrustedOperation = (operationMetadata[op].recipients as readonly KeyScope[]).includes(
+      'core_untrusted',
+    );
     return isUntrustedOperation ? this.untrustedWire : this.getCoreWire();
   }
 

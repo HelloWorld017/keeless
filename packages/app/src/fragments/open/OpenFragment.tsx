@@ -73,7 +73,9 @@ const OpenFragmentContents = () => {
         }
         if (database === 'unlocked') {
           await requestClient.data.upgrade();
-          if (active) navigate(buildRoute('database'), { replace: true });
+          if (active) {
+            navigate(buildRoute('database'), { replace: true });
+          }
         } else {
           setStep(database === 'locked' ? 'unlock' : 'select');
         }
@@ -93,7 +95,7 @@ const OpenFragmentContents = () => {
     };
   }, [isHostOverride, navigate, requestClient.data]);
 
-  const moveFromStatus = (status: DatabaseStatus) => {
+  const redirectFromStatus = (status: DatabaseStatus) => {
     if (status === 'unlocked') {
       navigate(buildRoute('database'), { replace: true });
       return;
@@ -112,7 +114,7 @@ const OpenFragmentContents = () => {
       const descriptor = await getDescriptor();
       await requestClient.data.request('open', { storage: descriptor });
       const { database } = await requestClient.data.request('getCoreStatus', {});
-      moveFromStatus(database);
+      redirectFromStatus(database);
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -181,7 +183,7 @@ const OpenFragmentContents = () => {
       ) {
         try {
           const { database } = await requestClient.data.request('getCoreStatus', {});
-          moveFromStatus(database);
+          redirectFromStatus(database);
         } catch (statusError) {
           setError(errorMessage(statusError));
         }
@@ -194,7 +196,7 @@ const OpenFragmentContents = () => {
       ) {
         try {
           const { database } = await requestClient.data.request('getCoreStatus', {});
-          moveFromStatus(database);
+          redirectFromStatus(database);
         } catch (statusError) {
           setError(errorMessage(statusError));
         }

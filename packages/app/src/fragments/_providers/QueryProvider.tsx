@@ -47,7 +47,7 @@ export const useRequest = <TName extends OperationName>(
   return useQuery({
     enabled: requestClient.isSuccess,
     ...config,
-    queryKey: queryKey(name as OperationName, args),
+    queryKey: queryKey(name, args),
     queryFn: () => requestClient.data!.request(name, args),
   });
 };

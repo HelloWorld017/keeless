@@ -9,10 +9,11 @@ import {
 } from '@/components/command';
 import { useRequest } from '@/fragments/_providers/QueryProvider';
 import { useNavigate } from '@/fragments/_providers/RouterProvider';
-import { useDebouncedValue, useThrottledValue } from '@/hooks/useDebouncedValue';
+import { useThrottledValue } from '@/hooks/useDebouncedValue';
+import { useLatestRef } from '@/hooks/useLatestRef';
 import { IconSearch, IconTag, IconTrash } from '@/icons';
 import { buildRoute } from '@/utils/route';
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { getEntryTitle } from './EntryItem';
 import { ItemIcon } from './ItemIcon';
 import { searchFilterToken } from './searchQuery';
@@ -84,10 +85,16 @@ const SearchCommandResults = ({
   const result = search.data;
   const trimmedQuery = query.trim();
 
-  const select = (href: string) => {
-    onOpenChange(false);
-    navigate(href);
-  };
+  const onOpenChangeRef = useLatestRef(onOpenChange);
+  const onSearchRef = useLatestRef(onSearch);
+
+  const select = useCallback(
+    (href: string) => {
+      onOpenChangeRef.current(false);
+      navigate(href);
+    },
+    [onOpenChangeRef, navigate],
+  );
 
   const complete = (prefix: 'in' | 'tag', name: string) => {
     const tokens = result?.filterTokens ?? [];
@@ -109,11 +116,11 @@ const SearchCommandResults = ({
         value: `search:${trimmedQuery}`,
         group: 'search' as const,
         onSelect: () => {
-          onOpenChange(false);
-          onSearch(query);
+          onOpenChangeRef.current(false);
+          onSearchRef.current(trimmedQuery);
         },
         icon: <IconSearch />,
-        label: `Search for "${query}"`,
+        label: `Search for "${trimmedQuery}"`,
         shortcut: 'Enter',
       },
       ...(result?.groups.map(group => ({
@@ -147,7 +154,7 @@ const SearchCommandResults = ({
           ]
         : []),
     ],
-    [result],
+    [trimmedQuery, result, select, onSearchRef, onOpenChangeRef],
   );
 
   const itemsRendered = items
@@ -248,6 +255,7 @@ export const SearchCommand = ({
   onOpenChange: (open: boolean) => void;
   onSearch: (query: string) => void;
 }) => {
+  const onOpenChangeRef = useLatestRef(onOpenChange);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
@@ -258,13 +266,13 @@ export const SearchCommand = ({
         !isEditableTarget(event.target)
       ) {
         event.preventDefault();
-        onOpenChange(true);
+        onOpenChangeRef.current(true);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onOpenChange]);
+  }, [onOpenChangeRef]);
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange} className="sm:max-w-xl">

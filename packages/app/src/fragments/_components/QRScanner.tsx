@@ -96,7 +96,11 @@ export const QRScanner = ({
           }
         >
           <QRescan.Scan>
-            <QRescan.ViewFinder sourceType="stream" style={{ maxHeight: '240px' }} className='mx-auto'>
+            <QRescan.ViewFinder
+              sourceType="stream"
+              style={{ maxHeight: '240px' }}
+              className="mx-auto"
+            >
               <QRescan.ViewFinderHighlight />
               <QRescan.CameraSelect
                 render={({ items, selectedItem, onSelectItem }) => (
@@ -128,22 +132,26 @@ export const QRScanner = ({
               <Empty>
                 <IconScanLine className="size-8" />
                 <EmptyTitle>Scan a QR code</EmptyTitle>
-                <EmptyDescription className='-mt-2'>
+                <EmptyDescription className="-mt-2">
                   Use a camera or share a screen containing the QR code.
                 </EmptyDescription>
                 <div className="flex flex-wrap justify-center gap-2 mt-2">
-                  <QRescan.ScanInitializeCamera render={({ requestCamera }) => (
-                    <Button type="button" onClick={requestCamera}>
-                      <IconCamera />
-                      Camera
-                    </Button>
-                  )} />
-                  <QRescan.ScanInitializeScreen render={({ requestScreen }) => (
-                    <Button type="button" variant="ghost" onClick={requestScreen}>
-                      <IconMonitor />
-                      Capture
-                    </Button>
-                  )} />
+                  <QRescan.ScanInitializeCamera
+                    render={({ requestCamera }) => (
+                      <Button type="button" onClick={requestCamera}>
+                        <IconCamera />
+                        Camera
+                      </Button>
+                    )}
+                  />
+                  <QRescan.ScanInitializeScreen
+                    render={({ requestScreen }) => (
+                      <Button type="button" variant="ghost" onClick={requestScreen}>
+                        <IconMonitor />
+                        Capture
+                      </Button>
+                    )}
+                  />
                 </div>
                 <QRescan.ScanInitializeError className="text-sm text-destructive" />
               </Empty>
