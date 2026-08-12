@@ -5,11 +5,11 @@ use specta::{NamedType, ts};
 
 fn main() {
     let generated = generate();
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("index.ts");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/index.ts");
 
     if env::args().any(|arg| arg == "--check") {
         let checked = fs::read_to_string(&path).expect("read checked TypeScript schema");
-        assert_eq!(checked, generated, "index.ts is stale; run the exporter");
+        assert_eq!(checked, generated, "src/index.ts is stale; run the exporter");
     } else {
         fs::write(path, generated).expect("write TypeScript declarations");
     }

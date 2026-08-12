@@ -24,6 +24,9 @@ catalogs:
     react-dom:
       specifier: 19.2.8
       version: 19.2.8
+    tsdown:
+      specifier: 0.22.13
+      version: 0.22.13
     vite:
       specifier: 8.1.5
       version: 8.1.5
@@ -274,7 +277,7 @@ importers:
         version: 2.2.0
     devDependencies:
       tsdown:
-        specifier: 0.22.13
+        specifier: 'catalog:'
         version: 0.22.13(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@6.0.3)
 
   packages/native-ui:
@@ -290,7 +293,11 @@ importers:
 
   packages/passkey-linux: {}
 
-  packages/schema: {}
+  packages/schema:
+    devDependencies:
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.22.13(@typescript/native-preview@7.0.0-dev.20260707.2)(typescript@6.0.3)
 
   packages/secure-types: {}
 
