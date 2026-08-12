@@ -2,6 +2,7 @@
 
 use keeless_host_desktop_shared::state::{ClientState, FileStore};
 use keeless_host_desktop_shared::{ClientError, CoreClient, DesktopLauncher};
+use keeless_lesswire::KeyScope;
 use keeless_schema::{Operation, OperationSuccess};
 
 /// File holding the provider's lesswire identity and pinned desktop host key.
@@ -25,7 +26,7 @@ impl Session {
     ) -> Result<Self, SessionError> {
         let store = FileStore::project(STATE_FILE)?;
         Ok(Self {
-            state: ClientState::load(store).await?,
+            state: ClientState::load(store, KeyScope::Passkey).await?,
             client: None,
             launcher,
         })
@@ -38,7 +39,7 @@ impl Session {
     }
 
     pub fn is_paired(&self) -> bool {
-        self.state.trusted_server().is_some()
+        self.state.has_trusted_servers()
     }
 
     /// Dropping this future drops the in-flight IPC connection, which lets the
@@ -48,7 +49,15 @@ impl Session {
             if let Some(launcher) = &self.launcher {
                 launcher.ensure_running().await?;
             }
-            self.client = Some(CoreClient::connect(&mut self.state).await?);
+            let mut untrusted = CoreClient::connect(&mut self.state, None).await?;
+            let OperationSuccess::Upgrade(upgrade) = untrusted
+                .request(Operation::Upgrade(keeless_schema::UpgradeArgs {}))
+                .await?
+            else {
+                return Err(ClientError::Rejected);
+            };
+            self.client =
+                Some(CoreClient::connect(&mut self.state, Some(upgrade.public_key)).await?);
         }
         let client = self.client.as_mut().expect("client was just connected");
         match client.request(operation).await {

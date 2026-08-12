@@ -66,15 +66,17 @@ const OpenFragmentContents = () => {
     setIsPending(true);
     setError(undefined);
     void requestClient.data
-      .request('getDatabaseStatus', {})
-      .then(({ status }) => {
+      .request('getCoreStatus', {})
+      .then(({ database }) => {
         if (!active) {
           return;
         }
-        if (status === 'unlocked') {
-          navigate(buildRoute('database'), { replace: true });
+        if (database === 'unlocked') {
+          void requestClient.data?.upgrade().then(() => {
+            if (active) navigate(buildRoute('database'), { replace: true });
+          });
         } else {
-          setStep(status === 'locked' ? 'unlock' : 'select');
+          setStep(database === 'locked' ? 'unlock' : 'select');
         }
       })
       .catch(nextError => {
@@ -110,8 +112,8 @@ const OpenFragmentContents = () => {
     try {
       const descriptor = await getDescriptor();
       await requestClient.data.request('open', { storage: descriptor });
-      const { status } = await requestClient.data.request('getDatabaseStatus', {});
-      moveFromStatus(status);
+      const { database } = await requestClient.data.request('getCoreStatus', {});
+      moveFromStatus(database);
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -163,6 +165,7 @@ const OpenFragmentContents = () => {
         }
         await requestClient.data.request(mode, { password });
       }
+      await requestClient.data.upgrade();
       navigate(buildRoute('database'), { replace: true });
     } catch (nextError) {
       if (
@@ -178,8 +181,8 @@ const OpenFragmentContents = () => {
         nextError.code === 'database_already_exists'
       ) {
         try {
-          const { status } = await requestClient.data.request('getDatabaseStatus', {});
-          moveFromStatus(status);
+          const { database } = await requestClient.data.request('getCoreStatus', {});
+          moveFromStatus(database);
         } catch (statusError) {
           setError(errorMessage(statusError));
         }
@@ -191,8 +194,8 @@ const OpenFragmentContents = () => {
         nextError.code === 'database_not_found'
       ) {
         try {
-          const { status } = await requestClient.data.request('getDatabaseStatus', {});
-          moveFromStatus(status);
+          const { database } = await requestClient.data.request('getCoreStatus', {});
+          moveFromStatus(database);
         } catch (statusError) {
           setError(errorMessage(statusError));
         }

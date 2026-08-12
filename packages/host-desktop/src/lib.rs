@@ -15,14 +15,10 @@ use std::{
 };
 
 use keeless_core::{
-    CoreError, HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
-    TransferProvider,
+    HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
     keeless_schema::{DatabaseNodeId, OperationOutcome, OperationResponse, OperationSuccess},
 };
 use keeless_host_desktop_shared::ipc;
-use keeless_lesswire::{
-    MessageFrame, Server, ServerHost, TransferId, TransferOwner, TransferRegistry,
-};
 use napi::{
     bindgen_prelude::{Buffer, Function},
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
@@ -32,10 +28,9 @@ use tokio::{
     sync::{Mutex, watch},
     task::JoinHandle,
 };
-use zeroize::Zeroizing;
 
 use crate::{
-    config::{CORE_SETTINGS_FILE, DesktopConfig, WIRE_STATE_FILE},
+    config::{DesktopConfig, WIRE_STATE_FILE},
     native_ui::NativeUi,
     persistence::DesktopDatabasePersistence,
     storage::LocalFileStorage,
@@ -52,43 +47,10 @@ struct HostState {
 
 struct InnerState {
     core: KeelessCore,
-    server: Server,
 }
 
 #[derive(Debug)]
 struct TokioTaskSpawner;
-
-#[derive(Clone)]
-struct DesktopTransfers(TransferRegistry);
-
-impl TransferProvider for DesktopTransfers {
-    fn publish_download(
-        &self,
-        owner: &str,
-        bytes: Zeroizing<Vec<u8>>,
-    ) -> keeless_core::Result<String> {
-        self.0
-            .publish_download(TransferOwner::new(owner), bytes)
-            .map(|id| id.encode())
-            .map_err(|error| CoreError::Host(error.to_string()))
-    }
-
-    fn consume_upload(
-        &self,
-        owner: &str,
-        transfer_id: &str,
-    ) -> keeless_core::Result<Zeroizing<Vec<u8>>> {
-        let id = TransferId::parse(transfer_id)
-            .ok_or_else(|| CoreError::Host("invalid binary transfer ID".into()))?;
-        self.0
-            .consume_upload(&TransferOwner::new(owner), &id)
-            .map_err(|error| CoreError::Host(error.to_string()))
-    }
-
-    fn clear(&self) {
-        self.0.clear();
-    }
-}
 
 impl TaskSpawner for TokioTaskSpawner {
     fn spawn(&self, task: HostFuture<'static, ()>) {
@@ -122,10 +84,6 @@ impl DesktopHost {
             return Err(napi_error("native UI path is not a file"));
         }
 
-        let core_config = Arc::new(
-            DesktopConfig::project(CORE_SETTINGS_FILE)
-                .map_err(|error| napi_error(error.to_string()))?,
-        );
         let wire_config = Arc::new(
             DesktopConfig::project(WIRE_STATE_FILE)
                 .map_err(|error| napi_error(error.to_string()))?,
@@ -139,28 +97,22 @@ impl DesktopHost {
         );
         let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
         providers.insert("local-file".into(), storage.clone());
-        let server = Server::new(ServerHost {
-            store: wire_config,
-            approval_provider: native_ui.clone(),
-            clock: Arc::new(keeless_lesswire::SystemClock),
-            runtime_approved_clients: Vec::new(),
-        })
-        .await
-        .map_err(|error| napi_error(error.to_string()))?;
         let core = KeelessCore::new(KeelessHost {
             storage_providers: providers,
-            config_provider: core_config,
+            config_provider: wire_config.clone(),
+            untrusted_state: wire_config,
+            connection_approval: native_ui.clone(),
             password_input: Some(native_ui.clone()),
             passkey_consent: Some(native_ui.clone()),
             clock: Arc::new(SystemClock),
             database_persistence: Some(database_persistence),
             task_spawner: Some(Arc::new(TokioTaskSpawner)),
-            transfer_provider: Some(Arc::new(DesktopTransfers(server.transfers()))),
+            transfer_provider: None,
         })
         .await
         .map_err(|error| napi_error(error.to_string()))?;
         let state = Arc::new(HostState {
-            inner: Mutex::new(InnerState { core, server }),
+            inner: Mutex::new(InnerState { core }),
             storage,
             entry_focus: Arc::new(StdMutex::new(None)),
         });
@@ -179,17 +131,17 @@ impl DesktopHost {
         })
     }
 
-    #[napi(js_name = "replaceClient")]
-    pub async fn replace_client(&self, bundle: String) -> napi::Result<()> {
+    #[napi(js_name = "connect")]
+    pub async fn connect(&self) -> napi::Result<String> {
         self.ensure_open()?;
-        self.runtime
+        Ok(self
+            .runtime
             .state
             .inner
             .lock()
             .await
-            .server
-            .replace_runtime_approval(&bundle)
-            .map_err(|error| napi_error(error.to_string()))
+            .core
+            .untrusted_public_key_bundle())
     }
 
     #[napi(js_name = "handleFrame")]
@@ -267,28 +219,17 @@ async fn handle_frame(state: &HostState, bytes: &[u8]) -> Result<Option<Vec<u8>>
     if bytes.len() > keeless_lesswire::MAX_FRAME_SIZE {
         return Ok(None);
     }
-    let Ok(frame) = serde_json::from_slice::<MessageFrame>(bytes) else {
-        return Ok(None);
-    };
     let entry_focus = state.entry_focus.clone();
     let mut inner = state.inner.lock().await;
-    let InnerState { core, server } = &mut *inner;
-    server
-        .handle_frame(&frame, |owner, plaintext| async move {
-            let response = core
-                .handle_payload_from(Some(owner.as_str().into()), &plaintext)
-                .await;
-            if let Ok(response) = &response {
-                if let Some(entry_id) = entry_focus_id(response.as_deref()) {
-                    notify_entry_focus(&entry_focus, entry_id);
-                }
-            }
-            response
-        })
+    let response = inner
+        .core
+        .handle_frame(bytes)
         .await
-        .map_err(|error| error.to_string())?
-        .map(|response| serde_json::to_vec(&response).map_err(|error| error.to_string()))
-        .transpose()
+        .map_err(|error| error.to_string())?;
+    if let Some(entry_id) = entry_focus_id(response.as_deref()) {
+        notify_entry_focus(&entry_focus, entry_id);
+    }
+    Ok(response)
 }
 
 fn entry_focus_id(response: Option<&[u8]>) -> Option<String> {
@@ -318,6 +259,9 @@ fn notify_entry_focus(entry_focus: &StdMutex<Option<EntryFocusCallback>>, entry_
 async fn handle_request(request: Request, state: &HostState) -> Response {
     match request {
         Request::Ping => Response::Pong,
+        Request::Bootstrap => {
+            Response::Bootstrap(state.inner.lock().await.core.untrusted_public_key_bundle())
+        }
         Request::HandleFrame(bytes) => match handle_frame(state, &bytes).await {
             Ok(frame) => Response::Frame(frame),
             Err(error) => Response::Error(error),

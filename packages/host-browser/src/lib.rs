@@ -40,6 +40,8 @@ mod clock;
 #[cfg(target_arch = "wasm32")]
 mod config;
 #[cfg(target_arch = "wasm32")]
+mod persistence;
+#[cfg(target_arch = "wasm32")]
 mod storages;
 #[cfg(target_arch = "wasm32")]
 mod utils;

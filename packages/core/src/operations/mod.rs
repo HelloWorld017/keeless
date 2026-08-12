@@ -1,6 +1,7 @@
 pub(crate) mod assert_passkey;
 pub(crate) mod create;
 pub(crate) mod get_config;
+pub(crate) mod get_core_status;
 pub(crate) mod get_custom_icons;
 pub(crate) mod get_database_status;
 pub(crate) mod get_entries;
@@ -26,6 +27,7 @@ pub(crate) mod search_entries;
 pub(crate) mod search_fuzzy;
 pub(crate) mod set_config;
 pub(crate) mod unlock;
+pub(crate) mod upgrade;
 
 use keeless_schema::{Operation, OperationSuccess};
 
@@ -40,6 +42,8 @@ pub(crate) async fn execute(
         Operation::Create(args) => create::execute(core, args).await,
         Operation::Unlock(args) => unlock::execute(core, args).await,
         Operation::Lock(args) => lock::execute(core, args).await,
+        Operation::GetCoreStatus(args) => get_core_status::execute(core, args),
+        Operation::Upgrade(args) => upgrade::execute(core, args).await,
         Operation::GetDatabaseStatus(args) => get_database_status::execute(core, args),
         Operation::GetStorageDescriptor(args) => get_storage_descriptor::execute(core, args),
         Operation::GetConfig(args) => get_config::execute(core, args),

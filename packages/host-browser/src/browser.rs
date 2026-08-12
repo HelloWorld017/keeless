@@ -3,60 +3,25 @@ use std::{collections::HashMap, rc::Rc, sync::Arc};
 use futures::lock::Mutex;
 use gloo_timers::future::TimeoutFuture;
 use keeless_core::{
-    CoreError, HostFuture, KeelessCore, KeelessHost, StorageProvider, TaskSpawner, TransferProvider,
-};
-use keeless_lesswire::{
-    ApprovalProvider, MessageFrame, Server, ServerHost, TransferId, TransferOwner,
-    TransferRegistry, WireFuture,
+    ConnectionApprovalProvider, ConnectionApprovalRequest, HostFuture, KeelessCore, KeelessHost,
+    StorageProvider, TaskSpawner,
 };
 use keeless_sync::{WebDavAuth, WebDavProvider};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{File, FileSystemFileHandle};
-use zeroize::Zeroizing;
 
 use crate::{
     clock::BrowserClock,
     config::BrowserConfig,
+    persistence::BrowserDatabasePersistence,
     storages::{indexeddb::IndexedDbStorage, local_file::LocalFileStorage},
-    utils::indexeddb::{CORE_CONFIG_KEY, IndexedDb, WIRE_CONFIG_KEY, js_error},
+    utils::indexeddb::{IndexedDb, WIRE_CONFIG_KEY, js_error},
 };
 
 struct BrowserApproval;
 
 struct BrowserTaskSpawner;
-
-#[derive(Clone)]
-struct BrowserTransfers(TransferRegistry);
-
-impl TransferProvider for BrowserTransfers {
-    fn publish_download(
-        &self,
-        owner: &str,
-        bytes: Zeroizing<Vec<u8>>,
-    ) -> keeless_core::Result<String> {
-        self.0
-            .publish_download(TransferOwner::new(owner), bytes)
-            .map(|id| id.encode())
-            .map_err(|error| CoreError::Host(error.to_string()))
-    }
-
-    fn consume_upload(
-        &self,
-        owner: &str,
-        transfer_id: &str,
-    ) -> keeless_core::Result<Zeroizing<Vec<u8>>> {
-        let id = TransferId::parse(transfer_id)
-            .ok_or_else(|| CoreError::Host("invalid binary transfer ID".into()))?;
-        self.0
-            .consume_upload(&TransferOwner::new(owner), &id)
-            .map_err(|error| CoreError::Host(error.to_string()))
-    }
-
-    fn clear(&self) {
-        self.0.clear();
-    }
-}
 
 impl TaskSpawner for BrowserTaskSpawner {
     fn spawn(&self, task: HostFuture<'static, ()>) {
@@ -64,15 +29,47 @@ impl TaskSpawner for BrowserTaskSpawner {
     }
 }
 
-impl ApprovalProvider for BrowserApproval {
-    fn approve(&self, _: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
-        Box::pin(async { Ok(false) })
+impl ConnectionApprovalProvider for BrowserApproval {
+    fn approve_connection(
+        &self,
+        request: ConnectionApprovalRequest,
+    ) -> HostFuture<'_, keeless_core::Result<bool>> {
+        Box::pin(async move {
+            let message = match request.kind {
+                keeless_core::ConnectionApprovalKind::Initial => format!(
+                    "Allow a limited Keeless connection from a {} client?\n\nClient: {}\nServer: {}",
+                    scope_name(request.sender_scope),
+                    request.sender,
+                    request.recipient,
+                ),
+                keeless_core::ConnectionApprovalKind::Upgrade => format!(
+                    "Allow this {} client to access the selected database?\n\nClient: {}\nDatabase server: {}",
+                    scope_name(request.sender_scope),
+                    request.sender,
+                    request.recipient,
+                ),
+            };
+            web_sys::window()
+                .ok_or_else(|| {
+                    keeless_core::CoreError::Host("browser window is unavailable".into())
+                })?
+                .confirm_with_message(&message)
+                .map_err(|error| keeless_core::CoreError::Host(format!("{error:?}")))
+        })
+    }
+}
+
+fn scope_name(scope: keeless_lesswire::KeyScope) -> &'static str {
+    match scope {
+        keeless_lesswire::KeyScope::CoreUntrusted => "core_untrusted",
+        keeless_lesswire::KeyScope::Core => "core",
+        keeless_lesswire::KeyScope::App => "app",
+        keeless_lesswire::KeyScope::Passkey => "passkey",
     }
 }
 
 struct BrowserState {
     core: KeelessCore,
-    server: Server,
 }
 
 #[wasm_bindgen]
@@ -85,39 +82,33 @@ impl BrowserCore {
     #[wasm_bindgen(js_name = create)]
     // KeelessHost intentionally uses Arc for one API across native and single-threaded WASM.
     #[allow(clippy::arc_with_non_send_sync)]
-    pub async fn create(default_approved_bundle: Option<String>) -> Result<BrowserCore, JsValue> {
+    pub async fn create() -> Result<BrowserCore, JsValue> {
         let idb = IndexedDb::open().await?;
         let mut storage_providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
         storage_providers.insert(
             "indexeddb".into(),
             Arc::new(IndexedDbStorage { idb: idb.clone() }),
         );
-        let server = Server::new(ServerHost {
-            store: Arc::new(BrowserConfig {
-                idb: idb.clone(),
-                key: WIRE_CONFIG_KEY,
-            }),
-            approval_provider: Arc::new(BrowserApproval),
-            clock: Arc::new(BrowserClock),
-            runtime_approved_clients: default_approved_bundle.into_iter().collect(),
-        })
-        .await
-        .map_err(js_error)?;
         let host = KeelessHost {
             storage_providers,
             config_provider: Arc::new(BrowserConfig {
                 idb: idb.clone(),
-                key: CORE_CONFIG_KEY,
+                key: WIRE_CONFIG_KEY,
             }),
+            untrusted_state: Arc::new(BrowserConfig {
+                idb: idb.clone(),
+                key: WIRE_CONFIG_KEY,
+            }),
+            connection_approval: Arc::new(BrowserApproval),
             password_input: None,
             passkey_consent: None,
             clock: Arc::new(BrowserClock),
-            database_persistence: None,
+            database_persistence: Some(Arc::new(BrowserDatabasePersistence::new(idb.clone()))),
             task_spawner: Some(Arc::new(BrowserTaskSpawner)),
-            transfer_provider: Some(Arc::new(BrowserTransfers(server.transfers()))),
+            transfer_provider: None,
         };
         let core = KeelessCore::new(host).await.map_err(js_error)?;
-        let state = Rc::new(Mutex::new(BrowserState { core, server }));
+        let state = Rc::new(Mutex::new(BrowserState { core }));
         let tick_state = Rc::downgrade(&state);
         spawn_local(async move {
             loop {
@@ -133,25 +124,15 @@ impl BrowserCore {
         Ok(Self { state })
     }
 
+    #[wasm_bindgen(js_name = connect)]
+    pub async fn connect(&self) -> Result<String, JsValue> {
+        Ok(self.state.lock().await.core.untrusted_public_key_bundle())
+    }
+
     #[wasm_bindgen(js_name = handle)]
     pub async fn handle(&self, frame: Vec<u8>) -> Result<Option<Vec<u8>>, JsValue> {
-        if frame.len() > keeless_lesswire::MAX_FRAME_SIZE {
-            return Ok(None);
-        }
-        let Ok(frame) = serde_json::from_slice::<MessageFrame>(&frame) else {
-            return Ok(None);
-        };
         let mut state = self.state.lock().await;
-        let BrowserState { core, server } = &mut *state;
-        server
-            .handle_frame(&frame, |owner, plaintext| async move {
-                core.handle_payload_from(Some(owner.as_str().into()), &plaintext)
-                    .await
-            })
-            .await
-            .map_err(js_error)?
-            .map(|response| serde_json::to_vec(&response).map_err(js_error))
-            .transpose()
+        state.core.handle_frame(&frame).await.map_err(js_error)
     }
 
     #[wasm_bindgen(js_name = configureWebDav)]

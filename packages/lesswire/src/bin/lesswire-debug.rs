@@ -7,7 +7,7 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use keeless_lesswire::{
-    Client, Clock, Identity, MAX_FRAME_SIZE, MessageFrame, PublicKeyBundle, SystemClock,
+    Client, Clock, Identity, KeyScope, MAX_FRAME_SIZE, MessageFrame, PublicKeyBundle, SystemClock,
 };
 use serde::Serialize;
 use thiserror::Error;
@@ -82,7 +82,7 @@ fn run(
             writeln!(output, "{USAGE}")?;
         }
         Command::Generate => {
-            let identity = Identity::generate()?;
+            let identity = Identity::generate(KeyScope::App)?;
             write_identity(&mut output, &identity)?;
         }
         Command::PublicKey { identity } => {
@@ -105,7 +105,7 @@ fn run(
                 .as_deref()
                 .map(decode_identity)
                 .transpose()?
-                .map_or_else(Identity::generate, Ok)?;
+                .map_or_else(|| Identity::generate(KeyScope::App), Ok)?;
             let plaintext = read_bounded(&mut input)?;
             let frame = encrypt(identity, &recipient, &plaintext, Arc::new(SystemClock))?;
             let encoded = serde_json::to_vec(&frame)?;
@@ -255,7 +255,7 @@ fn decode_identity(value: &str) -> Result<Identity, CliError> {
             "identity must use canonical base64url without padding".into(),
         ));
     }
-    Identity::from_bytes(&bytes).map_err(CliError::Wire)
+    Identity::from_bytes(KeyScope::App, &bytes).map_err(CliError::Wire)
 }
 
 fn read_bounded(input: &mut impl Read) -> Result<Zeroizing<Vec<u8>>, CliError> {
@@ -277,7 +277,7 @@ fn encrypt(
     plaintext: &[u8],
     clock: Arc<dyn Clock>,
 ) -> Result<MessageFrame, CliError> {
-    Client::new(identity, Some(recipient.as_str()), clock)?
+    Client::new(identity, recipient.as_str(), clock)?
         .encrypt(plaintext)
         .map_err(CliError::Wire)
 }
@@ -287,7 +287,7 @@ fn decrypt(
     frame: &MessageFrame,
     clock: Arc<dyn Clock>,
 ) -> Result<Option<Zeroizing<Vec<u8>>>, CliError> {
-    Client::new(identity, Some(&frame.public_key), clock)?
+    Client::new(identity, &frame.public_key, clock)?
         .decrypt(frame)
         .map_err(CliError::Wire)
 }
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn identity_encoding_round_trips() {
-        let identity = Identity::from_secrets([11; 32], [13; 32]);
+        let identity = Identity::from_secrets(KeyScope::App, [11; 32], [13; 32]);
         let encoded = encode_identity(&identity);
         let restored = decode_identity(&encoded).unwrap();
         assert_eq!(restored.public_key_bundle(), identity.public_key_bundle());
@@ -350,8 +350,8 @@ mod tests {
 
     #[test]
     fn payload_round_trips_and_stale_frames_are_optional() {
-        let sender = Identity::from_secrets([17; 32], [19; 32]);
-        let recipient = Identity::from_secrets([23; 32], [29; 32]);
+        let sender = Identity::from_secrets(KeyScope::App, [17; 32], [19; 32]);
+        let recipient = Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]);
         let recipient_bundle = PublicKeyBundle::parse(&recipient.public_key_bundle()).unwrap();
         let frame = encrypt(
             sender,
@@ -362,7 +362,7 @@ mod tests {
         .unwrap();
 
         let plaintext = decrypt(
-            Identity::from_secrets([23; 32], [29; 32]),
+            Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]),
             &frame,
             Arc::new(FrameClock(10_000)),
         )
@@ -372,7 +372,7 @@ mod tests {
 
         assert!(
             decrypt(
-                Identity::from_secrets([23; 32], [29; 32]),
+                Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]),
                 &frame,
                 Arc::new(FrameClock(11_000)),
             )
@@ -381,7 +381,7 @@ mod tests {
         );
         assert!(
             decrypt(
-                Identity::from_secrets([23; 32], [29; 32]),
+                Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]),
                 &frame,
                 Arc::new(FrameClock(frame.timestamp)),
             )

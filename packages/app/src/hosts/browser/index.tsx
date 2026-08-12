@@ -70,13 +70,14 @@ export const createBrowserHost = (): Host => {
     label: 'Browser',
     storages,
     isAvailable: async () => isBrowserAvailable(),
-    connect: async defaultApprovedBundle => {
+    connect: async () => {
       if (core) {
-        return;
+        return core.connect();
       }
       const browserHost = await import('@keeless/host-browser');
       await browserHost.default();
-      core = await browserHost.BrowserCore.create(defaultApprovedBundle);
+      core = await browserHost.BrowserCore.create();
+      return core.connect();
     },
     send: async frame => {
       const response = await requireCore().handle(encoder.encode(JSON.stringify(frame)));

@@ -18,20 +18,23 @@ export type MessageFrame = {
   nonce: string;
   ephemeralPublicKey: string | null;
   publicKey: string;
+  recipient: string;
   payload: string | null;
   signature: string;
 };
 
+export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey';
+
 export interface Relay {
   readonly id: string;
-  connect(publicKeyBundle: string): Promise<void>;
+  connect(): Promise<string>;
   send(frame: MessageFrame): Promise<MessageFrame | null>;
 }
 
 export interface ClientStore {
   loadDeviceKey(): Promise<Uint8Array>;
-  loadTrustedServer(relayId: string): Promise<string | undefined>;
-  saveTrustedServer(relayId: string, bundle: string): Promise<void>;
+  loadTrustedServer(relayId: string, recipient: string): Promise<string | undefined>;
+  saveTrustedServer(relayId: string, recipient: string, bundle: string): Promise<void>;
 }
 
 export const MAX_FRAME_SIZE = 1024 * 1024;
@@ -51,9 +54,10 @@ type Identity = {
   signingSecret: Uint8Array;
   encryptionSecret: Uint8Array;
   bundle: string;
+  scope: KeyScope;
 };
 
-type PublicKeyBundle = { signing: Uint8Array; encryption: Uint8Array };
+type PublicKeyBundle = { signing: Uint8Array; encryption: Uint8Array; scope: KeyScope };
 
 const randomBytes = (length: number) => crypto.getRandomValues(new Uint8Array(length));
 
@@ -80,9 +84,9 @@ const decodeBase64Url = (value: string) => {
   return bytes;
 };
 
-const parseBundle = (value: string): PublicKeyBundle => {
+export const parseBundle = (value: string): PublicKeyBundle => {
   const parts = value.split('.');
-  if (parts.length !== 3 || parts[0] !== 'v1') {
+  if (parts.length !== 4 || parts[0] !== 'v1') {
     throw new Error('Invalid public key bundle');
   }
   const signing = decodeBase64Url(parts[1]);
@@ -90,13 +94,17 @@ const parseBundle = (value: string): PublicKeyBundle => {
   if (signing.length !== 32 || encryption.length !== 32 || encryption.every(byte => byte === 0)) {
     throw new Error('Invalid public key bundle');
   }
-  return { signing, encryption };
+  const scope = parts[3];
+  if (!['core_untrusted', 'core', 'app', 'passkey'].includes(scope)) {
+    throw new Error('Invalid public key bundle');
+  }
+  return { signing, encryption, scope: scope as KeyScope };
 };
 
 const transcript = (frame: MessageFrame) =>
-  `${FRAME_TRANSCRIPT_PREFIX}|${frame.timestamp}|${frame.nonce}|${frame.ephemeralPublicKey ?? ''}|${frame.publicKey}|${frame.payload ?? ''}`;
+  `${FRAME_TRANSCRIPT_PREFIX}|${frame.timestamp}|${frame.nonce}|${frame.ephemeralPublicKey ?? ''}|${frame.publicKey}|${frame.recipient}|${frame.payload ?? ''}`;
 const headerTranscript = (frame: MessageFrame) =>
-  `${PAYLOAD_HEADER_PREFIX}|${frame.timestamp}|${frame.nonce}|${frame.ephemeralPublicKey ?? ''}|${frame.publicKey}`;
+  `${PAYLOAD_HEADER_PREFIX}|${frame.timestamp}|${frame.nonce}|${frame.ephemeralPublicKey ?? ''}|${frame.publicKey}|${frame.recipient}`;
 const signFrame = (frame: MessageFrame, secret: Uint8Array): MessageFrame => ({
   ...frame,
   signature: encodeBase64Url(ed25519.sign(encoder.encode(transcript(frame)), secret)),
@@ -108,6 +116,7 @@ const verifyFrame = (frame: MessageFrame, expectedBundle?: string) => {
     !Number.isSafeInteger(frame.timestamp) ||
     typeof frame.nonce !== 'string' ||
     typeof frame.publicKey !== 'string' ||
+    typeof frame.recipient !== 'string' ||
     typeof frame.signature !== 'string' ||
     (frame.ephemeralPublicKey !== null && typeof frame.ephemeralPublicKey !== 'string') ||
     (frame.payload !== null && typeof frame.payload !== 'string') ||
@@ -130,7 +139,7 @@ const verifyFrame = (frame: MessageFrame, expectedBundle?: string) => {
   return bundle;
 };
 
-const deriveIdentity = async (store: ClientStore): Promise<Identity> => {
+const deriveIdentity = async (store: ClientStore, scope: KeyScope): Promise<Identity> => {
   const deviceKey = await store.loadDeviceKey();
   try {
     const signingSecret = hkdf(sha256, deviceKey, EMPTY_SALT, DEVICE_SIGNING_INFO, 32);
@@ -138,7 +147,8 @@ const deriveIdentity = async (store: ClientStore): Promise<Identity> => {
     return {
       signingSecret,
       encryptionSecret,
-      bundle: `v1.${encodeBase64Url(ed25519.getPublicKey(signingSecret))}.${encodeBase64Url(x25519.getPublicKey(encryptionSecret))}`,
+      bundle: `v1.${encodeBase64Url(ed25519.getPublicKey(signingSecret))}.${encodeBase64Url(x25519.getPublicKey(encryptionSecret))}.${scope}`,
+      scope,
     };
   } finally {
     deviceKey.fill(0);
@@ -156,9 +166,23 @@ export class Client {
     private readonly serverKeys: PublicKeyBundle,
   ) {}
 
-  static async connect(relay: Relay, store: ClientStore = new IndexedDbClientStore()) {
-    const identity = await deriveIdentity(store);
-    await relay.connect(identity.bundle);
+  static async connect(
+    relay: Relay,
+    scope: KeyScope,
+    recipient?: string,
+    store: ClientStore = new IndexedDbClientStore(),
+  ) {
+    const identity = await deriveIdentity(store, scope);
+    const advertised = await relay.connect();
+    const serverBundle = recipient ?? advertised;
+    parseBundle(serverBundle);
+    if (!recipient && advertised !== serverBundle) {
+      throw new Error('Relay advertised an invalid server identity');
+    }
+    const trusted = await store.loadTrustedServer(relay.id, serverBundle);
+    if (trusted && trusted !== serverBundle) {
+      throw new Error('Server identity changed');
+    }
     const request = signFrame(
       {
         version: 1,
@@ -166,6 +190,7 @@ export class Client {
         nonce: encodeBase64Url(randomBytes(24)),
         ephemeralPublicKey: null,
         publicKey: identity.bundle,
+        recipient: serverBundle,
         payload: null,
         signature: '',
       },
@@ -175,12 +200,14 @@ export class Client {
     if (!response || response.payload !== null || response.ephemeralPublicKey !== null) {
       throw new Error('Server rejected the handshake');
     }
-    const trusted = await store.loadTrustedServer(relay.id);
-    verifyFrame(response, trusted);
-    if (!trusted) {
-      await store.saveTrustedServer(relay.id, response.publicKey);
+    if (response?.recipient !== identity.bundle) {
+      throw new Error('Server returned a frame for another recipient');
     }
-    return new Client(relay, identity, response.publicKey, parseBundle(response.publicKey));
+    verifyFrame(response, serverBundle);
+    if (!trusted) {
+      await store.saveTrustedServer(relay.id, serverBundle, response.publicKey);
+    }
+    return new Client(relay, identity, serverBundle, parseBundle(serverBundle));
   }
 
   request(payload: Uint8Array): Promise<Uint8Array> {
@@ -211,6 +238,7 @@ export class Client {
       nonce: encodeBase64Url(nonce),
       ephemeralPublicKey: encodeBase64Url(ephemeral.publicKey),
       publicKey: this.identity.bundle,
+      recipient: this.serverBundle,
       payload: null,
       signature: '',
     };
@@ -236,6 +264,9 @@ export class Client {
       throw new Error('Relay returned an oversized message frame');
     }
     verifyFrame(response, this.serverBundle);
+    if (response.recipient !== this.identity.bundle) {
+      throw new Error('Server returned a frame for another recipient');
+    }
     const acceptedAt = performance.now();
     for (const [cachedNonce, observedAt] of this.responseNonces) {
       if (acceptedAt - observedAt > FRAME_TIMESTAMP_TOLERANCE_MS) {
@@ -300,13 +331,14 @@ export class IndexedDbClientStore implements ClientStore {
     return key;
   }
 
-  loadTrustedServer(relayId: string) {
-    return this.read<string>(`trusted-server-v1:${relayId}`);
+  loadTrustedServer(relayId: string, recipient: string) {
+    return this.read<string>(`trusted-server-v1:${relayId}:${recipient}`);
   }
 
-  saveTrustedServer(relayId: string, bundle: string) {
+  saveTrustedServer(relayId: string, recipient: string, bundle: string) {
+    parseBundle(recipient);
     parseBundle(bundle);
-    return this.write(`trusted-server-v1:${relayId}`, bundle);
+    return this.write(`trusted-server-v1:${relayId}:${recipient}`, bundle);
   }
 
   private async read<T>(key: string) {

@@ -35,10 +35,13 @@ pub fn prompt_connection(request: ConnectionRequest) -> DialogResult<bool> {
     let title = "Keeless connection request";
     let app = ConnectionApp {
         fingerprint: approval_fingerprint(&request.public_key),
-        name: request.name,
+        recipient_fingerprint: approval_fingerprint(&request.recipient),
+        sender_scope: request.sender_scope,
+        recipient_scope: request.recipient_scope,
+        kind: request.kind,
         result: result.clone(),
     };
-    run_dialog(title, [500.0, 240.0], app)?;
+    run_dialog(title, [500.0, 300.0], app)?;
     take_result(&result)
 }
 
@@ -240,7 +243,10 @@ impl Drop for PasswordApp {
 
 struct ConnectionApp {
     fingerprint: String,
-    name: Option<String>,
+    recipient_fingerprint: String,
+    sender_scope: String,
+    recipient_scope: String,
+    kind: String,
     result: Arc<Mutex<Option<DialogResult<bool>>>>,
 }
 
@@ -264,15 +270,25 @@ impl eframe::App for ConnectionApp {
             return;
         }
         egui::CentralPanel::default().show(context, |ui| {
-            ui.heading("Allow a new connection?");
+            ui.heading(if self.kind == "upgrade" {
+                "Allow database access?"
+            } else {
+                "Allow a limited connection?"
+            });
             ui.add_space(8.0);
-            ui.label("An unknown local client requested access to Keeless.");
-            if let Some(name) = &self.name {
-                ui.label(format!("Claimed client name: {name}"));
+            ui.label(format!("Client scope: {}", self.sender_scope));
+            ui.label(format!("Server scope: {}", self.recipient_scope));
+            if self.sender_scope == "app" {
+                ui.colored_label(
+                    ui.visuals().warn_fg_color,
+                    "This app can access every database that you approve.",
+                );
             }
             ui.add_space(8.0);
-            ui.label("Public-key fingerprint:");
+            ui.label("Client fingerprint:");
             ui.monospace(&self.fingerprint);
+            ui.label("Server fingerprint:");
+            ui.monospace(&self.recipient_fingerprint);
             ui.add_space(16.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Allow").clicked() {

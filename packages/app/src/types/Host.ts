@@ -41,7 +41,7 @@ export interface Host {
   readonly label: string;
   readonly storages: readonly HostStorage[];
   isAvailable(): Promise<boolean>;
-  connect(defaultApprovedBundle: string): Promise<void>;
+  connect(): Promise<string>;
   send(frame: MessageFrame): Promise<MessageFrame | null>;
   onEntryFocus?(listener: (entryId: string) => void): () => void;
 }

@@ -2257,6 +2257,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hkdf",
  "keeless_kdbx",
+ "keeless_lesswire",
  "keeless_schema",
  "keeless_secure_types",
  "keeless_sync",
@@ -2445,6 +2446,7 @@ dependencies = [
  "base64",
  "keeless_host_desktop_shared",
  "keeless_kdbx",
+ "keeless_lesswire",
  "keeless_passkey_ctap",
  "keeless_schema",
  "libc",
@@ -2458,6 +2460,7 @@ version = "0.0.0"
 dependencies = [
  "base64",
  "keeless_host_desktop_shared",
+ "keeless_lesswire",
  "keeless_passkey_ctap",
  "keeless_schema",
  "thiserror 2.0.18",

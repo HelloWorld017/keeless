@@ -8,8 +8,8 @@ use wasm_bindgen::JsValue;
 const DATABASE_NAME: &str = "keeless";
 pub(crate) const CONFIG_STORE: &str = "config";
 pub(crate) const ENTRY_STORE: &str = "entries";
-pub(crate) const CORE_CONFIG_KEY: &str = "core-settings-v1";
 pub(crate) const WIRE_CONFIG_KEY: &str = "lesswire-server-v1";
+pub(crate) const STATE_STORE: &str = "database-state";
 
 pub(crate) fn js_error(error: impl std::fmt::Display) -> JsValue {
     js_sys::Error::new(&error.to_string()).into()
@@ -119,9 +119,10 @@ pub(crate) struct IndexedDb {
 impl IndexedDb {
     pub(crate) async fn open() -> Result<Rc<Self>, JsValue> {
         let db = Rexie::builder(DATABASE_NAME)
-            .version(1)
+            .version(2)
             .add_object_store(ObjectStore::new(CONFIG_STORE).key_path("key"))
             .add_object_store(ObjectStore::new(ENTRY_STORE).key_path("path"))
+            .add_object_store(ObjectStore::new(STATE_STORE).key_path("key"))
             .build()
             .await
             .map_err(js_error)?;

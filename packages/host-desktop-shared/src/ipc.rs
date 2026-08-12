@@ -18,12 +18,14 @@ const PROTOCOL_VERSION: u8 = 1;
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Request {
     Ping,
+    Bootstrap,
     HandleFrame(Vec<u8>),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Response {
     Pong,
+    Bootstrap(String),
     Frame(Option<Vec<u8>>),
     Error(String),
 }
@@ -79,6 +81,13 @@ impl Client {
         match Self::request(Request::HandleFrame(frame)).await? {
             Response::Frame(frame) => Ok(frame),
             _ => Err(IpcError::Protocol("unexpected frame response".into())),
+        }
+    }
+
+    pub async fn bootstrap() -> Result<String> {
+        match Self::request(Request::Bootstrap).await? {
+            Response::Bootstrap(bundle) => Ok(bundle),
+            _ => Err(IpcError::Protocol("unexpected bootstrap response".into())),
         }
     }
 }

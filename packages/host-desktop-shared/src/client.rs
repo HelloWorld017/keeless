@@ -46,26 +46,30 @@ pub struct CoreClient {
 }
 
 impl CoreClient {
-    /// Connect to the host, pairing on first use.
+    /// Connect to a specific server recipient, pinning its advertised bundle on first use.
     ///
     /// Pairing sends a handshake the host answers only after the user approves this
     /// client, and the host key learned that way is pinned in `state`.
-    pub async fn connect(state: &mut ClientState) -> Result<Self, ClientError> {
-        let mut wire = WireClient::new(
-            state.identity()?,
-            state.trusted_server(),
-            Arc::new(SystemClock),
-        )?;
-        if state.trusted_server().is_none() {
+    pub async fn connect(
+        state: &mut ClientState,
+        recipient: Option<String>,
+    ) -> Result<Self, ClientError> {
+        let recipient = match recipient {
+            Some(recipient) => recipient,
+            None => ipc::Client::bootstrap().await?,
+        };
+        let mut wire = WireClient::new(state.identity()?, &recipient, Arc::new(SystemClock))?;
+        if state.trusted_server(&recipient).is_none() {
             let mut connection = ipc::Client::connect().await?;
             let frame = serde_json::to_vec(&wire.handshake_frame()?)?;
             connection
                 .send_request(&Request::HandleFrame(frame))
                 .await?;
             let response = expect_frame(connection.receive_response().await?)?;
-            if let Some(bundle) = wire.accept_handshake(&parse_frame(&response)?)? {
-                state.set_trusted_server(bundle).await?;
-            }
+            wire.accept_handshake(&parse_frame(&response)?)?;
+            state
+                .set_trusted_server(recipient.clone(), recipient.clone())
+                .await?;
         }
 
         let mut session = [0_u8; 8];
@@ -87,6 +91,16 @@ impl CoreClient {
     }
 
     pub async fn request(&mut self, operation: Operation) -> Result<OperationSuccess, ClientError> {
+        if self.wire.public_key_bundle().ends_with(".passkey")
+            && !matches!(
+                operation,
+                Operation::GetPasskeys(_)
+                    | Operation::RegisterPasskey(_)
+                    | Operation::AssertPasskey(_)
+            )
+        {
+            return Err(ClientError::Rejected);
+        }
         self.next_request += 1;
         let request_id = format!("{}-{}", self.session, self.next_request);
         let payload = serde_json::to_vec(&OperationRequest {

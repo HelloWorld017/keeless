@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use keeless_lesswire::{Client, Identity, PublicKeyBundle, SystemClock};
+use keeless_lesswire::{Client, Identity, KeyScope, PublicKeyBundle, SystemClock};
 use thiserror::Error;
 use zeroize::Zeroizing;
 
@@ -69,8 +69,8 @@ fn encrypt(
     recipient: &PublicKeyBundle,
     plaintext: &[u8],
 ) -> Result<keeless_lesswire::MessageFrame, Error> {
-    let identity = Identity::generate().map_err(Error::Encryption)?;
-    let client = Client::new(identity, Some(recipient.as_str()), Arc::new(SystemClock))
+    let identity = Identity::generate(KeyScope::App).map_err(Error::Encryption)?;
+    let client = Client::new(identity, recipient.as_str(), Arc::new(SystemClock))
         .map_err(Error::Encryption)?;
     client.encrypt(plaintext).map_err(Error::Encryption)
 }

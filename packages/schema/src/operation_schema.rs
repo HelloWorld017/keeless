@@ -1,4 +1,10 @@
 macro_rules! operation_schema {
+    (@scopes $default:ident []) => {
+        &[KeyScope::$default]
+    };
+    (@scopes $default:ident [$($scope:ident),+]) => {
+        &[$(KeyScope::$scope),+]
+    };
     (@parse
         [$($types:tt)*]
         [$($operation:tt)*]
@@ -14,6 +20,8 @@ macro_rules! operation_schema {
                 $(#[$result_attribute:meta])*
                 $result_visibility:vis struct $result:ident { $($result_fields:tt)* }
             }
+            $(senders: [$($sender:ident),* $(,)?],)?
+            $(recipients: [$($recipient:ident),* $(,)?],)?
             $(queries: [$($query:ident),* $(,)?],)?
             $(fetches: [$($fetch:ident),* $(,)?],)?
             $(mutates: [$($mutate:ident),* $(,)?],)?
@@ -36,6 +44,8 @@ macro_rules! operation_schema {
                 queries: [$($($query),*)?],
                 fetches: [$($($fetch),*)?],
                 mutates: [$($($mutate),*)?],
+                senders: [$($($sender),*)?],
+                recipients: [$($($recipient),*)?],
             }
             $($rest)*
         );
@@ -56,6 +66,8 @@ macro_rules! operation_schema {
                 $(#[$result_attribute:meta])*
                 $result_visibility:vis struct $result:ident { $($result_fields:tt)* }
             }
+            $(senders: [$($sender:ident),* $(,)?],)?
+            $(recipients: [$($recipient:ident),* $(,)?],)?
             $(queries: [$($query:ident),* $(,)?],)?
             $(fetches: [$($fetch:ident),* $(,)?],)?
             $(mutates: [$($mutate:ident),* $(,)?],)?
@@ -78,6 +90,8 @@ macro_rules! operation_schema {
                 queries: [$($($query),*)?],
                 fetches: [$($($fetch),*)?],
                 mutates: [$($($mutate),*)?],
+                senders: [$($($sender),*)?],
+                recipients: [$($($recipient),*)?],
             }
             $($rest)*
         );
@@ -95,6 +109,8 @@ macro_rules! operation_schema {
                 $args_visibility:vis struct $args:ident { $($args_fields:tt)* }
             }
             result $result:ident
+            $(senders: [$($sender:ident),* $(,)?],)?
+            $(recipients: [$($recipient:ident),* $(,)?],)?
             $(queries: [$($query:ident),* $(,)?],)?
             $(fetches: [$($fetch:ident),* $(,)?],)?
             $(mutates: [$($mutate:ident),* $(,)?],)?
@@ -114,6 +130,8 @@ macro_rules! operation_schema {
                 queries: [$($($query),*)?],
                 fetches: [$($($fetch),*)?],
                 mutates: [$($($mutate),*)?],
+                senders: [$($($sender),*)?],
+                recipients: [$($($recipient),*)?],
             }
             $($rest)*
         );
@@ -131,6 +149,8 @@ macro_rules! operation_schema {
                 $args_visibility:vis struct $args:ident { $($args_fields:tt)* }
             }
             result Box<$result:ident>
+            $(senders: [$($sender:ident),* $(,)?],)?
+            $(recipients: [$($recipient:ident),* $(,)?],)?
             $(queries: [$($query:ident),* $(,)?],)?
             $(fetches: [$($fetch:ident),* $(,)?],)?
             $(mutates: [$($mutate:ident),* $(,)?],)?
@@ -150,6 +170,8 @@ macro_rules! operation_schema {
                 queries: [$($($query),*)?],
                 fetches: [$($($fetch),*)?],
                 mutates: [$($($mutate),*)?],
+                senders: [$($($sender),*)?],
+                recipients: [$($($recipient),*)?],
             }
             $($rest)*
         );
@@ -164,7 +186,9 @@ macro_rules! operation_schema {
         $variant:ident($name:literal, $args:ident) => $result:ident {
             queries: [$($query:ident),* $(,)?],
             fetches: [$($fetch:ident),* $(,)?],
-            mutates: [$($mutate:ident),* $(,)?] $(,)?
+            mutates: [$($mutate:ident),* $(,)?],
+            senders: [$($sender:ident),* $(,)?],
+            recipients: [$($recipient:ident),* $(,)?] $(,)?
         }
         $($rest:tt)*
     ) => {
@@ -176,6 +200,8 @@ macro_rules! operation_schema {
                 queries: &[$(OperationResource::$query),*],
                 fetches: &[$(OperationResource::$fetch),*],
                 mutates: &[$(OperationResource::$mutate),*],
+                senders: operation_schema!(@scopes App [$($sender),*]),
+                recipients: operation_schema!(@scopes Core [$($recipient),*]),
             },]
             [$($definition)* OperationDefinition {
                 name: $name,
@@ -183,6 +209,8 @@ macro_rules! operation_schema {
                     queries: &[$(OperationResource::$query),*],
                     fetches: &[$(OperationResource::$fetch),*],
                     mutates: &[$(OperationResource::$mutate),*],
+                    senders: operation_schema!(@scopes App [$($sender),*]),
+                    recipients: operation_schema!(@scopes Core [$($recipient),*]),
                 },
             },]
             $($rest)*
@@ -198,7 +226,9 @@ macro_rules! operation_schema {
         $variant:ident($name:literal, $args:ident) => Box<$result:ident> {
             queries: [$($query:ident),* $(,)?],
             fetches: [$($fetch:ident),* $(,)?],
-            mutates: [$($mutate:ident),* $(,)?] $(,)?
+            mutates: [$($mutate:ident),* $(,)?],
+            senders: [$($sender:ident),* $(,)?],
+            recipients: [$($recipient:ident),* $(,)?] $(,)?
         }
         $($rest:tt)*
     ) => {
@@ -210,6 +240,8 @@ macro_rules! operation_schema {
                 queries: &[$(OperationResource::$query),*],
                 fetches: &[$(OperationResource::$fetch),*],
                 mutates: &[$(OperationResource::$mutate),*],
+                senders: operation_schema!(@scopes App [$($sender),*]),
+                recipients: operation_schema!(@scopes Core [$($recipient),*]),
             },]
             [$($definition)* OperationDefinition {
                 name: $name,
@@ -217,6 +249,8 @@ macro_rules! operation_schema {
                     queries: &[$(OperationResource::$query),*],
                     fetches: &[$(OperationResource::$fetch),*],
                     mutates: &[$(OperationResource::$mutate),*],
+                    senders: operation_schema!(@scopes App [$($sender),*]),
+                    recipients: operation_schema!(@scopes Core [$($recipient),*]),
                 },
             },]
             $($rest)*

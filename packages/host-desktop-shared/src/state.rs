@@ -4,7 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
-use keeless_lesswire::{Identity, StateStore, WireFuture};
+use keeless_lesswire::{Identity, KeyScope, StateStore, WireFuture};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
@@ -12,7 +12,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use crate::fs;
 
 pub const MAX_STATE_SIZE: usize = 64 * 1024;
-const STATE_VERSION: u8 = 1;
+const STATE_VERSION: u8 = 2;
 
 /// An owner-only file replaced atomically on every write.
 #[derive(Debug, Clone)]
@@ -119,10 +119,12 @@ struct PersistedClientState {
     version: u8,
     /// The client's own lesswire identity, base16 of its 64 secret bytes.
     identity: String,
-    /// The host key this client pinned on first contact, absent until paired.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[zeroize(skip)]
-    trusted_server: Option<String>,
+    scope: KeyScope,
+    /// Endpoint-specific server bundles pinned after an explicit handshake.
+    #[serde(default)]
+    #[zeroize(skip)]
+    trusted_servers: std::collections::HashMap<String, String>,
 }
 
 /// A sidecar's lesswire identity together with the host key it trusts.
@@ -133,16 +135,17 @@ struct PersistedClientState {
 pub struct ClientState {
     store: FileStore,
     identity: Zeroizing<[u8; 64]>,
-    trusted_server: Option<String>,
+    scope: KeyScope,
+    trusted_servers: std::collections::HashMap<String, String>,
 }
 
 impl ClientState {
     /// Load the state, generating and persisting a fresh identity when absent.
-    pub async fn load(store: FileStore) -> Result<Self, StateError> {
+    pub async fn load(store: FileStore, scope: KeyScope) -> Result<Self, StateError> {
         if let Some(bytes) = store.load(MAX_STATE_SIZE).await? {
             let persisted: PersistedClientState =
                 serde_json::from_slice(&bytes).map_err(|_| StateError::Malformed)?;
-            if persisted.version != STATE_VERSION {
+            if persisted.version != STATE_VERSION || persisted.scope != scope {
                 return Err(StateError::Malformed);
             }
             let decoded = Zeroizing::new(
@@ -155,32 +158,45 @@ impl ClientState {
             return Ok(Self {
                 store,
                 identity: Zeroizing::new(identity),
-                trusted_server: persisted.trusted_server.clone(),
+                scope,
+                trusted_servers: persisted.trusted_servers.clone(),
             });
         }
 
         let state = Self {
             store,
-            identity: Identity::generate()?.to_bytes(),
-            trusted_server: None,
+            identity: Identity::generate(scope)?.to_bytes(),
+            scope,
+            trusted_servers: std::collections::HashMap::new(),
         };
         state.persist().await?;
         Ok(state)
     }
 
     pub fn identity(&self) -> Result<Identity, StateError> {
-        Ok(Identity::from_bytes(self.identity.as_slice())?)
+        Ok(Identity::from_bytes(self.scope, self.identity.as_slice())?)
     }
 
-    pub fn trusted_server(&self) -> Option<&str> {
-        self.trusted_server.as_deref()
+    pub fn trusted_server(&self, recipient: &str) -> Option<&str> {
+        self.trusted_servers.get(recipient).map(String::as_str)
+    }
+
+    pub fn has_trusted_servers(&self) -> bool {
+        !self.trusted_servers.is_empty()
     }
 
     /// Pin the host key learned from a handshake.
-    pub async fn set_trusted_server(&mut self, bundle: String) -> Result<(), StateError> {
-        let previous = self.trusted_server.replace(bundle);
+    pub async fn set_trusted_server(
+        &mut self,
+        recipient: String,
+        bundle: String,
+    ) -> Result<(), StateError> {
+        let previous = self.trusted_servers.insert(recipient.clone(), bundle);
         if let Err(error) = self.persist().await {
-            self.trusted_server = previous;
+            match previous {
+                Some(value) => self.trusted_servers.insert(recipient, value),
+                None => self.trusted_servers.remove(&recipient),
+            };
             return Err(error);
         }
         Ok(())
@@ -188,9 +204,9 @@ impl ClientState {
 
     /// Forget the pinned host key so the next handshake pairs again.
     pub async fn reset_pairing(&mut self) -> Result<(), StateError> {
-        let previous = self.trusted_server.take();
+        let previous = std::mem::take(&mut self.trusted_servers);
         if let Err(error) = self.persist().await {
-            self.trusted_server = previous;
+            self.trusted_servers = previous;
             return Err(error);
         }
         Ok(())
@@ -200,7 +216,8 @@ impl ClientState {
         let persisted = PersistedClientState {
             version: STATE_VERSION,
             identity: hex::encode(self.identity.as_slice()),
-            trusted_server: self.trusted_server.clone(),
+            scope: self.scope,
+            trusted_servers: self.trusted_servers.clone(),
         };
         let bytes = Zeroizing::new(serde_json::to_vec(&persisted)?);
         self.store.save(&bytes).await?;
@@ -229,23 +246,33 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = FileStore::at(directory.path().join("nested/vhid-state.json"));
 
-        let mut state = ClientState::load(store.clone()).await.unwrap();
+        let mut state = ClientState::load(store.clone(), KeyScope::App)
+            .await
+            .unwrap();
         let bundle = state.identity().unwrap().public_key_bundle();
-        assert!(state.trusted_server().is_none());
+        assert!(state.trusted_server("v1.server.app").is_none());
 
-        state.set_trusted_server("v1.server".into()).await.unwrap();
+        state
+            .set_trusted_server("v1.server.app".into(), "v1.server.app".into())
+            .await
+            .unwrap();
 
-        let reloaded = ClientState::load(store.clone()).await.unwrap();
+        let reloaded = ClientState::load(store.clone(), KeyScope::App)
+            .await
+            .unwrap();
         assert_eq!(reloaded.identity().unwrap().public_key_bundle(), bundle);
-        assert_eq!(reloaded.trusted_server(), Some("v1.server"));
+        assert_eq!(
+            reloaded.trusted_server("v1.server.app"),
+            Some("v1.server.app")
+        );
 
         let mut reloaded = reloaded;
         reloaded.reset_pairing().await.unwrap();
         assert!(
-            ClientState::load(store)
+            ClientState::load(store, KeyScope::App)
                 .await
                 .unwrap()
-                .trusted_server()
+                .trusted_server("v1.server.app")
                 .is_none()
         );
     }
@@ -257,7 +284,7 @@ mod tests {
         tokio::fs::write(&path, b"{\"version\":9,\"identity\":\"00\"}")
             .await
             .unwrap();
-        let error = ClientState::load(FileStore::at(path.clone()))
+        let error = ClientState::load(FileStore::at(path.clone()), KeyScope::App)
             .await
             .err()
             .expect("a malformed state file should be rejected");

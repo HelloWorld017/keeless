@@ -106,6 +106,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             persistence.write_cache(&cache).await?;
         }
     }
+    core.activate_database_state(&raw_key).await?;
     let credential = if core.settings.paranoia_mode {
         None
     } else {

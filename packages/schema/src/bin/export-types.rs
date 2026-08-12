@@ -20,6 +20,7 @@ fn generate() -> String {
     export::<StorageDescriptor>(&mut output);
     export::<DatabaseStatus>(&mut output);
     export::<SyncStatus>(&mut output);
+    export::<KeyScope>(&mut output);
     export::<KeelessConfig>(&mut output);
     export::<KeelessConfigPatch>(&mut output);
     export::<DatabaseNodeId>(&mut output);
@@ -38,6 +39,8 @@ fn generate() -> String {
     export::<UnlockArgs>(&mut output);
     export::<LockArgs>(&mut output);
     export_empty("GetDatabaseStatusArgs", &mut output);
+    export_empty("GetCoreStatusArgs", &mut output);
+    export_empty("UpgradeArgs", &mut output);
     export_empty("GetStorageDescriptorArgs", &mut output);
     export_empty("GetConfigArgs", &mut output);
     export::<SetConfigArgs>(&mut output);
@@ -81,6 +84,8 @@ fn generate() -> String {
     export::<OperationRequest>(&mut output);
     export_empty("EmptyResult", &mut output);
     export::<DatabaseStatusResult>(&mut output);
+    export::<CoreStatusResult>(&mut output);
+    export::<UpgradeResult>(&mut output);
     export::<StorageDescriptorResult>(&mut output);
     export::<ConfigResult>(&mut output);
     export::<EntriesResult>(&mut output);
@@ -130,7 +135,7 @@ fn export_operation_metadata(output: &mut String) {
     }
     output.push('\n');
     output.push_str(
-        "export type OperationMetadata = {\n  queries?: readonly OperationResource[];\n  fetches?: readonly OperationResource[];\n  mutates?: readonly OperationResource[];\n}\n\n",
+        "export type OperationMetadata = {\n  queries?: readonly OperationResource[];\n  fetches?: readonly OperationResource[];\n  mutates?: readonly OperationResource[];\n  senders: readonly KeyScope[];\n  recipients: readonly KeyScope[];\n}\n\n",
     );
     output.push_str("export const operationMetadata = {\n");
     for definition in Operation::definitions() {
@@ -165,7 +170,32 @@ fn export_operation_metadata(output: &mut String) {
             }
             output.push_str("],");
         }
+        output.push_str(" senders: [");
+        for (index, scope) in definition.metadata.senders.iter().enumerate() {
+            if index > 0 {
+                output.push_str(", ");
+            }
+            output.push_str(&format!("{:?}", scope_name(*scope)));
+        }
+        output.push_str("],");
+        output.push_str(" recipients: [");
+        for (index, scope) in definition.metadata.recipients.iter().enumerate() {
+            if index > 0 {
+                output.push_str(", ");
+            }
+            output.push_str(&format!("{:?}", scope_name(*scope)));
+        }
+        output.push_str("],");
         output.push_str(" },\n");
     }
     output.push_str("} as const satisfies Record<Operation['op'], OperationMetadata>\n\n");
+}
+
+fn scope_name(scope: KeyScope) -> &'static str {
+    match scope {
+        KeyScope::CoreUntrusted => "core_untrusted",
+        KeyScope::Core => "core",
+        KeyScope::App => "app",
+        KeyScope::Passkey => "passkey",
+    }
 }

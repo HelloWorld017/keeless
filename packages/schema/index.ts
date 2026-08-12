@@ -6,6 +6,8 @@ export type DatabaseStatus = 'not_exist' | 'locked' | 'unlocked';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
+export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey';
+
 export type KeelessConfig = { autoLockTimeoutMs: number | null; paranoiaMode: boolean };
 
 export type KeelessConfigPatch = { autoLockTimeoutMs?: number | null; paranoiaMode?: boolean };
@@ -105,6 +107,10 @@ export type UnlockArgs = { password?: string | null };
 export type LockArgs = { password?: string | null };
 
 export type GetDatabaseStatusArgs = Record<string, never>;
+
+export type GetCoreStatusArgs = Record<string, never>;
+
+export type UpgradeArgs = Record<string, never>;
 
 export type GetStorageDescriptorArgs = Record<string, never>;
 
@@ -243,6 +249,8 @@ export type Operation =
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
   | { op: 'lock'; args: LockArgs }
+  | { op: 'getCoreStatus'; args: GetCoreStatusArgs }
+  | { op: 'upgrade'; args: UpgradeArgs }
   | { op: 'getDatabaseStatus'; args: GetDatabaseStatusArgs }
   | { op: 'getStorageDescriptor'; args: GetStorageDescriptorArgs }
   | { op: 'getConfig'; args: GetConfigArgs }
@@ -286,6 +294,8 @@ export type OperationRequest = (
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
   | { op: 'lock'; args: LockArgs }
+  | { op: 'getCoreStatus'; args: GetCoreStatusArgs }
+  | { op: 'upgrade'; args: UpgradeArgs }
   | { op: 'getDatabaseStatus'; args: GetDatabaseStatusArgs }
   | { op: 'getStorageDescriptor'; args: GetStorageDescriptorArgs }
   | { op: 'getConfig'; args: GetConfigArgs }
@@ -333,6 +343,10 @@ export type DatabaseStatusResult = {
   dirty: boolean;
   syncError: OperationError | null;
 };
+
+export type CoreStatusResult = { database: DatabaseStatus };
+
+export type UpgradeResult = { publicKey: string };
 
 export type StorageDescriptorResult = { storage: StorageDescriptor | null };
 
@@ -433,6 +447,8 @@ export type OperationSuccess =
   | { op: 'create'; result: EmptyResult }
   | { op: 'unlock'; result: EmptyResult }
   | { op: 'lock'; result: EmptyResult }
+  | { op: 'getCoreStatus'; result: CoreStatusResult }
+  | { op: 'upgrade'; result: UpgradeResult }
   | { op: 'getDatabaseStatus'; result: DatabaseStatusResult }
   | { op: 'getStorageDescriptor'; result: StorageDescriptorResult }
   | { op: 'getConfig'; result: ConfigResult }
@@ -492,48 +508,111 @@ export type OperationMetadata = {
   queries?: readonly OperationResource[];
   fetches?: readonly OperationResource[];
   mutates?: readonly OperationResource[];
+  senders: readonly KeyScope[];
+  recipients: readonly KeyScope[];
 };
 
 export const operationMetadata = {
-  open: { mutates: ['databaseStatus'] },
-  create: { mutates: ['databaseStatus'] },
-  unlock: { mutates: ['databaseStatus'] },
-  lock: { mutates: ['databaseStatus'] },
-  getDatabaseStatus: { queries: ['databaseStatus'] },
-  getStorageDescriptor: { queries: ['storageDescriptor'] },
-  getConfig: { queries: ['config'] },
-  setConfig: { mutates: ['config', 'databaseStatus'] },
-  getEntries: { queries: ['entry'] },
-  searchEntries: { queries: ['entry'] },
-  searchFuzzy: { queries: ['entry', 'group', 'tag'] },
-  getGroupHierarchy: { queries: ['group'] },
-  getGroupEntries: { queries: ['entry'] },
-  getTagEntries: { queries: ['entry', 'tag'] },
-  getTrashEntries: { queries: ['entry'] },
-  getTags: { queries: ['tag'] },
-  getEntryDetail: { queries: ['entry'] },
-  updateEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
-  prepareEntryAttachmentDownload: { fetches: ['entry'] },
-  deleteEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
-  emptyRecycleBin: { mutates: ['databaseStatus', 'entry', 'group', 'tag'] },
-  saveDatabase: { mutates: ['databaseStatus', 'entry', 'group', 'tag', 'customIcon'] },
-  prepareDatabaseExport: { fetches: ['entry', 'group', 'tag', 'customIcon'] },
-  mergeTransferredDatabase: { mutates: ['databaseStatus', 'entry', 'group', 'tag', 'customIcon'] },
-  getCustomIcons: { queries: ['customIcon'] },
-  getEntryTemplates: { queries: ['entry'] },
-  moveGroup: { mutates: ['databaseStatus', 'group'] },
-  moveEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
-  addEntry: { mutates: ['databaseStatus', 'entry', 'tag'] },
-  addEntryFromTemplate: { mutates: ['databaseStatus', 'entry', 'tag'] },
-  addGroup: { mutates: ['databaseStatus', 'group'] },
-  deleteGroup: { mutates: ['databaseStatus', 'entry', 'group', 'tag'] },
-  renameGroup: { mutates: ['databaseStatus', 'group'] },
-  updateGroup: { mutates: ['databaseStatus', 'group'] },
-  updateTagStyle: { mutates: ['databaseStatus', 'tag'] },
-  deleteTag: { mutates: ['databaseStatus', 'tag'] },
-  revealEntryFields: { fetches: ['entry'] },
-  getEntryTotp: { fetches: ['entry'] },
-  getPasskeys: { queries: ['entry'] },
-  registerPasskey: { mutates: ['databaseStatus', 'entry'] },
-  assertPasskey: { fetches: ['entry'] },
+  open: {
+    mutates: ['databaseStatus'],
+    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    recipients: ['core_untrusted'],
+  },
+  create: {
+    mutates: ['databaseStatus'],
+    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    recipients: ['core_untrusted'],
+  },
+  unlock: {
+    mutates: ['databaseStatus'],
+    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    recipients: ['core_untrusted'],
+  },
+  lock: { mutates: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
+  getCoreStatus: {
+    queries: ['databaseStatus'],
+    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    recipients: ['core_untrusted'],
+  },
+  upgrade: {
+    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    recipients: ['core_untrusted'],
+  },
+  getDatabaseStatus: { queries: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
+  getStorageDescriptor: { queries: ['storageDescriptor'], senders: ['app'], recipients: ['core'] },
+  getConfig: { queries: ['config'], senders: ['app'], recipients: ['core'] },
+  setConfig: { mutates: ['config', 'databaseStatus'], senders: ['app'], recipients: ['core'] },
+  getEntries: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
+  searchEntries: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
+  searchFuzzy: { queries: ['entry', 'group', 'tag'], senders: ['app'], recipients: ['core'] },
+  getGroupHierarchy: { queries: ['group'], senders: ['app'], recipients: ['core'] },
+  getGroupEntries: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
+  getTagEntries: { queries: ['entry', 'tag'], senders: ['app'], recipients: ['core'] },
+  getTrashEntries: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
+  getTags: { queries: ['tag'], senders: ['app'], recipients: ['core'] },
+  getEntryDetail: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
+  updateEntry: {
+    mutates: ['databaseStatus', 'entry', 'tag'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  prepareEntryAttachmentDownload: { fetches: ['entry'], senders: ['app'], recipients: ['core'] },
+  deleteEntry: {
+    mutates: ['databaseStatus', 'entry', 'tag'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  emptyRecycleBin: {
+    mutates: ['databaseStatus', 'entry', 'group', 'tag'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  saveDatabase: {
+    mutates: ['databaseStatus', 'entry', 'group', 'tag', 'customIcon'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  prepareDatabaseExport: {
+    fetches: ['entry', 'group', 'tag', 'customIcon'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  mergeTransferredDatabase: {
+    mutates: ['databaseStatus', 'entry', 'group', 'tag', 'customIcon'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  getCustomIcons: { queries: ['customIcon'], senders: ['app'], recipients: ['core'] },
+  getEntryTemplates: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
+  moveGroup: { mutates: ['databaseStatus', 'group'], senders: ['app'], recipients: ['core'] },
+  moveEntry: {
+    mutates: ['databaseStatus', 'entry', 'tag'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  addEntry: { mutates: ['databaseStatus', 'entry', 'tag'], senders: ['app'], recipients: ['core'] },
+  addEntryFromTemplate: {
+    mutates: ['databaseStatus', 'entry', 'tag'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  addGroup: { mutates: ['databaseStatus', 'group'], senders: ['app'], recipients: ['core'] },
+  deleteGroup: {
+    mutates: ['databaseStatus', 'entry', 'group', 'tag'],
+    senders: ['app'],
+    recipients: ['core'],
+  },
+  renameGroup: { mutates: ['databaseStatus', 'group'], senders: ['app'], recipients: ['core'] },
+  updateGroup: { mutates: ['databaseStatus', 'group'], senders: ['app'], recipients: ['core'] },
+  updateTagStyle: { mutates: ['databaseStatus', 'tag'], senders: ['app'], recipients: ['core'] },
+  deleteTag: { mutates: ['databaseStatus', 'tag'], senders: ['app'], recipients: ['core'] },
+  revealEntryFields: { fetches: ['entry'], senders: ['app'], recipients: ['core'] },
+  getEntryTotp: { fetches: ['entry'], senders: ['app'], recipients: ['core'] },
+  getPasskeys: { queries: ['entry'], senders: ['app', 'passkey'], recipients: ['core'] },
+  registerPasskey: {
+    mutates: ['databaseStatus', 'entry'],
+    senders: ['app', 'passkey'],
+    recipients: ['core'],
+  },
+  assertPasskey: { fetches: ['entry'], senders: ['app', 'passkey'], recipients: ['core'] },
 } as const satisfies Record<Operation['op'], OperationMetadata>;

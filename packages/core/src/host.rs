@@ -4,6 +4,7 @@ use keeless_sync::StorageProvider;
 use zeroize::Zeroizing;
 
 use crate::{DatabaseId, Result, StorageDescriptor};
+use keeless_lesswire::{KeyScope, StateStore};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub type HostFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -43,6 +44,37 @@ pub trait DatabasePersistence: HostProviderRequirements {
     fn clear_journal(&self) -> HostFuture<'_, Result<()>>;
     fn quarantine_cache<'a>(&'a self, reason: &'a str) -> HostFuture<'a, Result<()>>;
     fn quarantine_journal<'a>(&'a self, reason: &'a str) -> HostFuture<'a, Result<()>>;
+    /// Reads a bounded Core-owned opaque record in the selected database namespace.
+    fn read_state_record<'a>(&'a self, name: &'a str) -> HostFuture<'a, Result<Option<Vec<u8>>>>;
+    /// Atomically replaces a bounded Core-owned opaque record in the selected namespace.
+    fn write_state_record<'a>(
+        &'a self,
+        name: &'a str,
+        bytes: &'a [u8],
+    ) -> HostFuture<'a, Result<()>>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConnectionApprovalKind {
+    Initial,
+    Upgrade,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConnectionApprovalRequest {
+    pub sender: String,
+    pub sender_scope: KeyScope,
+    pub recipient: String,
+    pub recipient_scope: KeyScope,
+    pub kind: ConnectionApprovalKind,
+}
+
+/// Requests user approval without exposing Core's decrypted database state to the host.
+pub trait ConnectionApprovalProvider: HostProviderRequirements {
+    fn approve_connection(
+        &self,
+        request: ConnectionApprovalRequest,
+    ) -> HostFuture<'_, Result<bool>>;
 }
 
 /// Host-specific detached task execution used for storage fetches and maintenance work.
@@ -134,6 +166,9 @@ impl Clock for SystemClock {
 pub struct KeelessHost {
     pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
     pub config_provider: Arc<dyn ConfigProvider>,
+    /// Global plaintext state for the always-available untrusted Lesswire endpoint.
+    pub untrusted_state: Arc<dyn StateStore>,
+    pub connection_approval: Arc<dyn ConnectionApprovalProvider>,
     pub password_input: Option<Arc<dyn PasswordInputProvider>>,
     pub passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     pub clock: Arc<dyn Clock>,
@@ -147,6 +182,7 @@ impl std::fmt::Debug for KeelessHost {
         f.debug_struct("KeelessHost")
             .field("storage_provider_names", &self.storage_providers.keys())
             .field("has_password_input", &self.password_input.is_some())
+            .field("has_connection_approval", &true)
             .field("has_passkey_consent", &self.passkey_consent.is_some())
             .field(
                 "has_database_persistence",

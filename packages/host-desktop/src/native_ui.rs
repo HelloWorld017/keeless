@@ -6,11 +6,13 @@ use std::{
 };
 
 use keeless_core::{
-    CoreError, HostFuture, PasskeyConsentMode, PasskeyConsentProvider, PasskeyConsentRequest,
-    PasswordInputMode, PasswordInputProvider,
+    ConnectionApprovalProvider, ConnectionApprovalRequest, CoreError, HostFuture,
+    PasskeyConsentMode, PasskeyConsentProvider, PasskeyConsentRequest, PasswordInputMode,
+    PasswordInputProvider,
 };
 use keeless_lesswire::{
-    ApprovalProvider, MessageFrame, Server, ServerHost, StateStore, SystemClock, WireFuture,
+    ApprovalProvider, KeyScope, MessageFrame, Server, ServerHost, StateStore, SystemClock,
+    WireFuture,
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -71,9 +73,18 @@ impl NativeUi {
         }
     }
 
-    async fn request_approval(&self, bundle: &str) -> Result<bool, String> {
-        let arguments = serde_json::to_string(&ConnectionRequest { public_key: bundle })
-            .map_err(|error| error.to_string())?;
+    async fn request_approval(&self, request: ConnectionApprovalRequest) -> Result<bool, String> {
+        let arguments = serde_json::to_string(&ConnectionRequest {
+            public_key: &request.sender,
+            sender_scope: scope_name(request.sender_scope),
+            recipient: &request.recipient,
+            recipient_scope: scope_name(request.recipient_scope),
+            kind: match request.kind {
+                keeless_core::ConnectionApprovalKind::Initial => "initial",
+                keeless_core::ConnectionApprovalKind::Upgrade => "upgrade",
+            },
+        })
+        .map_err(|error| error.to_string())?;
         let plaintext = self.invoke("connection", &arguments).await?;
         match response_status(&plaintext, "connection")? {
             ResponseStatus::Cancelled => Ok(false),
@@ -235,13 +246,15 @@ impl PasskeyConsentProvider for NativeUi {
     }
 }
 
-impl ApprovalProvider for NativeUi {
-    fn approve(&self, public_key_bundle: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
-        let bundle = public_key_bundle.to_owned();
+impl ConnectionApprovalProvider for NativeUi {
+    fn approve_connection(
+        &self,
+        request: ConnectionApprovalRequest,
+    ) -> HostFuture<'_, keeless_core::Result<bool>> {
         Box::pin(async move {
-            self.request_approval(&bundle)
+            self.request_approval(request)
                 .await
-                .map_err(keeless_lesswire::Error::Host)
+                .map_err(CoreError::Host)
         })
     }
 }
@@ -287,6 +300,8 @@ async fn one_shot_server() -> Result<Server, String> {
         store: Arc::new(MemoryStore::default()),
         approval_provider: Arc::new(DenyApproval),
         clock: Arc::new(SystemClock),
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
         runtime_approved_clients: Vec::new(),
     })
     .await
@@ -321,7 +336,10 @@ impl StateStore for MemoryStore {
 struct DenyApproval;
 
 impl ApprovalProvider for DenyApproval {
-    fn approve(&self, _: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
+    fn approve(
+        &self,
+        _: keeless_lesswire::ApprovalRequest,
+    ) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
         Box::pin(async { Ok(false) })
     }
 }
@@ -349,6 +367,19 @@ struct PasskeyAccount {
 #[serde(rename_all = "camelCase")]
 struct ConnectionRequest<'a> {
     public_key: &'a str,
+    sender_scope: &'static str,
+    recipient: &'a str,
+    recipient_scope: &'static str,
+    kind: &'static str,
+}
+
+fn scope_name(scope: KeyScope) -> &'static str {
+    match scope {
+        KeyScope::CoreUntrusted => "core_untrusted",
+        KeyScope::Core => "core",
+        KeyScope::App => "app",
+        KeyScope::Passkey => "passkey",
+    }
 }
 
 enum ResponseStatus {

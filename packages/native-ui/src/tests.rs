@@ -4,7 +4,7 @@ use std::{
 };
 
 use keeless_lesswire::{
-    ApprovalProvider, Identity, Server, ServerHost, StateStore, SystemClock, WireFuture,
+    ApprovalProvider, Identity, KeyScope, Server, ServerHost, StateStore, SystemClock, WireFuture,
 };
 
 use crate::{
@@ -15,9 +15,11 @@ use crate::{
 
 #[test]
 fn parses_each_ui_kind() {
-    let identity = Identity::generate().unwrap();
+    let identity = Identity::generate(KeyScope::CoreUntrusted).unwrap();
     let key = identity.public_key_bundle();
-    let connection = format!(r#"{{"publicKey":"{key}","name":"Browser extension"}}"#);
+    let connection = format!(
+        r#"{{"publicKey":"{key}","senderScope":"core_untrusted","recipient":"{key}","recipientScope":"core_untrusted","kind":"initial"}}"#
+    );
     for (kind, json) in [
         ("password", r#"{"mode":"unlock"}"#),
         ("connection", connection.as_str()),
@@ -38,7 +40,9 @@ fn parses_each_ui_kind() {
 
 #[test]
 fn rejects_unknown_fields_and_unsafe_labels() {
-    let key = Identity::generate().unwrap().public_key_bundle();
+    let key = Identity::generate(KeyScope::CoreUntrusted)
+        .unwrap()
+        .public_key_bundle();
     let unknown = Arguments::parse(arguments(
         &key,
         "password",
@@ -49,7 +53,9 @@ fn rejects_unknown_fields_and_unsafe_labels() {
     let bidi_name = Arguments::parse(arguments(
         &key,
         "connection",
-        &format!(r#"{{"publicKey":"{key}","name":"safe\u202eevil"}}"#),
+        &format!(
+            r#"{{"publicKey":"{key}","senderScope":"bad","recipient":"{key}","recipientScope":"core_untrusted","kind":"initial"}}"#
+        ),
     ));
     assert!(matches!(bidi_name, Err(Error::InvalidRequest(_))));
 
@@ -63,7 +69,9 @@ fn rejects_unknown_fields_and_unsafe_labels() {
 
 #[test]
 fn rejects_passkey_account_counts_the_dialog_cannot_show() {
-    let key = Identity::generate().unwrap().public_key_bundle();
+    let key = Identity::generate(KeyScope::CoreUntrusted)
+        .unwrap()
+        .public_key_bundle();
     for json in [
         // A registration prompt names exactly the account being created.
         r#"{"mode":"register","rpId":"example.com","accounts":[]}"#,
@@ -148,6 +156,8 @@ async fn encrypted_response_round_trips_through_lesswire_server() {
         store,
         approval_provider: Arc::new(DenyApproval),
         clock: Arc::new(SystemClock),
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
         runtime_approved_clients: Vec::new(),
     })
     .await
@@ -196,7 +206,10 @@ impl StateStore for MemoryStore {
 struct DenyApproval;
 
 impl ApprovalProvider for DenyApproval {
-    fn approve(&self, _: &str) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
+    fn approve(
+        &self,
+        _: keeless_lesswire::ApprovalRequest,
+    ) -> WireFuture<'_, keeless_lesswire::Result<bool>> {
         Box::pin(async { Ok(false) })
     }
 }

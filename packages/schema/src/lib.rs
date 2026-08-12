@@ -27,6 +27,15 @@ pub enum SyncStatus {
     Error,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyScope {
+    CoreUntrusted,
+    Core,
+    App,
+    Passkey,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct KeelessConfig {
@@ -315,6 +324,8 @@ pub struct OperationMetadata {
     pub queries: &'static [OperationResource],
     pub fetches: &'static [OperationResource],
     pub mutates: &'static [OperationResource],
+    pub senders: &'static [KeyScope],
+    pub recipients: &'static [KeyScope],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -337,6 +348,8 @@ operation_schema! {
             #[serde(deny_unknown_fields)]
             pub struct EmptyResult {}
         }
+        senders: [CoreUntrusted, Core, App, Passkey],
+        recipients: [CoreUntrusted],
         mutates: [DatabaseStatus],
     }
 
@@ -351,6 +364,8 @@ operation_schema! {
             }
         }
         result EmptyResult
+        senders: [CoreUntrusted, Core, App, Passkey],
+        recipients: [CoreUntrusted],
         mutates: [DatabaseStatus],
     }
 
@@ -365,6 +380,8 @@ operation_schema! {
             }
         }
         result EmptyResult
+        senders: [CoreUntrusted, Core, App, Passkey],
+        recipients: [CoreUntrusted],
         mutates: [DatabaseStatus],
     }
 
@@ -380,6 +397,41 @@ operation_schema! {
         }
         result EmptyResult
         mutates: [DatabaseStatus],
+    }
+
+    GetCoreStatus("getCoreStatus") {
+        args {
+            #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(deny_unknown_fields)]
+            pub struct GetCoreStatusArgs {}
+        }
+        result {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct CoreStatusResult {
+                pub database: DatabaseStatus,
+            }
+        }
+        senders: [CoreUntrusted, Core, App, Passkey],
+        recipients: [CoreUntrusted],
+        queries: [DatabaseStatus],
+    }
+
+    Upgrade("upgrade") {
+        args {
+            #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(deny_unknown_fields)]
+            pub struct UpgradeArgs {}
+        }
+        result {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct UpgradeResult {
+                pub public_key: String,
+            }
+        }
+        senders: [CoreUntrusted, Core, App, Passkey],
+        recipients: [CoreUntrusted],
     }
 
     GetDatabaseStatus("getDatabaseStatus") {
@@ -985,6 +1037,8 @@ operation_schema! {
                 pub credentials: Vec<PasskeySummary>,
             }
         }
+        senders: [App, Passkey],
+        recipients: [Core],
         queries: [Entry],
     }
 
@@ -1022,6 +1076,8 @@ operation_schema! {
                 pub authenticator_data: String,
             }
         }
+        senders: [App, Passkey],
+        recipients: [Core],
         mutates: [DatabaseStatus, Entry],
     }
 
@@ -1064,6 +1120,8 @@ operation_schema! {
                 pub user_selected: bool,
             }
         }
+        senders: [App, Passkey],
+        recipients: [Core],
         fetches: [Entry],
     }
 

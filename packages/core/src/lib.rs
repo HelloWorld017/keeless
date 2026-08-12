@@ -2,6 +2,7 @@
 
 mod config;
 mod credential;
+mod database_state;
 mod error;
 mod extensions;
 mod features;
@@ -17,15 +18,20 @@ use std::{
 
 use config::{CONFIG_VERSION, PersistedConfig};
 use credential::CredentialVault;
+use database_state::{CONFIG_RECORD, EncryptedDatabaseStateStore};
 use keeless_kdbx::CompositeKey;
 #[cfg(test)]
 use keeless_kdbx::SecureArray;
+use keeless_lesswire::{
+    Server, ServerHost, StateStore, TransferId, TransferOwner, TransferRegistry,
+};
 use keeless_sync::{FileHandle, RemoteFile, StorageError, SyncReport};
 use zeroize::Zeroizing;
 
 pub use error::{CoreError, Result};
 pub use host::{
-    Clock, ConfigProvider, DatabasePersistence, HostFuture, KeelessHost, PasskeyConsentMode,
+    Clock, ConfigProvider, ConnectionApprovalKind, ConnectionApprovalProvider,
+    ConnectionApprovalRequest, DatabasePersistence, HostFuture, KeelessHost, PasskeyConsentMode,
     PasskeyConsentProvider, PasskeyConsentRequest, PasswordInputMode, PasswordInputProvider,
     SystemClock, TaskSpawner, TransferProvider,
 };
@@ -63,6 +69,11 @@ type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageE
 
 pub struct KeelessCore {
     config_provider: Arc<dyn ConfigProvider>,
+    untrusted_server: Option<Server>,
+    core_server: Option<Server>,
+    core_transfers: Option<TransferRegistry>,
+    encrypted_state: Option<EncryptedDatabaseStateStore>,
+    connection_approval: Arc<dyn ConnectionApprovalProvider>,
     password_input: Option<Arc<dyn PasswordInputProvider>>,
     passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     clock: Arc<dyn Clock>,
@@ -81,6 +92,7 @@ pub struct KeelessCore {
     task_spawner: Option<Arc<dyn TaskSpawner>>,
     transfer_provider: Option<Arc<dyn TransferProvider>>,
     transfer_owner: Option<String>,
+    authenticated_sender: Option<keeless_lesswire::AuthenticatedSender>,
     background_fetch: Option<BackgroundFetch>,
     background_started_ms: Option<u64>,
     dirty: bool,
@@ -99,25 +111,29 @@ impl std::fmt::Debug for KeelessCore {
 
 impl KeelessCore {
     pub async fn new(host: KeelessHost) -> Result<Self> {
-        let loaded = host.config_provider.load().await?;
-        let (settings, generated) = match loaded {
-            Some(bytes) => {
-                let bytes = Zeroizing::new(bytes);
-                let persisted: PersistedConfig = serde_json::from_slice(&bytes)
-                    .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
-                persisted.validate()?;
-                (persisted.settings.clone(), false)
-            }
-            None => (KeelessConfig::default(), true),
-        };
+        let untrusted_server = Server::new(ServerHost {
+            store: host.untrusted_state,
+            approval_provider: Arc::new(HostApprovalAdapter(host.connection_approval.clone())),
+            clock: Arc::new(WireClockAdapter(host.clock.clone())),
+            scope: keeless_lesswire::KeyScope::CoreUntrusted,
+            allow_transfers: false,
+            runtime_approved_clients: Vec::new(),
+        })
+        .await
+        .map_err(|error| CoreError::Host(error.to_string()))?;
 
-        let core = Self {
+        Ok(Self {
             config_provider: host.config_provider,
+            untrusted_server: Some(untrusted_server),
+            core_server: None,
+            core_transfers: None,
+            encrypted_state: None,
+            connection_approval: host.connection_approval,
             password_input: host.password_input,
             passkey_consent: host.passkey_consent,
             clock: host.clock,
             storage_providers: host.storage_providers,
-            settings,
+            settings: KeelessConfig::default(),
             selection: None,
             handle: None,
             credential: None,
@@ -131,17 +147,26 @@ impl KeelessCore {
             task_spawner: host.task_spawner,
             transfer_provider: host.transfer_provider,
             transfer_owner: None,
+            authenticated_sender: None,
             background_fetch: None,
             background_started_ms: None,
             dirty: false,
-        };
-        if generated {
-            core.persist().await?;
-        }
-        Ok(core)
+        })
     }
 
     pub(crate) fn publish_download_transfer(&self, bytes: Zeroizing<Vec<u8>>) -> Result<String> {
+        if self.transfer_provider.is_none()
+            && let Some(transfers) = &self.core_transfers
+        {
+            let owner = self
+                .transfer_owner
+                .as_deref()
+                .ok_or_else(|| CoreError::Host("binary transfer owner is unavailable".into()))?;
+            return transfers
+                .publish_download(TransferOwner::new(owner), bytes)
+                .map(|id| id.encode())
+                .map_err(|error| CoreError::Host(error.to_string()));
+        }
         let provider = self
             .transfer_provider
             .as_ref()
@@ -154,6 +179,19 @@ impl KeelessCore {
     }
 
     pub(crate) fn consume_upload_transfer(&self, transfer_id: &str) -> Result<Zeroizing<Vec<u8>>> {
+        if self.transfer_provider.is_none()
+            && let Some(transfers) = &self.core_transfers
+        {
+            let owner = self
+                .transfer_owner
+                .as_deref()
+                .ok_or_else(|| CoreError::Host("binary transfer owner is unavailable".into()))?;
+            let id = TransferId::parse(transfer_id)
+                .ok_or_else(|| CoreError::Host("invalid binary transfer ID".into()))?;
+            return transfers
+                .consume_upload(&TransferOwner::new(owner), &id)
+                .map_err(|error| CoreError::Host(error.to_string()));
+        }
         let provider = self
             .transfer_provider
             .as_ref()
@@ -166,6 +204,11 @@ impl KeelessCore {
     }
 
     pub(crate) fn clear_transfers(&self) {
+        if self.transfer_provider.is_none()
+            && let Some(transfers) = &self.core_transfers
+        {
+            transfers.clear();
+        }
         if let Some(provider) = &self.transfer_provider {
             provider.clear();
         }
@@ -400,12 +443,164 @@ impl KeelessCore {
     }
 
     async fn persist(&self) -> Result<()> {
+        if let Some(state) = &self.encrypted_state {
+            let persisted = PersistedConfig {
+                version: CONFIG_VERSION,
+                settings: self.settings.clone(),
+            };
+            let bytes = Zeroizing::new(serde_json::to_vec(&persisted)?);
+            return state.save_record(CONFIG_RECORD, &bytes).await;
+        }
         let persisted = PersistedConfig {
             version: CONFIG_VERSION,
             settings: self.settings.clone(),
         };
         let bytes = zeroize::Zeroizing::new(serde_json::to_vec(&persisted)?);
         self.config_provider.save(&bytes).await
+    }
+
+    pub(crate) async fn activate_database_state(
+        &mut self,
+        raw_key: &keeless_kdbx::SecureArray<32>,
+    ) -> Result<()> {
+        let Some(persistence) = self.persistence.clone() else {
+            // Direct Core embeddings have no database namespace. Keep their wire state process-local
+            // rather than falling back to a host-global file; production hosts always provide it.
+            let server = Server::new(ServerHost {
+                store: Arc::new(VolatileStateStore::default()),
+                approval_provider: Arc::new(HostApprovalAdapter(self.connection_approval.clone())),
+                clock: Arc::new(WireClockAdapter(self.clock.clone())),
+                scope: keeless_lesswire::KeyScope::Core,
+                allow_transfers: true,
+                runtime_approved_clients: Vec::new(),
+            })
+            .await
+            .map_err(|error| CoreError::Host(error.to_string()))?;
+            self.settings = match self.config_provider.load().await? {
+                Some(bytes) => {
+                    let persisted: PersistedConfig = serde_json::from_slice(&bytes)
+                        .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
+                    persisted.validate()?;
+                    persisted.settings
+                }
+                None => KeelessConfig::default(),
+            };
+            self.core_transfers = Some(server.transfers());
+            self.core_server = Some(server);
+            return Ok(());
+        };
+        let database_id = self
+            .selection
+            .as_ref()
+            .ok_or(CoreError::NoDatabaseSelected)?
+            .database_id
+            .clone();
+        let state = EncryptedDatabaseStateStore::new(raw_key, persistence, database_id)?;
+        let settings = match state.load_record(CONFIG_RECORD).await? {
+            Some(bytes) => {
+                let persisted: PersistedConfig = serde_json::from_slice(&bytes)
+                    .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
+                persisted.validate()?;
+                persisted.settings
+            }
+            None => {
+                let persisted = PersistedConfig {
+                    version: CONFIG_VERSION,
+                    settings: KeelessConfig::default(),
+                };
+                state
+                    .save_record(
+                        CONFIG_RECORD,
+                        &Zeroizing::new(serde_json::to_vec(&persisted)?),
+                    )
+                    .await?;
+                persisted.settings
+            }
+        };
+        let server = Server::new(ServerHost {
+            store: Arc::new(state.clone()),
+            approval_provider: Arc::new(HostApprovalAdapter(self.connection_approval.clone())),
+            clock: Arc::new(WireClockAdapter(self.clock.clone())),
+            scope: keeless_lesswire::KeyScope::Core,
+            allow_transfers: true,
+            runtime_approved_clients: Vec::new(),
+        })
+        .await
+        .map_err(|error| CoreError::Host(error.to_string()))?;
+        self.settings = settings;
+        self.core_transfers = Some(server.transfers());
+        self.encrypted_state = Some(state);
+        self.core_server = Some(server);
+        Ok(())
+    }
+
+    pub fn untrusted_public_key_bundle(&self) -> String {
+        self.untrusted_server
+            .as_ref()
+            .expect("untrusted server is restored after every frame")
+            .public_key_bundle()
+    }
+
+    pub fn core_public_key_bundle(&self) -> Option<String> {
+        self.core_server.as_ref().map(Server::public_key_bundle)
+    }
+}
+
+struct WireClockAdapter(Arc<dyn Clock>);
+
+impl keeless_lesswire::Clock for WireClockAdapter {
+    fn now_millis(&self) -> i64 {
+        self.0.now_millis()
+    }
+
+    fn monotonic_millis(&self) -> u64 {
+        self.0.monotonic_millis()
+    }
+}
+
+struct HostApprovalAdapter(Arc<dyn ConnectionApprovalProvider>);
+
+impl keeless_lesswire::ApprovalProvider for HostApprovalAdapter {
+    fn approve(
+        &self,
+        request: keeless_lesswire::ApprovalRequest,
+    ) -> keeless_lesswire::WireFuture<'_, keeless_lesswire::Result<bool>> {
+        Box::pin(async move {
+            self.0
+                .approve_connection(ConnectionApprovalRequest {
+                    sender: request.sender,
+                    sender_scope: request.sender_scope,
+                    recipient: request.recipient,
+                    recipient_scope: request.recipient_scope,
+                    kind: match request.kind {
+                        keeless_lesswire::ApprovalKind::Initial => ConnectionApprovalKind::Initial,
+                        keeless_lesswire::ApprovalKind::Upgrade => ConnectionApprovalKind::Upgrade,
+                    },
+                })
+                .await
+                .map_err(|error| keeless_lesswire::Error::Host(error.to_string()))
+        })
+    }
+}
+
+#[derive(Default)]
+struct VolatileStateStore(Mutex<Option<Vec<u8>>>);
+
+impl StateStore for VolatileStateStore {
+    fn load(&self) -> keeless_lesswire::WireFuture<'_, keeless_lesswire::Result<Option<Vec<u8>>>> {
+        Box::pin(async { Ok(self.0.lock().ok().and_then(|state| state.clone())) })
+    }
+
+    fn save<'a>(
+        &'a self,
+        state: &'a [u8],
+    ) -> keeless_lesswire::WireFuture<'a, keeless_lesswire::Result<()>> {
+        Box::pin(async move {
+            *self.0.lock().map_err(|_| {
+                keeless_lesswire::Error::Host("volatile state lock was poisoned".into())
+            })? = Some(state.to_vec());
+            Ok(())
+        })
     }
 }
 

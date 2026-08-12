@@ -101,18 +101,42 @@ pub struct PasswordRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConnectionRequest {
     pub public_key: String,
-    #[serde(default)]
-    pub name: Option<String>,
+    pub sender_scope: String,
+    pub recipient: String,
+    pub recipient_scope: String,
+    pub kind: String,
 }
 
 impl ConnectionRequest {
     fn validate(&self) -> Result<(), Error> {
-        if PublicKeyBundle::parse(&self.public_key).is_none() {
+        let Some(sender) = PublicKeyBundle::parse(&self.public_key) else {
             return Err(Error::InvalidRequest(
                 "connection publicKey must be a canonical lesswire bundle".into(),
             ));
+        };
+        let Some(recipient) = PublicKeyBundle::parse(&self.recipient) else {
+            return Err(Error::InvalidRequest(
+                "connection recipient must be a canonical lesswire bundle".into(),
+            ));
+        };
+        if self.sender_scope != scope_name(sender.scope)
+            || self.recipient_scope != scope_name(recipient.scope)
+            || !matches!(self.kind.as_str(), "initial" | "upgrade")
+        {
+            return Err(Error::InvalidRequest(
+                "connection scope or kind is invalid".into(),
+            ));
         }
-        validate_label(self.name.as_deref(), "name")
+        Ok(())
+    }
+}
+
+fn scope_name(scope: keeless_lesswire::KeyScope) -> &'static str {
+    match scope {
+        keeless_lesswire::KeyScope::CoreUntrusted => "core_untrusted",
+        keeless_lesswire::KeyScope::Core => "core",
+        keeless_lesswire::KeyScope::App => "app",
+        keeless_lesswire::KeyScope::Passkey => "passkey",
     }
 }
 

@@ -30,11 +30,6 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
 
     let key = CompositeKey::new().with_password(password)?;
     let raw_key = key.build_raw_key()?;
-    let credential = if core.settings.paranoia_mode {
-        None
-    } else {
-        Some(CredentialVault::wrap(&raw_key)?)
-    };
     if let Some(persistence) = &core.persistence {
         persistence
             .quarantine_journal("journal predates newly created database")
@@ -79,6 +74,17 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         persistence.write_cache(&cache).await?;
         persistence.clear_journal().await?;
     }
+    if let Err(error) = core.activate_database_state(&raw_key).await {
+        core.core_server = None;
+        core.core_transfers = None;
+        core.encrypted_state = None;
+        return Err(error);
+    }
+    let credential = if core.settings.paranoia_mode {
+        None
+    } else {
+        Some(CredentialVault::wrap(&raw_key)?)
+    };
     core.extensions.unlock(handle.database(), &key)?;
     core.handle = None;
     core.credential = credential;

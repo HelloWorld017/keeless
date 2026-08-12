@@ -31,6 +31,37 @@ const PAYLOAD_HEADER_PREFIX: &str = "keeless-payload-header-v1";
 const PAYLOAD_HKDF_INFO: &[u8] = b"keeless-payload-v1";
 const STATE_VERSION: u8 = 1;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyScope {
+    CoreUntrusted,
+    Core,
+    App,
+    Passkey,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalKind {
+    Initial,
+    Upgrade,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ApprovalRequest {
+    pub sender: String,
+    pub sender_scope: KeyScope,
+    pub recipient: String,
+    pub recipient_scope: KeyScope,
+    pub kind: ApprovalKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthenticatedSender {
+    pub public_key_bundle: String,
+    pub scope: KeyScope,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MessageFrame {
@@ -40,6 +71,7 @@ pub struct MessageFrame {
     #[serde(deserialize_with = "deserialize_nullable")]
     pub ephemeral_public_key: Option<String>,
     pub public_key: String,
+    pub recipient: String,
     #[serde(deserialize_with = "deserialize_nullable")]
     pub payload: Option<String>,
     pub signature: String,
@@ -91,7 +123,7 @@ pub trait StateStore: ProviderRequirements {
 
 /// Requests an explicit UI/user decision for a previously unknown client.
 pub trait ApprovalProvider: ProviderRequirements {
-    fn approve(&self, public_key_bundle: &str) -> WireFuture<'_, Result<bool>>;
+    fn approve(&self, request: ApprovalRequest) -> WireFuture<'_, Result<bool>>;
 }
 
 pub trait Clock: ProviderRequirements {
@@ -128,24 +160,32 @@ impl Clock for SystemClock {
 pub struct Identity {
     signing_seed: [u8; 32],
     encryption_secret: [u8; 32],
+    #[zeroize(skip)]
+    scope: KeyScope,
 }
 
 impl Identity {
-    pub fn generate() -> Result<Self> {
+    pub fn generate(scope: KeyScope) -> Result<Self> {
         Ok(Self {
             signing_seed: random_array()?,
             encryption_secret: random_array()?,
+            scope,
         })
     }
 
-    pub fn from_secrets(signing_seed: [u8; 32], encryption_secret: [u8; 32]) -> Self {
+    pub fn from_secrets(
+        scope: KeyScope,
+        signing_seed: [u8; 32],
+        encryption_secret: [u8; 32],
+    ) -> Self {
         Self {
             signing_seed,
             encryption_secret,
+            scope,
         }
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    pub fn from_bytes(scope: KeyScope, bytes: &[u8]) -> Result<Self> {
         if bytes.len() != 64 {
             return Err(Error::InvalidState("invalid identity length".into()));
         }
@@ -153,7 +193,7 @@ impl Identity {
         let mut encryption_secret = [0; 32];
         signing_seed.copy_from_slice(&bytes[..32]);
         encryption_secret.copy_from_slice(&bytes[32..]);
-        Ok(Self::from_secrets(signing_seed, encryption_secret))
+        Ok(Self::from_secrets(scope, signing_seed, encryption_secret))
     }
 
     /// Exports secret identity material for storage in a protected host store.
@@ -167,7 +207,11 @@ impl Identity {
     pub fn public_key_bundle(&self) -> String {
         let signing = SigningKey::from_bytes(&self.signing_seed);
         let encryption = PublicKey::from(&StaticSecret::from(self.encryption_secret));
-        public_key_bundle(&signing, &encryption)
+        public_key_bundle(&signing, &encryption, self.scope)
+    }
+
+    pub const fn scope(&self) -> KeyScope {
+        self.scope
     }
 
     fn signing_key(&self) -> SigningKey {
@@ -189,6 +233,7 @@ impl std::fmt::Debug for Identity {
 pub struct PublicKeyBundle {
     signing: VerifyingKey,
     encryption: PublicKey,
+    pub scope: KeyScope,
     encoded: String,
 }
 
@@ -200,6 +245,13 @@ impl PublicKeyBundle {
         }
         let signing: [u8; 32] = decode_canonical(parts.next()?)?.try_into().ok()?;
         let encryption: [u8; 32] = decode_canonical(parts.next()?)?.try_into().ok()?;
+        let scope = match parts.next()? {
+            "core_untrusted" => KeyScope::CoreUntrusted,
+            "core" => KeyScope::Core,
+            "app" => KeyScope::App,
+            "passkey" => KeyScope::Passkey,
+            _ => return None,
+        };
         if parts.next().is_some() || encryption == [0; 32] {
             return None;
         }
@@ -210,6 +262,7 @@ impl PublicKeyBundle {
         Some(Self {
             signing,
             encryption: PublicKey::from(encryption),
+            scope,
             encoded: value.into(),
         })
     }
@@ -223,6 +276,8 @@ impl PublicKeyBundle {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PersistedState {
     version: u8,
+    #[zeroize(skip)]
+    scope: KeyScope,
     signing_seed: String,
     encryption_secret: String,
     approved_client_bundles: Vec<String>,
@@ -232,6 +287,8 @@ pub struct ServerHost {
     pub store: Arc<dyn StateStore>,
     pub approval_provider: Arc<dyn ApprovalProvider>,
     pub clock: Arc<dyn Clock>,
+    pub scope: KeyScope,
+    pub allow_transfers: bool,
     /// Preconfigured approvals valid for this process only; these are never persisted.
     pub runtime_approved_clients: Vec<String>,
 }
@@ -256,16 +313,21 @@ impl Server {
                 if state.version != STATE_VERSION {
                     return Err(Error::InvalidState("unsupported version".into()));
                 }
+                if state.scope != host.scope {
+                    return Err(Error::InvalidState(
+                        "server scope does not match state".into(),
+                    ));
+                }
                 let signing_seed = decode_32(&state.signing_seed)?;
                 let encryption_secret = decode_32(&state.encryption_secret)?;
                 validate_bundles(&state.approved_client_bundles)?;
                 (
-                    Identity::from_secrets(*signing_seed, *encryption_secret),
+                    Identity::from_secrets(host.scope, *signing_seed, *encryption_secret),
                     state.approved_client_bundles.clone(),
                     false,
                 )
             }
-            None => (Identity::generate()?, Vec::new(), true),
+            None => (Identity::generate(host.scope)?, Vec::new(), true),
         };
         validate_bundles(&host.runtime_approved_clients)?;
         let transfers = TransferRegistry::new(host.clock.clone());
@@ -289,6 +351,20 @@ impl Server {
 
     pub fn transfers(&self) -> TransferRegistry {
         self.transfers.clone()
+    }
+
+    pub async fn add_persisted_approval(&mut self, bundle: &str) -> Result<()> {
+        let bundle = PublicKeyBundle::parse(bundle)
+            .ok_or_else(|| Error::InvalidState("invalid approved client bundle".into()))?;
+        if self.is_approved(bundle.as_str()) {
+            return Ok(());
+        }
+        self.persisted_approved.push(bundle.as_str().to_owned());
+        if let Err(error) = self.persist().await {
+            self.persisted_approved.pop();
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Adds a validated approval for this server process without persisting it.
@@ -316,7 +392,7 @@ impl Server {
         handler: F,
     ) -> std::result::Result<Option<MessageFrame>, HandleError<E>>
     where
-        F: FnOnce(TransferOwner, Zeroizing<Vec<u8>>) -> Fut,
+        F: FnOnce(AuthenticatedSender, Zeroizing<Vec<u8>>) -> Fut,
         Fut: Future<Output = std::result::Result<Option<Vec<u8>>, E>>,
     {
         if frame_size(frame) > MAX_FRAME_SIZE {
@@ -329,6 +405,7 @@ impl Server {
             return handshake_frame(
                 self.host.clock.now_millis(),
                 self.identity.public_key_bundle(),
+                sender.as_str().to_owned(),
                 &self.identity.signing_key(),
             )
             .map(Some)
@@ -339,6 +416,9 @@ impl Server {
         };
         let owner = TransferOwner::new(sender.as_str());
         if plaintext.first() == Some(&TRANSFER_MAGIC) {
+            if !self.host.allow_transfers {
+                return Ok(None);
+            }
             let response = self.transfers.handle_packet(owner, &plaintext).ok();
             return response
                 .map(|response| {
@@ -346,6 +426,7 @@ impl Server {
                         self.host.clock.now_millis(),
                         &response,
                         self.identity.public_key_bundle(),
+                        sender.as_str().to_owned(),
                         &self.identity.signing_key(),
                         &sender.encryption,
                     )
@@ -353,9 +434,15 @@ impl Server {
                 .transpose()
                 .map_err(HandleError::Wire);
         }
-        let Some(response) = handler(owner, Zeroizing::new(plaintext))
-            .await
-            .map_err(HandleError::Handler)?
+        let Some(response) = handler(
+            AuthenticatedSender {
+                public_key_bundle: sender.as_str().to_owned(),
+                scope: sender.scope,
+            },
+            Zeroizing::new(plaintext),
+        )
+        .await
+        .map_err(HandleError::Handler)?
         else {
             return Ok(None);
         };
@@ -363,6 +450,7 @@ impl Server {
             self.host.clock.now_millis(),
             &response,
             self.identity.public_key_bundle(),
+            sender.as_str().to_owned(),
             &self.identity.signing_key(),
             &sender.encryption,
         )
@@ -372,7 +460,8 @@ impl Server {
 
     async fn authenticate(&mut self, frame: &MessageFrame) -> Result<Option<PublicKeyBundle>> {
         let handshake = frame.payload.is_none();
-        if frame.version != FRAME_VERSION
+        if frame.recipient != self.identity.public_key_bundle()
+            || frame.version != FRAME_VERSION
             || !valid_nonce(&frame.nonce)
             || if handshake {
                 frame.ephemeral_public_key.is_some()
@@ -414,7 +503,13 @@ impl Server {
             if !self
                 .host
                 .approval_provider
-                .approve(&frame.public_key)
+                .approve(ApprovalRequest {
+                    sender: sender.as_str().to_owned(),
+                    sender_scope: sender.scope,
+                    recipient: self.identity.public_key_bundle(),
+                    recipient_scope: self.identity.scope(),
+                    kind: ApprovalKind::Initial,
+                })
                 .await?
             {
                 return Ok(None);
@@ -436,6 +531,7 @@ impl Server {
     async fn persist(&self) -> Result<()> {
         let state = PersistedState {
             version: STATE_VERSION,
+            scope: self.identity.scope(),
             signing_seed: URL_SAFE_NO_PAD.encode(self.identity.signing_seed),
             encryption_secret: URL_SAFE_NO_PAD.encode(self.identity.encryption_secret),
             approved_client_bundles: self.persisted_approved.clone(),
@@ -455,26 +551,18 @@ pub enum HandleError<E> {
 
 pub struct Client {
     identity: Identity,
-    trusted_server: Option<PublicKeyBundle>,
+    recipient: PublicKeyBundle,
     nonce_cache: HashMap<String, u64>,
     clock: Arc<dyn Clock>,
 }
 
 impl Client {
-    pub fn new(
-        identity: Identity,
-        trusted_server: Option<&str>,
-        clock: Arc<dyn Clock>,
-    ) -> Result<Self> {
-        let trusted_server = trusted_server
-            .map(|value| {
-                PublicKeyBundle::parse(value)
-                    .ok_or_else(|| Error::InvalidState("invalid trusted server bundle".into()))
-            })
-            .transpose()?;
+    pub fn new(identity: Identity, recipient: &str, clock: Arc<dyn Clock>) -> Result<Self> {
+        let recipient = PublicKeyBundle::parse(recipient)
+            .ok_or_else(|| Error::InvalidState("invalid recipient server bundle".into()))?;
         Ok(Self {
             identity,
-            trusted_server,
+            recipient,
             nonce_cache: HashMap::new(),
             clock,
         })
@@ -488,36 +576,33 @@ impl Client {
         handshake_frame(
             self.clock.now_millis(),
             self.identity.public_key_bundle(),
+            self.recipient.as_str().to_owned(),
             &self.identity.signing_key(),
         )
     }
 
-    /// Accepts a handshake and returns a bundle only when trust was established by TOFU.
-    pub fn accept_handshake(&mut self, frame: &MessageFrame) -> Result<Option<String>> {
+    /// Accepts a handshake only when it is from the intended recipient server.
+    pub fn accept_handshake(&mut self, frame: &MessageFrame) -> Result<()> {
         if frame.payload.is_some() || frame.ephemeral_public_key.is_some() {
             return Err(Error::Crypto);
         }
         let sender = self.verify_server_frame(frame).ok_or(Error::Crypto)?;
-        if let Some(trusted) = &self.trusted_server {
-            if trusted.as_str() != sender.as_str() {
-                return Err(Error::Crypto);
-            }
-            Ok(None)
-        } else {
-            let bundle = sender.as_str().to_owned();
-            self.trusted_server = Some(sender);
-            Ok(Some(bundle))
+        if sender.as_str() != self.recipient.as_str()
+            || frame.recipient != self.identity.public_key_bundle()
+        {
+            return Err(Error::Crypto);
         }
+        Ok(())
     }
 
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<MessageFrame> {
-        let server = self.trusted_server.as_ref().ok_or(Error::Crypto)?;
         encrypt_frame(
             self.clock.now_millis(),
             plaintext,
             self.identity.public_key_bundle(),
+            self.recipient.as_str().to_owned(),
             &self.identity.signing_key(),
-            &server.encryption,
+            &self.recipient.encryption,
         )
     }
 
@@ -525,10 +610,8 @@ impl Client {
         let Some(sender) = self.verify_server_frame(frame) else {
             return Ok(None);
         };
-        let Some(trusted) = &self.trusted_server else {
-            return Ok(None);
-        };
-        if sender.as_str() != trusted.as_str()
+        if sender.as_str() != self.recipient.as_str()
+            || frame.recipient != self.identity.public_key_bundle()
             || frame.payload.is_none()
             || frame.ephemeral_public_key.is_none()
         {
@@ -563,34 +646,42 @@ impl Client {
     }
 }
 
-fn public_key_bundle(signing: &SigningKey, encryption: &PublicKey) -> String {
+fn public_key_bundle(signing: &SigningKey, encryption: &PublicKey, scope: KeyScope) -> String {
     format!(
-        "v1.{}.{}",
+        "v1.{}.{}.{}",
         URL_SAFE_NO_PAD.encode(signing.verifying_key().as_bytes()),
-        URL_SAFE_NO_PAD.encode(encryption.as_bytes())
+        URL_SAFE_NO_PAD.encode(encryption.as_bytes()),
+        match scope {
+            KeyScope::CoreUntrusted => "core_untrusted",
+            KeyScope::Core => "core",
+            KeyScope::App => "app",
+            KeyScope::Passkey => "passkey",
+        }
     )
 }
 
 fn transcript(frame: &MessageFrame) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{}",
         FRAME_TRANSCRIPT_PREFIX,
         frame.timestamp,
         frame.nonce,
         frame.ephemeral_public_key.as_deref().unwrap_or(""),
         frame.public_key,
+        frame.recipient,
         frame.payload.as_deref().unwrap_or("")
     )
 }
 
 fn header_transcript(frame: &MessageFrame) -> String {
     format!(
-        "{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{}|{}",
         PAYLOAD_HEADER_PREFIX,
         frame.timestamp,
         frame.nonce,
         frame.ephemeral_public_key.as_deref().unwrap_or(""),
-        frame.public_key
+        frame.public_key,
+        frame.recipient
     )
 }
 
@@ -611,13 +702,19 @@ fn sign_frame(frame: &mut MessageFrame, signing: &SigningKey) {
     frame.signature = URL_SAFE_NO_PAD.encode(signing.sign(transcript(frame).as_bytes()).to_bytes());
 }
 
-fn handshake_frame(timestamp: i64, bundle: String, signing: &SigningKey) -> Result<MessageFrame> {
+fn handshake_frame(
+    timestamp: i64,
+    bundle: String,
+    recipient: String,
+    signing: &SigningKey,
+) -> Result<MessageFrame> {
     let mut frame = MessageFrame {
         version: FRAME_VERSION,
         timestamp,
         nonce: URL_SAFE_NO_PAD.encode(random_array::<24>()?),
         ephemeral_public_key: None,
         public_key: bundle,
+        recipient,
         payload: None,
         signature: String::new(),
     };
@@ -629,6 +726,7 @@ fn encrypt_frame(
     timestamp: i64,
     plaintext: &[u8],
     sender_bundle: String,
+    recipient_bundle: String,
     sender_signing: &SigningKey,
     recipient: &PublicKey,
 ) -> Result<MessageFrame> {
@@ -643,6 +741,7 @@ fn encrypt_frame(
         nonce: URL_SAFE_NO_PAD.encode(nonce),
         ephemeral_public_key: Some(URL_SAFE_NO_PAD.encode(ephemeral_public.as_bytes())),
         public_key: sender_bundle,
+        recipient: recipient_bundle,
         payload: None,
         signature: String::new(),
     };
@@ -704,6 +803,7 @@ fn frame_size(frame: &MessageFrame) -> usize {
         .len()
         .saturating_add(frame.ephemeral_public_key.as_ref().map_or(0, String::len))
         .saturating_add(frame.public_key.len())
+        .saturating_add(frame.recipient.len())
         .saturating_add(frame.payload.as_ref().map_or(0, String::len))
         .saturating_add(frame.signature.len())
         .saturating_add(128)

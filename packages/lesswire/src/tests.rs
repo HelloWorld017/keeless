@@ -22,7 +22,7 @@ impl StateStore for MemoryStore {
 }
 struct Approval(AtomicBool);
 impl ApprovalProvider for Approval {
-    fn approve(&self, _: &str) -> WireFuture<'_, Result<bool>> {
+    fn approve(&self, _: ApprovalRequest) -> WireFuture<'_, Result<bool>> {
         Box::pin(async { Ok(self.0.load(Ordering::Relaxed)) })
     }
 }
@@ -115,17 +115,21 @@ fn downloads_are_bound_to_the_authenticated_owner() {
 async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
     let store = Arc::new(MemoryStore::default());
     let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
-    let client_identity = Identity::from_secrets([7; 32], [9; 32]);
-    let runtime_bundle = Identity::from_secrets([11; 32], [13; 32]).public_key_bundle();
-    let mut client = Client::new(client_identity, None, clock.clone()).unwrap();
+    let client_identity = Identity::from_secrets(KeyScope::App, [7; 32], [9; 32]);
+    let runtime_bundle =
+        Identity::from_secrets(KeyScope::App, [11; 32], [13; 32]).public_key_bundle();
     let mut server = Server::new(ServerHost {
         store: store.clone(),
         approval_provider: Arc::new(Approval(AtomicBool::new(true))),
         clock: clock.clone(),
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
         runtime_approved_clients: vec![runtime_bundle.clone()],
     })
     .await
     .unwrap();
+    let mut client =
+        Client::new(client_identity, &server.public_key_bundle(), clock.clone()).unwrap();
 
     let handshake = client.handshake_frame().unwrap();
     let response = server
@@ -133,8 +137,7 @@ async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
         .await
         .unwrap()
         .unwrap();
-    let trusted = client.accept_handshake(&response).unwrap().unwrap();
-    assert_eq!(trusted, server.public_key_bundle());
+    client.accept_handshake(&response).unwrap();
     assert!(
         server
             .handle_frame(&handshake, |_, _| async { Ok::<_, ()>(None) })
@@ -180,15 +183,22 @@ async fn server_client_round_trip_persists_prompted_not_runtime_approvals() {
 async fn dynamic_runtime_approval_is_validated_and_not_persisted() {
     let store = Arc::new(MemoryStore::default());
     let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
-    let identity = Identity::from_secrets([31; 32], [33; 32]);
-    let mut client = Client::new(identity, None, clock.clone()).unwrap();
+    let identity = Identity::from_secrets(KeyScope::App, [31; 32], [33; 32]);
     let mut server = Server::new(ServerHost {
         store: store.clone(),
         approval_provider: Arc::new(Approval(AtomicBool::new(false))),
         clock,
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
         runtime_approved_clients: Vec::new(),
     })
     .await
+    .unwrap();
+    let mut client = Client::new(
+        identity,
+        &server.public_key_bundle(),
+        Arc::new(TestClock(AtomicI64::new(10_000))),
+    )
     .unwrap();
 
     assert!(server.add_runtime_approval("invalid").is_err());
@@ -218,18 +228,22 @@ async fn dynamic_runtime_approval_is_validated_and_not_persisted() {
 async fn replacing_runtime_approval_revokes_the_previous_client() {
     let store = Arc::new(MemoryStore::default());
     let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
-    let first_identity = Identity::from_secrets([41; 32], [43; 32]);
-    let second_identity = Identity::from_secrets([47; 32], [53; 32]);
-    let first_client = Client::new(first_identity, None, clock.clone()).unwrap();
-    let mut second_client = Client::new(second_identity, None, clock.clone()).unwrap();
+    let first_identity = Identity::from_secrets(KeyScope::App, [41; 32], [43; 32]);
+    let second_identity = Identity::from_secrets(KeyScope::App, [47; 32], [53; 32]);
     let mut server = Server::new(ServerHost {
         store,
         approval_provider: Arc::new(Approval(AtomicBool::new(false))),
-        clock,
-        runtime_approved_clients: vec![first_client.public_key_bundle()],
+        clock: clock.clone(),
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
+        runtime_approved_clients: vec![first_identity.public_key_bundle()],
     })
     .await
     .unwrap();
+    let first_client =
+        Client::new(first_identity, &server.public_key_bundle(), clock.clone()).unwrap();
+    let mut second_client =
+        Client::new(second_identity, &server.public_key_bundle(), clock).unwrap();
 
     server
         .replace_runtime_approval(&second_client.public_key_bundle())
@@ -258,7 +272,7 @@ async fn replacing_runtime_approval_revokes_the_previous_client() {
 #[test]
 fn rejects_weak_signing_and_noncanonical_bundles() {
     let weak = format!(
-        "v1.{}.{}",
+        "v1.{}.{}.app",
         URL_SAFE_NO_PAD.encode([0; 32]),
         URL_SAFE_NO_PAD.encode([9; 32])
     );
@@ -268,9 +282,59 @@ fn rejects_weak_signing_and_noncanonical_bundles() {
 
 #[test]
 fn identity_round_trips_without_debugging_secrets() {
-    let identity = Identity::from_secrets([21; 32], [22; 32]);
+    let identity = Identity::from_secrets(KeyScope::App, [21; 32], [22; 32]);
     let bytes = identity.to_bytes();
-    let restored = Identity::from_bytes(&bytes[..]).unwrap();
+    let restored = Identity::from_bytes(KeyScope::App, &bytes[..]).unwrap();
     assert_eq!(restored.public_key_bundle(), identity.public_key_bundle());
     assert_eq!(format!("{identity:?}"), "Identity([REDACTED])");
+}
+
+#[test]
+fn scoped_bundles_require_a_known_canonical_scope() {
+    let bundle = Identity::from_secrets(KeyScope::App, [1; 32], [2; 32]).public_key_bundle();
+    assert!(PublicKeyBundle::parse(&bundle).is_some());
+    assert!(PublicKeyBundle::parse(&bundle.rsplit_once('.').unwrap().0).is_none());
+    assert!(PublicKeyBundle::parse(&format!("{bundle}.extension")).is_none());
+}
+
+#[tokio::test]
+async fn recipient_is_bound_before_approval_and_payload_decryption() {
+    let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
+    let store = Arc::new(MemoryStore::default());
+    let approvals = Arc::new(Approval(AtomicBool::new(true)));
+    let mut first = Server::new(ServerHost {
+        store,
+        approval_provider: approvals,
+        clock: clock.clone(),
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
+        runtime_approved_clients: Vec::new(),
+    })
+    .await
+    .unwrap();
+    let second = Server::new(ServerHost {
+        store: Arc::new(MemoryStore::default()),
+        approval_provider: Arc::new(Approval(AtomicBool::new(true))),
+        clock: clock.clone(),
+        scope: KeyScope::CoreUntrusted,
+        allow_transfers: false,
+        runtime_approved_clients: Vec::new(),
+    })
+    .await
+    .unwrap();
+    let client = Client::new(
+        Identity::from_secrets(KeyScope::App, [3; 32], [4; 32]),
+        &first.public_key_bundle(),
+        clock,
+    )
+    .unwrap();
+    let mut frame = client.handshake_frame().unwrap();
+    frame.recipient = second.public_key_bundle();
+    assert!(
+        first
+            .handle_frame(&frame, |_, _| async { Ok::<_, ()>(None) })
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

@@ -28,7 +28,9 @@ export const desktopHost: Host = {
   label: 'Desktop',
   storages,
   isAvailable: async () => true,
-  connect: bundle => window.keelessDesktop.registerClient(bundle),
+  // The app package's published declaration is refreshed during its library build.
+  // Preserve the bootstrap bundle at runtime while supporting an existing dev build.
+  connect: () => window.keelessDesktop.connect() as unknown as Promise<void>,
   send: frame => window.keelessDesktop.relayFrame(frame),
   onEntryFocus: listener => window.keelessDesktop.onEntryFocus(listener),
 };

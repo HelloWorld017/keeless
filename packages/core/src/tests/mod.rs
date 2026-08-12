@@ -83,6 +83,22 @@ impl ConfigProvider for MemoryConfig {
     }
 }
 
+impl keeless_lesswire::StateStore for MemoryConfig {
+    fn load(&self) -> keeless_lesswire::WireFuture<'_, keeless_lesswire::Result<Option<Vec<u8>>>> {
+        Box::pin(async { Ok(self.0.lock().unwrap().clone()) })
+    }
+
+    fn save<'a>(
+        &'a self,
+        value: &'a [u8],
+    ) -> keeless_lesswire::WireFuture<'a, keeless_lesswire::Result<()>> {
+        Box::pin(async move {
+            *self.0.lock().unwrap() = Some(value.to_vec());
+            Ok(())
+        })
+    }
+}
+
 #[derive(Default)]
 pub(super) struct FailingConfig {
     pub(super) value: Mutex<Option<Vec<u8>>>,
@@ -111,6 +127,7 @@ pub(super) struct MemoryDatabasePersistence {
     pub(super) journal: Mutex<Vec<Vec<u8>>>,
     pub(super) selected: Mutex<Option<StorageDescriptor>>,
     pub(super) fail_append: AtomicBool,
+    pub(super) state: Mutex<std::collections::HashMap<String, Vec<u8>>>,
 }
 
 impl DatabasePersistence for MemoryDatabasePersistence {
@@ -169,9 +186,33 @@ impl DatabasePersistence for MemoryDatabasePersistence {
             Ok(())
         })
     }
+
+    fn read_state_record<'a>(&'a self, name: &'a str) -> HostFuture<'a, Result<Option<Vec<u8>>>> {
+        Box::pin(async move { Ok(self.state.lock().unwrap().get(name).cloned()) })
+    }
+
+    fn write_state_record<'a>(
+        &'a self,
+        name: &'a str,
+        bytes: &'a [u8],
+    ) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            self.state
+                .lock()
+                .unwrap()
+                .insert(name.into(), bytes.to_vec());
+            Ok(())
+        })
+    }
 }
 
 pub(super) struct Approval;
+
+impl ConnectionApprovalProvider for Approval {
+    fn approve_connection(&self, _: ConnectionApprovalRequest) -> HostFuture<'_, Result<bool>> {
+        Box::pin(async { Ok(true) })
+    }
+}
 
 pub(super) struct PasswordInput {
     pub(super) password: Option<Vec<u8>>,
@@ -255,6 +296,16 @@ impl FakeClock {
 }
 
 impl Clock for FakeClock {
+    fn now_millis(&self) -> i64 {
+        self.wall.load(Ordering::Relaxed)
+    }
+
+    fn monotonic_millis(&self) -> u64 {
+        self.monotonic.load(Ordering::Relaxed)
+    }
+}
+
+impl keeless_lesswire::Clock for FakeClock {
     fn now_millis(&self) -> i64 {
         self.wall.load(Ordering::Relaxed)
     }
@@ -520,6 +571,8 @@ pub(super) async fn query_core_with_persistence(
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         config_provider: Arc::new(MemoryConfig::default()),
+        untrusted_state: Arc::new(MemoryConfig::default()),
+        connection_approval: Arc::new(Approval),
         password_input: None,
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock: Arc::new(FakeClock::new(1234)),
@@ -563,6 +616,8 @@ pub(super) fn host(
     KeelessHost {
         storage_providers: HashMap::new(),
         config_provider: config,
+        untrusted_state: Arc::new(MemoryConfig::default()),
+        connection_approval: Arc::new(Approval),
         password_input: None,
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock,
@@ -578,5 +633,6 @@ mod credential_vault;
 mod entries;
 mod lifecycle;
 mod mutations;
+mod network;
 mod persistence;
 mod queries;

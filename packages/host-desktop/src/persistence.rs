@@ -22,6 +22,7 @@ use crate::storage::LocalFileStorage;
 
 pub const MAX_CACHE_SIZE: usize = 128 * 1024 * 1024 + 64;
 pub const MAX_JOURNAL_SIZE: usize = 16 * 1024 * 1024;
+pub const MAX_STATE_RECORD_SIZE: usize = 128 * 1024;
 
 pub fn database_id_from_backing_path(provider: &str, path: &Path) -> io::Result<DatabaseId> {
     if provider.is_empty() {
@@ -75,6 +76,7 @@ fn update_path_digest(digest: &mut Sha256, path: &OsStr) {
 pub enum PersistenceFile {
     Cache,
     Journal,
+    State(&'static str),
 }
 
 impl PersistenceFile {
@@ -82,6 +84,7 @@ impl PersistenceFile {
         match self {
             Self::Cache => "cache",
             Self::Journal => "journal",
+            Self::State(name) => name,
         }
     }
 }
@@ -190,6 +193,20 @@ impl DatabaseStore {
 
     async fn clear_journal(&self) -> io::Result<()> {
         self.replace_journal(&[]).await
+    }
+
+    async fn read_state_record(&self, name: &'static str) -> io::Result<Option<Vec<u8>>> {
+        read_bounded(
+            &self.path(PersistenceFile::State(name)),
+            MAX_STATE_RECORD_SIZE,
+        )
+        .await
+    }
+
+    async fn replace_state_record(&self, name: &'static str, bytes: &[u8]) -> io::Result<()> {
+        ensure_bound(bytes.len(), MAX_STATE_RECORD_SIZE, "state record")?;
+        let _guard = self.writes.lock().await;
+        atomic_replace(&self.path(PersistenceFile::State(name)), bytes).await
     }
 
     /// Moves bytes rejected by a decoder aside and returns the quarantine path.
@@ -347,6 +364,40 @@ impl DatabasePersistence for DesktopDatabasePersistence {
                 .map(|_| ())
                 .map_err(host_error)
         })
+    }
+
+    fn read_state_record<'a>(&'a self, name: &'a str) -> HostFuture<'a, Result<Option<Vec<u8>>>> {
+        Box::pin(async move {
+            let name = state_record_name(name)?;
+            self.store()
+                .await?
+                .read_state_record(name)
+                .await
+                .map_err(host_error)
+        })
+    }
+
+    fn write_state_record<'a>(
+        &'a self,
+        name: &'a str,
+        bytes: &'a [u8],
+    ) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            let name = state_record_name(name)?;
+            self.store()
+                .await?
+                .replace_state_record(name, bytes)
+                .await
+                .map_err(host_error)
+        })
+    }
+}
+
+fn state_record_name(name: &str) -> Result<&'static str> {
+    match name {
+        "config" => Ok("state-config"),
+        "core-wire-state" => Ok("state-core-wire"),
+        _ => Err(CoreError::Host("invalid database state record name".into())),
     }
 }
 

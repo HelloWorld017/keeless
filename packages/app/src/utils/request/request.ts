@@ -14,9 +14,9 @@ const createMemoryClientStore = (): ClientStore => {
 
   return {
     loadDeviceKey: async () => deviceKey.slice(),
-    loadTrustedServer: async relayId => trustedServers.get(relayId),
-    saveTrustedServer: async (relayId, bundle) => {
-      trustedServers.set(relayId, bundle);
+    loadTrustedServer: async (relayId, recipient) => trustedServers.get(`${relayId}:${recipient}`),
+    saveTrustedServer: async (relayId, recipient, bundle) => {
+      trustedServers.set(`${relayId}:${recipient}`, bundle);
     },
   };
 };
@@ -41,12 +41,16 @@ export class CoreRequestError extends Error {
 export class RequestClient {
   private constructor(
     readonly host: Host,
-    private readonly wire: WireClient,
+    private wire: WireClient,
   ) {}
 
   static async connect(host: Host) {
     memoryClientStore ??= createMemoryClientStore();
-    return new RequestClient(host, await WireClient.connect(host, memoryClientStore));
+    const recipient = await host.connect();
+    return new RequestClient(
+      host,
+      await WireClient.connect(host, 'app', recipient, memoryClientStore),
+    );
   }
 
   async request<TName extends OperationName>(
@@ -88,6 +92,11 @@ export class RequestClient {
 
   download(transferId: string) {
     return this.wire.download(transferId);
+  }
+
+  async upgrade() {
+    const { publicKey } = await this.request('upgrade', {});
+    this.wire = await WireClient.connect(this.host, 'app', publicKey, memoryClientStore);
   }
 }
 
