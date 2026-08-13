@@ -9,6 +9,7 @@ use crate::{
         PasswordRequest,
     },
     secure_text_edit::{SecureTextBuffer, SecureTextEditState, secure_text_edit},
+    styles,
 };
 
 type DialogResult<T> = Result<Option<T>, String>;
@@ -26,7 +27,11 @@ pub fn prompt_password(request: PasswordRequest) -> DialogResult<SecureTextBuffe
         focus_pending: true,
         result: result.clone(),
     };
-    run_dialog(password_title(request.mode), [460.0, 220.0], app)?;
+    run_dialog(
+        password_title(request.mode),
+        password_dialog_size(request.mode),
+        app,
+    )?;
     take_result(&result)
 }
 
@@ -41,7 +46,7 @@ pub fn prompt_connection(request: ConnectionRequest) -> DialogResult<bool> {
         kind: request.kind,
         result: result.clone(),
     };
-    run_dialog(title, [500.0, 300.0], app)?;
+    run_dialog(title, CONNECTION_DIALOG_SIZE, app)?;
     take_result(&result)
 }
 
@@ -51,7 +56,7 @@ pub fn prompt_passkey(request: PasskeyRequest) -> DialogResult<String> {
         PasskeyMode::Register => "Keeless passkey creation",
         PasskeyMode::Assert => "Keeless passkey sign-in",
     };
-    let height = 200.0 + 24.0 * request.accounts.len().saturating_sub(1) as f32;
+    let size = passkey_dialog_size(request.accounts.len());
     let app = PasskeyApp {
         mode: request.mode,
         rp_id: request.rp_id,
@@ -59,7 +64,7 @@ pub fn prompt_passkey(request: PasskeyRequest) -> DialogResult<String> {
         selected: 0,
         result: result.clone(),
     };
-    run_dialog(title, [500.0, height.min(560.0)], app)?;
+    run_dialog(title, size, app)?;
     take_result(&result)
 }
 
@@ -68,12 +73,35 @@ fn run_dialog(title: &str, size: [f32; 2], app: impl eframe::App + 'static) -> R
         viewport: egui::ViewportBuilder::default()
             .with_title(title)
             .with_inner_size(size)
+            .with_min_inner_size(size)
+            .with_max_inner_size(size)
             .with_resizable(false)
             .with_maximize_button(false),
         ..Default::default()
     };
-    eframe::run_native(title, options, Box::new(|_| Ok(Box::new(app))))
-        .map_err(|error| error.to_string())
+    eframe::run_native(
+        title,
+        options,
+        Box::new(|creation_context| {
+            styles::configure(&creation_context.egui_ctx);
+            Ok(Box::new(app))
+        }),
+    )
+    .map_err(|error| error.to_string())
+}
+
+const CONNECTION_DIALOG_SIZE: [f32; 2] = [440.0, 292.0];
+
+fn password_dialog_size(mode: PasswordMode) -> [f32; 2] {
+    match mode {
+        PasswordMode::Create => [400.0, 224.0],
+        PasswordMode::Unlock | PasswordMode::Reveal | PasswordMode::Save => [400.0, 192.0],
+    }
+}
+
+fn passkey_dialog_size(account_count: usize) -> [f32; 2] {
+    let additional_accounts = account_count.saturating_sub(1) as f32;
+    [420.0, (208.0 + 28.0 * additional_accounts).min(440.0)]
 }
 
 fn take_result<T>(result: &Arc<Mutex<Option<DialogResult<T>>>>) -> DialogResult<T> {
@@ -145,50 +173,27 @@ impl eframe::App for PasswordApp {
             return;
         }
 
-        egui::CentralPanel::default().show(context, |ui| {
-            ui.heading(password_title(self.mode));
-            ui.add_space(8.0);
-            let output = secure_text_edit(
-                ui,
-                "password",
-                self.password.as_mut().expect("password exists"),
-                &mut self.password_state,
-                "Password",
-            );
-            if self.focus_pending {
-                output.response.request_focus();
-                self.focus_pending = false;
-            }
-            if output.response.changed() {
-                self.input_error = None;
-                self.mismatch = false;
-            }
-            let mut submitted = output.submitted;
-            if let Some(error) = output.error {
-                match error {
-                    crate::secure_text_edit::SecureTextEditError::Capacity => {
-                        self.input_error = Some("Password is limited to 4096 UTF-8 bytes.");
-                    }
-                    crate::secure_text_edit::SecureTextEditError::Memory(error) => {
-                        self.finish(context, Err(error.to_string()));
-                        return;
-                    }
-                }
-            }
-            if self.mode == PasswordMode::Create {
+        egui::CentralPanel::default()
+            .frame(styles::panel())
+            .show(context, |ui| {
+                styles::title(ui, password_title(self.mode));
                 ui.add_space(8.0);
                 let output = secure_text_edit(
                     ui,
-                    "confirmation",
-                    self.confirmation.as_mut().expect("confirmation exists"),
-                    &mut self.confirmation_state,
-                    "Confirm password",
+                    "password",
+                    self.password.as_mut().expect("password exists"),
+                    &mut self.password_state,
+                    "Password",
                 );
+                if self.focus_pending {
+                    output.response.request_focus();
+                    self.focus_pending = false;
+                }
                 if output.response.changed() {
                     self.input_error = None;
                     self.mismatch = false;
                 }
-                submitted |= output.submitted;
+                let mut submitted = output.submitted;
                 if let Some(error) = output.error {
                     match error {
                         crate::secure_text_edit::SecureTextEditError::Capacity => {
@@ -200,34 +205,57 @@ impl eframe::App for PasswordApp {
                         }
                     }
                 }
-            }
-            if let Some(message) = self.input_error {
-                ui.colored_label(ui.visuals().error_fg_color, message);
-            } else if self.mismatch {
-                ui.colored_label(
-                    ui.visuals().error_fg_color,
-                    if self.mode == PasswordMode::Create {
-                        "Enter matching non-empty passwords."
-                    } else {
-                        "Enter a password."
-                    },
-                );
-            } else {
-                ui.add_space(20.0);
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Continue").clicked() {
-                    submitted = true;
+                if self.mode == PasswordMode::Create {
+                    ui.add_space(8.0);
+                    let output = secure_text_edit(
+                        ui,
+                        "confirmation",
+                        self.confirmation.as_mut().expect("confirmation exists"),
+                        &mut self.confirmation_state,
+                        "Confirm password",
+                    );
+                    if output.response.changed() {
+                        self.input_error = None;
+                        self.mismatch = false;
+                    }
+                    submitted |= output.submitted;
+                    if let Some(error) = output.error {
+                        match error {
+                            crate::secure_text_edit::SecureTextEditError::Capacity => {
+                                self.input_error = Some("Password is limited to 4096 UTF-8 bytes.");
+                            }
+                            crate::secure_text_edit::SecureTextEditError::Memory(error) => {
+                                self.finish(context, Err(error.to_string()));
+                                return;
+                            }
+                        }
+                    }
                 }
-                if ui.button("Cancel").clicked() {
-                    self.finish(context, Ok(None));
+                if let Some(message) = self.input_error {
+                    ui.colored_label(ui.visuals().error_fg_color, message);
+                } else if self.mismatch {
+                    ui.colored_label(
+                        ui.visuals().error_fg_color,
+                        if self.mode == PasswordMode::Create {
+                            "Enter matching non-empty passwords."
+                        } else {
+                            "Enter a password."
+                        },
+                    );
+                }
+                styles::actions(ui, |ui| {
+                    if styles::primary_button(ui, "Continue").clicked() {
+                        submitted = true;
+                    }
+                    if styles::secondary_button(ui, "Cancel").clicked() {
+                        self.finish(context, Ok(None));
+                    }
+                });
+                if submitted {
+                    self.input_error = None;
+                    self.submit(context);
                 }
             });
-            if submitted {
-                self.input_error = None;
-                self.submit(context);
-            }
-        });
     }
 }
 
@@ -269,36 +297,40 @@ impl eframe::App for ConnectionApp {
             self.finish(context, Ok(None));
             return;
         }
-        egui::CentralPanel::default().show(context, |ui| {
-            ui.heading(if self.kind == "upgrade" {
-                "Allow database access?"
-            } else {
-                "Allow a limited connection?"
-            });
-            ui.add_space(8.0);
-            ui.label(format!("Client scope: {}", self.sender_scope));
-            ui.label(format!("Server scope: {}", self.recipient_scope));
-            if self.sender_scope == "app" {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    "This app can access every database that you approve.",
+        egui::CentralPanel::default()
+            .frame(styles::panel())
+            .show(context, |ui| {
+                styles::title(
+                    ui,
+                    if self.kind == "upgrade" {
+                        "Allow database access?"
+                    } else {
+                        "Allow a limited connection?"
+                    },
                 );
-            }
-            ui.add_space(8.0);
-            ui.label("Client fingerprint:");
-            ui.monospace(&self.fingerprint);
-            ui.label("Server fingerprint:");
-            ui.monospace(&self.recipient_fingerprint);
-            ui.add_space(16.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Allow").clicked() {
-                    self.finish(context, Ok(Some(true)));
+                ui.add_space(8.0);
+                styles::description(ui, format!("Client scope: {}", self.sender_scope));
+                styles::description(ui, format!("Server scope: {}", self.recipient_scope));
+                if self.sender_scope == "app" {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        "This app can access every database that you approve.",
+                    );
                 }
-                if ui.button("Deny").clicked() {
-                    self.finish(context, Ok(Some(false)));
-                }
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new("Client fingerprint").small());
+                styles::code(ui, &self.fingerprint);
+                ui.label(egui::RichText::new("Server fingerprint").small());
+                styles::code(ui, &self.recipient_fingerprint);
+                styles::actions(ui, |ui| {
+                    if styles::primary_button(ui, "Allow").clicked() {
+                        self.finish(context, Ok(Some(true)));
+                    }
+                    if styles::secondary_button(ui, "Deny").clicked() {
+                        self.finish(context, Ok(Some(false)));
+                    }
+                });
             });
-        });
     }
 }
 
@@ -347,45 +379,46 @@ impl eframe::App for PasskeyApp {
             self.finish(context, Ok(None));
             return;
         }
-        egui::CentralPanel::default().show(context, |ui| {
-            match self.mode {
-                PasskeyMode::Register => {
-                    ui.heading("Create a passkey?");
-                    ui.add_space(8.0);
-                    ui.label("A site asked Keeless to create a passkey for:");
+        egui::CentralPanel::default()
+            .frame(styles::panel())
+            .show(context, |ui| {
+                match self.mode {
+                    PasskeyMode::Register => {
+                        styles::title(ui, "Create a passkey?");
+                        ui.add_space(8.0);
+                        styles::description(ui, "A site asked Keeless to create a passkey for:");
+                    }
+                    PasskeyMode::Assert => {
+                        styles::title(ui, "Sign in with a passkey?");
+                        ui.add_space(8.0);
+                        styles::description(ui, "A site asked Keeless to sign in to:");
+                    }
                 }
-                PasskeyMode::Assert => {
-                    ui.heading("Sign in with a passkey?");
-                    ui.add_space(8.0);
-                    ui.label("A site asked Keeless to sign in to:");
-                }
-            }
-            ui.monospace(&self.rp_id);
-            ui.add_space(12.0);
+                styles::code(ui, &self.rp_id);
+                ui.add_space(12.0);
 
-            if self.accounts.len() == 1 {
-                ui.label(format!("Account: {}", self.accounts[0].username));
-            } else {
-                ui.label("Choose an account:");
-                egui::ScrollArea::vertical()
-                    .max_height(240.0)
-                    .show(ui, |ui| {
-                        for (index, account) in self.accounts.iter().enumerate() {
-                            ui.radio_value(&mut self.selected, index, &account.username);
-                        }
-                    });
-            }
+                if self.accounts.len() == 1 {
+                    styles::description(ui, format!("Account: {}", self.accounts[0].username));
+                } else {
+                    styles::description(ui, "Choose an account:");
+                    egui::ScrollArea::vertical()
+                        .max_height(196.0)
+                        .show(ui, |ui| {
+                            for (index, account) in self.accounts.iter().enumerate() {
+                                ui.radio_value(&mut self.selected, index, &account.username);
+                            }
+                        });
+                }
 
-            ui.add_space(16.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Approve").clicked() {
-                    self.approve(context);
-                }
-                if ui.button("Deny").clicked() {
-                    self.finish(context, Ok(None));
-                }
+                styles::actions(ui, |ui| {
+                    if styles::primary_button(ui, "Approve").clicked() {
+                        self.approve(context);
+                    }
+                    if styles::secondary_button(ui, "Deny").clicked() {
+                        self.finish(context, Ok(None));
+                    }
+                });
             });
-        });
     }
 }
 
@@ -427,5 +460,15 @@ mod tests {
             approval_fingerprint("client"),
             "948f:e603:f61d:c036:b5c5:96dc:09fe:3ce3"
         );
+    }
+
+    #[test]
+    fn dialog_sizes_fit_their_content() {
+        assert_eq!(password_dialog_size(PasswordMode::Unlock), [400.0, 192.0]);
+        assert_eq!(password_dialog_size(PasswordMode::Create), [400.0, 224.0]);
+        assert_eq!(CONNECTION_DIALOG_SIZE, [440.0, 292.0]);
+        assert_eq!(passkey_dialog_size(1), [420.0, 208.0]);
+        assert_eq!(passkey_dialog_size(2), [420.0, 236.0]);
+        assert_eq!(passkey_dialog_size(32), [420.0, 440.0]);
     }
 }

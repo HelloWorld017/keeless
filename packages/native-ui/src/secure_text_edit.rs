@@ -1,8 +1,7 @@
 use std::ops::Range;
 
 use eframe::egui::{
-    self, Align2, Color32, Event, FontId, ImeEvent, Key, Sense, Stroke, StrokeKind, WidgetInfo,
-    vec2,
+    self, Align2, Color32, Event, ImeEvent, Key, Sense, Stroke, StrokeKind, WidgetInfo, vec2,
 };
 use keeless_secure_types::{Error, SecureBytes};
 use subtle::ConstantTimeEq;
@@ -131,7 +130,7 @@ pub fn secure_text_edit(
     hint: &str,
 ) -> SecureTextEditOutput {
     let id = ui.make_persistent_id(id_salt);
-    let desired_size = vec2(ui.available_width(), 34.0);
+    let desired_size = vec2(ui.available_width(), ui.spacing().interact_size.y);
     let (_, rect) = ui.allocate_space(desired_size);
     let mut response = ui.interact(rect, id, Sense::click());
     if response.clicked() {
@@ -322,8 +321,8 @@ fn paint(
     ui.painter()
         .rect_stroke(rect, visuals.corner_radius, stroke, StrokeKind::Inside);
 
-    let inner = rect.shrink2(vec2(8.0, 4.0));
-    let font = FontId::proportional(16.0);
+    let inner = rect.shrink2(ui.spacing().button_padding);
+    let font = egui::TextStyle::Body.resolve(ui.style());
     let color = if ui.is_enabled() {
         ui.visuals().text_color()
     } else {

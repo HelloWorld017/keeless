@@ -1,6 +1,7 @@
 mod dialogs;
 mod protocol;
 mod secure_text_edit;
+mod styles;
 
 use std::{
     ffi::OsString,
