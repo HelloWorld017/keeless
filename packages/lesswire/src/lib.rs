@@ -38,6 +38,7 @@ pub enum KeyScope {
     Core,
     App,
     Passkey,
+    NativeUi,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -257,6 +258,7 @@ impl PublicKeyBundle {
             "core" => KeyScope::Core,
             "app" => KeyScope::App,
             "passkey" => KeyScope::Passkey,
+            "native_ui" => KeyScope::NativeUi,
             _ => return None,
         };
         if parts.next().is_some() || encryption == [0; 32] {
@@ -705,6 +707,7 @@ fn public_key_bundle(signing: &SigningKey, encryption: &PublicKey, scope: KeySco
             KeyScope::Core => "core",
             KeyScope::App => "app",
             KeyScope::Passkey => "passkey",
+            KeyScope::NativeUi => "native_ui",
         }
     )
 }

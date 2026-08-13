@@ -128,6 +128,7 @@ fn operation_allowed(
         keeless_lesswire::KeyScope::Core => KeyScope::Core,
         keeless_lesswire::KeyScope::App => KeyScope::App,
         keeless_lesswire::KeyScope::Passkey => KeyScope::Passkey,
+        keeless_lesswire::KeyScope::NativeUi => KeyScope::NativeUi,
     };
     let metadata = operation.metadata();
     metadata.senders.contains(&sender) && metadata.recipients.contains(&recipient)

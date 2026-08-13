@@ -38,7 +38,7 @@ type PasskeyArgs = {
 };
 ```
 
-The public key must use the lesswire `v1.<Ed25519>.<X25519>` bundle format.
+The public key must use the lesswire `v1.<Ed25519>.<X25519>.<scope>` bundle format.
 stdout contains one compact JSON-encoded `MessageFrame` followed by a newline.
 The frame payload is one of:
 
@@ -53,9 +53,10 @@ Cancellation, denial, and UI errors are encrypted. Invalid CLI arguments cannot
 produce a trusted encrypted response; they are written to stderr and exit with
 code 2. Encryption or stdout failures exit with code 1.
 
-The process creates a fresh lesswire sender identity for each response. The
-parent may approve the `publicKey` in that frame only for this response because
-the frame came directly from the stdout pipe of the child it spawned.
+The process creates a fresh `native_ui` scoped Lesswire sender identity for each
+response. The parent may approve the `publicKey` in that frame only for this
+response because the frame came directly from the stdout pipe of the child it
+spawned.
 
 `--public-key` provides response confidentiality; it does not authenticate the
 process that launched the dialog. The native host must spawn this binary itself

@@ -18,7 +18,7 @@ Usage:
   lesswire-debug generate
   lesswire-debug public-key --identity <base64url-identity>
   lesswire-debug encrypt --public-key <bundle> [--identity <base64url-identity>]
-  lesswire-debug decrypt --identity <base64url-identity> [--allow-stale]
+  lesswire-debug decrypt --identity <base64url-identity>
 
 encrypt reads plaintext bytes from stdin and writes a MessageFrame JSON line.
 decrypt reads a MessageFrame JSON document from stdin and writes plaintext bytes.";
@@ -68,7 +68,6 @@ enum Command {
     },
     Decrypt {
         identity: String,
-        allow_stale: bool,
     },
 }
 
@@ -117,21 +116,14 @@ fn run(
             output.write_all(&encoded)?;
             output.write_all(b"\n")?;
         }
-        Command::Decrypt {
-            identity,
-            allow_stale,
-        } => {
+        Command::Decrypt { identity } => {
             let identity = decode_identity(&identity)?;
             let encoded = read_bounded(&mut input)?;
             let frame: MessageFrame = serde_json::from_slice(&encoded)?;
-            let clock: Arc<dyn Clock> = if allow_stale {
-                Arc::new(FrameClock(frame.timestamp))
-            } else {
-                Arc::new(SystemClock)
-            };
+            let clock: Arc<dyn Clock> = Arc::new(FrameClock(frame.timestamp));
             let plaintext = decrypt(identity, &frame, clock)?.ok_or_else(|| {
                 CliError::InvalidInput(
-                    "frame was rejected (invalid, stale, or encrypted for another identity)".into(),
+                    "frame was rejected (invalid or encrypted for another identity)".into(),
                 )
             })?;
             output.write_all(&plaintext)?;
@@ -181,30 +173,12 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Command, CliEr
         }
         "decrypt" => {
             let mut identity = None;
-            let mut allow_stale = false;
-            let mut index = 0;
-            while index < rest.len() {
-                match rest[index].as_str() {
-                    "--allow-stale" if !allow_stale => {
-                        allow_stale = true;
-                        index += 1;
-                    }
-                    "--allow-stale" => {
-                        return Err(CliError::Usage("duplicate option: --allow-stale".into()));
-                    }
-                    "--identity" => {
-                        let value = rest
-                            .get(index + 1)
-                            .ok_or_else(|| CliError::Usage("--identity requires a value".into()))?;
-                        set_value(&mut identity, "--identity", value.clone())?;
-                        index += 2;
-                    }
-                    flag => return Err(CliError::Usage(format!("unknown option: {flag}"))),
-                }
-            }
+            parse_options(rest, |flag, value| match flag {
+                "--identity" => set_value(&mut identity, flag, value),
+                _ => Err(CliError::Usage(format!("unknown option: {flag}"))),
+            })?;
             Ok(Command::Decrypt {
                 identity: required(identity, "--identity")?,
-                allow_stale,
             })
         }
         _ if matches!(command.as_str(), "generate" | "--help" | "-h" | "help") => Err(
@@ -349,9 +323,9 @@ mod tests {
     }
 
     #[test]
-    fn payload_round_trips_and_stale_frames_are_optional() {
+    fn decrypt_command_accepts_stale_frames() {
         let sender = Identity::from_secrets(KeyScope::App, [17; 32], [19; 32]);
-        let recipient = Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]);
+        let recipient = Identity::from_secrets(KeyScope::App, [23; 32], [29; 32]);
         let recipient_bundle = PublicKeyBundle::parse(&recipient.public_key_bundle()).unwrap();
         let frame = encrypt(
             sender,
@@ -361,51 +335,20 @@ mod tests {
         )
         .unwrap();
 
-        let plaintext = decrypt(
-            Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]),
-            &frame,
-            Arc::new(FrameClock(10_000)),
+        let identity = encode_identity(&recipient);
+        let mut output = Vec::new();
+        run(
+            ["decrypt", "--identity", identity.as_str()].map(OsString::from),
+            serde_json::to_vec(&frame).unwrap().as_slice(),
+            &mut output,
         )
-        .unwrap()
         .unwrap();
-        assert_eq!(&*plaintext, b"binary\0payload");
-
-        assert!(
-            decrypt(
-                Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]),
-                &frame,
-                Arc::new(FrameClock(11_000)),
-            )
-            .unwrap()
-            .is_none()
-        );
-        assert!(
-            decrypt(
-                Identity::from_secrets(KeyScope::Core, [23; 32], [29; 32]),
-                &frame,
-                Arc::new(FrameClock(frame.timestamp)),
-            )
-            .unwrap()
-            .is_some()
-        );
+        assert_eq!(output, b"binary\0payload");
     }
 
     #[test]
-    fn command_parser_rejects_duplicates_and_missing_values() {
+    fn command_parser_rejects_missing_values() {
         assert!(parse_args(["encrypt", "--public-key"].map(OsString::from)).is_err());
-        assert!(
-            parse_args(
-                [
-                    "decrypt",
-                    "--identity",
-                    "value",
-                    "--allow-stale",
-                    "--allow-stale",
-                ]
-                .map(OsString::from)
-            )
-            .is_err()
-        );
     }
 
     #[test]

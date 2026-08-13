@@ -34,6 +34,7 @@ pub enum KeyScope {
     Core,
     App,
     Passkey,
+    NativeUi,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -348,7 +349,7 @@ operation_schema! {
             #[serde(deny_unknown_fields)]
             pub struct EmptyResult {}
         }
-        senders: [CoreUntrusted, Core, App, Passkey],
+        senders: [App, Passkey],
         recipients: [CoreUntrusted],
         mutates: [DatabaseStatus],
     }
@@ -380,7 +381,7 @@ operation_schema! {
             }
         }
         result EmptyResult
-        senders: [CoreUntrusted, Core, App, Passkey],
+        senders: [App, Passkey],
         recipients: [CoreUntrusted],
         mutates: [DatabaseStatus],
     }
@@ -412,7 +413,7 @@ operation_schema! {
                 pub database: DatabaseStatus,
             }
         }
-        senders: [CoreUntrusted, Core, App, Passkey],
+        senders: [App, Passkey],
         recipients: [CoreUntrusted],
         queries: [DatabaseStatus],
     }
@@ -430,7 +431,7 @@ operation_schema! {
                 pub public_key: String,
             }
         }
-        senders: [CoreUntrusted, Core, App, Passkey],
+        senders: [App, Passkey],
         recipients: [CoreUntrusted],
     }
 

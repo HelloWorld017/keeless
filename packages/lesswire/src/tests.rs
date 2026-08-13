@@ -392,6 +392,12 @@ fn identity_round_trips_without_debugging_secrets() {
 fn scoped_bundles_require_a_known_canonical_scope() {
     let bundle = Identity::from_secrets(KeyScope::App, [1; 32], [2; 32]).public_key_bundle();
     assert!(PublicKeyBundle::parse(&bundle).is_some());
+    let native_ui =
+        Identity::from_secrets(KeyScope::NativeUi, [3; 32], [4; 32]).public_key_bundle();
+    assert_eq!(
+        PublicKeyBundle::parse(&native_ui).unwrap().scope,
+        KeyScope::NativeUi
+    );
     assert!(PublicKeyBundle::parse(bundle.rsplit_once('.').unwrap().0).is_none());
     assert!(PublicKeyBundle::parse(&format!("{bundle}.extension")).is_none());
 }

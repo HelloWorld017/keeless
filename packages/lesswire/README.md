@@ -40,12 +40,8 @@ Decrypt a frame to raw stdout bytes:
 lesswire-debug decrypt --identity "$RECIPIENT_IDENTITY" < frame.json
 ```
 
-Normal decryption enforces lesswire's 500 ms timestamp window. Stored frames can
-be inspected explicitly with:
-
-```sh
-lesswire-debug decrypt --identity "$RECIPIENT_IDENTITY" --allow-stale < frame.json
-```
+The debug CLI accepts stored frames regardless of their timestamp. Normal
+lesswire clients and servers still enforce the 500 ms timestamp window.
 
 The identity value is secret key material. Passing it as an argument can expose
 it to local process inspection and shell history, so this tool must only be used

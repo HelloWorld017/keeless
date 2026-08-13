@@ -6,7 +6,7 @@ export type DatabaseStatus = 'not_exist' | 'locked' | 'unlocked';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error';
 
-export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey';
+export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey' | 'native_ui';
 
 export type KeelessConfig = { autoLockTimeoutMs: number | null; paranoiaMode: boolean };
 

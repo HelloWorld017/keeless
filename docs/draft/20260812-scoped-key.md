@@ -40,7 +40,7 @@
 - Schema 정의시에 Sender와 Recipient도 같이 정의하게 수정
   - Sender Policy와 Recipient Policy에 맞지 않는 요청은 drop
 
-- Key Bundle의 구조를 변경 `v1.signingKey.encryptionKey.(app|core|core_untrusted|extension|passkey)`
+- Key Bundle의 구조를 변경 `v1.signingKey.encryptionKey.(app|core|core_untrusted|extension|passkey|native_ui)`
     - Approve 시에 scope를 같이 표시해주기
         - `app` scope 시에는 추가적인 경고문구도 추가 (모든 데이터베이스에 접근 가능하다는)
 
@@ -52,8 +52,9 @@
 
 - Lesswire identity에는 필수 scope가 포함된다. canonical public key bundle 형식은
   `v1.<ed25519-public-key>.<x25519-public-key>.<scope>`이며, scope는
-  `core_untrusted`, `core`, `app`, `passkey` 중 하나다. `extension`은 현재 구현하거나
-  정책에 포함하지 않는다.
+  `core_untrusted`, `core`, `app`, `passkey`, `native_ui` 중 하나다. `native_ui`는 trusted
+  native host가 child stdout에서 받는 one-shot UI 응답에만 사용하며 operation policy에는
+  포함하지 않는다. `extension`은 현재 구현하거나 정책에 포함하지 않는다.
 - 모든 `MessageFrame`은 `recipient`에 **수신 서버의 정확한 public key bundle**을 담는다.
   `recipient`는 signature transcript와 payload AEAD AAD에 포함되어, frame을 다른 서버로
   전환하거나 수신 대상을 바꾸면 검증에 실패한다.
@@ -86,8 +87,9 @@
 - 행렬에 없는 sender/recipient/operation 조합은 operation error를 반환하지 않고 payload
   실행 전에 drop한다.
 - 여기서 "유효한 모든 sender scope"는 canonical bundle로 검증된 `app`, `passkey`, `core`,
-  `core_untrusted`를 뜻한다. `extension`은 현재 지원하지 않으며, unknown/unscoped bundle은
-  Lesswire parsing 단계에서 거부한다.
+  `core_untrusted`를 뜻한다. `native_ui`는 trusted native host가 one-shot UI response에만
+  사용하므로 operation policy에는 포함하지 않는다. `extension`은 현재 지원하지 않으며,
+  unknown/unscoped bundle은 Lesswire parsing 단계에서 거부한다.
 - `core_untrusted`에서는 binary transfer packet을 허용하지 않는다. `core`의 transfer는
   scope를 포함한 인증 sender bundle에 귀속한다.
 - `getCoreStatus`의 응답은 정확히 `{ database: DatabaseStatus }`다. 기존

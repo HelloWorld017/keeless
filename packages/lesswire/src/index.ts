@@ -23,7 +23,7 @@ export type MessageFrame = {
   signature: string;
 };
 
-export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey';
+export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey' | 'native_ui';
 
 export interface Relay {
   readonly id: string;
@@ -95,7 +95,7 @@ export const parseBundle = (value: string): PublicKeyBundle => {
     throw new Error('Invalid public key bundle');
   }
   const scope = parts[3];
-  if (!['core_untrusted', 'core', 'app', 'passkey'].includes(scope)) {
+  if (!['core_untrusted', 'core', 'app', 'passkey', 'native_ui'].includes(scope)) {
     throw new Error('Invalid public key bundle');
   }
   return { signing, encryption, scope: scope as KeyScope };

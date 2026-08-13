@@ -70,7 +70,7 @@ fn encrypt(
     recipient: &PublicKeyBundle,
     plaintext: &[u8],
 ) -> Result<keeless_lesswire::MessageFrame, Error> {
-    let identity = Identity::generate(KeyScope::App).map_err(Error::Encryption)?;
+    let identity = Identity::generate(KeyScope::NativeUi).map_err(Error::Encryption)?;
     let client = Client::new(identity, recipient.as_str(), Arc::new(SystemClock))
         .map_err(Error::Encryption)?;
     client.encrypt(plaintext).map_err(Error::Encryption)

@@ -165,6 +165,12 @@ async fn encrypted_response_round_trips_through_lesswire_server() {
     let recipient = keeless_lesswire::PublicKeyBundle::parse(&server.public_key_bundle()).unwrap();
     let plaintext = br#"{"version":1,"kind":"password","status":"cancelled"}"#;
     let frame = encrypt(&recipient, plaintext).unwrap();
+    assert_eq!(
+        keeless_lesswire::PublicKeyBundle::parse(&frame.public_key)
+            .unwrap()
+            .scope,
+        KeyScope::NativeUi
+    );
     server.add_runtime_approval(&frame.public_key).unwrap();
 
     let observed = Arc::new(Mutex::new(Vec::new()));

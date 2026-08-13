@@ -65,6 +65,7 @@ fn scope_name(scope: keeless_lesswire::KeyScope) -> &'static str {
         keeless_lesswire::KeyScope::Core => "core",
         keeless_lesswire::KeyScope::App => "app",
         keeless_lesswire::KeyScope::Passkey => "passkey",
+        keeless_lesswire::KeyScope::NativeUi => "native_ui",
     }
 }
 

@@ -200,5 +200,6 @@ fn scope_name(scope: KeyScope) -> &'static str {
         KeyScope::Core => "core",
         KeyScope::App => "app",
         KeyScope::Passkey => "passkey",
+        KeyScope::NativeUi => "native_ui",
     }
 }
