@@ -157,6 +157,7 @@ const createWindow = async () => {
   });
 
   browserWindow.webContents.on('will-navigate', event => event.preventDefault());
+  browserWindow.setContentProtection(true);
 
   if (process.env.ELECTRON_RENDERER_URL) {
     await waitForOnline(process.env.ELECTRON_RENDERER_URL);

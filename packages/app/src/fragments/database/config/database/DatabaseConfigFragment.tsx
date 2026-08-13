@@ -218,48 +218,49 @@ export const DatabaseConfigFragment = () => {
           {pending === 'merge' && <IconLoaderCircle className="animate-spin" />}
           Merge database
         </Button>
-      </div>
 
-      {(summary || error) && (
-        <p className="text-sm text-muted-foreground flex flex-col" role="alert">
-          {summary}
-          {error && <span className="text-destructive">{error}</span>}
-        </p>
-      )}
-      <PasswordPrompt
-        open={passwordRequest !== undefined}
-        pending={pending !== undefined}
-        error={
-          passwordRequest && 'invalid' in passwordRequest && passwordRequest.invalid
-            ? 'The master password is incorrect.'
-            : undefined
-        }
-        title={
-          passwordRequest?.type === 'source' ? 'Unlock dropped database' : 'Confirm master password'
-        }
-        description={
-          passwordRequest?.type === 'source'
-            ? 'Enter the master password for the dropped database.'
-            : 'Enter the master password for the current database.'
-        }
-        action={passwordRequest?.type === 'source' ? 'Merge database' : 'Continue'}
-        onOpenChange={open => {
-          if (!open && pending === undefined) {
+        {(summary || error) && (
+          <p className="text-sm text-muted-foreground flex flex-col" role="alert">
+            {summary}
+            {error && <span className="text-destructive">{error}</span>}
+          </p>
+        )}
+
+        <PasswordPrompt
+          open={passwordRequest !== undefined}
+          pending={pending !== undefined}
+          error={
+            passwordRequest && 'invalid' in passwordRequest && passwordRequest.invalid
+              ? 'The master password is incorrect.'
+              : undefined
+          }
+          title={
+            passwordRequest?.type === 'source' ? 'Unlock dropped database' : 'Confirm master password'
+          }
+          description={
+            passwordRequest?.type === 'source'
+              ? 'Enter the master password for the dropped database.'
+              : 'Enter the master password for the current database.'
+          }
+          action={passwordRequest?.type === 'source' ? 'Merge database' : 'Continue'}
+          onOpenChange={open => {
+            if (!open && pending === undefined) {
+              setPasswordRequest(undefined);
+            }
+          }}
+          onSubmit={password => {
+            const request = passwordRequest;
             setPasswordRequest(undefined);
-          }
-        }}
-        onSubmit={password => {
-          const request = passwordRequest;
-          setPasswordRequest(undefined);
-          if (request?.type === 'source') {
-            void merge(password);
-          } else if (request?.type === 'current-export') {
-            void download(password);
-          } else if (request?.type === 'current-merge') {
-            void merge(request.sourcePassword, password);
-          }
-        }}
-      />
+            if (request?.type === 'source') {
+              void merge(password);
+            } else if (request?.type === 'current-export') {
+              void download(password);
+            } else if (request?.type === 'current-merge') {
+              void merge(request.sourcePassword, password);
+            }
+          }}
+        />
+      </div>
     </div>
   );
 };
