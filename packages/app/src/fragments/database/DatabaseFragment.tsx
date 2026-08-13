@@ -21,7 +21,8 @@ import {
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState } from 'react';
-import { Redirect, useSearchParams } from 'wouter';
+import { useSearchParams } from 'wouter';
+import { DatabaseStatusHandler } from './_components/DatabaseStatusHandler';
 import { EntryItem } from './_components/EntryItem';
 import { EntryList } from './_components/EntryList';
 import { GroupDragOverlay } from './_components/GroupTree';
@@ -247,16 +248,8 @@ const DatabaseFragmentContents = () => {
   );
 };
 
-export const DatabaseFragment = () => {
-  const databaseStatus = useRequest('getDatabaseStatus', {});
-
-  if (databaseStatus.data?.status === 'unlocked') {
-    return <DatabaseFragmentContents />;
-  }
-
-  if (databaseStatus.isPending || databaseStatus.isFetching) {
-    return null;
-  }
-
-  return <Redirect to={buildRoute('open')} replace />;
-};
+export const DatabaseFragment = () => (
+  <DatabaseStatusHandler>
+    <DatabaseFragmentContents />
+  </DatabaseStatusHandler>
+);
