@@ -17,10 +17,10 @@ import {
   type EntryDragData,
   type EntryDragSource,
 } from '../_utils/dragAndDrop';
+import { searchFilterToken } from '../_utils/searchQuery';
 import { EntryDetailFragment } from '../entryDetail/EntryDetailFragment';
 import { EntryItem, getEntryItemSize, getEntryTitle } from './EntryItem';
 import { EntryListHeader } from './EntryListHeader';
-import { searchFilterToken } from '../_utils/searchQuery';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type { DatabaseNodeId, EntriesResult, EntrySummary, TagSummary } from '@keeless/schema';
 

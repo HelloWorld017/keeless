@@ -267,14 +267,18 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
     },
   });
   const syncDatabase = useRequestMutation('saveDatabase');
-  const lockDatabase = useRequestMutation('lock');
+  const lockDatabase = useRequestMutation('lock', {
+    onSuccess: () => {
+      setLocation(buildRoute('openUnlock'));
+      closeMobile();
+    },
+  });
   const runDatabaseAction = async (action: PasswordRequest['action'], password?: string) => {
     try {
       if (action === 'sync') {
         await syncDatabase.mutateAsync(password === undefined ? {} : { password });
       } else {
         await lockDatabase.mutateAsync(password === undefined ? {} : { password });
-        closeMobile();
       }
       setPasswordRequest(undefined);
     } catch (error) {

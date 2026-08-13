@@ -28,7 +28,7 @@ export default defineConfig(({ mode, command }) => ({
             asset.names.find(name => name.endsWith('.css'))
               ? '[name].[ext]'
               : 'assets/[name].[ext]',
-          chunkFileNames: 'assets/[name].js'
+          chunkFileNames: 'assets/[name].js',
         },
       },
     }),

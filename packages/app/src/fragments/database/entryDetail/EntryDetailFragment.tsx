@@ -440,7 +440,7 @@ const EntryDetailQuery = ({
         </div>
       </header>
       <div className="w-full min-h-0 overflow-auto">
-        <div className='w-full mx-auto max-w-180'>
+        <div className="w-full mx-auto max-w-180">
           {detail.isPending ? (
             <EntryDetailSkeleton pending />
           ) : detail.isError ? (

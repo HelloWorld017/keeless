@@ -1,9 +1,9 @@
+import { invalidateByResource } from '@/utils/request';
 import { buildRoute } from '@/utils/route';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useHost } from '../_providers/HostProvider';
 import { useNavigate } from '../_providers/RouterProvider';
-import {invalidateByResource} from '@/utils/request';
 
 export const EntryFocusHandler = () => {
   const host = useHost();
@@ -16,11 +16,12 @@ export const EntryFocusHandler = () => {
     }
 
     return host.onEntryFocus(entryId => {
-      void invalidateByResource(queryClient, ['databaseStatus', 'group', 'entry', 'tag'])
-        .then(() => {
+      void invalidateByResource(queryClient, ['databaseStatus', 'group', 'entry', 'tag']).then(
+        () => {
           const entryRoute = `${buildRoute('database')}?entry=${encodeURIComponent(entryId)}`;
           navigate(entryRoute, { replace: true });
-        });
+        },
+      );
     });
   }, [host, navigate, queryClient]);
 

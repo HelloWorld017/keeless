@@ -235,7 +235,9 @@ export const DatabaseConfigFragment = () => {
               : undefined
           }
           title={
-            passwordRequest?.type === 'source' ? 'Unlock dropped database' : 'Confirm master password'
+            passwordRequest?.type === 'source'
+              ? 'Unlock dropped database'
+              : 'Confirm master password'
           }
           description={
             passwordRequest?.type === 'source'
