@@ -2,7 +2,7 @@ import { Button } from '@/components/button';
 import { Input } from '@/components/input';
 import { Label } from '@/components/label';
 import { StepError } from '@/fragments/open/_components/StepError';
-import { IconChevronLeft, IconLoaderCircle } from '@/icons';
+import { IconLoaderCircle } from '@/icons';
 import type { StorageSetupComponentProps } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';
 import type { ComponentProps, SubmitEvent } from 'react';
@@ -16,7 +16,6 @@ export const WebDavSetup = ({
   getCore,
   isPending,
   error,
-  onBack,
   onOpen,
 }: StorageSetupComponentProps & { getCore: () => BrowserCore }) => {
   const submit = (event: SubmitEvent<HTMLFormElement>) => {
@@ -54,10 +53,7 @@ export const WebDavSetup = ({
       />
       <FormInput label="Path (optional)" name="path" />
       <StepError error={error} />
-      <div className="flex justify-between gap-3 pt-2">
-        <Button type="button" variant="outline" disabled={isPending} onClick={onBack}>
-          <IconChevronLeft /> Back
-        </Button>
+      <div className="flex justify-end gap-3 pt-2">
         <Button type="submit" variant="contrast" disabled={isPending}>
           {isPending && <IconLoaderCircle className="animate-spin" />}
           Continue

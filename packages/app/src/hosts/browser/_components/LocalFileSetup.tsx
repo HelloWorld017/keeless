@@ -1,8 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/alert';
-import { Button } from '@/components/button';
 import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { StepError } from '@/fragments/open/_components/StepError';
-import { IconChevronLeft, IconFile } from '@/icons';
+import { IconFile } from '@/icons';
 import { useState } from 'react';
 import type { StorageSetupComponentProps } from '@/types/Host';
 import type { BrowserCore } from '@keeless/host-browser';
@@ -49,7 +48,6 @@ export const LocalFileSetup = ({
   getCore,
   isPending,
   error,
-  onBack,
   onOpen,
 }: StorageSetupComponentProps & { getCore: () => BrowserCore }) => {
   const [isAcquiring, setIsAcquiring] = useState(false);
@@ -174,9 +172,6 @@ export const LocalFileSetup = ({
       )}
 
       <StepError error={localError ?? error} />
-      <Button type="button" variant="outline" disabled={pending} onClick={onBack}>
-        <IconChevronLeft /> Back
-      </Button>
     </div>
   );
 };

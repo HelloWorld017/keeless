@@ -1,6 +1,25 @@
 import BackgroundImage from '@/assets/images/background.webp?url';
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/alert';
+import { Button } from '@/components/button';
 import {
-  useHasNativePasswordInput,
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/item';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/select';
+import {
   useHost,
   useHostOverride,
   useHosts,
@@ -8,113 +27,94 @@ import {
   useSelectHost,
 } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { CoreRequestError } from '@/utils/request';
-import { buildRoute } from '@/utils/route';
+import { IconAlertCircle, IconArrowRight, IconLoaderCircle } from '@/icons';
+import { buildRoute, getRoute } from '@/utils/route';
 import { useEffect, useRef, useState } from 'react';
+import { Redirect, Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
-import { CheckingStep } from './_components/CheckingStep';
-import { CreateStep } from './_components/CreateStep';
-import { SelectStep } from './_components/SelectStep';
 import { SetupLayout } from './_components/SetupLayout';
-import { UnlockStep } from './_components/UnlockStep';
-import type { HostStorage, StorageDescriptorGetter } from '@/types/Host';
-import type { DatabaseStatus } from '@keeless/schema';
-import type { SubmitEvent } from 'react';
+import { StepError } from './_components/StepError';
+import { errorMessage } from './_utils/errorMessage';
+import { OpenCreateFragment } from './create/OpenCreateFragment';
+import { OpenStorageFragment } from './storage/OpenStorageFragment';
+import { OpenUnlockFragment } from './unlock/OpenUnlockFragment';
+import type { HostKind, HostStorage, StorageDescriptorGetter } from '@/types/Host';
 
-type SetupStep = 'select' | 'storage' | 'create' | 'unlock' | 'checking';
-type SetupPasswordInputMode = 'create' | 'unlock';
-
-const errorMessage = (error: unknown) => {
-  if (error instanceof CoreRequestError) {
-    switch (error.code) {
-      case 'invalid_credentials':
-        return 'That password could not unlock this database.';
-      case 'database_not_found':
-        return 'The database no longer exists.';
-      case 'storage_error':
-        return 'The storage could not be accessed.';
-      default:
-        return error.message;
-    }
-  }
-  return error instanceof Error ? error.message : 'An unexpected error occurred.';
-};
-
-const OpenFragmentContents = () => {
+const SelectStep = () => {
   const host = useHost();
   const hosts = useHosts();
   const hostsLoading = useHostsLoading();
   const isHostOverride = useHostOverride();
-  const hasNativePasswordInput = useHasNativePasswordInput();
   const selectHost = useSelectHost();
   const requestClient = useRequestClient();
+  const client = requestClient.data;
   const navigate = useNavigate();
-  const passwordRef = useRef<HTMLInputElement>(null);
   const operationPendingRef = useRef(false);
-  const [step, setStep] = useState<SetupStep>(isHostOverride ? 'checking' : 'select');
   const [storage, setStorage] = useState<HostStorage>();
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string>();
+  const [isChecking, setIsChecking] = useState(false);
+  const [checkingError, setCheckingError] = useState<string>();
+  const [checkingAttempt, setCheckingAttempt] = useState(0);
 
   useEffect(() => {
-    if (!isHostOverride || !requestClient.data) {
+    if (!isHostOverride || !client) {
       return undefined;
     }
 
     let active = true;
-    setStep('checking');
-    setIsPending(true);
-    setError(undefined);
-    void requestClient.data
+    setIsChecking(true);
+    setCheckingError(undefined);
+    void client
       .request('getCoreStatus', {})
       .then(async ({ database }) => {
         if (!active) {
           return;
         }
         if (database === 'unlocked') {
-          await requestClient.data.upgrade();
+          await client.upgrade();
           if (active) {
             navigate(buildRoute('database'), { replace: true });
           }
-        } else {
-          setStep(database === 'locked' ? 'unlock' : 'select');
+          return;
+        }
+        if (database === 'locked') {
+          navigate(buildRoute('openUnlock'), { replace: true });
         }
       })
       .catch(nextError => {
         if (active) {
-          setError(errorMessage(nextError));
+          setCheckingError(errorMessage(nextError));
         }
       })
       .finally(() => {
         if (active) {
-          setIsPending(false);
+          setIsChecking(false);
         }
       });
     return () => {
       active = false;
     };
-  }, [isHostOverride, navigate, requestClient.data]);
-
-  const redirectFromStatus = (status: DatabaseStatus) => {
-    if (status === 'unlocked') {
-      navigate(buildRoute('database'), { replace: true });
-      return;
-    }
-    setStep(status === 'locked' ? 'unlock' : 'create');
-  };
+  }, [checkingAttempt, client, isHostOverride, navigate]);
 
   const openStorage = async (getDescriptor: StorageDescriptorGetter) => {
-    if (!requestClient.data || operationPendingRef.current) {
+    if (!client || operationPendingRef.current) {
       return;
     }
+
     operationPendingRef.current = true;
     setIsPending(true);
     setError(undefined);
     try {
       const descriptor = await getDescriptor();
-      await requestClient.data.request('open', { storage: descriptor });
-      const { database } = await requestClient.data.request('getCoreStatus', {});
-      redirectFromStatus(database);
+      await client.request('open', { storage: descriptor });
+      const { database } = await client.request('getCoreStatus', {});
+      if (database === 'unlocked') {
+        await client.upgrade();
+        navigate(buildRoute('database'), { replace: true });
+      } else {
+        navigate(buildRoute(database === 'locked' ? 'openUnlock' : 'openCreate'));
+      }
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -127,172 +127,168 @@ const OpenFragmentContents = () => {
     setStorage(nextStorage);
     setError(undefined);
     if (nextStorage.setup.component) {
-      setStep('storage');
+      navigate(buildRoute('openStorage', { storage: nextStorage.kind }));
       return;
     }
     void openStorage(nextStorage.setup.getDefaultDescriptor);
   };
 
-  const requestPassword = (form: HTMLFormElement): string | null => {
-    const input = form.elements.namedItem('master-password');
-    if (!(input instanceof HTMLInputElement) || !input.value) {
-      setError('Enter the master password for this database.');
-      passwordRef.current?.focus();
-      return null;
-    }
-    const password = input.value;
-    input.value = '';
-    return password;
-  };
+  if (
+    isHostOverride &&
+    (requestClient.isPending || requestClient.isError || isChecking || checkingError)
+  ) {
+    const checkingPending = requestClient.isFetching || isChecking;
+    const checkingFailure =
+      checkingError ?? (requestClient.isError ? errorMessage(requestClient.error) : undefined);
 
-  const submitPassword = async (
-    mode: SetupPasswordInputMode,
-    event: SubmitEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    if (!requestClient.data || operationPendingRef.current) {
-      return;
-    }
-    operationPendingRef.current = true;
-    setIsPending(true);
-    setError(undefined);
-    try {
-      if (hasNativePasswordInput) {
-        await requestClient.data.request(mode, {});
-      } else {
-        const password = requestPassword(event.currentTarget);
-        if (!password) {
-          return;
-        }
-        await requestClient.data.request(mode, { password });
-      }
-      await requestClient.data.upgrade();
-      navigate(buildRoute('database'), { replace: true });
-    } catch (nextError) {
-      if (
-        hasNativePasswordInput &&
-        nextError instanceof CoreRequestError &&
-        nextError.code === 'password_required'
-      ) {
-        return;
-      }
-      if (
-        mode === 'create' &&
-        nextError instanceof CoreRequestError &&
-        nextError.code === 'database_already_exists'
-      ) {
-        try {
-          const { database } = await requestClient.data.request('getCoreStatus', {});
-          redirectFromStatus(database);
-        } catch (statusError) {
-          setError(errorMessage(statusError));
-        }
-        return;
-      }
-      if (
-        mode === 'unlock' &&
-        nextError instanceof CoreRequestError &&
-        nextError.code === 'database_not_found'
-      ) {
-        try {
-          const { database } = await requestClient.data.request('getCoreStatus', {});
-          redirectFromStatus(database);
-        } catch (statusError) {
-          setError(errorMessage(statusError));
-        }
-        return;
-      }
-      setError(errorMessage(nextError));
-      requestAnimationFrame(() => passwordRef.current?.focus());
-    } finally {
-      operationPendingRef.current = false;
-      setIsPending(false);
-    }
-  };
-
-  if (step === 'checking') {
-    const checkingPending = requestClient.isPending || isPending;
-    const checkingError =
-      error ?? (requestClient.isError ? errorMessage(requestClient.error) : undefined);
-    return (
-      <CheckingStep
-        isPending={checkingPending}
-        error={checkingError}
-        onRetry={() => void requestClient.refetch()}
-      />
-    );
-  }
-
-  if (step === 'storage' && storage?.setup.component) {
-    const StorageSetup = storage.setup.component;
     return (
       <SetupLayout
-        title={storage.setup.title ?? storage.label}
-        description={storage.setup.description ?? storage.description}
+        title="Opening database"
+        description="Checking the selected host."
+        showBack={false}
       >
-        <StorageSetup
-          isPending={isPending}
-          error={error}
-          onOpen={openStorage}
-          onBack={() => {
-            setError(undefined);
-            setStep('select');
-          }}
-        />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {checkingPending && <IconLoaderCircle className="animate-spin" />}
+          {checkingPending
+            ? 'Checking database status...'
+            : 'Database status could not be checked.'}
+        </div>
+        <StepError error={checkingFailure} />
+        {checkingFailure && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setCheckingError(undefined);
+              setIsChecking(true);
+              if (requestClient.isError) {
+                void requestClient.refetch();
+                return;
+              }
+              setCheckingAttempt(current => current + 1);
+            }}
+          >
+            Try again
+          </Button>
+        )}
       </SetupLayout>
     );
   }
 
-  if (step === 'create') {
-    return (
-      <CreateStep
-        isPending={isPending}
-        error={error}
-        hasNativePasswordInput={hasNativePasswordInput}
-        passwordRef={passwordRef}
-        onSubmit={event => void submitPassword('create', event)}
-      />
-    );
-  }
-
-  if (step === 'unlock') {
-    return (
-      <UnlockStep
-        isPending={isPending}
-        error={error}
-        hasNativePasswordInput={hasNativePasswordInput}
-        passwordRef={passwordRef}
-        onSubmit={event => void submitPassword('unlock', event)}
-      />
-    );
-  }
+  const selectHostKind = (kind: HostKind) => {
+    selectHost(kind);
+    setStorage(undefined);
+    setError(undefined);
+  };
 
   return (
-    <SelectStep
-      host={host}
-      hosts={hosts}
-      storage={storage}
-      hostsLoading={hostsLoading}
-      isHostOverride={isHostOverride}
-      isPending={isPending}
-      isRequestReady={Boolean(requestClient.data)}
-      requestError={requestClient.isError ? errorMessage(requestClient.error) : undefined}
-      error={error}
-      onSelectHost={value => {
-        selectHost(value);
-        setStorage(undefined);
-        setError(undefined);
-      }}
-      onChooseStorage={chooseStorage}
-      onRetryRequest={() => void requestClient.refetch()}
-    />
+    <SetupLayout
+      title="Open a database"
+      description="Choose where Keeless should run and store its database."
+      showBack={false}
+    >
+      <div className="space-y-2">
+        <Select
+          value={host?.kind ?? null}
+          onValueChange={value => value && selectHostKind(value)}
+          disabled={isHostOverride || hostsLoading || isPending}
+        >
+          <SelectTrigger id="host" className="w-full max-w-48">
+            <SelectValue
+              placeholder={hostsLoading ? 'Looking for hosts...' : 'Select a host'}
+              className="capitalize"
+            />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectLabel>Hosts</SelectLabel>
+              {hosts.map(candidate => (
+                <SelectItem key={candidate.kind} value={candidate.kind} className="capitalize">
+                  {candidate.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {host && (
+        <div className="space-y-2">
+          <ItemGroup className="gap-2">
+            {host.storages.map(candidate => (
+              <Item
+                key={candidate.kind}
+                variant="outline"
+                render={
+                  <button
+                    type="button"
+                    className="transition-colors hover:bg-muted"
+                    aria-label={`Use ${candidate.label}`}
+                    disabled={isPending || !client}
+                  />
+                }
+                aria-pressed={storage?.kind === candidate.kind}
+                onClick={() => chooseStorage(candidate)}
+              >
+                <ItemMedia variant="icon">{candidate.icon}</ItemMedia>
+                <ItemContent className="gap-0">
+                  <ItemTitle className="font-semibold">{candidate.label}</ItemTitle>
+                  <ItemDescription>{candidate.description}</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  {isPending && storage?.kind === candidate.kind ? (
+                    <IconLoaderCircle className="animate-spin" />
+                  ) : (
+                    <IconArrowRight />
+                  )}
+                </ItemActions>
+              </Item>
+            ))}
+          </ItemGroup>
+        </div>
+      )}
+
+      {!hostsLoading && hosts.length === 0 && (
+        <Alert>
+          <AlertTitle>No compatible host</AlertTitle>
+          <AlertDescription>
+            Keeless could not find an available host on this device.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {host && requestClient.isError && (
+        <Alert variant="destructive">
+          <IconAlertCircle />
+          <AlertTitle>Host could not start</AlertTitle>
+          <AlertDescription>{errorMessage(requestClient.error)}</AlertDescription>
+          <AlertAction>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2"
+              onClick={() => void requestClient.refetch()}
+            >
+              Try again
+            </Button>
+          </AlertAction>
+        </Alert>
+      )}
+      <StepError error={error} />
+    </SetupLayout>
   );
 };
 
 export const OpenFragment = () => (
   <div className="flex h-dvh items-center">
     <div className="flex-[0_0_auto] max-w-200 w-full">
-      <OpenFragmentContents />
+      <Switch>
+        <Route path={getRoute('openStorage')} component={OpenStorageFragment} />
+        <Route path={getRoute('openCreate')} component={OpenCreateFragment} />
+        <Route path={getRoute('openUnlock')} component={OpenUnlockFragment} />
+        <Route path={getRoute('open')} component={SelectStep} />
+        <Redirect to={getRoute('open')} replace />
+      </Switch>
     </div>
     <div className="p-6 flex-[1_1_0] self-stretch">
       <img

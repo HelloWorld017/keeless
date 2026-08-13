@@ -6,12 +6,7 @@ type PickMode = 'open' | 'create';
 const messageFor = (error: unknown) =>
   error instanceof Error ? error.message : 'The file picker failed.';
 
-export const LocalFileSetup = ({
-  isPending,
-  error,
-  onBack,
-  onOpen,
-}: StorageSetupComponentProps) => {
+export const LocalFileSetup = ({ isPending, error, onOpen }: StorageSetupComponentProps) => {
   const [isPicking, setIsPicking] = useState(false);
   const [pickerError, setPickerError] = useState<string>();
   const pending = isPending || isPicking;
@@ -54,14 +49,6 @@ export const LocalFileSetup = ({
           {pickerError ?? error}
         </p>
       )}
-      <button
-        type="button"
-        className="rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50"
-        disabled={pending}
-        onClick={onBack}
-      >
-        Back
-      </button>
     </div>
   );
 };

@@ -9,7 +9,6 @@ export type StorageDescriptorGetter = () => StorageDescriptor | Promise<StorageD
 export type StorageSetupComponentProps = {
   isPending: boolean;
   error?: string;
-  onBack: () => void;
   onOpen: (getDescriptor: StorageDescriptorGetter) => Promise<void>;
 };
 
