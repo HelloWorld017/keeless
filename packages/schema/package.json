@@ -22,7 +22,7 @@
     "check:format": "cargo fmt --check && oxfmt --check src/index.ts",
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
-    "format": "cargo fmt && oxfmt index.ts",
+    "format": "cargo fmt && oxfmt src/index.ts",
     "generate": "cargo run --bin export-types && oxfmt src/index.ts",
     "lint": "cargo clippy -p keeless_schema --all-targets -- -D warnings",
     "test": "cargo test -p keeless_schema",

@@ -9,7 +9,10 @@ fn main() {
 
     if env::args().any(|arg| arg == "--check") {
         let checked = fs::read_to_string(&path).expect("read checked TypeScript schema");
-        assert_eq!(checked, generated, "src/index.ts is stale; run the exporter");
+        assert_eq!(
+            checked, generated,
+            "src/index.ts is stale; run the exporter"
+        );
     } else {
         fs::write(path, generated).expect("write TypeScript declarations");
     }

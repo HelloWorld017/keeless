@@ -11,6 +11,7 @@ import { Slider } from '@/components/slider';
 import { ToggleGroup, ToggleGroupItem } from '@/components/toggle-group';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { IconClipboardCheck, IconCopy, IconEye, IconEyeOff, IconRefreshCw, IconZap } from '@/icons';
+import { cx } from '@/utils/css';
 import { useId, useState } from 'react';
 
 const MIN_LENGTH = 8;
@@ -263,7 +264,11 @@ export const PasswordGenerator = ({
           {CHARACTER_OPTIONS.map(option => (
             <ToggleGroupItem
               key={option.key}
-              className="w-10 h-10"
+              className={cx(
+                'w-10 h-10',
+                !options[option.key] &&
+                  'text-muted-foreground/50 border-transparent hover:opacity-50',
+              )}
               value={option.key}
               onClick={() => updateOptions({ ...options, [option.key]: !options[option.key] })}
             >
@@ -282,7 +287,6 @@ export const PasswordGenerator = ({
               min={toSliderIndex(MIN_LENGTH)}
               max={toSliderIndex(MAX_LENGTH)}
               value={toSliderIndex(options.length)}
-              variant="contrast"
               className="flex-1 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={disabled}
               onValueChange={value =>
@@ -304,7 +308,6 @@ export const PasswordGenerator = ({
 
         <Button
           type="button"
-          variant="contrast"
           className="w-full"
           disabled={disabled || !password}
           onClick={() => {

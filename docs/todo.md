@@ -13,10 +13,10 @@
 - [x] auto save 및 dirty status 보여주기
 - [x] desktop에서 register client가 blindly register 시키는 것 막기
 - [x] TOTP 구현
+- [x] per-database config store, per-database lesswire key upgrade
+- [x] scoped approved lesswire key (app, passkey, extension)
 - [ ] WebDAV 싱크 테스트 하기
 - [ ] setuplayout에서 위에 <- Back으로 하게, router로 이동하게
-- [ ] per-database config store, per-database lesswire key upgrade
-- [ ] scoped approved lesswire key (app, passkey, extension)
 - [ ] extension + native messaging host 구현
 - [ ] 화면 캡쳐 방어
 - [ ] [windows process hardening](./draft/20260731-windows-hardening.md)
