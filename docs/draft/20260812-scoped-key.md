@@ -219,10 +219,12 @@
   connection approval provider를 주입한다. Browser host는 IndexedDB의 동일한 세 provider를
   주입한다. 이로써 두 host는 같은 `core_untrusted -> create/unlock -> upgrade -> core`
   lifecycle을 공유한다.
-- Electron의 `desktop:register-client`/`replaceClient` runtime approval 경로는 제거한다.
-  renderer host의 `connect`는 Core의 untrusted server bundle만 받아 오고, 첫 signed
-  handshake가 `core_untrusted` initial approval dialog를 연다. `upgrade` approval은 항상
-  per-database encrypted persisted approval으로 저장한다.
+- Electron의 `desktop:register-client`는 renderer의 scoped bundle을 process-local runtime
+  approval으로 등록한다. 한 renderer session에는 한 bundle만 등록하며, 재등록은 security
+  error로 처리한다. Core는 runtime approval을 untrusted/core endpoint에 함께 적용하고 lock
+  뒤 새 core endpoint를 열 때도 복원한다. renderer host의 `connect`는 등록 뒤 Core의
+  untrusted server bundle을 받는다. runtime으로 등록되지 않은 signed handshake는 initial
+  approval dialog를 열며, 해당 approval은 기존처럼 persisted state에 저장된다.
 
 #### App과 passkey client
 
@@ -235,9 +237,10 @@
   반환받은 `publicKey`를 대상으로 core handshake가 성공한 뒤 database 화면으로 이동한다.
 - DB 화면의 일반 요청은 core client로만 보낸다. core 연결이 lock/host restart 때문에
   거부되면 untrusted client로 상태를 다시 확인하고 unlock 화면으로 돌아간다.
-- `Host`, desktop preload/main bridge, browser host adapter의 `connect` API는 bootstrap
-  recipient bundle 반환을 반영한다. relay는 caller가 만든 frame의 recipient를 변경하지
-  않고 그대로 전달한다.
+- `Host`, desktop preload/main bridge, browser host adapter의 `connect(clientBundle)` API는
+  renderer client bundle을 process-local runtime approval으로 등록한 뒤 bootstrap recipient
+  bundle을 반환한다. core recipient를 이미 아는 재연결은 `connect`를 호출하지 않는다. relay는
+  caller가 만든 frame의 recipient를 변경하지 않고 그대로 전달한다.
 - `packages/host-desktop-shared/src/state.rs`는 sender identity scope와 recipient별 pinned
   server key를 저장하도록 바꾼다. `CoreClient`는 생성 시 sender scope와 target recipient를
   명시적으로 받는다.

@@ -384,13 +384,9 @@ impl Server {
         Ok(())
     }
 
-    /// Replaces all process-local approvals with one validated client bundle.
-    pub fn replace_runtime_approval(&mut self, bundle: &str) -> Result<()> {
-        let bundle = PublicKeyBundle::parse(bundle)
-            .ok_or_else(|| Error::InvalidState("invalid approved client bundle".into()))?;
+    /// Revokes all process-local approvals without affecting persisted approvals.
+    pub fn clear_runtime_approvals(&mut self) {
         self.runtime_approved.clear();
-        self.runtime_approved.push(bundle.as_str().to_owned());
-        Ok(())
     }
 
     /// Grants database access through the same approval path as an initial handshake.

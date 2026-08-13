@@ -121,8 +121,13 @@ impl BrowserCore {
     }
 
     #[wasm_bindgen(js_name = connect)]
-    pub async fn connect(&self) -> Result<String, JsValue> {
-        Ok(self.state.lock().await.core.untrusted_public_key_bundle())
+    pub async fn connect(&self, client_bundle: String) -> Result<String, JsValue> {
+        let mut state = self.state.lock().await;
+        state
+            .core
+            .add_runtime_client(&client_bundle)
+            .map_err(js_error)?;
+        Ok(state.core.untrusted_public_key_bundle())
     }
 
     #[wasm_bindgen(js_name = handle)]

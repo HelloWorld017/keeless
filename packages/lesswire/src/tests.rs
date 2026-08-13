@@ -312,48 +312,60 @@ async fn runtime_approval_is_exposed_to_the_payload_handler() {
 }
 
 #[tokio::test]
-async fn replacing_runtime_approval_revokes_the_previous_client() {
+async fn clearing_runtime_approvals_keeps_persisted_approvals() {
     let store = Arc::new(MemoryStore::default());
     let clock = Arc::new(TestClock(AtomicI64::new(10_000)));
-    let first_identity = Identity::from_secrets(KeyScope::App, [41; 32], [43; 32]);
-    let second_identity = Identity::from_secrets(KeyScope::App, [47; 32], [53; 32]);
+    let runtime = Identity::from_secrets(KeyScope::App, [57; 32], [59; 32]);
+    let persisted = Identity::from_secrets(KeyScope::App, [61; 32], [67; 32]);
     let mut server = Server::new(ServerHost {
         store,
         approval_provider: Arc::new(Approval(AtomicBool::new(false))),
         clock: clock.clone(),
         scope: KeyScope::CoreUntrusted,
         allow_transfers: false,
-        runtime_approved_clients: vec![first_identity.public_key_bundle()],
+        runtime_approved_clients: vec![runtime.public_key_bundle()],
     })
     .await
     .unwrap();
-    let first_client =
-        Client::new(first_identity, &server.public_key_bundle(), clock.clone()).unwrap();
-    let mut second_client =
-        Client::new(second_identity, &server.public_key_bundle(), clock).unwrap();
-
     server
-        .replace_runtime_approval(&second_client.public_key_bundle())
+        .add_persisted_approval(&persisted.public_key_bundle())
+        .await
         .unwrap();
+    let mut persisted_client =
+        Client::new(persisted, &server.public_key_bundle(), clock.clone()).unwrap();
+    let response = server
+        .handle_frame(&persisted_client.handshake_frame().unwrap(), |_, _| async {
+            Ok::<_, ()>(None)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    persisted_client.accept_handshake(&response).unwrap();
+    server.clear_runtime_approvals();
 
+    let runtime_client = Client::new(runtime, &server.public_key_bundle(), clock).unwrap();
     assert!(
         server
-            .handle_frame(&first_client.handshake_frame().unwrap(), |_, _| async {
+            .handle_frame(&runtime_client.handshake_frame().unwrap(), |_, _| async {
                 Ok::<_, ()>(None)
             })
             .await
             .unwrap()
             .is_none()
     );
-
+    let persisted_client = Client::new(
+        Identity::from_secrets(KeyScope::App, [61; 32], [67; 32]),
+        &server.public_key_bundle(),
+        Arc::new(TestClock(AtomicI64::new(10_000))),
+    )
+    .unwrap();
     let response = server
-        .handle_frame(&second_client.handshake_frame().unwrap(), |_, _| async {
+        .handle_frame(&persisted_client.handshake_frame().unwrap(), |_, _| async {
             Ok::<_, ()>(None)
         })
         .await
-        .unwrap()
         .unwrap();
-    second_client.accept_handshake(&response).unwrap();
+    assert!(response.is_some());
 }
 
 #[test]
@@ -380,7 +392,7 @@ fn identity_round_trips_without_debugging_secrets() {
 fn scoped_bundles_require_a_known_canonical_scope() {
     let bundle = Identity::from_secrets(KeyScope::App, [1; 32], [2; 32]).public_key_bundle();
     assert!(PublicKeyBundle::parse(&bundle).is_some());
-    assert!(PublicKeyBundle::parse(&bundle.rsplit_once('.').unwrap().0).is_none());
+    assert!(PublicKeyBundle::parse(bundle.rsplit_once('.').unwrap().0).is_none());
     assert!(PublicKeyBundle::parse(&format!("{bundle}.extension")).is_none());
 }
 

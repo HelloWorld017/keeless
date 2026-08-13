@@ -56,15 +56,19 @@
   - `Client::new`는 정확한 recipient bundle이 필수입니다.
 
 - Lesswire TypeScript:
-  - `Relay.connect()`는 sender bundle을 받지 않고 advertised recipient bundle을 반환합니다.
+  - `Relay.connect(senderBundle)`은 sender bundle을 runtime approval으로 등록하고 advertised
+    bootstrap recipient bundle을 반환합니다. explicit core recipient 연결은 relay connect를
+    호출하지 않습니다.
   - `Client.connect(relay, scope, recipient?, store?)` 형태로 바뀌었습니다.
-  - `ClientStore` trusted-server API가 recipient 인자를 추가했습니다. 현재 pin key 설계는 수정이 필요합니다.
+  - `ClientStore`는 endpoint별 trusted-server pin을 저장합니다.
 
 - Core/host:
   - `KeelessHost`에 `untrusted_state`, `connection_approval`이 추가됐습니다.
   - `DatabasePersistence`에 named state record read/write가 추가됐습니다.
   - host는 `core.handle_frame(raw_bytes)`만 호출하고 server 선택/JSON dispatch를 하지 않도록 바뀌었습니다.
-  - Desktop `replaceClient`와 Electron `desktop:register-client`는 제거되고 bootstrap bundle을 반환하는 `connect`로 변경됐습니다.
+- Desktop runtime registration은 `DesktopHost::addRuntimeClient`와 Electron
+  `desktop:register-client`로 복원됩니다. Core가 untrusted/core endpoint 모두의 runtime
+  approval을 소유합니다.
   - Browser `BrowserCore.create()`는 기본 승인 bundle을 더 받지 않으며 `connect()`를 추가했습니다.
 
 - App:
@@ -73,4 +77,3 @@
   - create/unlock 뒤 `upgrade` 후 core recipient로 재연결합니다.
 
 우선 수정 순서는 lock/server restore, app의 dual client 구조, pin key 설계, policy macro 강제화가 적절합니다.
-

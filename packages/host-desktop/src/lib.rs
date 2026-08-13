@@ -130,17 +130,12 @@ impl DesktopHost {
         })
     }
 
-    #[napi(js_name = "connect")]
-    pub async fn connect(&self) -> napi::Result<String> {
+    #[napi(js_name = "addRuntimeClient")]
+    pub async fn add_runtime_client(&self, bundle: String) -> napi::Result<String> {
         self.ensure_open()?;
-        Ok(self
-            .runtime
-            .state
-            .inner
-            .lock()
-            .await
-            .core
-            .untrusted_public_key_bundle())
+        let mut state = self.runtime.state.inner.lock().await;
+        state.core.add_runtime_client(&bundle).map_err(napi_error)?;
+        Ok(state.core.untrusted_public_key_bundle())
     }
 
     #[napi(js_name = "handleFrame")]

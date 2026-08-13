@@ -27,7 +27,7 @@ export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey';
 
 export interface Relay {
   readonly id: string;
-  connect(): Promise<string>;
+  connect(clientBundle: string): Promise<string>;
   send(frame: MessageFrame): Promise<MessageFrame | null>;
 }
 
@@ -174,12 +174,8 @@ export class Client {
     endpointId = relay.id,
   ) {
     const identity = await deriveIdentity(store, scope);
-    const advertised = await relay.connect();
-    const serverBundle = recipient ?? advertised;
+    const serverBundle = recipient ?? (await relay.connect(identity.bundle));
     parseBundle(serverBundle);
-    if (!recipient && advertised !== serverBundle) {
-      throw new Error('Relay advertised an invalid server identity');
-    }
     const trusted = await store.loadTrustedServer(endpointId);
     if (trusted && trusted !== serverBundle) {
       throw new Error('Server identity changed');

@@ -249,10 +249,7 @@ async fn runtime_approved_client_skips_initial_and_upgrade_prompts() {
         .unwrap();
 
     let identity = Identity::from_secrets(KeyScope::App, [98; 32], [99; 32]);
-    core.untrusted_server
-        .as_mut()
-        .unwrap()
-        .add_runtime_approval(&identity.public_key_bundle())
+    core.add_runtime_client(&identity.public_key_bundle())
         .unwrap();
     let recipient = core.untrusted_public_key_bundle();
     let mut client = Client::new(identity, &recipient, clock).unwrap();
@@ -273,4 +270,102 @@ async fn runtime_approved_client_skips_initial_and_upgrade_prompts() {
     )
     .unwrap();
     handshake(&mut core, &mut database).await;
+}
+
+#[tokio::test]
+async fn runtime_client_is_restored_when_the_core_endpoint_is_reopened() {
+    let clock = Arc::new(FakeClock::new(10_000));
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage);
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        database_persistence: persistence,
+        connection_approval: Arc::new(DenyApproval),
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval),
+            clock.clone(),
+        )
+    })
+    .await
+    .unwrap();
+    let identity = Identity::from_secrets(KeyScope::Passkey, [100; 32], [101; 32]);
+    core.add_runtime_client(&identity.public_key_bundle())
+        .unwrap();
+    operations::open::run(
+        &mut core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "vault.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+
+    let recipient = core.core_public_key_bundle().unwrap();
+    let mut client = Client::new(identity, &recipient, clock).unwrap();
+    handshake(&mut core, &mut client).await;
+}
+
+#[tokio::test]
+async fn removing_runtime_clients_revokes_both_endpoints() {
+    let clock = Arc::new(FakeClock::new(10_000));
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage);
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        connection_approval: Arc::new(DenyApproval),
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval),
+            clock.clone(),
+        )
+    })
+    .await
+    .unwrap();
+    operations::open::run(
+        &mut core,
+        StorageDescriptor {
+            provider: "memory".into(),
+            path: "vault.kdbx".into(),
+        },
+    )
+    .await
+    .unwrap();
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+
+    let identity = Identity::from_secrets(KeyScope::App, [102; 32], [103; 32]);
+    core.add_runtime_client(&identity.public_key_bundle())
+        .unwrap();
+    core.remove_runtime_clients();
+
+    let untrusted_recipient = core.untrusted_public_key_bundle();
+    let untrusted = Client::new(identity, &untrusted_recipient, clock.clone()).unwrap();
+    assert!(
+        core.handle_frame(&serde_json::to_vec(&untrusted.handshake_frame().unwrap()).unwrap())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let core_recipient = core.core_public_key_bundle().unwrap();
+    let database = Client::new(
+        Identity::from_secrets(KeyScope::App, [102; 32], [103; 32]),
+        &core_recipient,
+        clock,
+    )
+    .unwrap();
+    assert!(
+        core.handle_frame(&serde_json::to_vec(&database.handshake_frame().unwrap()).unwrap())
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

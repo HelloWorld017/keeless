@@ -71,6 +71,7 @@ pub struct KeelessCore {
     core_server_generation: u64,
     core_transfers: Option<TransferRegistry>,
     encrypted_state: Option<EncryptedDatabaseStateStore>,
+    runtime_clients: Vec<String>,
     connection_approval: Arc<dyn ConnectionApprovalProvider>,
     password_input: Option<Arc<dyn PasswordInputProvider>>,
     passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
@@ -126,6 +127,7 @@ impl KeelessCore {
             core_server_generation: 0,
             core_transfers: None,
             encrypted_state: None,
+            runtime_clients: Vec::new(),
             connection_approval: host.connection_approval,
             password_input: host.password_input,
             passkey_consent: host.passkey_consent,
@@ -313,6 +315,42 @@ impl KeelessCore {
         self.storage_providers.insert(name.into(), provider);
     }
 
+    /// Adds a client approval for this host process without persisting it.
+    ///
+    /// The approval is applied to both endpoints and retained while the core
+    /// endpoint is locked so it can be restored after the next unlock.
+    pub fn add_runtime_client(&mut self, bundle: &str) -> Result<()> {
+        let bundle = keeless_lesswire::PublicKeyBundle::parse(bundle)
+            .ok_or_else(|| CoreError::Host("invalid runtime client bundle".into()))?;
+        let bundle = bundle.as_str();
+        self.untrusted_server
+            .as_mut()
+            .expect("untrusted server is restored after every frame")
+            .add_runtime_approval(bundle)
+            .map_err(|error| CoreError::Host(error.to_string()))?;
+        if let Some(server) = self.core_server.as_mut() {
+            server
+                .add_runtime_approval(bundle)
+                .map_err(|error| CoreError::Host(error.to_string()))?;
+        }
+        if !self.runtime_clients.iter().any(|client| client == bundle) {
+            self.runtime_clients.push(bundle.into());
+        }
+        Ok(())
+    }
+
+    /// Revokes every process-local client approval from both endpoints.
+    pub fn remove_runtime_clients(&mut self) {
+        self.untrusted_server
+            .as_mut()
+            .expect("untrusted server is restored after every frame")
+            .clear_runtime_approvals();
+        if let Some(server) = self.core_server.as_mut() {
+            server.clear_runtime_approvals();
+        }
+        self.runtime_clients.clear();
+    }
+
     pub async fn tick(&mut self) {
         self.enforce_auto_lock();
         if self.handle.is_none() {
@@ -489,7 +527,7 @@ impl KeelessCore {
             clock: Arc::new(WireClockAdapter(self.clock.clone())),
             scope: keeless_lesswire::KeyScope::Core,
             allow_transfers: true,
-            runtime_approved_clients: Vec::new(),
+            runtime_approved_clients: self.runtime_clients.clone(),
         })
         .await
         .map_err(|error| CoreError::Host(error.to_string()))?;

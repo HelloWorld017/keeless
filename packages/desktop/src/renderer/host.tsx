@@ -28,7 +28,7 @@ export const desktopHost: Host = {
   label: 'Desktop',
   storages,
   isAvailable: async () => true,
-  connect: () => window.keelessDesktop.connect(),
+  connect: clientBundle => window.keelessDesktop.registerClient(clientBundle),
   send: frame => window.keelessDesktop.relayFrame(frame),
   onEntryFocus: listener => window.keelessDesktop.onEntryFocus(listener),
 };

@@ -48,10 +48,9 @@ export class RequestClient {
 
   static async connect(host: Host) {
     memoryClientStore ??= createMemoryClientStore();
-    const recipient = await host.connect();
     return new RequestClient(
       host,
-      await WireClient.connect(host, 'app', recipient, memoryClientStore, `${host.id}:untrusted`),
+      await WireClient.connect(host, 'app', undefined, memoryClientStore, `${host.id}:untrusted`),
     );
   }
 
