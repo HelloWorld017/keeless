@@ -133,7 +133,7 @@ export default defineConfig(({ mode, isSsrBuild }) => {
     },
 
     define: {
-      '__ENV__': JSON.stringify(env),
+      '__DEV__': String(env !== 'production'),
       '__PLATFORM__': JSON.stringify(platform),
       '__KEELESS_BROWSER_HOST_DISABLED__': 'true',
       'process.env.NODE_ENV': JSON.stringify(env),

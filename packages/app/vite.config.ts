@@ -43,6 +43,7 @@ export default defineConfig(({ mode, command }) => ({
       __DEV__: 'true',
     }),
     ...(mode !== 'lib' && {
+      __DEV__: 'false',
       __KEELESS_BROWSER_HOST_DISABLED__: 'false',
     }),
   },

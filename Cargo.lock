@@ -2415,6 +2415,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "keeless_lesswire_debug"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "keeless_lesswire",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
 name = "keeless_native_ui"
 version = "0.0.0"
 dependencies = [
