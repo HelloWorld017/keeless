@@ -35,9 +35,9 @@ import { useNavigate } from '../_providers/RouterProvider';
 import { SetupLayout } from './_components/SetupLayout';
 import { StepError } from './_components/StepError';
 import { errorMessage } from './_utils/errorMessage';
-import { OpenCreateFragment } from './create/OpenCreateFragment';
-import { OpenStorageFragment } from './storage/OpenStorageFragment';
-import { OpenUnlockFragment } from './unlock/OpenUnlockFragment';
+import { OpenCreateFragment } from './create';
+import { OpenStorageFragment } from './storage';
+import { OpenUnlockFragment } from './unlock';
 import type { HostKind, HostStorage, StorageDescriptorGetter } from '@/types/Host';
 
 const SelectStep = () => {

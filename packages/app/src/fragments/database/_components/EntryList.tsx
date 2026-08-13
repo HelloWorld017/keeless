@@ -20,7 +20,7 @@ import {
 import { EntryDetailFragment } from '../entryDetail/EntryDetailFragment';
 import { EntryItem, getEntryItemSize, getEntryTitle } from './EntryItem';
 import { EntryListHeader } from './EntryListHeader';
-import { searchFilterToken } from './searchQuery';
+import { searchFilterToken } from '../_utils/searchQuery';
 import type { OperationArgs, OperationName } from '@/utils/request';
 import type { DatabaseNodeId, EntriesResult, EntrySummary, TagSummary } from '@keeless/schema';
 

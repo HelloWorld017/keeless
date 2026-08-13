@@ -16,7 +16,7 @@ import { buildRoute } from '@/utils/route';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { getEntryTitle } from './EntryItem';
 import { ItemIcon } from './ItemIcon';
-import { searchFilterToken } from './searchQuery';
+import { searchFilterToken } from '../_utils/searchQuery';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 
 type CommandItemType = {
