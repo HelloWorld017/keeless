@@ -1,0 +1,63 @@
+diff --git a/dist/node/chunks/node.js b/dist/node/chunks/node.js
+index 46a39acd56595208450431ca141ea9db4804d154..6373b36337c7e102f4e2b46fffa2810aaa761b17 100644
+--- a/dist/node/chunks/node.js
++++ b/dist/node/chunks/node.js
+@@ -21015,7 +21015,7 @@ function shouldInline(environment, file, id, content, buildPluginContext, forceI
+ 	if (noInlineRE.test(id)) return false;
+ 	if (inlineRE$3.test(id)) return true;
+ 	if (buildPluginContext) {
+-		if (environment.config.build.lib) return true;
++		if (environment.config.build.lib && !environment.config.build.lib.emitAssets) return true;
+ 		if (buildPluginContext.getModuleInfo(id)?.isEntry) return false;
+ 	}
+ 	if (forceInline !== void 0) return forceInline;
+@@ -22077,7 +22077,7 @@ function cssPostPlugin(config) {
+ 	const assetFileNames = (Array.isArray(rolldownOptionsOutput) ? rolldownOptionsOutput[0] : rolldownOptionsOutput)?.assetFileNames;
+ 	const getCssAssetDirname = (cssAssetName, originalFileName) => {
+ 		const cssAssetNameDir = path.dirname(cssAssetName);
+-		if (!assetFileNames) return path.join(config.build.assetsDir, cssAssetNameDir);
++		if (!assetFileNames) return config.build.lib ? cssAssetNameDir : path.join(config.build.assetsDir, cssAssetNameDir);
+ 		else if (typeof assetFileNames === "string") return path.join(path.dirname(assetFileNames), cssAssetNameDir);
+ 		else return path.dirname(assetFileNames({
+ 			type: "asset",
+@@ -33381,6 +33381,10 @@ function toOutputFilePathInJS(environment, filename, type, hostId, hostType, toR
+ 	const ssr = environment.config.consumer === "server";
+ 	const { renderBuiltUrl } = experimental;
+ 	let relative = base === "" || base === "./";
++	const libOptions = environment.config.build.lib;
++	if (libOptions && libOptions.emitAssets) {
++	  relative = true;
++  }
+ 	if (renderBuiltUrl) {
+ 		const result = renderBuiltUrl(filename, {
+ 			hostId,
+@@ -33403,6 +33407,10 @@ function createToImportMetaURLBasedRelativeRuntime(format, isWorker) {
+ function toOutputFilePathWithoutRuntime(filename, type, hostId, hostType, config, toRelative) {
+ 	const { renderBuiltUrl } = config.experimental;
+ 	let relative = config.base === "" || config.base === "./";
++	const libOptions = config.build.lib;
++	if (libOptions && libOptions.emitAssets) {
++	  relative = true;
++  }
+ 	if (renderBuiltUrl) {
+ 		const result = renderBuiltUrl(filename, {
+ 			hostId,
+diff --git a/dist/node/index.d.ts b/dist/node/index.d.ts
+index 2dffa3fa934fea72617959250eb0f26dbebece69..133a80ec46eae78256565e0097bd841b15bfb35c 100644
+--- a/dist/node/index.d.ts
++++ b/dist/node/index.d.ts
+@@ -2307,6 +2307,14 @@ interface LibraryOptions {
+    * back to the name option of the project package.json.
+    */
+   cssFileName?: string;
++  /**
++   * Emit static assets as separate files instead of force inlining them in
++   * library mode. When enabled, generated asset URLs are relative to the output
++   * chunk so they can be resolved by the consumer's bundler or server.
++   *
++   * @default false
++   */
++  emitAssets?: boolean
+ }
+ type LibraryFormats = "es" | "cjs" | "umd" | "iife";
+ interface ModulePreloadOptions {

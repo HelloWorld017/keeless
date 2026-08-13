@@ -1,39 +1,14 @@
-import { readFile } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import simplei18n from '@simplei18n/core/vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { dts as rolldownDts } from 'rolldown-plugin-dts';
 import { defineConfig, esmExternalRequirePlugin } from 'vite';
-import type { Plugin } from 'vite';
 
 const dts = (...args: Parameters<typeof rolldownDts>) =>
   rolldownDts(...args).map(plugin =>
     plugin.name.endsWith('fake-js') ? { ...plugin, enforce: 'pre' } : plugin,
   );
-
-// Forcefully emit asset even on lib mode
-const asset = (): Plugin => ({
-  name: 'vite-plugin-emit-asset',
-  enforce: 'pre',
-
-  async load(id) {
-    if (!id.endsWith('?asset')) {
-      return null;
-    }
-
-    const file = id.replace(/\?.*$/, '');
-    const referenceId = this.emitFile({
-      type: 'asset',
-      name: basename(file),
-      source: await readFile(file),
-    });
-
-    return `
-      export default import.meta.ROLLUP_FILE_URL_${referenceId};
-    `;
-  },
-});
 
 export default defineConfig(({ mode, command }) => ({
   build: {
@@ -44,7 +19,17 @@ export default defineConfig(({ mode, command }) => ({
         entry: resolve(__dirname, 'src/index.ts'),
         fileName: 'index',
         cssFileName: 'styles',
+        emitAssets: true,
         formats: ['es'],
+      },
+      rolldownOptions: {
+        output: {
+          assetFileNames: asset =>
+            asset.names.find(name => name.endsWith('.css'))
+              ? '[name].[ext]'
+              : 'assets/[name].[ext]',
+          chunkFileNames: 'assets/[name].js'
+        },
       },
     }),
   },
@@ -71,7 +56,6 @@ export default defineConfig(({ mode, command }) => ({
   plugins: [
     ...(mode === 'lib'
       ? [
-          asset(),
           dts({ generator: 'tsgo' }),
           esmExternalRequirePlugin({
             external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/],

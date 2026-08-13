@@ -33,6 +33,9 @@ catalogs:
 
 packageExtensionsChecksum: sha256-XRNpVtgt+ULQa9nMZZH6g2jWQfA/ykomc0s9HaKNkwM=
 
+patchedDependencies:
+  vite: acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c
+
 importers:
 
   .:
@@ -113,8 +116,8 @@ importers:
         specifier: 1.26.0
         version: 1.26.0(@types/react@19.2.17)(react@19.2.8)
       qrescan:
-        specifier: 0.6.0
-        version: 0.6.0(react@19.2.8)
+        specifier: 0.7.0
+        version: 0.7.0(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -142,7 +145,7 @@ importers:
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.3.3
-        version: 4.3.3(vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.3.3(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
       '@types/node':
         specifier: 'catalog:'
         version: 26.1.1
@@ -154,7 +157,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: 6.0.4
-        version: 6.0.4(vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
+        version: 6.0.4(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
       rolldown-plugin-dts:
         specifier: 0.27.13
         version: 0.27.13(@typescript/native-preview@7.0.0-dev.20260707.2)(rolldown@1.2.0)(typescript@6.0.3)
@@ -163,7 +166,7 @@ importers:
         version: 4.3.3
       vite:
         specifier: 'catalog:'
-        version: 8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
+        version: 8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
   packages/core:
     dependencies:
@@ -212,7 +215,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: 6.0.4
-        version: 6.0.4(vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
+        version: 6.0.4(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
       electron:
         specifier: 'catalog:'
         version: 42.5.1
@@ -221,7 +224,7 @@ importers:
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
       vite:
         specifier: 'catalog:'
-        version: 8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
+        version: 8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
   packages/extension: {}
 
@@ -4014,8 +4017,8 @@ packages:
     resolution: {integrity: sha512-KTqnxsgGiQ6ZAzZCVlJH5eOjSnvlyEgx1m8bkRJfOhmGRqfo5KLvmAlACQkrjEtOQ4B7wF9TdSLIs9O90MX9xA==}
     engines: {node: '>=16.0.0'}
 
-  qrescan@0.6.0:
-    resolution: {integrity: sha512-SxMoZW2sFiVVsq7xAGQRqJmHo2DOuADGDTF6oEMnMuWDhPzHI65LjUDPhu0tN8kM6KgvSzYy3oTlTI1g4Zgl1g==}
+  qrescan@0.7.0:
+    resolution: {integrity: sha512-Rknc8p3KCOYXxPEhdxTIN7nVz1S0qOfYwR12z9ih5O3of53SgEBNUB0PM6tF+tnwKPU107rJWPYIQlH3Xk6wOA==}
     peerDependencies:
       react: '>=18'
 
@@ -6272,12 +6275,12 @@ snapshots:
       '@tailwindcss/oxide-win32-arm64-msvc': 4.3.3
       '@tailwindcss/oxide-win32-x64-msvc': 4.3.3
 
-  '@tailwindcss/vite@4.3.3(vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))':
+  '@tailwindcss/vite@4.3.3(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))':
     dependencies:
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
-      vite: 8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
   '@tanstack/query-core@5.101.4': {}
 
@@ -6381,10 +6384,10 @@ snapshots:
       '@typescript/native-preview-win32-arm64': 7.0.0-dev.20260707.2
       '@typescript/native-preview-win32-x64': 7.0.0-dev.20260707.2
 
-  '@vitejs/plugin-react@6.0.4(vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))':
+  '@vitejs/plugin-react@6.0.4(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
   '@xmldom/xmldom@0.8.13': {}
 
@@ -8089,7 +8092,7 @@ snapshots:
 
   pvutils@1.1.5: {}
 
-  qrescan@0.6.0(react@19.2.8):
+  qrescan@0.7.0(react@19.2.8):
     dependencies:
       react: 19.2.8
 
@@ -8692,7 +8695,7 @@ snapshots:
 
   verkit@0.1.2: {}
 
-  vite@8.1.5(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0):
+  vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5

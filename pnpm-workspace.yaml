@@ -24,3 +24,7 @@ catalog:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - qrescan
+
+patchedDependencies:
+  # Support emitAssets option in lib (vitejs/vite#23058)
+  vite: patches/vite.patch

@@ -439,68 +439,70 @@ const EntryDetailQuery = ({
           </h1>
         </div>
       </header>
-      <div className="mx-auto w-full max-w-180 min-h-0 overflow-auto">
-        {detail.isPending ? (
-          <EntryDetailSkeleton pending />
-        ) : detail.isError ? (
-          <Alert variant="destructive" className="m-4 w-auto max-w-3xl sm:m-6">
-            <IconAlertCircle />
-            <AlertTitle>Entry details could not be loaded</AlertTitle>
-            <AlertDescription>Try loading the entry again.</AlertDescription>
-            <AlertAction>
-              <Button variant="outline" size="sm" onClick={() => detail.refetch()}>
-                Retry
-              </Button>
-            </AlertAction>
-          </Alert>
-        ) : (
-          <>
-            {error && (
-              <Alert
-                variant="destructive"
-                className="m-4 mb-0 w-auto max-w-3xl sm:mx-6"
-                aria-label="Entry operation error"
-              >
-                <IconAlertCircle />
-                <AlertTitle>Entry operation failed</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {editing ? (
-              <EditContent
-                entryId={entry.id}
-                isTemplate={detail.data?.isTemplate ?? false}
-                drafts={editor.drafts}
-                fields={detail.data?.fields ?? []}
-                properties={editor.properties}
-                confirmations={confirmations.values}
-                confirmationErrors={confirmations.errors}
-                attachments={attachments}
-                existingAttachments={(detail.data?.attachments ?? []).filter(
-                  attachment => !removedAttachmentIndices.includes(attachment.index),
-                )}
-                errors={editor.errors}
-                pending={pending}
-                onLoad={editor.load}
-                onAdd={editor.add}
-                onAddOtp={editor.addOtp}
-                onAddUrl={editor.addUrl}
-                onChange={editor.change}
-                onDelete={editor.remove}
-                onPropertiesChange={editor.changeProperties}
-                onConfirmationChange={confirmations.change}
-                onAttachmentsChange={setAttachments}
-                onExistingAttachmentDelete={attachmentIndex =>
-                  setRemovedAttachmentIndices(indices => [...indices, attachmentIndex])
-                }
-              />
-            ) : (
-              <EntryFieldValuesProvider value={fieldValues.controller}>
-                <ViewContent detail={detail.data} />
-              </EntryFieldValuesProvider>
-            )}
-          </>
-        )}
+      <div className="w-full min-h-0 overflow-auto">
+        <div className='w-full mx-auto max-w-180'>
+          {detail.isPending ? (
+            <EntryDetailSkeleton pending />
+          ) : detail.isError ? (
+            <Alert variant="destructive" className="m-4 w-auto max-w-3xl sm:m-6">
+              <IconAlertCircle />
+              <AlertTitle>Entry details could not be loaded</AlertTitle>
+              <AlertDescription>Try loading the entry again.</AlertDescription>
+              <AlertAction>
+                <Button variant="outline" size="sm" onClick={() => detail.refetch()}>
+                  Retry
+                </Button>
+              </AlertAction>
+            </Alert>
+          ) : (
+            <>
+              {error && (
+                <Alert
+                  variant="destructive"
+                  className="m-4 mb-0 w-auto max-w-3xl sm:mx-6"
+                  aria-label="Entry operation error"
+                >
+                  <IconAlertCircle />
+                  <AlertTitle>Entry operation failed</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              {editing ? (
+                <EditContent
+                  entryId={entry.id}
+                  isTemplate={detail.data?.isTemplate ?? false}
+                  drafts={editor.drafts}
+                  fields={detail.data?.fields ?? []}
+                  properties={editor.properties}
+                  confirmations={confirmations.values}
+                  confirmationErrors={confirmations.errors}
+                  attachments={attachments}
+                  existingAttachments={(detail.data?.attachments ?? []).filter(
+                    attachment => !removedAttachmentIndices.includes(attachment.index),
+                  )}
+                  errors={editor.errors}
+                  pending={pending}
+                  onLoad={editor.load}
+                  onAdd={editor.add}
+                  onAddOtp={editor.addOtp}
+                  onAddUrl={editor.addUrl}
+                  onChange={editor.change}
+                  onDelete={editor.remove}
+                  onPropertiesChange={editor.changeProperties}
+                  onConfirmationChange={confirmations.change}
+                  onAttachmentsChange={setAttachments}
+                  onExistingAttachmentDelete={attachmentIndex =>
+                    setRemovedAttachmentIndices(indices => [...indices, attachmentIndex])
+                  }
+                />
+              ) : (
+                <EntryFieldValuesProvider value={fieldValues.controller}>
+                  <ViewContent detail={detail.data} />
+                </EntryFieldValuesProvider>
+              )}
+            </>
+          )}
+        </div>
       </div>
       <AlertDialog open={deleteOpen} onOpenChange={open => !pending && setDeleteOpen(open)}>
         <AlertDialogContent>

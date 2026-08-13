@@ -9,7 +9,8 @@ import { Empty, EmptyDescription, EmptyTitle } from '@/components/empty';
 import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs';
 import { IconCamera, IconImages, IconMonitor, IconScanLine } from '@/icons';
-import { QRescan, wechatDecoder } from 'qrescan';
+import { QRescan } from 'qrescan';
+import { wechatDecoder } from 'qrescan/wechat';
 import { type ReactNode, useState } from 'react';
 
 type AdditionalTab = {

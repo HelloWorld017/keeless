@@ -1,4 +1,4 @@
-import BackgroundImage from '@/assets/images/background.webp?asset';
+import BackgroundImage from '@/assets/images/background.webp?url';
 import {
   useHasNativePasswordInput,
   useHost,
