@@ -62,13 +62,13 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.3.3",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "6.0.4",
     "rolldown-plugin-dts": "0.27.13",
-    "tailwindcss": "4.3.3",
+    "tailwindcss": "catalog:",
     "vite": "catalog:",
     "vite-plugin-static-copy": "4.1.1"
   }

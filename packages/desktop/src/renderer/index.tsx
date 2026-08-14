@@ -1,5 +1,5 @@
 import '@keeless/app/styles.css';
-import './styles.css';
+import './styles/index.css';
 import { App } from '@keeless/app';
 import { createRoot } from 'react-dom/client';
 import { WindowBar } from './components/WindowBar';

@@ -5,6 +5,7 @@ declare global {
     keelessDesktop: DesktopBridge;
   }
 
+  const __DEV__: boolean;
   const __PLATFORM__: (typeof process)['platform'];
 }
 

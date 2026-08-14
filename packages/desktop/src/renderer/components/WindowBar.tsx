@@ -1,3 +1,4 @@
+import { cx } from '@/utils/css';
 import type { WindowControlAction } from '@/types/DesktopBridge';
 
 const controls: readonly { action: WindowControlAction; label: string; className: string }[] = [
@@ -14,7 +15,10 @@ export const WindowBar = () => (
         <button
           key={action}
           type="button"
-          className={`size-3 rounded-full border-0 p-0 ${className} focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-3`}
+          className={cx(
+            'size-3 rounded-full border-0 p-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-3',
+            className,
+          )}
           data-action={action}
           aria-label={label}
           title={label}

@@ -12,12 +12,14 @@ allowBuilds:
   esbuild: false
 
 catalog:
+  "@tailwindcss/vite": "4.3.3"
   "@types/node": "26.1.1"
   "@types/react": "19.2.17"
   "@types/react-dom": "19.2.3"
   "electron": "42.5.1"
   "react": "19.2.8"
   "react-dom": "19.2.8"
+  "tailwindcss": "4.3.3"
   "tsdown": "0.22.13"
   "vite": "8.1.5"
 

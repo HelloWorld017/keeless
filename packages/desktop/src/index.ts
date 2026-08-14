@@ -162,6 +162,7 @@ const createWindow = async () => {
     autoHideMenuBar: true,
     icon: iconPath(),
     webPreferences: {
+      devTools: typeof __DEV__ !== 'undefined' && !!__DEV__,
       preload: join(dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,

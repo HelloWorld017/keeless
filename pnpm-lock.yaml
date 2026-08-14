@@ -6,6 +6,9 @@ settings:
 
 catalogs:
   default:
+    '@tailwindcss/vite':
+      specifier: 4.3.3
+      version: 4.3.3
     '@types/node':
       specifier: 26.1.1
       version: 26.1.1
@@ -24,6 +27,9 @@ catalogs:
     react-dom:
       specifier: 19.2.8
       version: 19.2.8
+    tailwindcss:
+      specifier: 4.3.3
+      version: 4.3.3
     tsdown:
       specifier: 0.22.13
       version: 0.22.13
@@ -144,7 +150,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@tailwindcss/vite':
-        specifier: 4.3.3
+        specifier: 'catalog:'
         version: 4.3.3(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
       '@types/node':
         specifier: 'catalog:'
@@ -162,7 +168,7 @@ importers:
         specifier: 0.27.13
         version: 0.27.13(@typescript/native-preview@7.0.0-dev.20260707.2)(rolldown@1.2.0)(typescript@6.0.3)
       tailwindcss:
-        specifier: 4.3.3
+        specifier: 'catalog:'
         version: 4.3.3
       vite:
         specifier: 'catalog:'
@@ -197,18 +203,24 @@ importers:
       '@keeless/lesswire':
         specifier: workspace:*
         version: link:../lesswire
+      clsx:
+        specifier: 2.1.1
+        version: 2.1.1
       react:
         specifier: 'catalog:'
         version: 19.2.8
       react-dom:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
+      tailwind-merge:
+        specifier: 3.6.0
+        version: 3.6.0
     devDependencies:
       '@keeless/native-ui':
         specifier: workspace:*
         version: link:../native-ui
       '@tailwindcss/vite':
-        specifier: 4.3.3
+        specifier: 'catalog:'
         version: 4.3.3(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
       '@types/node':
         specifier: 'catalog:'
@@ -229,7 +241,7 @@ importers:
         specifier: 26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
       tailwindcss:
-        specifier: 4.3.3
+        specifier: 'catalog:'
         version: 4.3.3
       vite:
         specifier: 'catalog:'

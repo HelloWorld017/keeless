@@ -29,19 +29,21 @@
     "@keeless/app": "workspace:*",
     "@keeless/host-desktop": "workspace:*",
     "@keeless/lesswire": "workspace:*",
+    "clsx": "2.1.1",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "tailwind-merge": "3.6.0"
   },
   "devDependencies": {
     "@keeless/native-ui": "workspace:*",
-    "@tailwindcss/vite": "4.3.3",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "6.0.4",
     "electron": "catalog:",
     "electron-builder": "26.15.3",
-    "tailwindcss": "4.3.3",
+    "tailwindcss": "catalog:",
     "vite": "catalog:"
   }
 }
