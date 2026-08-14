@@ -9,7 +9,7 @@ use keeless_lesswire::{
 
 use crate::{
     Error, encrypt,
-    protocol::{Arguments, PlaintextResponse, UiRequest},
+    protocol::{Arguments, DialogAnchor, PlaintextResponse, UiRequest},
     secure_text_edit::SecureTextBuffer,
 };
 
@@ -36,6 +36,57 @@ fn parses_each_ui_kind() {
                 | ("passkey", UiRequest::Passkey(_))
         ));
     }
+}
+
+#[test]
+fn parses_a_physical_screen_anchor() {
+    let key = Identity::generate(KeyScope::CoreUntrusted)
+        .unwrap()
+        .public_key_bundle();
+    let arguments = Arguments::parse(
+        [
+            "--public-key",
+            key.as_str(),
+            "--anchor",
+            "-1440",
+            "900",
+            "password",
+            r#"{"mode":"unlock"}"#,
+        ]
+        .into_iter()
+        .map(OsString::from),
+    )
+    .unwrap();
+
+    assert_eq!(arguments.anchor, Some(DialogAnchor { x: -1440, y: 900 }));
+}
+
+#[test]
+fn rejects_invalid_screen_anchors() {
+    let key = Identity::generate(KeyScope::CoreUntrusted)
+        .unwrap()
+        .public_key_bundle();
+    let invalid_x = Arguments::parse(
+        [
+            "--public-key",
+            key.as_str(),
+            "--anchor",
+            "x",
+            "0",
+            "password",
+            r#"{"mode":"unlock"}"#,
+        ]
+        .into_iter()
+        .map(OsString::from),
+    );
+    let missing_y = Arguments::parse(
+        ["--public-key", key.as_str(), "--anchor", "0"]
+            .into_iter()
+            .map(OsString::from),
+    );
+
+    assert!(matches!(invalid_x, Err(Error::Usage(_))));
+    assert!(matches!(missing_y, Err(Error::Usage(_))));
 }
 
 #[test]

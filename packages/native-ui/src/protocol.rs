@@ -11,7 +11,14 @@ const MAX_LABEL_BYTES: usize = 256;
 
 pub struct Arguments {
     pub public_key: PublicKeyBundle,
+    pub anchor: Option<DialogAnchor>,
     pub request: UiRequest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DialogAnchor {
+    pub x: i32,
+    pub y: i32,
 }
 
 impl Arguments {
@@ -27,7 +34,23 @@ impl Arguments {
         let public_key = PublicKeyBundle::parse(&public_key).ok_or_else(|| {
             Error::Usage("--public-key must be a canonical lesswire public key bundle".into())
         })?;
-        let kind = next_utf8(&mut args, "missing UI kind")?;
+        let first = next_utf8(&mut args, "missing UI kind")?;
+        let (anchor, kind) = if first == "--anchor" {
+            let x = parse_coordinate(
+                next_utf8(&mut args, "--anchor requires an X coordinate")?,
+                "--anchor X coordinate must be an integer",
+            )?;
+            let y = parse_coordinate(
+                next_utf8(&mut args, "--anchor requires a Y coordinate")?,
+                "--anchor Y coordinate must be an integer",
+            )?;
+            (
+                Some(DialogAnchor { x, y }),
+                next_utf8(&mut args, "missing UI kind")?,
+            )
+        } else {
+            (None, first)
+        };
         let json = next_utf8(&mut args, "missing UI arguments JSON")?;
         if json.len() > MAX_ARGUMENTS_BYTES {
             return Err(Error::InvalidRequest(format!(
@@ -47,9 +70,14 @@ impl Arguments {
         request.validate()?;
         Ok(Self {
             public_key,
+            anchor,
             request,
         })
     }
+}
+
+fn parse_coordinate(value: String, message: &'static str) -> Result<i32, Error> {
+    value.parse().map_err(|_| Error::Usage(message.into()))
 }
 
 fn next_utf8(

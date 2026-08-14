@@ -20,7 +20,10 @@ use keeless_core::{
 };
 use keeless_host_desktop_shared::ipc;
 use napi::{
-    bindgen_prelude::{Buffer, Function},
+    ValueType,
+    bindgen_prelude::{
+        Buffer, FromNapiValue, Function, JsObjectValue, Object, TypeName, ValidateNapiValue,
+    },
     threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
 };
 use napi_derive::napi;
@@ -38,6 +41,8 @@ use crate::{
 use ipc::{Request, Response, ServerListener};
 
 type EntryFocusCallback = ThreadsafeFunction<String, (), String, napi::Status, true>;
+pub(crate) type NativeUiAnchorProvider =
+    ThreadsafeFunction<(), Option<NativeUiAnchor>, (), napi::Status, true>;
 
 struct HostState {
     inner: Mutex<InnerState>,
@@ -65,6 +70,50 @@ struct HostRuntime {
     closed: AtomicBool,
 }
 
+#[napi(object)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NativeUiAnchor {
+    pub x: i32,
+    pub y: i32,
+}
+
+pub struct DesktopHostOptions {
+    native_ui_path: String,
+    native_ui_anchor_provider: NativeUiAnchorProvider,
+}
+
+impl TypeName for DesktopHostOptions {
+    fn type_name() -> &'static str {
+        "Object"
+    }
+
+    fn value_type() -> ValueType {
+        ValueType::Object
+    }
+}
+
+impl ValidateNapiValue for DesktopHostOptions {}
+
+impl FromNapiValue for DesktopHostOptions {
+    unsafe fn from_napi_value(
+        env: napi::sys::napi_env,
+        value: napi::sys::napi_value,
+    ) -> napi::Result<Self> {
+        let options = Object::from_raw(env, value);
+        let native_ui_path = options.get_named_property("nativeUiPath")?;
+        let native_ui_anchor: Function<'_, (), Option<NativeUiAnchor>> =
+            options.get_named_property("getNativeUiAnchor")?;
+        let native_ui_anchor_provider = native_ui_anchor
+            .build_threadsafe_function()
+            .callee_handled::<true>()
+            .build()?;
+        Ok(Self {
+            native_ui_path,
+            native_ui_anchor_provider,
+        })
+    }
+}
+
 #[napi]
 pub struct DesktopHost {
     runtime: Arc<HostRuntime>,
@@ -72,8 +121,15 @@ pub struct DesktopHost {
 
 #[napi]
 impl DesktopHost {
-    #[napi(factory)]
-    pub async fn create(native_ui_path: String) -> napi::Result<Self> {
+    #[napi(
+        factory,
+        ts_args_type = "options: { nativeUiPath: string; getNativeUiAnchor: () => NativeUiAnchor | undefined }"
+    )]
+    pub async fn create(options: DesktopHostOptions) -> napi::Result<Self> {
+        let DesktopHostOptions {
+            native_ui_path,
+            native_ui_anchor_provider,
+        } = options;
         let native_ui_path = PathBuf::from(native_ui_path);
         if !native_ui_path.is_absolute() {
             return Err(napi_error("nativeUiPath must be absolute"));
@@ -89,7 +145,11 @@ impl DesktopHost {
                 .map_err(|error| napi_error(error.to_string()))?,
         );
         let (shutdown, shutdown_rx) = watch::channel(false);
-        let native_ui = Arc::new(NativeUi::new(native_ui_path, shutdown_rx));
+        let native_ui = Arc::new(NativeUi::new(
+            native_ui_path,
+            native_ui_anchor_provider,
+            shutdown_rx,
+        ));
         let storage = Arc::new(LocalFileStorage::new());
         let database_persistence = Arc::new(
             DesktopDatabasePersistence::project(storage.clone())

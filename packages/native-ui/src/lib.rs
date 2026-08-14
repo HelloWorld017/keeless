@@ -42,24 +42,28 @@ impl Error {
 }
 
 pub fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), Error> {
-    let arguments = Arguments::parse(args)?;
-    let response = match arguments.request {
-        UiRequest::Password(request) => match prompt_password(request) {
+    let Arguments {
+        public_key,
+        anchor,
+        request,
+    } = Arguments::parse(args)?;
+    let response = match request {
+        UiRequest::Password(request) => match prompt_password(request, anchor) {
             Ok(password) => PlaintextResponse::password(password),
             Err(error) => PlaintextResponse::error("password", "ui_unavailable", error),
         },
-        UiRequest::Connection(request) => match prompt_connection(request) {
+        UiRequest::Connection(request) => match prompt_connection(request, anchor) {
             Ok(allowed) => PlaintextResponse::connection(allowed),
             Err(error) => PlaintextResponse::error("connection", "ui_unavailable", error),
         },
-        UiRequest::Passkey(request) => match prompt_passkey(request) {
+        UiRequest::Passkey(request) => match prompt_passkey(request, anchor) {
             Ok(account_id) => PlaintextResponse::passkey(account_id),
             Err(error) => PlaintextResponse::error("passkey", "ui_unavailable", error),
         },
     };
 
     let plaintext = response.to_json().map_err(Error::Serialization)?;
-    let frame = encrypt(&arguments.public_key, &plaintext)?;
+    let frame = encrypt(&public_key, &plaintext)?;
     let mut stdout = io::stdout().lock();
     serde_json::to_writer(&mut stdout, &frame).map_err(Error::Serialization)?;
     stdout.write_all(b"\n").map_err(Error::Output)?;

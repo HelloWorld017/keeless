@@ -4,7 +4,17 @@ import iconIco from '@/assets/icons/icon.ico?asset';
 import iconPng from '@/assets/icons/icon.png?asset';
 import keeless from '@keeless/host-desktop';
 import nativeUiPath from 'binary:keeless-native-ui';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  screen,
+  shell,
+  Tray,
+} from 'electron';
 import type { DesktopHost as DesktopHostType } from '@keeless/host-desktop';
 import type { MessageFrame } from '@keeless/lesswire';
 
@@ -23,6 +33,17 @@ let clientRegistered = false;
 const iconPath = () => (__PLATFORM__ === 'win32' ? iconIco : iconPng);
 
 const databaseFilters = [{ name: 'KeePass database', extensions: ['kdbx'] }];
+
+const nativeUiAnchor = () => {
+  if (!browserWindow) {
+    return undefined;
+  }
+  const bounds = browserWindow.getBounds();
+  return screen.dipToScreenPoint({
+    x: Math.round(bounds.x + bounds.width / 2),
+    y: Math.round(bounds.y + bounds.height / 2),
+  });
+};
 
 const showWindow = () => {
   if (!browserWindow) {
@@ -253,7 +274,10 @@ if (!hasLock) {
   app.on('activate', showWindow);
   void app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
-    host = await keeless.DesktopHost.create(nativeUiPath);
+    host = await keeless.DesktopHost.create({
+      nativeUiPath,
+      getNativeUiAnchor: nativeUiAnchor,
+    });
     host.onEntryFocus(entryId => {
       showWindow();
       browserWindow?.webContents.send('desktop:focus-entry', entryId);

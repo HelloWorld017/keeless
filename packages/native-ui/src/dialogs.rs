@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     protocol::{
-        ConnectionRequest, PasskeyAccount, PasskeyMode, PasskeyRequest, PasswordMode,
+        ConnectionRequest, DialogAnchor, PasskeyAccount, PasskeyMode, PasskeyRequest, PasswordMode,
         PasswordRequest,
     },
     secure_text_edit::{SecureTextBuffer, SecureTextEditState, secure_text_edit},
@@ -14,7 +14,10 @@ use crate::{
 
 type DialogResult<T> = Result<Option<T>, String>;
 
-pub fn prompt_password(request: PasswordRequest) -> DialogResult<SecureTextBuffer> {
+pub fn prompt_password(
+    request: PasswordRequest,
+    anchor: Option<DialogAnchor>,
+) -> DialogResult<SecureTextBuffer> {
     let result = Arc::new(Mutex::new(None));
     let app = PasswordApp {
         mode: request.mode,
@@ -30,12 +33,16 @@ pub fn prompt_password(request: PasswordRequest) -> DialogResult<SecureTextBuffe
     run_dialog(
         password_title(request.mode),
         password_dialog_size(request.mode),
+        anchor,
         app,
     )?;
     take_result(&result)
 }
 
-pub fn prompt_connection(request: ConnectionRequest) -> DialogResult<bool> {
+pub fn prompt_connection(
+    request: ConnectionRequest,
+    anchor: Option<DialogAnchor>,
+) -> DialogResult<bool> {
     let result = Arc::new(Mutex::new(None));
     let title = "Keeless connection request";
     let app = ConnectionApp {
@@ -46,11 +53,14 @@ pub fn prompt_connection(request: ConnectionRequest) -> DialogResult<bool> {
         kind: request.kind,
         result: result.clone(),
     };
-    run_dialog(title, CONNECTION_DIALOG_SIZE, app)?;
+    run_dialog(title, CONNECTION_DIALOG_SIZE, anchor, app)?;
     take_result(&result)
 }
 
-pub fn prompt_passkey(request: PasskeyRequest) -> DialogResult<String> {
+pub fn prompt_passkey(
+    request: PasskeyRequest,
+    anchor: Option<DialogAnchor>,
+) -> DialogResult<String> {
     let result = Arc::new(Mutex::new(None));
     let title = match request.mode {
         PasskeyMode::Register => "Keeless passkey creation",
@@ -64,11 +74,16 @@ pub fn prompt_passkey(request: PasskeyRequest) -> DialogResult<String> {
         selected: 0,
         result: result.clone(),
     };
-    run_dialog(title, size, app)?;
+    run_dialog(title, size, anchor, app)?;
     take_result(&result)
 }
 
-fn run_dialog(title: &str, size: [f32; 2], app: impl eframe::App + 'static) -> Result<(), String> {
+fn run_dialog(
+    title: &str,
+    size: [f32; 2],
+    anchor: Option<DialogAnchor>,
+    app: impl eframe::App + 'static,
+) -> Result<(), String> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(title)
@@ -76,7 +91,8 @@ fn run_dialog(title: &str, size: [f32; 2], app: impl eframe::App + 'static) -> R
             .with_min_inner_size(size)
             .with_max_inner_size(size)
             .with_resizable(false)
-            .with_maximize_button(false),
+            .with_maximize_button(false)
+            .with_visible(anchor.is_none()),
         ..Default::default()
     };
     eframe::run_native(
@@ -84,10 +100,44 @@ fn run_dialog(title: &str, size: [f32; 2], app: impl eframe::App + 'static) -> R
         options,
         Box::new(|creation_context| {
             styles::configure(&creation_context.egui_ctx);
-            Ok(Box::new(app))
+            Ok(Box::new(PositionedApp { app, anchor, size }))
         }),
     )
     .map_err(|error| error.to_string())
+}
+
+struct PositionedApp<T> {
+    app: T,
+    anchor: Option<DialogAnchor>,
+    size: [f32; 2],
+}
+
+impl<T: eframe::App> eframe::App for PositionedApp<T> {
+    fn update(&mut self, context: &egui::Context, frame: &mut eframe::Frame) {
+        if let Some(anchor) = self.anchor.take() {
+            if let Some(position) =
+                position_for_anchor(anchor, self.size, context.pixels_per_point())
+            {
+                context.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
+            }
+            context.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        }
+        self.app.update(context, frame);
+    }
+}
+
+fn position_for_anchor(
+    anchor: DialogAnchor,
+    size: [f32; 2],
+    pixels_per_point: f32,
+) -> Option<egui::Pos2> {
+    if !pixels_per_point.is_finite() || pixels_per_point <= 0.0 {
+        return None;
+    }
+    Some(egui::pos2(
+        anchor.x as f32 / pixels_per_point - size[0] / 2.0,
+        anchor.y as f32 / pixels_per_point - size[1] / 2.0,
+    ))
 }
 
 const CONNECTION_DIALOG_SIZE: [f32; 2] = [440.0, 292.0];
@@ -470,5 +520,17 @@ mod tests {
         assert_eq!(passkey_dialog_size(1), [420.0, 208.0]);
         assert_eq!(passkey_dialog_size(2), [420.0, 236.0]);
         assert_eq!(passkey_dialog_size(32), [420.0, 440.0]);
+    }
+
+    #[test]
+    fn positions_the_dialog_around_the_physical_anchor() {
+        assert_eq!(
+            position_for_anchor(DialogAnchor { x: 800, y: 600 }, [400.0, 200.0], 2.0),
+            Some(egui::pos2(200.0, 200.0))
+        );
+        assert_eq!(
+            position_for_anchor(DialogAnchor { x: 0, y: 0 }, [400.0, 200.0], 0.0),
+            None
+        );
     }
 }

@@ -22,24 +22,33 @@ use tokio::{
 };
 use zeroize::Zeroizing;
 
+use crate::{NativeUiAnchor, NativeUiAnchorProvider};
+
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 const MAX_STDOUT_BYTES: usize = 64 * 1024;
 const MAX_STDERR_BYTES: usize = 16 * 1024;
+const ANCHOR_TIMEOUT: Duration = Duration::from_millis(250);
 const UI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 pub struct NativeUi {
     executable: PathBuf,
     dialog: Mutex<()>,
+    anchor_provider: NativeUiAnchorProvider,
     shutdown: watch::Receiver<bool>,
 }
 
 impl NativeUi {
-    pub fn new(executable: PathBuf, shutdown: watch::Receiver<bool>) -> Self {
+    pub fn new(
+        executable: PathBuf,
+        anchor_provider: NativeUiAnchorProvider,
+        shutdown: watch::Receiver<bool>,
+    ) -> Self {
         Self {
             executable,
             dialog: Mutex::new(()),
+            anchor_provider,
             shutdown,
         }
     }
@@ -141,10 +150,15 @@ impl NativeUi {
             return Err("desktop host is shutting down".into());
         }
 
+        let anchor = self.current_anchor(&mut shutdown).await?;
+        if *shutdown.borrow() {
+            return Err("desktop host is shutting down".into());
+        }
         let mut recipient = one_shot_server().await?;
         let mut command = native_ui_command(
             &self.executable,
             &recipient.public_key_bundle(),
+            anchor,
             kind,
             arguments,
         );
@@ -222,6 +236,21 @@ impl NativeUi {
             .take()
             .ok_or_else(|| "native UI returned an unauthenticated response".into())
     }
+
+    async fn current_anchor(
+        &self,
+        shutdown: &mut watch::Receiver<bool>,
+    ) -> Result<Option<NativeUiAnchor>, String> {
+        tokio::select! {
+            result = tokio::time::timeout(ANCHOR_TIMEOUT, self.anchor_provider.call_async(Ok(()))) => {
+                Ok(result.ok().and_then(Result::ok).flatten())
+            }
+            changed = shutdown.changed() => {
+                let _ = changed;
+                Err("desktop host is shutting down".into())
+            }
+        }
+    }
 }
 
 impl PasswordInputProvider for NativeUi {
@@ -259,11 +288,22 @@ impl ConnectionApprovalProvider for NativeUi {
     }
 }
 
-fn native_ui_command(path: &Path, public_key: &str, kind: &str, arguments: &str) -> Command {
+fn native_ui_command(
+    path: &Path,
+    public_key: &str,
+    anchor: Option<NativeUiAnchor>,
+    kind: &str,
+    arguments: &str,
+) -> Command {
     let mut command = Command::new(path);
+    command.arg("--public-key").arg(public_key);
+    if let Some(anchor) = anchor {
+        command
+            .arg("--anchor")
+            .arg(anchor.x.to_string())
+            .arg(anchor.y.to_string());
+    }
     command
-        .arg("--public-key")
-        .arg(public_key)
         .arg(kind)
         .arg(arguments)
         .stdin(Stdio::piped())
@@ -563,6 +603,7 @@ mod tests {
         let command = native_ui_command(
             Path::new("native-ui"),
             "v1.key.key",
+            Some(NativeUiAnchor { x: 480, y: 320 }),
             "password",
             r#"{"mode":"unlock"}"#,
         );
@@ -572,6 +613,9 @@ mod tests {
             [
                 OsStr::new("--public-key"),
                 OsStr::new("v1.key.key"),
+                OsStr::new("--anchor"),
+                OsStr::new("480"),
+                OsStr::new("320"),
                 OsStr::new("password"),
                 OsStr::new(r#"{"mode":"unlock"}"#),
             ]
