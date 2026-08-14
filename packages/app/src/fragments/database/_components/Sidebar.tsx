@@ -40,6 +40,7 @@ import {
   useRequestClient,
   useRequestMutation,
 } from '@/fragments/_providers/QueryProvider';
+import { useHistoryBackUntil } from '@/fragments/_providers/RouterProvider';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
 import {
@@ -168,6 +169,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const queryClient = useQueryClient();
   const hasNativePasswordInput = useHasNativePasswordInput();
   const showToast = useShowToast();
+  const historyBackUntil = useHistoryBackUntil();
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest>();
   const { isMobile, setOpenMobile } = useSidebar();
   const closeMobile = () => {
@@ -269,7 +271,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const syncDatabase = useRequestMutation('saveDatabase');
   const lockDatabase = useRequestMutation('lock', {
     onSuccess: () => {
-      setLocation(buildRoute('openUnlock'));
+      historyBackUntil(buildRoute('openUnlock'));
       closeMobile();
     },
   });

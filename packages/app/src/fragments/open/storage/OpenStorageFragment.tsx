@@ -3,7 +3,7 @@ import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useEffect, useRef, useState } from 'react';
 import { useRoute } from 'wouter';
-import { useNavigate } from '../../_providers/RouterProvider';
+import { useHistoryBackUntil, useNavigate } from '../../_providers/RouterProvider';
 import { SetupLayout } from '../_components/SetupLayout';
 import { errorMessage } from '../_utils/errorMessage';
 import type { StorageDescriptorGetter } from '@/types/Host';
@@ -13,6 +13,7 @@ export const OpenStorageFragment = () => {
   const hostsLoading = useHostsLoading();
   const requestClient = useRequestClient();
   const navigate = useNavigate();
+  const historyBackUntil = useHistoryBackUntil();
   const [, params] = useRoute<{ storage: string }>(getRoute('openStorage'));
   const operationPendingRef = useRef(false);
   const [isPending, setIsPending] = useState(false);
@@ -22,9 +23,9 @@ export const OpenStorageFragment = () => {
 
   useEffect(() => {
     if (!hostsLoading && !StorageSetup) {
-      navigate(buildRoute('open'), { replace: true });
+      historyBackUntil(buildRoute('open'));
     }
-  }, [StorageSetup, hostsLoading, navigate]);
+  }, [StorageSetup, historyBackUntil, hostsLoading]);
 
   const openStorage = async (getDescriptor: StorageDescriptorGetter) => {
     if (!requestClient.data || operationPendingRef.current) {

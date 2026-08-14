@@ -20,7 +20,12 @@ export const SetupLayout = ({
     <main className="flex flex-col items-center justify-center">
       <div className="flex w-full max-w-120 flex-col px-10 py-10 rounded-xl">
         {showBack && (
-          <Button type="button" variant="ghost" className="self-start -ml-2" onClick={historyBack}>
+          <Button
+            type="button"
+            variant="ghost"
+            className="self-start -ml-2"
+            onClick={() => historyBack()}
+          >
             <IconArrowLeft /> Back
           </Button>
         )}

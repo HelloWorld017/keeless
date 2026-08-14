@@ -12,14 +12,14 @@ import { Input } from '@/components/input';
 import { Label } from '@/components/label';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useHistoryBackUntil } from '@/fragments/_providers/RouterProvider';
 import { StepError } from '@/fragments/open/_components/StepError';
 import { errorMessage } from '@/fragments/open/_utils/errorMessage';
 import { IconArrowRight, IconLoaderCircle } from '@/icons';
 import { CoreRequestError } from '@/utils/request';
 import { buildRoute } from '@/utils/route';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
-import { Redirect } from 'wouter';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, SubmitEvent } from 'react';
 
 const DatabaseUnlockDialog = () => {
@@ -119,6 +119,8 @@ const DatabaseUnlockDialog = () => {
 };
 
 export const DatabaseStatusHandler = ({ children }: { children: ReactNode }) => {
+  const historyBackUntil = useHistoryBackUntil();
+  const historyBackUntilPending = useRef(false);
   const coreStatus = useRequest(
     'getCoreStatus',
     {},
@@ -128,12 +130,23 @@ export const DatabaseStatusHandler = ({ children }: { children: ReactNode }) => 
     },
   );
 
+  useEffect(() => {
+    if (historyBackUntilPending.current) {
+      return;
+    }
+
+    if (coreStatus.data?.database === 'not_exist') {
+      historyBackUntilPending.current = true;
+      historyBackUntil(buildRoute('open'));
+    }
+  }, [coreStatus.data?.database, historyBackUntil]);
+
   if (!coreStatus.data) {
     return null;
   }
 
   if (coreStatus.data.database === 'not_exist') {
-    return <Redirect to={buildRoute('open')} replace />;
+    return null;
   }
 
   return (
