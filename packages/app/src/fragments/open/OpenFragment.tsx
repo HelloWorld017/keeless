@@ -5,7 +5,7 @@ import { invalidateByResource } from '@/utils/request';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Route, Switch } from 'wouter';
+import { Redirect, Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
 import { SelectStep } from './_components/SelectStep';
@@ -48,6 +48,10 @@ export const OpenFragment = () => {
             navigate(buildRoute('database'), { replace: true });
           }
           return;
+        }
+
+        if (database === 'locked') {
+          navigate(buildRoute('openUnlock'), { replace: true });
         }
       })
       .catch(nextError => {
