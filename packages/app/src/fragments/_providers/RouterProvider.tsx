@@ -48,7 +48,7 @@ const [RouterContextProvider, useRouterContext] = buildContext(
 
         navigate(target, { replace: true });
       },
-      [historyBack, historyEntries, navigate],
+      [historyEntries, navigate],
     );
 
     return {

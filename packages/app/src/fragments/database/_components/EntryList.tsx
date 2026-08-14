@@ -314,7 +314,7 @@ const EntryQuery = <TName extends EntryOperationName>({
         </div>
 
         {result && result.entries.length > 0 && (
-          <div className='w-full flex-1 min-h-0 px-2'>
+          <div className="w-full flex-1 min-h-0 px-2">
             <VirtualEntryList
               className="xl:px-4"
               entries={resultSorted}
@@ -327,7 +327,9 @@ const EntryQuery = <TName extends EntryOperationName>({
                   ? hiddenEntry.entryId
                   : undefined
               }
-              onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: !isMobile })}
+              onSelect={entry =>
+                setSearchParams({ entry: String(entry.id) }, { replace: !isMobile })
+              }
             />
           </div>
         )}

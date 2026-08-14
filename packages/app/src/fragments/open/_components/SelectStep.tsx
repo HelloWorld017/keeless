@@ -28,12 +28,12 @@ import {
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { useNavigate } from '@/fragments/_providers/RouterProvider';
 import { IconAlertCircle, IconArrowRight, IconLoaderCircle } from '@/icons';
-import { HostKind, HostStorage, StorageDescriptorGetter } from '@/types/Host';
 import { buildRoute } from '@/utils/route';
 import { useRef, useState } from 'react';
 import { errorMessage } from '../_utils/errorMessage';
 import { SetupLayout } from './SetupLayout';
 import { StepError } from './StepError';
+import type { HostKind, HostStorage, StorageDescriptorGetter } from '@/types/Host';
 
 export const SelectStep = () => {
   const host = useHost();

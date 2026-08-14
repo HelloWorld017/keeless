@@ -5,7 +5,7 @@ import { invalidateByResource } from '@/utils/request';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Redirect, Route, Switch } from 'wouter';
+import { Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
 import { SelectStep } from './_components/SelectStep';
@@ -68,7 +68,7 @@ export const OpenFragment = () => {
     return () => {
       active = false;
     };
-  }, [checkingAttempt, client, navigate]);
+  }, [queryClient, checkingAttempt, client, navigate]);
 
   const isCheckingStepVisible =
     hostsLoading ||
