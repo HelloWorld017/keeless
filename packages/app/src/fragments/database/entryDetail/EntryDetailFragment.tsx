@@ -345,7 +345,7 @@ const EntryDetailQuery = ({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto scrollbar-gutter-stable">
       <header className="flex items-center gap-2 xl:flex-col xl:items-stretch px-4 pb-2 pt-4 md:px-6 md:pb-6 xl:pt-0">
         <Button
           variant="ghost"
@@ -439,7 +439,7 @@ const EntryDetailQuery = ({
           </h1>
         </div>
       </header>
-      <div className="w-full min-h-0 overflow-auto">
+      <div className="w-full">
         <div className="w-full mx-auto max-w-180">
           {detail.isPending ? (
             <EntryDetailSkeleton pending />
