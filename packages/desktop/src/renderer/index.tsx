@@ -1,4 +1,5 @@
 import '@keeless/app/styles.css';
+import './styles.css';
 import { App } from '@keeless/app';
 import { createRoot } from 'react-dom/client';
 import { WindowBar } from './components/WindowBar';
@@ -17,9 +18,9 @@ if (!root) {
 }
 
 createRoot(root).render(
-  <div className="desktop-shell">
+  <div className="grid h-dvh grid-rows-[auto_1fr] overflow-hidden">
     <WindowBar />
-    <main className="desktop-app">
+    <main className="min-h-0 overflow-hidden [&_.h-dvh]:h-full [&_.h-svh]:h-full [&_.min-h-svh]:min-h-full">
       <App integration={integration} />
     </main>
   </div>,

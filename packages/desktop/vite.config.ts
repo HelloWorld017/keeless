@@ -2,6 +2,7 @@ import { chmod, readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
@@ -152,6 +153,6 @@ export default defineConfig(({ mode, isSsrBuild }) => {
       noExternal: true,
     },
 
-    plugins: [react(), ...(isMain ? [asset(), napi(), binary()] : [])],
+    plugins: [react(), tailwindcss(), ...(isMain ? [asset(), napi(), binary()] : [])],
   };
 });
