@@ -1,6 +1,6 @@
 import { buildContext } from '@/utils/context';
 import { buildRoute } from '@/utils/route';
-import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react';
+import { startTransition, useCallback, useDeferredValue, useMemo } from 'react';
 import { Router, useLocation } from 'wouter';
 import { useSearch, useBrowserLocation, useHistoryState } from 'wouter/use-browser-location';
 import { z } from 'zod';
@@ -107,6 +107,11 @@ export const RouterProvider = ({ fallback, children }: RouterProviderProps) => {
           entries: nextHistoryEntries,
         }))
         .parse(options?.state);
+
+      if (typeof __DEV__ === 'boolean' && __DEV__) {
+        // oxlint-disable-next-line no-console
+        console.debug(`Routing to`, to, options, history.length);
+      }
 
       startTransition(() => {
         navigate(to, {

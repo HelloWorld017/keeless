@@ -1,7 +1,9 @@
 import BackgroundImage from '@/assets/images/background.webp?url';
 import { useHost, useHostsLoading } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { invalidateByResource } from '@/utils/request';
 import { buildRoute, getRoute } from '@/utils/route';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Redirect, Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
@@ -15,6 +17,7 @@ import { OpenUnlockFragment } from './unlock';
 export const OpenFragment = () => {
   const host = useHost();
   const hostsLoading = useHostsLoading();
+  const queryClient = useQueryClient();
   const requestClient = useRequestClient();
   const client = requestClient.data;
   const navigate = useNavigate();
@@ -41,6 +44,7 @@ export const OpenFragment = () => {
           await client.upgrade();
 
           if (active) {
+            await invalidateByResource(queryClient, ['databaseStatus']);
             navigate(buildRoute('database'), { replace: true });
           }
           return;
@@ -98,7 +102,6 @@ export const OpenFragment = () => {
             <Route path={getRoute('openCreate')} component={OpenCreateFragment} />
             <Route path={getRoute('openUnlock')} component={OpenUnlockFragment} />
             <Route path={getRoute('open')} component={SelectStep} />
-            <Redirect to={getRoute('open')} replace />
           </Switch>
         )}
       </div>

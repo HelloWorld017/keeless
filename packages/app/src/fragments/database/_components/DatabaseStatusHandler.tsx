@@ -135,11 +135,15 @@ export const DatabaseStatusHandler = ({ children }: { children: ReactNode }) => 
       return;
     }
 
+    if (!coreStatus.isFetchedAfterMount) {
+      return;
+    }
+
     if (coreStatus.data?.database === 'not_exist') {
       historyBackUntilPending.current = true;
       historyBackUntil(buildRoute('open'));
     }
-  }, [coreStatus.data?.database, historyBackUntil]);
+  }, [coreStatus.isFetchedAfterMount, coreStatus.data?.database, historyBackUntil]);
 
   if (!coreStatus.data) {
     return null;

@@ -3,7 +3,7 @@ import { Field } from '@/components/field';
 import { Input } from '@/components/input';
 import { Label } from '@/components/label';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
-import { useRequestClient } from '@/fragments/_providers/QueryProvider';
+import { useRequestClient, useRequestMutation } from '@/fragments/_providers/QueryProvider';
 import { IconArrowRight, IconLoaderCircle } from '@/icons';
 import { CoreRequestError } from '@/utils/request';
 import { buildRoute } from '@/utils/route';
@@ -24,6 +24,7 @@ export const OpenUnlockFragment = () => {
   const [error, setError] = useState<string>();
   const isDisabled = isPending || !requestClient.data || requestClient.isPending;
 
+  const unlock = useRequestMutation('unlock');
   const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!requestClient.data || operationPendingRef.current) {
@@ -35,7 +36,7 @@ export const OpenUnlockFragment = () => {
     setError(undefined);
     try {
       if (hasNativePasswordInput) {
-        await requestClient.data.request('unlock', {});
+        await unlock.mutateAsync({});
       } else {
         const input = event.currentTarget.elements.namedItem('master-password');
         if (!(input instanceof HTMLInputElement) || !input.value) {
@@ -45,7 +46,7 @@ export const OpenUnlockFragment = () => {
         }
         const password = input.value;
         input.value = '';
-        await requestClient.data.request('unlock', { password });
+        await unlock.mutateAsync({ password });
       }
       await requestClient.data.upgrade();
       navigate(buildRoute('database'), { replace: true });

@@ -70,7 +70,7 @@ export class RequestClient {
       const response = JSON.parse(decoder.decode(responseBytes)) as OperationResponse;
       if (typeof __DEV__ === 'boolean' && __DEV__) {
         // oxlint-disable-next-line no-console
-        console.log(`Operation ${requestId}: ${op}(`, args, `) -> `, response);
+        console.debug(`Operation ${requestId}: ${op}(`, args, `) -> `, response);
       }
 
       if (response.requestId !== requestId) {
@@ -97,6 +97,10 @@ export class RequestClient {
   }
 
   async upgrade() {
+    if (this.coreWire) {
+      return;
+    }
+
     const { publicKey } = await this.request('upgrade', {});
     this.coreWire = await WireClient.connect(
       this.host,

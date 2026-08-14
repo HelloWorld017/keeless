@@ -79,7 +79,7 @@ const installIpc = () => {
     if (!host) {
       throw new Error('Desktop host is unavailable');
     }
-    if (clientRegistered) {
+    if (clientRegistered && !__DEV__) {
       terminateForRepeatedClientRegistration();
       throw new Error('Client registration was attempted more than once');
     }
@@ -162,7 +162,7 @@ const createWindow = async () => {
     autoHideMenuBar: true,
     icon: iconPath(),
     webPreferences: {
-      devTools: typeof __DEV__ !== 'undefined' && !!__DEV__,
+      devTools: __DEV__,
       preload: join(dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
@@ -207,6 +207,12 @@ const createTray = () => {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open', click: showWindow },
+      ...(__DEV__
+        ? [
+            { type: 'separator' as const },
+            { label: 'DevTools', click: () => browserWindow?.webContents.openDevTools() },
+          ]
+        : []),
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
     ]),

@@ -8,7 +8,7 @@ import { DatabaseFragment } from '@/fragments/database';
 import { OpenFragment } from '@/fragments/open';
 import { getRoute } from '@/utils/route';
 import { StrictMode } from 'react';
-import { Redirect, Route, Switch } from 'wouter';
+import { Route, Switch } from 'wouter';
 import { EntryFocusHandler } from './_components/EntryFocusHandler';
 import type { AppIntegration } from '@/types/AppIntegration';
 
@@ -20,7 +20,6 @@ export const AppContents = () => (
     <Route path={getRoute('tag')} component={DatabaseFragment} />
     <Route path={getRoute('trash')} component={DatabaseFragment} />
     <Route path={getRoute('database')} component={DatabaseFragment} />
-    <Redirect to={getRoute('open')} replace />
   </Switch>
 );
 
