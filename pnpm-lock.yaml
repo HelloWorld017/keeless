@@ -167,6 +167,9 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
+      vite-plugin-static-copy:
+        specifier: 4.1.1
+        version: 4.1.1(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))
 
   packages/core:
     dependencies:
@@ -3895,6 +3898,10 @@ packages:
     resolution: {integrity: sha512-x+12w/To+4GFfgJhBEpiDcLozRJGegY+Ei7/z0tSLkMmxGZNybVMSfWj9aJn8Z5Fc7dBUNJOOVgPv2H7IwulSQ==}
     engines: {node: '>=6'}
 
+  p-map@7.0.6:
+    resolution: {integrity: sha512-I4Prw6ivkd6p8PiYR1tXASOAOBzIJwu0TB7fqaX0c/8c3QAehNYmX57EijyGGGBt3c/BIowGwV03RVBtXvHEVg==}
+    engines: {node: '>=18'}
+
   p-try@2.2.0:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
     engines: {node: '>=6'}
@@ -4609,6 +4616,12 @@ packages:
   verkit@0.1.2:
     resolution: {integrity: sha512-WqkT8n3hqizuCu71W3bUzf5fjBmkbXcudsehe/NbxA8PgqoKnSOY5K0Ba2ckg1qaRaSpSz7as/n9K1R9JXjQKg==}
     engines: {node: '>=18.12.0'}
+
+  vite-plugin-static-copy@4.1.1:
+    resolution: {integrity: sha512-GrlA8YklrAfSyxJ4M3fdQLOo9oNkp56IM9FYgX/WtEgeIFkPwhu4wzpufBCIuNKCa6Fn77FkRdYxkHqV0FwjAw==}
+    engines: {node: ^22.0.0 || >=24.0.0}
+    peerDependencies:
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
 
   vite@8.1.5:
     resolution: {integrity: sha512-7ULLwsCdYx/nRyrpiEwvqb5TFHrMVZyBt+rg/OAXT7rgj/z+DtTDyKFeLAdDkubDVDKD8jOsndmy7m55XcfUsw==}
@@ -7982,6 +7995,8 @@ snapshots:
     dependencies:
       p-limit: 2.3.0
 
+  p-map@7.0.6: {}
+
   p-try@2.2.0: {}
 
   parent-module@1.0.1:
@@ -8706,6 +8721,14 @@ snapshots:
   vary@1.1.2: {}
 
   verkit@0.1.2: {}
+
+  vite-plugin-static-copy@4.1.1(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)):
+    dependencies:
+      chokidar: 3.6.0
+      p-map: 7.0.6
+      picocolors: 1.1.1
+      tinyglobby: 0.2.17
+      vite: 8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0)
 
   vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:

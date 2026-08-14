@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { dts as rolldownDts } from 'rolldown-plugin-dts';
 import { defineConfig, esmExternalRequirePlugin } from 'vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 const dts = (...args: Parameters<typeof rolldownDts>) =>
   rolldownDts(...args).map(plugin =>
@@ -60,6 +61,9 @@ export default defineConfig(({ mode, command }) => ({
           dts({ generator: 'tsgo' }),
           esmExternalRequirePlugin({
             external: [/^react(?:\/.*)?$/, /^react-dom(?:\/.*)?$/],
+          }),
+          viteStaticCopy({
+            targets: [{ src: 'src/styles/tokens.css', dest: '.', rename: { stripBase: true } }],
           }),
         ]
       : []),

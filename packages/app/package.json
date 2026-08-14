@@ -15,7 +15,8 @@
       "types": "./dist/lib/index.d.ts",
       "import": "./dist/lib/index.js"
     },
-    "./styles.css": "./dist/lib/styles.css"
+    "./styles.css": "./dist/lib/styles.css",
+    "./tokens.css": "./dist/lib/tokens.css"
   },
   "scripts": {
     "dev": "vite",
@@ -68,6 +69,7 @@
     "@vitejs/plugin-react": "6.0.4",
     "rolldown-plugin-dts": "0.27.13",
     "tailwindcss": "4.3.3",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vite-plugin-static-copy": "4.1.1"
   }
 }
