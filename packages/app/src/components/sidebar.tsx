@@ -92,7 +92,7 @@ function SidebarProvider({
       <div
         data-slot="sidebar-wrapper"
         style={{ '--sidebar-width': SIDEBAR_WIDTH, ...style } as CSSProperties}
-        className={cn('group/sidebar-wrapper flex min-h-svh w-full bg-background', className)}
+        className={cn('group/sidebar-wrapper flex h-full w-full bg-background', className)}
         {...props}
       >
         {children}
@@ -131,7 +131,7 @@ function Sidebar({ className, children, ...props }: ComponentProps<'div'>) {
       aria-hidden={!open}
       inert={!open}
       className={cn(
-        'relative hidden h-svh shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex',
+        'relative hidden h-full shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex',
         open ? 'w-(--sidebar-width)' : 'w-0 border-r-0',
       )}
       {...props}

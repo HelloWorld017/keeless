@@ -113,7 +113,7 @@ const VirtualEntryList = ({
   });
 
   return (
-    <div ref={scrollRef} className={cx('min-h-0 w-full flex-1 overflow-auto py-2', className)}>
+    <div ref={scrollRef} className={cx('h-full overflow-auto py-2', className)}>
       <ul className="relative w-full list-none" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map(virtualRow => {
           const entry = entries[virtualRow.index];
@@ -121,7 +121,7 @@ const VirtualEntryList = ({
           return (
             <li
               key={virtualRow.key}
-              className="absolute left-0 top-0 w-full px-3 py-0.5"
+              className="absolute left-0 top-0 w-full px-2 py-0.5"
               style={{
                 height: virtualRow.size,
                 transform: `translateY(${virtualRow.start}px)`,
@@ -259,7 +259,7 @@ const EntryQuery = <TName extends EntryOperationName>({
           selectedEntry ? 'hidden' : 'flex',
         )}
       >
-        <div className="flex flex-col xl:px-6">
+        <div className="flex flex-col px-2 xl:px-6">
           <EntryListHeader
             title={title}
             result={result}
@@ -314,20 +314,22 @@ const EntryQuery = <TName extends EntryOperationName>({
         </div>
 
         {result && result.entries.length > 0 && (
-          <VirtualEntryList
-            className="xl:px-6"
-            entries={resultSorted}
-            tags={tags.data?.tags ?? []}
-            source={source}
-            selectedEntry={selectedEntry}
-            disabled={movePending}
-            hiddenEntryId={
-              hiddenEntry && isSameSource(source, hiddenEntry.source)
-                ? hiddenEntry.entryId
-                : undefined
-            }
-            onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: !isMobile })}
-          />
+          <div className='w-full flex-1 min-h-0 px-2'>
+            <VirtualEntryList
+              className="xl:px-4"
+              entries={resultSorted}
+              tags={tags.data?.tags ?? []}
+              source={source}
+              selectedEntry={selectedEntry}
+              disabled={movePending}
+              hiddenEntryId={
+                hiddenEntry && isSameSource(source, hiddenEntry.source)
+                  ? hiddenEntry.entryId
+                  : undefined
+              }
+              onSelect={entry => setSearchParams({ entry: String(entry.id) }, { replace: !isMobile })}
+            />
+          </div>
         )}
       </section>
       <EntryDetailFragment

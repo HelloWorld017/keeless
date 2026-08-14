@@ -357,7 +357,7 @@ const EntryDetailQuery = ({
         >
           <IconChevronLeft />
         </Button>
-        <div className="order-2 xl:pt-4 xl:order-none">
+        <div className="w-full order-2 xl:pt-4 xl:order-none">
           <div className="flex gap-1 justify-end">
             {editing && (
               <>
@@ -575,7 +575,7 @@ export const EntryDetailFragment = ({
 }) => (
   <section
     className={cx(
-      'min-h-0 min-w-0 flex-3 flex-col p-4 md:pt-2 xl:p-6 xl:pt-2 xl:pb-8',
+      'min-h-0 min-w-0 flex-3 flex-col px-2 py-4 md:pt-2 xl:pt-2 xl:pb-8',
       selected ? 'flex' : 'hidden md:flex',
     )}
     aria-labelledby={selected ? 'entry-detail-title' : undefined}

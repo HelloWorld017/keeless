@@ -80,7 +80,7 @@ export const OpenFragment = () => {
     checkingError ?? (requestClient.isError ? errorMessage(requestClient.error) : undefined);
 
   return (
-    <div className="flex h-dvh items-center">
+    <div className="flex h-full items-center">
       <div className="flex-[0_0_auto] max-w-200 w-full">
         {isCheckingStepVisible ? (
           <CheckingStep

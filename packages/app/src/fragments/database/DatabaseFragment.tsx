@@ -212,7 +212,7 @@ const DatabaseFragmentContents = () => {
             navigate(buildRoute('search', { search }));
           }}
         />
-        <SidebarInset className="h-svh overflow-hidden">
+        <SidebarInset className="h-full overflow-hidden">
           <div className="flex min-h-0 flex-1">
             <EntryList
               movePending={moveEntry.isPending}

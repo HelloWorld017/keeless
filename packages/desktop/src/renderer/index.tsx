@@ -18,9 +18,9 @@ if (!root) {
 }
 
 createRoot(root).render(
-  <div className="grid h-dvh grid-rows-[auto_1fr] overflow-hidden">
+  <div className="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
     <WindowBar />
-    <main className="min-h-0 overflow-hidden [&_.h-dvh]:h-full [&_.h-svh]:h-full [&_.min-h-svh]:min-h-full">
+    <main className="h-full min-h-0 overflow-hidden">
       <App integration={integration} />
     </main>
   </div>,
