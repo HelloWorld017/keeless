@@ -8,6 +8,7 @@ const bridge: DesktopBridge = {
   relayFrame: frame =>
     ipcRenderer.invoke('desktop:relay-frame', frame) as Promise<MessageFrame | null>,
   pickLocalFile: mode => ipcRenderer.invoke('desktop:pick-local-file', mode),
+  windowControl: action => ipcRenderer.invoke('desktop:window-control', action),
   onEntryFocus: listener => {
     const handler = (_event: Electron.IpcRendererEvent, entryId: unknown) => {
       if (typeof entryId === 'string') {

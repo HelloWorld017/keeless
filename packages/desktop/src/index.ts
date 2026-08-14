@@ -122,6 +122,31 @@ const installIpc = () => {
 
     return path ? host.grantLocalFile(path) : null;
   });
+
+  ipcMain.handle('desktop:window-control', (event, action: unknown) => {
+    assertSender(event);
+    if (!browserWindow) {
+      throw new Error('Desktop window is unavailable');
+    }
+
+    switch (action) {
+      case 'minimize':
+        browserWindow.minimize();
+        return;
+      case 'maximize':
+        if (browserWindow.isMaximized()) {
+          browserWindow.unmaximize();
+        } else {
+          browserWindow.maximize();
+        }
+        return;
+      case 'close':
+        browserWindow.close();
+        return;
+      default:
+        throw new Error('Invalid window control action');
+    }
+  });
 };
 
 const createWindow = async () => {
@@ -133,6 +158,8 @@ const createWindow = async () => {
     minWidth: 720,
     minHeight: 560,
     show: false,
+    frame: false,
+    autoHideMenuBar: true,
     icon: iconPath(),
     webPreferences: {
       preload: join(dirname, '../preload/index.cjs'),
@@ -141,6 +168,7 @@ const createWindow = async () => {
       sandbox: true,
     },
   });
+  browserWindow.removeMenu();
 
   browserWindow.on('close', event => {
     if (!quitting) {
@@ -189,6 +217,7 @@ const shutdown = async () => {
   ipcMain.removeHandler('desktop:register-client');
   ipcMain.removeHandler('desktop:relay-frame');
   ipcMain.removeHandler('desktop:pick-local-file');
+  ipcMain.removeHandler('desktop:window-control');
   await host?.shutdown();
   host = undefined;
   tray?.destroy();
@@ -216,6 +245,7 @@ if (!hasLock) {
   app.on('window-all-closed', () => {});
   app.on('activate', showWindow);
   void app.whenReady().then(async () => {
+    Menu.setApplicationMenu(null);
     host = await keeless.DesktopHost.create(nativeUiPath);
     host.onEntryFocus(entryId => {
       showWindow();

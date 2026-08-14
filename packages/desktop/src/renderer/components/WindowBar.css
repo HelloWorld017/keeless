@@ -1,0 +1,64 @@
+.desktop-shell {
+  display: grid;
+  height: 100dvh;
+  grid-template-rows: 2.5rem minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.desktop-app {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desktop-app .h-dvh,
+.desktop-app .h-svh {
+  height: 100%;
+}
+
+.desktop-app .min-h-svh {
+  min-height: 100%;
+}
+
+.window-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.window-bar__title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.window-bar__controls {
+  position: absolute;
+  right: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  -webkit-app-region: no-drag;
+}
+
+.window-bar__control {
+  width: 0.75rem;
+  height: 0.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #000;
+}
+
+.window-bar__control[data-action='close'] {
+  background: #e03a34;
+}
+
+.window-bar__control:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}

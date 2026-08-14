@@ -1,6 +1,7 @@
 import '@keeless/app/styles.css';
 import { App } from '@keeless/app';
 import { createRoot } from 'react-dom/client';
+import { WindowBar } from './components/WindowBar';
 import { desktopHost } from './host';
 import type { AppIntegration } from '@keeless/app';
 
@@ -15,4 +16,11 @@ if (!root) {
   throw new Error('Desktop root element is missing');
 }
 
-createRoot(root).render(<App integration={integration} />);
+createRoot(root).render(
+  <div className="desktop-shell">
+    <WindowBar />
+    <main className="desktop-app">
+      <App integration={integration} />
+    </main>
+  </div>,
+);
