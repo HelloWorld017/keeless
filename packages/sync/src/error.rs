@@ -50,11 +50,14 @@ pub enum SyncError {
     #[error(transparent)]
     Database(#[from] DatabaseError),
 
-    #[error("remote file does not exist: {0}")]
-    RemoteNotFound(String),
+    #[error("remote file does not exist")]
+    RemoteNotFound,
 
-    #[error("storage does not provide an atomic revision for: {0}")]
-    AtomicUpdateUnsupported(String),
+    #[error("storage does not provide an atomic revision")]
+    AtomicUpdateUnsupported,
+
+    #[error("remote database has a different root group ID")]
+    RootGroupMismatch,
 
     #[error("conditional update did not succeed after {attempts} attempts")]
     RetryExhausted { attempts: usize },

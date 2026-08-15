@@ -4,12 +4,14 @@ import type { ComponentType, ReactNode } from 'react';
 
 export type HostKind = 'desktop' | 'extension' | 'browser';
 
-export type StorageDescriptorGetter = () => OpenArgs | Promise<OpenArgs>;
+export type StorageProvider = Extract<OpenArgs, { storage: unknown }>['storage'];
+
+export type StorageProviderGetter = () => StorageProvider | Promise<StorageProvider>;
 
 export type StorageSetupComponentProps = {
   isPending: boolean;
   error?: string;
-  onOpen: (getDescriptor: StorageDescriptorGetter) => Promise<void>;
+  onOpen: (getProvider: StorageProviderGetter) => Promise<void>;
 };
 
 export type HostStorageSetup =
@@ -17,13 +19,13 @@ export type HostStorageSetup =
       title?: string;
       description?: string;
       component: ComponentType<StorageSetupComponentProps>;
-      getDefaultDescriptor?: never;
+      getDefaultProvider?: never;
     }
   | {
       title?: string;
       description?: string;
       component: null;
-      getDefaultDescriptor: StorageDescriptorGetter;
+      getDefaultProvider: StorageProviderGetter;
     };
 
 export type HostStorage = {

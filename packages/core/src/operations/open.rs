@@ -1,22 +1,20 @@
-use keeless_schema::{DatabaseStorageConfig, EmptyResult, OpenArgs, OperationSuccess};
+use keeless_schema::{EmptyResult, OpenArgs, OpenTarget, OperationSuccess};
 
-use crate::{CoreError, KeelessCore, Result, Selection, StorageDescriptor};
+use crate::{CoreError, DatabaseId, KeelessCore, Result, Selection, StorageDescriptor};
 
-pub(crate) async fn run(
-    core: &mut KeelessCore,
-    descriptor: StorageDescriptor,
-    storage_config: Option<DatabaseStorageConfig>,
-) -> Result<()> {
-    let provider = core
+pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -> Result<()> {
+    let storage = core
         .storage_providers
         .get(&descriptor.provider)
         .cloned()
         .ok_or_else(|| CoreError::UnknownStorageProvider(descriptor.provider.clone()))?;
+    let normalized_path = storage.get_normalized_path(&descriptor.path)?;
+    let database_id = DatabaseId::from_storage(&descriptor.provider, &normalized_path)?;
     // Persistence selection is process-global in desktop hosts. Drop the old handle and
     // selection before changing namespaces so a failed open cannot journal the old DB elsewhere.
     super::lock::run(core);
     core.selection = None;
-    let database_id = core.persistence.select(&descriptor).await?;
+    core.persistence.select(&database_id).await?;
     let (cache_exists, journal_dirty, persistence_error) = {
         let (cache_exists, mut error) = match core.persistence.read_cache().await {
             Ok(cache) => (cache.is_some(), None),
@@ -39,7 +37,7 @@ pub(crate) async fn run(
         };
         (cache_exists, journal_dirty, error)
     };
-    let (exists, mut sync_error) = match provider.stat(&descriptor.path).await {
+    let (exists, mut sync_error) = match storage.provider().stat(&descriptor.path).await {
         Ok(metadata) => (metadata.is_some() || cache_exists, None),
         Err(error) if cache_exists => {
             let error = CoreError::from(error);
@@ -52,10 +50,9 @@ pub(crate) async fn run(
     }
     core.selection = Some(Selection {
         descriptor: Some(descriptor),
-        provider: Some(provider),
+        storage: Some(storage),
         database_id,
         exists,
-        storage_config,
     });
     core.sync_status = if sync_error.is_some() {
         crate::SyncStatus::Error
@@ -67,7 +64,30 @@ pub(crate) async fn run(
     Ok(())
 }
 
+async fn run_recent(core: &mut KeelessCore, id: String) -> Result<()> {
+    let database_id = DatabaseId::from_recent_id(&id)?;
+    if !super::recent::contains(core, &id).await? {
+        return Err(CoreError::InvalidRecentDatabase);
+    }
+    super::lock::run(core);
+    core.selection = None;
+    core.persistence.select(&database_id).await?;
+    core.selection = Some(Selection {
+        descriptor: None,
+        storage: None,
+        database_id,
+        exists: true,
+    });
+    core.sync_status = crate::SyncStatus::Idle;
+    core.sync_error = None;
+    core.dirty = false;
+    Ok(())
+}
+
 pub(super) async fn execute(core: &mut KeelessCore, args: OpenArgs) -> Result<OperationSuccess> {
-    run(core, args.storage, args.storage_config).await?;
+    match args.target {
+        OpenTarget::Storage { storage } => run(core, storage).await?,
+        OpenTarget::Database { database_id } => run_recent(core, database_id).await?,
+    }
     Ok(OperationSuccess::Open(EmptyResult {}))
 }

@@ -71,7 +71,6 @@ pub struct FileHandle {
 impl std::fmt::Debug for FileHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FileHandle")
-            .field("path", &self.path)
             .field("entry_count", &self.database.entry_count())
             .field("group_count", &self.database.group_count())
             .field("checkpoint_revision", &self.checkpoint.revision)
@@ -93,7 +92,7 @@ impl FileHandle {
         let remote = match provider.read(&path, None).await {
             Ok(remote) => remote,
             Err(error) if error.kind() == StorageErrorKind::NotFound => {
-                return Err(SyncError::RemoteNotFound(path));
+                return Err(SyncError::RemoteNotFound);
             }
             Err(error) => return Err(error.into()),
         };
@@ -142,7 +141,7 @@ impl FileHandle {
             WriteOutcome::Conflict => {
                 return Err(crate::StorageError::new(
                     StorageErrorKind::AlreadyExists,
-                    format!("remote file already exists: {path}"),
+                    "remote file already exists",
                 )
                 .into());
             }
@@ -221,10 +220,6 @@ impl FileHandle {
         self.dirty
     }
 
-    pub fn path(&self) -> &str {
-        &self.path
-    }
-
     pub fn checkpoint_revision(&self) -> Option<&Revision> {
         self.checkpoint.revision.as_ref()
     }
@@ -270,6 +265,9 @@ impl FileHandle {
                 }
 
                 let database = open_database(remote.bytes.as_slice(), key)?;
+                if database.root_group_id != self.database.root_group_id {
+                    return Err(SyncError::RootGroupMismatch);
+                }
                 self.database = database;
                 self.checkpoint = Checkpoint {
                     bytes: remote.bytes,
@@ -282,7 +280,6 @@ impl FileHandle {
                 });
             }
 
-            let revision = require_revision(&remote, &self.path)?;
             // Stage remote merging so failed serialization or writes cannot alter dirty local data.
             let mut target = self.database.clone();
             let mut merge_result = MergeResult::default();
@@ -290,11 +287,15 @@ impl FileHandle {
 
             if downloaded {
                 let source = open_database(remote.bytes.as_slice(), key)?;
+                if source.root_group_id != self.database.root_group_id {
+                    return Err(SyncError::RootGroupMismatch);
+                }
                 let base = open_database(self.checkpoint.bytes.as_slice(), key)?;
                 merge_result = DatabaseMerger::with_credentials(self.options.merge_strategy, key)
                     .merge_three_way(&mut target, &source, &base);
             }
 
+            let revision = require_revision(&remote)?;
             let merged_bytes = serialize_database(&target, key)?;
             match self
                 .provider
@@ -340,12 +341,12 @@ fn serialize_database(database: &Database, key: &CompositeKey) -> Result<Vec<u8>
     Ok(bytes)
 }
 
-fn require_revision(remote: &RemoteFile, path: &str) -> Result<Revision, SyncError> {
+fn require_revision(remote: &RemoteFile) -> Result<Revision, SyncError> {
     remote
         .metadata
         .revision
         .clone()
-        .ok_or_else(|| SyncError::AtomicUpdateUnsupported(path.to_string()))
+        .ok_or(SyncError::AtomicUpdateUnsupported)
 }
 
 async fn delay(policy: &RetryPolicy, attempt: usize) {

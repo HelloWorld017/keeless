@@ -21,7 +21,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         .as_ref()
         .map(|selection| {
             (
-                selection.provider.as_ref().cloned(),
+                selection.storage.as_ref().map(|storage| storage.provider()),
                 selection
                     .descriptor
                     .as_ref()
@@ -100,11 +100,12 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         persistence.write_cache(&cache).await?;
     }
     core.activate_database_state(&raw_key).await?;
-    if core
-        .selection
-        .as_ref()
-        .is_some_and(|selection| selection.storage_config.is_some())
-    {
+    if core.selection.as_ref().is_some_and(|selection| {
+        selection
+            .storage
+            .as_ref()
+            .is_some_and(|storage| storage.is_persistent())
+    }) {
         core.persist().await?;
     }
     let credential = if core.settings.paranoia_mode {
@@ -149,7 +150,7 @@ async fn open_remote(
 ) -> Result<FileHandle> {
     match FileHandle::open(provider, path, key, SyncOptions::default()).await {
         Ok(handle) => Ok(handle),
-        Err(SyncError::RemoteNotFound(_)) => Err(CoreError::DatabaseNotFound),
+        Err(SyncError::RemoteNotFound) => Err(CoreError::DatabaseNotFound),
         Err(error) => Err(error.into()),
     }
 }

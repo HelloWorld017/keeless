@@ -5,8 +5,8 @@ use sha2::{Digest, Sha256};
 use super::*;
 
 async fn passkey_core(storage: Arc<MemoryStorage>) -> KeelessCore {
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         database_persistence: Arc::new(MemoryDatabasePersistence::default()),
@@ -24,7 +24,6 @@ async fn passkey_core(storage: Arc<MemoryStorage>) -> KeelessCore {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -381,8 +380,8 @@ async fn passkey_operations_reject_invalid_requests() {
 async fn registered_passkey_survives_journal_replay() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let persistence = Arc::new(MemoryDatabasePersistence::default());
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage.clone());
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage.clone()));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers.clone(),
         database_persistence: persistence.clone(),
@@ -398,7 +397,7 @@ async fn registered_passkey_survives_journal_replay() {
         provider: "memory".into(),
         path: "vault.kdbx".into(),
     };
-    operations::open::run(&mut core, descriptor.clone(), None)
+    operations::open::run(&mut core, descriptor.clone())
         .await
         .unwrap();
     operations::unlock::run(&mut core, b"correct")
@@ -434,7 +433,7 @@ async fn registered_passkey_survives_journal_replay() {
     })
     .await
     .unwrap();
-    operations::open::run(&mut replayed, descriptor, None)
+    operations::open::run(&mut replayed, descriptor)
         .await
         .unwrap();
     operations::unlock::run(&mut replayed, b"correct")
@@ -486,8 +485,8 @@ async fn registered_passkey_survives_journal_replay() {
 async fn failed_passkey_registration_does_not_create_an_entry_or_index() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let persistence = Arc::new(MemoryDatabasePersistence::default());
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         database_persistence: persistence.clone(),
@@ -505,7 +504,6 @@ async fn failed_passkey_registration_does_not_create_an_entry_or_index() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();

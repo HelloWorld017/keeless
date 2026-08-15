@@ -30,8 +30,8 @@ pub use error::{CoreError, Result};
 pub use host::{
     Clock, ConnectionApprovalKind, ConnectionApprovalProvider, ConnectionApprovalRequest,
     DatabasePersistence, HostFuture, KeelessHost, PasskeyConsentMode, PasskeyConsentProvider,
-    PasskeyConsentRequest, PasswordInputMode, PasswordInputProvider, StorageConfigurer,
-    SystemClock, TaskSpawner, TransferProvider,
+    PasskeyConsentRequest, PasswordInputMode, PasswordInputProvider, Storage, SystemClock,
+    TaskSpawner, TransferProvider,
 };
 pub use keeless_schema;
 pub use keeless_schema::{
@@ -41,6 +41,7 @@ pub use keeless_schema::{
 pub use keeless_sync::StorageProvider;
 pub const MAX_REQUEST_SIZE: usize = 760 * 1024;
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
+const DATABASE_ID_HKDF_INFO: &[u8] = b"keeless database id v1";
 
 /// Stable, non-secret identifier bound into database persistence authentication.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -53,6 +54,22 @@ impl DatabaseId {
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
+    }
+
+    pub(crate) fn from_storage(provider: &str, path: &str) -> Result<Self> {
+        use hkdf::Hkdf;
+        use sha2::Sha256;
+
+        let mut input = Vec::with_capacity(provider.len() + path.len() + 16);
+        input.extend_from_slice(&(provider.len() as u64).to_be_bytes());
+        input.extend_from_slice(provider.as_bytes());
+        input.extend_from_slice(&(path.len() as u64).to_be_bytes());
+        input.extend_from_slice(path.as_bytes());
+        let mut id = [0; 32];
+        Hkdf::<Sha256>::new(None, &input)
+            .expand(DATABASE_ID_HKDF_INFO, &mut id)
+            .map_err(|_| CoreError::Crypto)?;
+        Ok(Self(id.to_vec()))
     }
 
     pub(crate) fn from_recent_id(id: &str) -> Result<Self> {
@@ -69,14 +86,17 @@ impl DatabaseId {
 
         URL_SAFE_NO_PAD.encode(&self.0)
     }
+
+    pub fn encoded(&self) -> String {
+        self.recent_id()
+    }
 }
 
 struct Selection {
     descriptor: Option<StorageDescriptor>,
-    provider: Option<Arc<dyn StorageProvider>>,
+    storage: Option<Arc<Storage>>,
     database_id: DatabaseId,
     exists: bool,
-    storage_config: Option<keeless_schema::DatabaseStorageConfig>,
 }
 
 type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>;
@@ -92,7 +112,7 @@ pub struct KeelessCore {
     password_input: Option<Arc<dyn PasswordInputProvider>>,
     passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     clock: Arc<dyn Clock>,
-    storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
+    storage_providers: HashMap<String, Arc<Storage>>,
     settings: KeelessConfig,
     selection: Option<Selection>,
     handle: Option<FileHandle>,
@@ -101,7 +121,6 @@ pub struct KeelessCore {
     last_activity_ms: Option<u64>,
     persistence: Arc<dyn DatabasePersistence>,
     core_state: Arc<dyn keeless_lesswire::StateStore>,
-    storage_configurer: Option<Arc<dyn StorageConfigurer>>,
     journal: Option<operations::mutations::MutationCoordinator>,
     sync_status: SyncStatus,
     sync_error: Option<OperationError>,
@@ -159,7 +178,6 @@ impl KeelessCore {
             last_activity_ms: None,
             persistence: host.database_persistence,
             core_state: host.core_state,
-            storage_configurer: host.storage_configurer,
             journal: None,
             sync_status: SyncStatus::Idle,
             sync_error: None,
@@ -327,12 +345,8 @@ impl KeelessCore {
         Ok(report)
     }
 
-    pub fn register_storage_provider(
-        &mut self,
-        name: impl Into<String>,
-        provider: Arc<dyn StorageProvider>,
-    ) {
-        self.storage_providers.insert(name.into(), provider);
+    pub fn register_storage_provider(&mut self, name: impl Into<String>, storage: Arc<Storage>) {
+        self.storage_providers.insert(name.into(), storage);
     }
 
     /// Adds a client approval for this host process without persisting it.
@@ -435,7 +449,7 @@ impl KeelessCore {
         let Some(selection) = &self.selection else {
             return;
         };
-        let Some(provider) = selection.provider.as_ref().cloned() else {
+        let Some(storage) = selection.storage.as_ref().cloned() else {
             return;
         };
         let Some(path) = selection
@@ -448,7 +462,7 @@ impl KeelessCore {
         let result = Arc::new(Mutex::new(None));
         let task_result = Arc::clone(&result);
         spawner.spawn(Box::pin(async move {
-            let fetched = provider.read(&path, None).await;
+            let fetched = storage.provider().read(&path, None).await;
             if let Ok(mut result) = task_result.lock() {
                 *result = Some(fetched);
             }
@@ -511,10 +525,13 @@ impl KeelessCore {
         let persisted = PersistedConfig {
             version: CONFIG_VERSION,
             settings: self.settings.clone(),
-            storage_config: self
-                .selection
-                .as_ref()
-                .and_then(|selection| selection.storage_config.clone()),
+            storage: self.selection.as_ref().and_then(|selection| {
+                selection
+                    .storage
+                    .as_ref()
+                    .filter(|storage| storage.is_persistent())
+                    .and_then(|_| selection.descriptor.clone())
+            }),
         };
         let bytes = Zeroizing::new(serde_json::to_vec(&persisted)?);
         state.save_record(CONFIG_RECORD, &bytes).await
@@ -543,7 +560,7 @@ impl KeelessCore {
                 let persisted = PersistedConfig {
                     version: CONFIG_VERSION,
                     settings: KeelessConfig::default(),
-                    storage_config: None,
+                    storage: None,
                 };
                 state
                     .save_record(
@@ -565,11 +582,6 @@ impl KeelessCore {
         .await
         .map_err(|error| CoreError::Host(error.to_string()))?;
         self.settings = persisted.settings;
-        if let Some(selection) = &mut self.selection
-            && selection.storage_config.is_none()
-        {
-            selection.storage_config = persisted.storage_config;
-        }
         self.core_transfers = Some(server.transfers());
         self.encrypted_state = Some(state);
         self.core_server_generation = self.core_server_generation.wrapping_add(1);
@@ -606,22 +618,22 @@ impl KeelessCore {
         let persisted: PersistedConfig = serde_json::from_slice(&bytes)
             .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
         persisted.validate()?;
-        let config = persisted
-            .storage_config
+        let descriptor = persisted
+            .storage
             .ok_or(CoreError::RecentDatabaseUnavailable)?;
-        let configurer = self
-            .storage_configurer
-            .as_ref()
-            .ok_or(CoreError::StorageConfigurationUnavailable)?;
-        let (descriptor, provider) = configurer.configure(config.clone()).await?;
-        let resolved_id = self.persistence.select(&descriptor).await?;
+        let storage = self
+            .storage_providers
+            .get(&descriptor.provider)
+            .cloned()
+            .ok_or_else(|| CoreError::UnknownStorageProvider(descriptor.provider.clone()))?;
+        let normalized_path = storage.get_normalized_path(&descriptor.path)?;
+        let resolved_id = DatabaseId::from_storage(&descriptor.provider, &normalized_path)?;
         if resolved_id != database_id {
             return Err(CoreError::RecentDatabaseMismatch);
         }
         let selection = self.selection.as_mut().expect("selection was checked");
         selection.descriptor = Some(descriptor);
-        selection.provider = Some(provider);
-        selection.storage_config = Some(config);
+        selection.storage = Some(storage);
         Ok(())
     }
 

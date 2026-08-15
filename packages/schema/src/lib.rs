@@ -11,36 +11,6 @@ pub struct StorageDescriptor {
     pub path: String,
 }
 
-/// Storage connection data retained in the encrypted per-database configuration.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum DatabaseStorageConfig {
-    LocalFile {
-        path: String,
-    },
-    IndexedDb,
-    WebDav {
-        url: String,
-        username: String,
-        password: String,
-        path: String,
-    },
-}
-
-impl DatabaseStorageConfig {
-    pub const fn storage_type(&self) -> &'static str {
-        match self {
-            Self::LocalFile { .. } => "local-file",
-            Self::IndexedDb => "indexeddb",
-            Self::WebDav { .. } => "webdav",
-        }
-    }
-}
-
 /// Plaintext metadata used to present a recently opened database before unlock.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -329,7 +299,7 @@ pub struct EntryAttachmentUpdate {
 pub enum OperationResource {
     DatabaseStatus,
     RecentDatabase,
-    StorageDescriptor,
+    StorageProvider,
     Config,
     Entry,
     Group,
@@ -342,7 +312,7 @@ impl OperationResource {
         match self {
             Self::DatabaseStatus => "databaseStatus",
             Self::RecentDatabase => "recentDatabase",
-            Self::StorageDescriptor => "storageDescriptor",
+            Self::StorageProvider => "storageProvider",
             Self::Config => "config",
             Self::Entry => "entry",
             Self::Group => "group",
@@ -355,7 +325,7 @@ impl OperationResource {
 pub const OPERATION_RESOURCES: &[OperationResource] = &[
     OperationResource::DatabaseStatus,
     OperationResource::RecentDatabase,
-    OperationResource::StorageDescriptor,
+    OperationResource::StorageProvider,
     OperationResource::Config,
     OperationResource::Entry,
     OperationResource::Group,
@@ -378,20 +348,27 @@ pub struct OperationDefinition {
     pub metadata: OperationMetadata,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(untagged)]
+pub enum OpenTarget {
+    Storage {
+        storage: StorageDescriptor,
+    },
+    Database {
+        #[serde(rename = "databaseId")]
+        database_id: String,
+    },
+}
+
 operation_schema! {
     Open("open") {
         args {
             #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            #[serde(rename_all = "camelCase")]
             pub struct OpenArgs {
-                pub storage: StorageDescriptor,
-                #[serde(
-                    default,
-                    deserialize_with = "deserialize_nullable",
-                    skip_serializing_if = "Option::is_none"
-                )]
-                #[specta(optional = true)]
-                pub storage_config: Option<DatabaseStorageConfig>,
+                #[serde(flatten)]
+                #[specta(flatten)]
+                pub target: OpenTarget,
             }
         }
         result {
@@ -420,20 +397,6 @@ operation_schema! {
         senders: [App],
         recipients: [CoreUntrusted],
         queries: [RecentDatabase],
-    }
-
-    OpenRecentDatabase("openRecentDatabase") {
-        args {
-            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            pub struct OpenRecentDatabaseArgs {
-                pub id: String,
-            }
-        }
-        result EmptyResult
-        senders: [App],
-        recipients: [CoreUntrusted],
-        mutates: [DatabaseStatus],
     }
 
     DeleteRecentDatabase("deleteRecentDatabase") {
@@ -551,21 +514,21 @@ operation_schema! {
         queries: [DatabaseStatus],
     }
 
-    GetStorageDescriptor("getStorageDescriptor") {
+    GetStorageProvider("getStorageProvider") {
         args {
             #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
             #[serde(deny_unknown_fields)]
-            pub struct GetStorageDescriptorArgs {}
+            pub struct GetStorageProviderArgs {}
         }
         result {
             #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
             #[serde(rename_all = "camelCase")]
-            pub struct StorageDescriptorResult {
+            pub struct StorageProviderResult {
                 #[serde(deserialize_with = "deserialize_nullable")]
-                pub storage: Option<StorageDescriptor>,
+                pub provider: Option<String>,
             }
         }
-        queries: [StorageDescriptor],
+        queries: [StorageProvider],
     }
 
     GetConfig("getConfig") {

@@ -6,7 +6,7 @@ import { useRoute } from 'wouter';
 import { useHistoryBackUntil, useNavigate } from '../../_providers/RouterProvider';
 import { SetupLayout } from '../_components/SetupLayout';
 import { errorMessage } from '../_utils/errorMessage';
-import type { StorageDescriptorGetter } from '@/types/Host';
+import type { StorageProviderGetter } from '@/types/Host';
 
 export const OpenStorageFragment = () => {
   const host = useHost();
@@ -27,7 +27,7 @@ export const OpenStorageFragment = () => {
     }
   }, [StorageSetup, historyBackUntil, hostsLoading]);
 
-  const openStorage = async (getDescriptor: StorageDescriptorGetter) => {
+  const openStorage = async (getProvider: StorageProviderGetter) => {
     if (!requestClient.data || operationPendingRef.current) {
       return;
     }
@@ -36,8 +36,7 @@ export const OpenStorageFragment = () => {
     setIsPending(true);
     setError(undefined);
     try {
-      const openArgs = await getDescriptor();
-      await requestClient.data.request('open', openArgs);
+      await requestClient.data.request('open', { storage: await getProvider() });
       const { database } = await requestClient.data.request('getCoreStatus', {});
       if (database === 'unlocked') {
         await requestClient.data.upgrade();

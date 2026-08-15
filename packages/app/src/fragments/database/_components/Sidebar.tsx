@@ -240,9 +240,9 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
       'Database'
     : undefined;
 
-  const storage = useRequest('getStorageDescriptor', {});
+  const storage = useRequest('getStorageProvider', {});
   const storageName = useMemo(() => {
-    const provider = storage.data?.storage?.provider;
+    const provider = storage.data?.provider;
     const storages = requestClient.data?.host.storages;
     return storages?.find(candidate => candidate.kind === provider)?.label;
   }, [requestClient.data, storage.data]);

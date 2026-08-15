@@ -1,16 +1,11 @@
 use std::{
-    ffi::OsStr,
     io,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use directories::ProjectDirs;
-use keeless_core::{
-    CoreError, DatabaseId, DatabasePersistence, HostFuture, Result, StorageDescriptor,
-};
-use sha2::{Digest, Sha256};
+use keeless_core::{CoreError, DatabaseId, DatabasePersistence, HostFuture, Result};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use keeless_host_desktop_shared::fs::{
@@ -18,28 +13,9 @@ use keeless_host_desktop_shared::fs::{
     sync_directory, temporary_path,
 };
 
-use crate::storage::LocalFileStorage;
-
 pub const MAX_CACHE_SIZE: usize = 128 * 1024 * 1024 + 64;
 pub const MAX_JOURNAL_SIZE: usize = 16 * 1024 * 1024;
 pub const MAX_STATE_RECORD_SIZE: usize = 128 * 1024;
-
-pub fn database_id_from_backing_path(provider: &str, path: &Path) -> io::Result<DatabaseId> {
-    if provider.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "database provider is empty",
-        ));
-    }
-    let canonical = canonical_backing_path(path)?;
-    let mut digest = Sha256::new();
-    digest.update((provider.len() as u64).to_be_bytes());
-    digest.update(provider.as_bytes());
-    update_path_digest(&mut digest, canonical.as_os_str());
-    Ok(DatabaseId::new(
-        URL_SAFE_NO_PAD.encode(digest.finalize()).into_bytes(),
-    ))
-}
 
 /// Canonicalizes an existing backing file, or its parent when the selected create target is absent.
 pub fn canonical_backing_path(path: &Path) -> io::Result<PathBuf> {
@@ -55,20 +31,6 @@ pub fn canonical_backing_path(path: &Path) -> io::Result<PathBuf> {
             Ok(std::fs::canonicalize(parent)?.join(file_name))
         }
         Err(error) => Err(error),
-    }
-}
-
-#[cfg(unix)]
-fn update_path_digest(digest: &mut Sha256, path: &OsStr) {
-    use std::os::unix::ffi::OsStrExt;
-    digest.update(path.as_bytes());
-}
-
-#[cfg(windows)]
-fn update_path_digest(digest: &mut Sha256, path: &OsStr) {
-    use std::os::windows::ffi::OsStrExt;
-    for unit in path.encode_wide() {
-        digest.update(unit.to_le_bytes());
     }
 }
 
@@ -102,10 +64,9 @@ impl DatabaseStore {
         writes: Arc<tokio::sync::Mutex<()>>,
     ) -> Self {
         Self {
-            directory: app_data.as_ref().join(format!(
-                "db_{}",
-                std::str::from_utf8(database_id.as_bytes()).expect("desktop database ID is ASCII")
-            )),
+            directory: app_data
+                .as_ref()
+                .join(format!("db_{}", database_id.encoded())),
             writes,
         }
     }
@@ -232,22 +193,20 @@ impl DatabaseStore {
 #[derive(Debug)]
 pub struct DesktopDatabasePersistence {
     app_data: PathBuf,
-    storage: Arc<LocalFileStorage>,
     selected: tokio::sync::RwLock<Option<DatabaseId>>,
     writes: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl DesktopDatabasePersistence {
-    pub fn project(storage: Arc<LocalFileStorage>) -> io::Result<Self> {
+    pub fn project() -> io::Result<Self> {
         let dirs = ProjectDirs::from("dev", "nenw", "keeless")
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no user data directory"))?;
-        Ok(Self::at(dirs.data_dir(), storage))
+        Ok(Self::at(dirs.data_dir()))
     }
 
-    pub fn at(app_data: impl AsRef<Path>, storage: Arc<LocalFileStorage>) -> Self {
+    pub fn at(app_data: impl AsRef<Path>) -> Self {
         Self {
             app_data: app_data.as_ref().to_path_buf(),
-            storage,
             selected: tokio::sync::RwLock::new(None),
             writes: Arc::new(tokio::sync::Mutex::new(())),
         }
@@ -269,27 +228,7 @@ impl DesktopDatabasePersistence {
 }
 
 impl DatabasePersistence for DesktopDatabasePersistence {
-    fn select<'a>(
-        &'a self,
-        descriptor: &'a StorageDescriptor,
-    ) -> HostFuture<'a, Result<DatabaseId>> {
-        Box::pin(async move {
-            if descriptor.provider != "local-file" {
-                return Err(CoreError::Host(
-                    "desktop persistence requires local-file storage".into(),
-                ));
-            }
-            let database_id = self
-                .storage
-                .resolve_capability(&descriptor.path)?
-                .database_id()
-                .clone();
-            *self.selected.write().await = Some(database_id.clone());
-            Ok(database_id)
-        })
-    }
-
-    fn select_by_id<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
+    fn select<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
         Box::pin(async move {
             *self.selected.write().await = Some(database_id.clone());
             Ok(())
@@ -509,25 +448,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn database_id_is_stable_for_a_create_target_and_separates_paths() {
+    fn canonical_backing_path_is_stable_for_a_create_target_and_separates_paths() {
         let directory = tempfile::tempdir().unwrap();
         let first_path = directory.path().join("first.kdbx");
         let second_path = directory.path().join("second.kdbx");
-        let before = database_id_from_backing_path("local-file", &first_path).unwrap();
+        let before = canonical_backing_path(&first_path).unwrap();
         std::fs::write(&first_path, b"database").unwrap();
-        let after = database_id_from_backing_path("local-file", &first_path).unwrap();
-        let other = database_id_from_backing_path("local-file", &second_path).unwrap();
+        let after = canonical_backing_path(&first_path).unwrap();
+        let other = canonical_backing_path(&second_path).unwrap();
         assert_eq!(before, after);
         assert_ne!(before, other);
-        assert_eq!(before.as_bytes().len(), 43);
-        assert!(!before.as_bytes().contains(&b'='));
     }
 
     #[tokio::test]
     async fn cache_and_journal_round_trip_and_quarantine() {
         let directory = tempfile::tempdir().unwrap();
-        let backing = directory.path().join("vault.kdbx");
-        let database_id = database_id_from_backing_path("local-file", &backing).unwrap();
+        let database_id = DatabaseId::new(vec![1; 32]);
         let store = DatabaseStore::at(
             directory.path().join("data"),
             &database_id,
@@ -561,9 +497,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let directory = tempfile::tempdir().unwrap();
-        let database_id =
-            database_id_from_backing_path("local-file", &directory.path().join("vault.kdbx"))
-                .unwrap();
+        let database_id = DatabaseId::new(vec![2; 32]);
         let store = DatabaseStore::at(
             directory.path().join("data"),
             &database_id,
@@ -599,14 +533,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn select_by_id_and_purge_only_remove_app_local_namespace() {
+    async fn select_and_purge_only_remove_app_local_namespace() {
         let directory = tempfile::tempdir().unwrap();
-        let storage = Arc::new(LocalFileStorage::new());
-        let persistence = DesktopDatabasePersistence::at(directory.path().join("data"), storage);
+        let persistence = DesktopDatabasePersistence::at(directory.path().join("data"));
         let source = directory.path().join("vault.kdbx");
         std::fs::write(&source, b"source").unwrap();
-        let id = database_id_from_backing_path("local-file", &source).unwrap();
-        persistence.select_by_id(&id).await.unwrap();
+        let id = DatabaseId::new(vec![3; 32]);
+        persistence.select(&id).await.unwrap();
         persistence.write_cache(b"cache").await.unwrap();
         persistence.quarantine_cache("test").await.unwrap();
         persistence.purge(&id).await.unwrap();
@@ -615,10 +548,7 @@ mod tests {
             !directory
                 .path()
                 .join("data")
-                .join(format!(
-                    "db_{}",
-                    std::str::from_utf8(id.as_bytes()).unwrap()
-                ))
+                .join(format!("db_{}", id.encoded()))
                 .exists()
         );
     }

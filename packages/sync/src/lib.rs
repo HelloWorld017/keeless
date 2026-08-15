@@ -11,4 +11,4 @@ pub use storage::{
     WriteOutcome,
 };
 pub use sync::{FileHandle, RetryPolicy, SyncOptions, SyncReport};
-pub use webdav::{WebDavAuth, WebDavProvider};
+pub use webdav::WebDavProvider;

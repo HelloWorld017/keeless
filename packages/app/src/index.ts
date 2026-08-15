@@ -7,6 +7,7 @@ export type {
   HostKind,
   HostStorage,
   HostStorageSetup,
-  StorageDescriptorGetter,
+  StorageProvider,
+  StorageProviderGetter,
   StorageSetupComponentProps,
 } from '@/types/Host';

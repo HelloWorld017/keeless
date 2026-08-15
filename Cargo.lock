@@ -2507,6 +2507,7 @@ dependencies = [
  "gloo-timers",
  "httpdate",
  "keeless_kdbx",
+ "percent-encoding",
  "reqwest",
  "thiserror 2.0.18",
  "tokio",

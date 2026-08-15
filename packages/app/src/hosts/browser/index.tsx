@@ -37,10 +37,7 @@ export const createBrowserHost = (): Host => {
       icon: <IconDatabaseZap />,
       setup: {
         component: null,
-        getDefaultDescriptor: () => ({
-          storage: { provider: 'indexeddb', path: '' },
-          storageConfig: { type: 'indexedDb' },
-        }),
+        getDefaultProvider: () => ({ provider: 'indexeddb', path: '' }),
       },
     },
     {
@@ -62,7 +59,7 @@ export const createBrowserHost = (): Host => {
       setup: {
         title: 'Connect WebDAV',
         description: 'Enter the connection details for your server.',
-        component: props => <WebDavSetup {...props} getCore={requireCore} />,
+        component: WebDavSetup,
       },
     },
   ];

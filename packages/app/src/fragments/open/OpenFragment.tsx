@@ -5,7 +5,7 @@ import { invalidateByResource } from '@/utils/request';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Route, Switch } from 'wouter';
+import { Route, Switch, useLocation } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
 import { errorMessage } from './_utils/errorMessage';
@@ -22,6 +22,7 @@ export const OpenFragment = () => {
   const requestClient = useRequestClient();
   const client = requestClient.data;
   const navigate = useNavigate();
+  const [location] = useLocation();
   const [isChecking, setIsChecking] = useState(false);
   const [checkingError, setCheckingError] = useState<string>();
   const [checkingAttempt, setCheckingAttempt] = useState(0);
@@ -51,7 +52,7 @@ export const OpenFragment = () => {
           return;
         }
 
-        if (database === 'locked') {
+        if (database === 'locked' && location !== getRoute('open')) {
           navigate(buildRoute('openUnlock'), { replace: true });
         }
       })
@@ -69,7 +70,7 @@ export const OpenFragment = () => {
     return () => {
       active = false;
     };
-  }, [queryClient, checkingAttempt, client, navigate]);
+  }, [queryClient, checkingAttempt, client, location, navigate]);
 
   const isCheckingStepVisible =
     hostsLoading ||

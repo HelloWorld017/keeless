@@ -62,7 +62,7 @@ export const LocalFileSetup = ({
     setSelectedFile(file);
     await onOpen(async () => {
       await getCore().configureLocalFile(file, handle);
-      return { storage: { provider: 'local-file', path: '' } };
+      return { provider: 'local-file', path: '' };
     });
   };
 

@@ -1,5 +1,6 @@
 pub(crate) mod assert_passkey;
 pub(crate) mod create;
+pub(crate) mod delete_recent_database;
 pub(crate) mod get_config;
 pub(crate) mod get_core_status;
 pub(crate) mod get_custom_icons;
@@ -11,7 +12,8 @@ pub(crate) mod get_entry_totp;
 pub(crate) mod get_group_entries;
 pub(crate) mod get_group_hierarchy;
 pub(crate) mod get_passkeys;
-pub(crate) mod get_storage_descriptor;
+pub(crate) mod get_recent_databases;
+pub(crate) mod get_storage_provider;
 pub(crate) mod get_tag_entries;
 pub(crate) mod get_tags;
 pub(crate) mod get_trash_entries;
@@ -40,16 +42,15 @@ pub(crate) async fn execute(
 ) -> Result<OperationSuccess> {
     match operation {
         Operation::Open(args) => open::execute(core, args).await,
-        Operation::GetRecentDatabases(args) => recent::get(core, args).await,
-        Operation::OpenRecentDatabase(args) => recent::open(core, args).await,
-        Operation::DeleteRecentDatabase(args) => recent::delete(core, args).await,
+        Operation::GetRecentDatabases(args) => get_recent_databases::execute(core, args).await,
+        Operation::DeleteRecentDatabase(args) => delete_recent_database::execute(core, args).await,
         Operation::Create(args) => create::execute(core, args).await,
         Operation::Unlock(args) => unlock::execute(core, args).await,
         Operation::Lock(args) => lock::execute(core, args).await,
         Operation::GetCoreStatus(args) => get_core_status::execute(core, args),
         Operation::Upgrade(args) => upgrade::execute(core, args).await,
         Operation::GetDatabaseStatus(args) => get_database_status::execute(core, args),
-        Operation::GetStorageDescriptor(args) => get_storage_descriptor::execute(core, args),
+        Operation::GetStorageProvider(args) => get_storage_provider::execute(core, args),
         Operation::GetConfig(args) => get_config::execute(core, args),
         Operation::SetConfig(args) => set_config::execute(core, args).await,
         Operation::GetEntries(args) => get_entries::execute(core, args),

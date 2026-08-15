@@ -14,7 +14,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         .as_ref()
         .map(|selection| {
             (
-                selection.provider.as_ref().cloned(),
+                selection.storage.as_ref().map(|storage| storage.provider()),
                 selection
                     .descriptor
                     .as_ref()
@@ -79,11 +79,12 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         core.encrypted_state = None;
         return Err(error);
     }
-    if core
-        .selection
-        .as_ref()
-        .is_some_and(|selection| selection.storage_config.is_some())
-    {
+    if core.selection.as_ref().is_some_and(|selection| {
+        selection
+            .storage
+            .as_ref()
+            .is_some_and(|storage| storage.is_persistent())
+    }) {
         core.persist().await?;
     }
     let credential = if core.settings.paranoia_mode {

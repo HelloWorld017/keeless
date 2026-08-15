@@ -185,28 +185,28 @@ fn create_unlock_and_lock_passwords_are_optional_and_nullable() {
 }
 
 #[test]
-fn storage_descriptor_operation_supports_unselected_and_selected_storage() {
+fn storage_provider_operation_supports_unselected_and_selected_storage() {
     assert_roundtrip(
         OperationRequest {
             request_id: "storage-1".into(),
-            operation: Operation::GetStorageDescriptor(GetStorageDescriptorArgs {}),
+            operation: Operation::GetStorageProvider(GetStorageProviderArgs {}),
         },
-        json!({ "requestId": "storage-1", "op": "getStorageDescriptor", "args": {} }),
+        json!({ "requestId": "storage-1", "op": "getStorageProvider", "args": {} }),
     );
     assert_roundtrip(
         OperationResponse {
             request_id: "storage-1".into(),
             outcome: OperationOutcome::Success {
-                success: OperationSuccess::GetStorageDescriptor(StorageDescriptorResult {
-                    storage: None,
+                success: OperationSuccess::GetStorageProvider(StorageProviderResult {
+                    provider: None,
                 }),
             },
         },
         json!({
             "requestId": "storage-1",
             "status": "success",
-            "op": "getStorageDescriptor",
-            "result": { "storage": null }
+            "op": "getStorageProvider",
+            "result": { "provider": null }
         }),
     );
     assert_roundtrip(
@@ -226,20 +226,17 @@ fn storage_descriptor_operation_supports_unselected_and_selected_storage() {
         OperationResponse {
             request_id: "storage-2".into(),
             outcome: OperationOutcome::Success {
-                success: OperationSuccess::GetStorageDescriptor(StorageDescriptorResult {
-                    storage: Some(StorageDescriptor {
-                        provider: "webdav".into(),
-                        path: "vault.kdbx".into(),
-                    }),
+                success: OperationSuccess::GetStorageProvider(StorageProviderResult {
+                    provider: Some("webdav".into()),
                 }),
             },
         },
         json!({
             "requestId": "storage-2",
             "status": "success",
-            "op": "getStorageDescriptor",
+            "op": "getStorageProvider",
             "result": {
-                "storage": { "provider": "webdav", "path": "vault.kdbx" }
+                "provider": "webdav"
             }
         }),
     );
@@ -1066,7 +1063,7 @@ fn merge_response_preserves_sync_error() {
 #[test]
 fn required_nullable_and_empty_types_reject_ambiguous_shapes() {
     assert!(serde_json::from_value::<LockArgs>(json!({ "ignored": true })).is_err());
-    assert!(serde_json::from_value::<StorageDescriptorResult>(json!({})).is_err());
+    assert!(serde_json::from_value::<StorageProviderResult>(json!({})).is_err());
 }
 
 #[test]
@@ -1096,6 +1093,7 @@ fn error_response_is_flat_and_excludes_success() {
 fn all_request_and_success_variants_have_explicit_objects() {
     let requests = [
         json!({ "requestId": "1", "op": "open", "args": { "storage": { "provider": "file", "path": "/vault.kdbx" } } }),
+        json!({ "requestId": "1a", "op": "open", "args": { "databaseId": "recent-id" } }),
         json!({ "requestId": "2", "op": "lock", "args": { "password": null } }),
         json!({ "requestId": "3", "op": "getConfig", "args": {} }),
         json!({ "requestId": "4", "op": "setConfig", "args": { "config": { "paranoiaMode": true } } }),

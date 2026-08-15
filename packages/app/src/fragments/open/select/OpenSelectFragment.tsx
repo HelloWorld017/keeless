@@ -33,7 +33,7 @@ import { useRef, useState } from 'react';
 import { SetupLayout } from '../_components/SetupLayout';
 import { StepError } from '../_components/StepError';
 import { errorMessage } from '../_utils/errorMessage';
-import type { HostKind, HostStorage, StorageDescriptorGetter } from '@/types/Host';
+import type { HostKind, HostStorage, StorageProviderGetter } from '@/types/Host';
 
 export const OpenSelectFragment = () => {
   const host = useHost();
@@ -49,7 +49,7 @@ export const OpenSelectFragment = () => {
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string>();
 
-  const openStorage = async (getDescriptor: StorageDescriptorGetter) => {
+  const openStorage = async (getProvider: StorageProviderGetter) => {
     if (!client || operationPendingRef.current) {
       return;
     }
@@ -58,8 +58,7 @@ export const OpenSelectFragment = () => {
     setIsPending(true);
     setError(undefined);
     try {
-      const openArgs = await getDescriptor();
-      await client.request('open', openArgs);
+      await client.request('open', { storage: await getProvider() });
       const { database } = await client.request('getCoreStatus', {});
       if (database === 'unlocked') {
         await client.upgrade();
@@ -82,7 +81,7 @@ export const OpenSelectFragment = () => {
       navigate(buildRoute('openStorage', { storage: nextStorage.kind }));
       return;
     }
-    void openStorage(nextStorage.setup.getDefaultDescriptor);
+    void openStorage(nextStorage.setup.getDefaultProvider);
   };
 
   const selectHostKind = (kind: HostKind) => {

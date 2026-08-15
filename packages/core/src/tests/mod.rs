@@ -96,25 +96,18 @@ impl keeless_lesswire::StateStore for MemoryConfig {
 pub(super) struct MemoryDatabasePersistence {
     pub(super) cache: Mutex<Option<Vec<u8>>>,
     pub(super) journal: Mutex<Vec<Vec<u8>>>,
-    pub(super) selected: Mutex<Option<StorageDescriptor>>,
+    pub(super) selected: Mutex<Option<DatabaseId>>,
     pub(super) fail_append: AtomicBool,
     pub(super) fail_state_write: AtomicBool,
     pub(super) state: Mutex<std::collections::HashMap<String, Vec<u8>>>,
 }
 
 impl DatabasePersistence for MemoryDatabasePersistence {
-    fn select<'a>(
-        &'a self,
-        descriptor: &'a StorageDescriptor,
-    ) -> HostFuture<'a, Result<DatabaseId>> {
+    fn select<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
         Box::pin(async move {
-            *self.selected.lock().unwrap() = Some(descriptor.clone());
-            Ok(DatabaseId::new(b"test-persistence/vault.kdbx".to_vec()))
+            *self.selected.lock().unwrap() = Some(database_id.clone());
+            Ok(())
         })
-    }
-
-    fn select_by_id<'a>(&'a self, _database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
-        Box::pin(async { Ok(()) })
     }
 
     fn purge<'a>(&'a self, _database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
@@ -359,18 +352,8 @@ impl StorageProvider for MemoryStorage {
     }
 }
 
-pub(super) struct MemoryStorageConfigurer {
-    pub(super) descriptor: StorageDescriptor,
-    pub(super) provider: Arc<dyn StorageProvider>,
-}
-
-impl StorageConfigurer for MemoryStorageConfigurer {
-    fn configure(
-        &self,
-        _: keeless_schema::DatabaseStorageConfig,
-    ) -> HostFuture<'_, Result<(StorageDescriptor, Arc<dyn StorageProvider>)>> {
-        Box::pin(async { Ok((self.descriptor.clone(), Arc::clone(&self.provider))) })
-    }
+pub(super) fn persistent_storage(provider: Arc<dyn StorageProvider>) -> Arc<Storage> {
+    Arc::new(Storage::persistent(provider))
 }
 
 #[derive(Default)]
@@ -536,8 +519,8 @@ pub(super) fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
 pub(super) async fn query_core() -> (KeelessCore, QueryIds) {
     let (bytes, ids) = query_database_bytes(b"correct");
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         ..host(
@@ -554,7 +537,6 @@ pub(super) async fn query_core() -> (KeelessCore, QueryIds) {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -569,8 +551,8 @@ pub(super) async fn query_core_with_persistence(
     persistence: Arc<MemoryDatabasePersistence>,
 ) -> (KeelessCore, QueryIds) {
     let (_, ids) = query_database_bytes(b"correct");
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         untrusted_state: Arc::new(MemoryConfig::default()),
@@ -580,7 +562,6 @@ pub(super) async fn query_core_with_persistence(
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock: Arc::new(FakeClock::new(1234)),
         database_persistence: persistence,
-        storage_configurer: None,
         task_spawner: None,
         transfer_provider: None,
     })
@@ -592,7 +573,6 @@ pub(super) async fn query_core_with_persistence(
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -627,7 +607,6 @@ pub(super) fn host(
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock,
         database_persistence: Arc::new(MemoryDatabasePersistence::default()),
-        storage_configurer: None,
         task_spawner: None,
         transfer_provider: None,
     }

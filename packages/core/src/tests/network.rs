@@ -112,8 +112,8 @@ async fn lock_drops_the_taken_core_server_and_preserves_untrusted_status() {
     let clock = Arc::new(FakeClock::new(10_000));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let persistence = Arc::new(MemoryDatabasePersistence::default());
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         database_persistence: persistence,
@@ -131,7 +131,6 @@ async fn lock_drops_the_taken_core_server_and_preserves_untrusted_status() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -222,8 +221,8 @@ async fn runtime_approved_client_skips_initial_and_upgrade_prompts() {
     let clock = Arc::new(FakeClock::new(10_000));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let persistence = Arc::new(MemoryDatabasePersistence::default());
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         database_persistence: persistence,
@@ -242,7 +241,6 @@ async fn runtime_approved_client_skips_initial_and_upgrade_prompts() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -279,8 +277,8 @@ async fn runtime_client_is_restored_when_the_core_endpoint_is_reopened() {
     let clock = Arc::new(FakeClock::new(10_000));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let persistence = Arc::new(MemoryDatabasePersistence::default());
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         database_persistence: persistence,
@@ -302,7 +300,6 @@ async fn runtime_client_is_restored_when_the_core_endpoint_is_reopened() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -319,8 +316,8 @@ async fn runtime_client_is_restored_when_the_core_endpoint_is_reopened() {
 async fn removing_runtime_clients_revokes_both_endpoints() {
     let clock = Arc::new(FakeClock::new(10_000));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         connection_approval: Arc::new(DenyApproval),
@@ -338,7 +335,6 @@ async fn removing_runtime_clients_revokes_both_endpoints() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();

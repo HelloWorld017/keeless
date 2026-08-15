@@ -4,9 +4,9 @@ use futures::lock::Mutex;
 use gloo_timers::future::TimeoutFuture;
 use keeless_core::{
     ConnectionApprovalProvider, ConnectionApprovalRequest, HostFuture, KeelessCore, KeelessHost,
-    StorageProvider, TaskSpawner,
+    Storage, StorageProvider, TaskSpawner,
 };
-use keeless_sync::{WebDavAuth, WebDavProvider};
+use keeless_sync::WebDavProvider;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{File, FileSystemFileHandle};
@@ -14,7 +14,7 @@ use web_sys::{File, FileSystemFileHandle};
 use crate::{
     clock::BrowserClock,
     config::BrowserConfig,
-    persistence::{BrowserDatabasePersistence, BrowserStorageConfigurer},
+    persistence::BrowserDatabasePersistence,
     storages::{indexeddb::IndexedDbStorage, local_file::LocalFileStorage},
     utils::indexeddb::{CORE_CONFIG_KEY, IndexedDb, WIRE_CONFIG_KEY, js_error},
 };
@@ -73,6 +73,10 @@ struct BrowserState {
     core: KeelessCore,
 }
 
+fn normalize_webdav_path(path: &str) -> keeless_core::Result<String> {
+    WebDavProvider::get_normalized_path(path).map_err(Into::into)
+}
+
 #[wasm_bindgen]
 pub struct BrowserCore {
     state: Rc<Mutex<BrowserState>>,
@@ -85,10 +89,19 @@ impl BrowserCore {
     #[allow(clippy::arc_with_non_send_sync)]
     pub async fn create() -> Result<BrowserCore, JsValue> {
         let idb = IndexedDb::open().await?;
-        let mut storage_providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+        let mut storage_providers: HashMap<String, Arc<Storage>> = HashMap::new();
         storage_providers.insert(
             "indexeddb".into(),
-            Arc::new(IndexedDbStorage { idb: idb.clone() }),
+            Arc::new(Storage::persistent(
+                Arc::new(IndexedDbStorage { idb: idb.clone() }) as Arc<dyn StorageProvider>,
+            )),
+        );
+        storage_providers.insert(
+            "webdav".into(),
+            Arc::new(
+                Storage::persistent(Arc::new(WebDavProvider::new()) as Arc<dyn StorageProvider>)
+                    .with_normalized_path(normalize_webdav_path),
+            ),
         );
         let host = KeelessHost {
             storage_providers,
@@ -105,7 +118,6 @@ impl BrowserCore {
             passkey_consent: None,
             clock: Arc::new(BrowserClock),
             database_persistence: Arc::new(BrowserDatabasePersistence::new(idb.clone())),
-            storage_configurer: Some(Arc::new(BrowserStorageConfigurer::new(idb.clone()))),
             task_spawner: Some(Arc::new(BrowserTaskSpawner)),
             transfer_provider: None,
         };
@@ -142,34 +154,18 @@ impl BrowserCore {
         state.core.handle_frame(&frame).await.map_err(js_error)
     }
 
-    #[wasm_bindgen(js_name = configureWebDav)]
-    pub async fn configure_webdav(
-        &self,
-        url: String,
-        username: String,
-        password: String,
-    ) -> Result<(), JsValue> {
-        let provider = WebDavProvider::new(url, Some(WebDavAuth::basic(username, password)))
-            .map_err(js_error)?;
-        self.state
-            .lock()
-            .await
-            .core
-            .register_storage_provider("webdav", Arc::new(provider));
-        Ok(())
-    }
-
     #[wasm_bindgen(js_name = configureLocalFile)]
     pub async fn configure_local_file(
         &self,
         file: File,
         handle: Option<FileSystemFileHandle>,
     ) -> Result<(), JsValue> {
-        self.state
-            .lock()
-            .await
-            .core
-            .register_storage_provider("local-file", Arc::new(LocalFileStorage { file, handle }));
+        self.state.lock().await.core.register_storage_provider(
+            "local-file",
+            Arc::new(Storage::session(
+                Arc::new(LocalFileStorage { file, handle }) as Arc<dyn StorageProvider>,
+            )),
+        );
         Ok(())
     }
 }

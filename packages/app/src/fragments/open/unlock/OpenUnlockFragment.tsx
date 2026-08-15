@@ -120,6 +120,14 @@ export const OpenUnlockFragment = () => {
         <StepError
           error={error ?? (requestClient.isError ? errorMessage(requestClient.error) : undefined)}
         />
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={isDisabled}
+          onClick={() => navigate(buildRoute('open'))}
+        >
+          Choose another database
+        </Button>
       </form>
     </SetupLayout>
   );

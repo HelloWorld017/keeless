@@ -38,7 +38,7 @@ export const OpenRecentFragment = () => {
   const navigate = useNavigate();
   const requestClient = useRequestClient();
   const recentDatabases = useRequest('getRecentDatabases', {});
-  const openRecentDatabase = useRequestMutation('openRecentDatabase');
+  const open = useRequestMutation('open');
   const deleteRecentDatabase = useRequestMutation('deleteRecentDatabase');
   const [databaseToDelete, setDatabaseToDelete] = useState<RecentDatabase>();
   const [error, setError] = useState<string>();
@@ -50,13 +50,13 @@ export const OpenRecentFragment = () => {
   }, [navigate, recentDatabases.data, recentDatabases.isSuccess]);
 
   const openDatabase = async (id: string) => {
-    if (!requestClient.data || openRecentDatabase.isPending) {
+    if (!requestClient.data || open.isPending) {
       return;
     }
 
     setError(undefined);
     try {
-      await openRecentDatabase.mutateAsync({ id });
+      await open.mutateAsync({ databaseId: id });
       const { database } = await requestClient.data.request('getCoreStatus', {});
       if (database === 'unlocked') {
         await requestClient.data.upgrade();
@@ -90,7 +90,7 @@ export const OpenRecentFragment = () => {
       showBack={false}
     >
       <ItemGroup className="gap-2">
-        {recentDatabases.data?.databases.map(database => (
+        {recentDatabases.data?.databases.slice(0, 5).map(database => (
           <Item key={database.id} variant="outline">
             <ItemMedia variant="icon">
               <IconDatabase />
@@ -108,7 +108,7 @@ export const OpenRecentFragment = () => {
                 variant="ghost"
                 size="icon"
                 aria-label={`Delete ${database.name}`}
-                disabled={openRecentDatabase.isPending || deleteRecentDatabase.isPending}
+                disabled={open.isPending || deleteRecentDatabase.isPending}
                 onClick={() => setDatabaseToDelete(database)}
               >
                 <IconTrash />
@@ -118,10 +118,10 @@ export const OpenRecentFragment = () => {
                 variant="ghost"
                 size="icon"
                 aria-label={`Open ${database.name}`}
-                disabled={openRecentDatabase.isPending || deleteRecentDatabase.isPending}
+                disabled={open.isPending || deleteRecentDatabase.isPending}
                 onClick={() => void openDatabase(database.id)}
               >
-                {openRecentDatabase.isPending ? (
+                {open.isPending ? (
                   <IconLoaderCircle className="animate-spin" />
                 ) : (
                   <IconArrowRight />

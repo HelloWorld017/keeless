@@ -1,9 +1,5 @@
-use std::{fmt::Write as _, io, path::PathBuf, sync::Arc};
+use std::{fmt::Write as _, io, path::PathBuf};
 
-use keeless_core::{
-    CoreError, DatabaseId, HostFuture, Result as CoreResult, StorageConfigurer, StorageDescriptor,
-    keeless_schema::DatabaseStorageConfig,
-};
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, Revision, StorageError, StorageErrorKind, StorageFuture,
     StorageProvider, WriteCondition, WriteOutcome,
@@ -12,7 +8,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{replace_file, temporary_path};
-use crate::persistence::{canonical_backing_path, database_id_from_backing_path};
+use crate::persistence::canonical_backing_path;
 
 pub const MAX_LOCAL_FILE_SIZE: u64 = 128 * 1024 * 1024;
 
@@ -24,16 +20,11 @@ pub struct LocalFileStorage {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalFileCapability {
     path: PathBuf,
-    database_id: DatabaseId,
 }
 
 impl LocalFileCapability {
     pub fn path(&self) -> &std::path::Path {
         &self.path
-    }
-
-    pub fn database_id(&self) -> &DatabaseId {
-        &self.database_id
     }
 }
 
@@ -66,50 +57,11 @@ impl LocalFileStorage {
         }
         let path = canonical_backing_path(&path)
             .map_err(|value| io_error("resolve local file path", value))?;
-        let database_id = database_id_from_backing_path("local-file", &path)
-            .map_err(|value| io_error("identify local file", value))?;
-        Ok(LocalFileCapability { path, database_id })
+        Ok(LocalFileCapability { path })
     }
 
     fn resolve(&self, token: &str) -> Result<PathBuf, StorageError> {
         Ok(self.resolve_capability(token)?.path)
-    }
-}
-
-pub struct DesktopStorageConfigurer {
-    storage: Arc<LocalFileStorage>,
-}
-
-impl DesktopStorageConfigurer {
-    pub fn new(storage: Arc<LocalFileStorage>) -> Self {
-        Self { storage }
-    }
-}
-
-impl StorageConfigurer for DesktopStorageConfigurer {
-    fn configure(
-        &self,
-        config: DatabaseStorageConfig,
-    ) -> HostFuture<'_, CoreResult<(StorageDescriptor, Arc<dyn StorageProvider>)>> {
-        Box::pin(async move {
-            let DatabaseStorageConfig::LocalFile { path } = config else {
-                return Err(CoreError::Host(
-                    "desktop only supports local-file storage".into(),
-                ));
-            };
-            let path = self
-                .storage
-                .grant_picker_path(PathBuf::from(path))
-                .map_err(|error| CoreError::Host(error.to_string()))?;
-            let provider: Arc<dyn StorageProvider> = self.storage.clone();
-            Ok((
-                StorageDescriptor {
-                    provider: "local-file".into(),
-                    path,
-                },
-                provider,
-            ))
-        })
     }
 }
 
@@ -335,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn picker_grants_canonical_paths_with_stable_database_ids() {
+    fn picker_grants_canonical_paths() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("new-vault.kdbx");
         let provider = LocalFileStorage::new();
@@ -343,8 +295,8 @@ mod tests {
         let second = provider.grant_picker_path(path).unwrap();
         assert_eq!(first, second);
         assert_eq!(
-            provider.resolve_capability(&first).unwrap().database_id(),
-            provider.resolve_capability(&second).unwrap().database_id()
+            provider.resolve_capability(&first).unwrap().path(),
+            provider.resolve_capability(&second).unwrap().path()
         );
     }
 

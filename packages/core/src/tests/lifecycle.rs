@@ -1,7 +1,7 @@
 use super::*;
 use keeless_schema::{
-    DatabaseStorageConfig, DeleteRecentDatabaseArgs, GetRecentDatabasesArgs, LockArgs, OpenArgs,
-    OpenRecentDatabaseArgs, Operation, OperationSuccess,
+    DeleteRecentDatabaseArgs, GetRecentDatabasesArgs, LockArgs, OpenArgs, OpenTarget, Operation,
+    OperationSuccess,
 };
 
 #[tokio::test]
@@ -9,8 +9,8 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
     let config = Arc::new(MemoryConfig::default());
     let clock = Arc::new(FakeClock::new(100));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         ..host(config, Arc::new(Approval), clock.clone())
@@ -21,17 +21,15 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         operations::get_database_status::run(&mut core),
         DatabaseStatus::NotExist
     );
-    assert_eq!(operations::get_storage_descriptor::run(&mut core), None);
+    assert_eq!(operations::get_storage_provider::run(&mut core), None);
     let descriptor = StorageDescriptor {
         provider: "memory".into(),
         path: "vault.kdbx".into(),
     };
-    operations::open::run(&mut core, descriptor.clone(), None)
-        .await
-        .unwrap();
+    operations::open::run(&mut core, descriptor).await.unwrap();
     assert_eq!(
-        operations::get_storage_descriptor::run(&mut core),
-        Some(descriptor)
+        operations::get_storage_provider::run(&mut core),
+        Some("memory".into())
     );
     assert_eq!(
         operations::get_database_status::run(&mut core),
@@ -105,8 +103,8 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
 #[tokio::test]
 async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         ..host(
@@ -123,7 +121,6 @@ async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -158,8 +155,8 @@ async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
 #[tokio::test]
 async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         ..host(
@@ -176,7 +173,6 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -235,8 +231,8 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
 async fn password_provider_receives_create_reveal_and_save_modes() {
     let create_input = Arc::new(PasswordInput::new(b"correct"));
     let storage = Arc::new(MemoryStorage(Mutex::new(None)));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage);
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
     let mut create_host = host(
         Arc::new(MemoryConfig::default()),
         Arc::new(Approval),
@@ -251,7 +247,6 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
             provider: "memory".into(),
             path: "new.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -352,8 +347,8 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
 #[tokio::test]
 async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
     let storage = Arc::new(MemoryStorage(Mutex::new(None)));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage.clone());
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage.clone()));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         ..host(
@@ -375,7 +370,6 @@ async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -447,8 +441,8 @@ async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
 async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
     let clock = Arc::new(FakeClock::new(100));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage.clone());
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage.clone()));
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         ..host(Arc::new(MemoryConfig::default()), Arc::new(Approval), clock)
@@ -461,7 +455,6 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
-        None,
     )
     .await
     .unwrap();
@@ -483,23 +476,19 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
 }
 
 #[tokio::test]
-async fn recent_database_restores_encrypted_storage_configuration() {
+async fn recent_database_restores_encrypted_storage_descriptor() {
     let clock = Arc::new(FakeClock::new(100));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let descriptor = StorageDescriptor {
         provider: "memory".into(),
         path: "vault.kdbx".into(),
     };
-    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-    providers.insert("memory".into(), storage.clone());
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage.clone()));
     let core_state = Arc::new(MemoryConfig::default());
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         core_state,
-        storage_configurer: Some(Arc::new(MemoryStorageConfigurer {
-            descriptor: descriptor.clone(),
-            provider: storage,
-        })),
         ..host(
             Arc::new(MemoryConfig::default()),
             Arc::new(Approval),
@@ -512,10 +501,9 @@ async fn recent_database_restores_encrypted_storage_configuration() {
     operations::execute(
         &mut core,
         Operation::Open(OpenArgs {
-            storage: descriptor,
-            storage_config: Some(DatabaseStorageConfig::LocalFile {
-                path: "/tmp/vault.kdbx".into(),
-            }),
+            target: OpenTarget::Storage {
+                storage: descriptor,
+            },
         }),
     )
     .await
@@ -539,13 +527,15 @@ async fn recent_database_restores_encrypted_storage_configuration() {
     operations::lock::run(&mut core);
     operations::execute(
         &mut core,
-        Operation::OpenRecentDatabase(OpenRecentDatabaseArgs {
-            id: recent[0].id.clone(),
+        Operation::Open(OpenArgs {
+            target: OpenTarget::Database {
+                database_id: recent[0].id.clone(),
+            },
         }),
     )
     .await
     .unwrap();
-    assert_eq!(operations::get_storage_descriptor::run(&mut core), None);
+    assert_eq!(operations::get_storage_provider::run(&mut core), None);
     operations::unlock::run(&mut core, b"correct")
         .await
         .unwrap();
@@ -563,4 +553,17 @@ async fn recent_database_restores_encrypted_storage_configuration() {
         .await,
         Err(CoreError::RecentDatabaseSelected)
     ));
+    operations::lock::run(&mut core);
+    operations::execute(
+        &mut core,
+        Operation::DeleteRecentDatabase(DeleteRecentDatabaseArgs {
+            id: recent[0].id.clone(),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        operations::get_database_status::run(&mut core),
+        DatabaseStatus::NotExist
+    );
 }

@@ -303,6 +303,72 @@ async fn sync_pulls_remote_changes_without_rewriting_an_unmodified_local_file() 
 }
 
 #[tokio::test]
+async fn sync_rejects_a_different_root_group_without_replacing_clean_state() {
+    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (database, entry_id) = database_with_entry("local");
+    storage.put("vault.kdbx", encode(&database, &key));
+    let provider: Arc<dyn StorageProvider> = storage.clone();
+    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+        .await
+        .unwrap();
+    let checkpoint = handle.checkpoint_bytes().to_vec();
+    let revision = handle.checkpoint_revision().cloned();
+
+    let (remote, remote_entry_id) = database_with_entry("remote");
+    storage.put("vault.kdbx", encode(&remote, &key));
+
+    let error = handle.sync(&key).await.unwrap_err();
+
+    assert!(matches!(error, SyncError::RootGroupMismatch));
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "local"
+    );
+    assert!(!handle.database().entries.contains_key(&remote_entry_id));
+    assert_eq!(handle.checkpoint_bytes(), checkpoint);
+    assert_eq!(handle.checkpoint_revision(), revision.as_ref());
+    assert!(!handle.is_dirty());
+    assert_eq!(storage.writes(), 0);
+}
+
+#[tokio::test]
+async fn sync_rejects_a_different_root_group_without_merging_dirty_state() {
+    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (database, entry_id) = database_with_entry("base");
+    storage.put("vault.kdbx", encode(&database, &key));
+    let provider: Arc<dyn StorageProvider> = storage.clone();
+    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+        .await
+        .unwrap();
+    let checkpoint = handle.checkpoint_bytes().to_vec();
+    let revision = handle.checkpoint_revision().cloned();
+    handle
+        .database_mut()
+        .entries
+        .get_mut(&entry_id)
+        .unwrap()
+        .set_title("local");
+
+    let (remote, remote_entry_id) = database_with_entry("remote");
+    storage.put("vault.kdbx", encode(&remote, &key));
+
+    let error = handle.sync(&key).await.unwrap_err();
+
+    assert!(matches!(error, SyncError::RootGroupMismatch));
+    assert_eq!(
+        handle.database().entries[&entry_id].title().as_str(),
+        "local"
+    );
+    assert!(!handle.database().entries.contains_key(&remote_entry_id));
+    assert_eq!(handle.checkpoint_bytes(), checkpoint);
+    assert_eq!(handle.checkpoint_revision(), revision.as_ref());
+    assert!(handle.is_dirty());
+    assert_eq!(storage.writes(), 0);
+}
+
+#[tokio::test]
 async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
     let key = CompositeKey::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());

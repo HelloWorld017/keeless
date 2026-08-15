@@ -3,14 +3,6 @@
 export type StorageDescriptor = { provider: string; path: string };
 
 /**
- * Storage connection data retained in the encrypted per-database configuration.
- */
-export type DatabaseStorageConfig =
-  | { type: 'localFile'; path: string }
-  | { type: 'indexedDb' }
-  | { type: 'webDav'; url: string; username: string; password: string; path: string };
-
-/**
  * Plaintext metadata used to present a recently opened database before unlock.
  */
 export type RecentDatabase = {
@@ -116,11 +108,9 @@ export type FieldControl =
   | { type: 'select'; options: string[] }
   | { type: 'divider' };
 
-export type OpenArgs = { storage: StorageDescriptor; storageConfig?: DatabaseStorageConfig | null };
+export type OpenArgs = { storage: StorageDescriptor } | { databaseId: string };
 
 export type GetRecentDatabasesArgs = Record<string, never>;
-
-export type OpenRecentDatabaseArgs = { id: string };
 
 export type DeleteRecentDatabaseArgs = { id: string };
 
@@ -136,7 +126,7 @@ export type GetCoreStatusArgs = Record<string, never>;
 
 export type UpgradeArgs = Record<string, never>;
 
-export type GetStorageDescriptorArgs = Record<string, never>;
+export type GetStorageProviderArgs = Record<string, never>;
 
 export type GetConfigArgs = Record<string, never>;
 
@@ -271,7 +261,6 @@ export type AssertPasskeyArgs = {
 export type Operation =
   | { op: 'open'; args: OpenArgs }
   | { op: 'getRecentDatabases'; args: GetRecentDatabasesArgs }
-  | { op: 'openRecentDatabase'; args: OpenRecentDatabaseArgs }
   | { op: 'deleteRecentDatabase'; args: DeleteRecentDatabaseArgs }
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
@@ -279,7 +268,7 @@ export type Operation =
   | { op: 'getCoreStatus'; args: GetCoreStatusArgs }
   | { op: 'upgrade'; args: UpgradeArgs }
   | { op: 'getDatabaseStatus'; args: GetDatabaseStatusArgs }
-  | { op: 'getStorageDescriptor'; args: GetStorageDescriptorArgs }
+  | { op: 'getStorageProvider'; args: GetStorageProviderArgs }
   | { op: 'getConfig'; args: GetConfigArgs }
   | { op: 'setConfig'; args: SetConfigArgs }
   | { op: 'getEntries'; args: GetEntriesArgs }
@@ -319,7 +308,6 @@ export type Operation =
 export type OperationRequest = (
   | { op: 'open'; args: OpenArgs }
   | { op: 'getRecentDatabases'; args: GetRecentDatabasesArgs }
-  | { op: 'openRecentDatabase'; args: OpenRecentDatabaseArgs }
   | { op: 'deleteRecentDatabase'; args: DeleteRecentDatabaseArgs }
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
@@ -327,7 +315,7 @@ export type OperationRequest = (
   | { op: 'getCoreStatus'; args: GetCoreStatusArgs }
   | { op: 'upgrade'; args: UpgradeArgs }
   | { op: 'getDatabaseStatus'; args: GetDatabaseStatusArgs }
-  | { op: 'getStorageDescriptor'; args: GetStorageDescriptorArgs }
+  | { op: 'getStorageProvider'; args: GetStorageProviderArgs }
   | { op: 'getConfig'; args: GetConfigArgs }
   | { op: 'setConfig'; args: SetConfigArgs }
   | { op: 'getEntries'; args: GetEntriesArgs }
@@ -380,7 +368,7 @@ export type CoreStatusResult = { database: DatabaseStatus };
 
 export type UpgradeResult = { publicKey: string };
 
-export type StorageDescriptorResult = { storage: StorageDescriptor | null };
+export type StorageProviderResult = { provider: string | null };
 
 export type ConfigResult = { config: KeelessConfig };
 
@@ -477,7 +465,6 @@ export type AssertPasskeyResult = {
 export type OperationSuccess =
   | { op: 'open'; result: EmptyResult }
   | { op: 'getRecentDatabases'; result: RecentDatabasesResult }
-  | { op: 'openRecentDatabase'; result: EmptyResult }
   | { op: 'deleteRecentDatabase'; result: EmptyResult }
   | { op: 'create'; result: EmptyResult }
   | { op: 'unlock'; result: EmptyResult }
@@ -485,7 +472,7 @@ export type OperationSuccess =
   | { op: 'getCoreStatus'; result: CoreStatusResult }
   | { op: 'upgrade'; result: UpgradeResult }
   | { op: 'getDatabaseStatus'; result: DatabaseStatusResult }
-  | { op: 'getStorageDescriptor'; result: StorageDescriptorResult }
+  | { op: 'getStorageProvider'; result: StorageProviderResult }
   | { op: 'getConfig'; result: ConfigResult }
   | { op: 'setConfig'; result: EmptyResult }
   | { op: 'getEntries'; result: EntriesResult }
@@ -533,7 +520,7 @@ export type OperationResponse = OperationOutcome & { requestId: string };
 export type OperationResource =
   | 'databaseStatus'
   | 'recentDatabase'
-  | 'storageDescriptor'
+  | 'storageProvider'
   | 'config'
   | 'entry'
   | 'group'
@@ -556,11 +543,6 @@ export const operationMetadata = {
   },
   getRecentDatabases: {
     queries: ['recentDatabase'],
-    senders: ['app'],
-    recipients: ['core_untrusted'],
-  },
-  openRecentDatabase: {
-    mutates: ['databaseStatus'],
     senders: ['app'],
     recipients: ['core_untrusted'],
   },
@@ -587,7 +569,7 @@ export const operationMetadata = {
   },
   upgrade: { senders: ['app', 'passkey'], recipients: ['core_untrusted'] },
   getDatabaseStatus: { queries: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
-  getStorageDescriptor: { queries: ['storageDescriptor'], senders: ['app'], recipients: ['core'] },
+  getStorageProvider: { queries: ['storageProvider'], senders: ['app'], recipients: ['core'] },
   getConfig: { queries: ['config'], senders: ['app'], recipients: ['core'] },
   setConfig: { mutates: ['config', 'databaseStatus'], senders: ['app'], recipients: ['core'] },
   getEntries: { queries: ['entry'], senders: ['app'], recipients: ['core'] },

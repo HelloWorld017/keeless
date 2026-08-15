@@ -15,7 +15,7 @@ use std::{
 };
 
 use keeless_core::{
-    HostFuture, KeelessCore, KeelessHost, StorageProvider, SystemClock, TaskSpawner,
+    HostFuture, KeelessCore, KeelessHost, Storage, StorageProvider, SystemClock, TaskSpawner,
     keeless_schema::{DatabaseNodeId, OperationOutcome, OperationResponse, OperationSuccess},
 };
 use keeless_host_desktop_shared::ipc;
@@ -36,7 +36,7 @@ use crate::{
     config::{CORE_STATE_FILE, DesktopConfig, WIRE_STATE_FILE},
     native_ui::NativeUi,
     persistence::DesktopDatabasePersistence,
-    storage::{DesktopStorageConfigurer, LocalFileStorage},
+    storage::LocalFileStorage,
 };
 use ipc::{Request, Response, ServerListener};
 
@@ -156,11 +156,15 @@ impl DesktopHost {
         ));
         let storage = Arc::new(LocalFileStorage::new());
         let database_persistence = Arc::new(
-            DesktopDatabasePersistence::project(storage.clone())
-                .map_err(|error| napi_error(error.to_string()))?,
+            DesktopDatabasePersistence::project().map_err(|error| napi_error(error.to_string()))?,
         );
-        let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
-        providers.insert("local-file".into(), storage.clone());
+        let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+        providers.insert(
+            "local-file".into(),
+            Arc::new(Storage::persistent(
+                storage.clone() as Arc<dyn StorageProvider>
+            )),
+        );
         let core = KeelessCore::new(KeelessHost {
             storage_providers: providers,
             untrusted_state: wire_config,
@@ -170,7 +174,6 @@ impl DesktopHost {
             passkey_consent: Some(native_ui.clone()),
             clock: Arc::new(SystemClock),
             database_persistence,
-            storage_configurer: Some(Arc::new(DesktopStorageConfigurer::new(storage.clone()))),
             task_spawner: Some(Arc::new(TokioTaskSpawner)),
             transfer_provider: None,
         })

@@ -1,11 +1,11 @@
 use futures_util::StreamExt;
+use percent_encoding::percent_decode_str;
 use reqwest::header::{
     CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_MATCH, IF_NONE_MATCH,
     IF_UNMODIFIED_SINCE, LAST_MODIFIED, RANGE,
 };
 use reqwest::{Client, Method, StatusCode};
 use url::Url;
-use zeroize::Zeroizing;
 
 use crate::{
     ByteRange, FileMetadata, RemoteFile, Revision, StorageError, StorageErrorKind, StorageFuture,
@@ -15,95 +15,31 @@ use crate::{
 const DEFAULT_MAX_FILE_SIZE: usize = 512 * 1024 * 1024;
 
 #[derive(Clone)]
-pub struct WebDavAuth {
-    username: String,
-    password: Zeroizing<String>,
-}
-
-impl WebDavAuth {
-    pub fn basic(username: impl Into<String>, password: impl Into<String>) -> Self {
-        Self {
-            username: username.into(),
-            password: Zeroizing::new(password.into()),
-        }
-    }
-
-    pub fn username(&self) -> &str {
-        &self.username
-    }
-}
-
-impl std::fmt::Debug for WebDavAuth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WebDavAuth")
-            .field("username", &self.username)
-            .field("password", &"[REDACTED]")
-            .finish()
-    }
-}
-
-#[derive(Clone)]
 pub struct WebDavProvider {
     client: Client,
-    base_url: Url,
-    auth: Option<WebDavAuth>,
     max_file_size: usize,
 }
 
 impl std::fmt::Debug for WebDavProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut safe_url = self.base_url.clone();
-        if safe_url.query().is_some() {
-            safe_url.set_query(Some("REDACTED"));
-        }
-        if safe_url.fragment().is_some() {
-            safe_url.set_fragment(Some("REDACTED"));
-        }
         f.debug_struct("WebDavProvider")
-            .field("base_url", &safe_url)
-            .field("auth", &self.auth)
             .field("max_file_size", &self.max_file_size)
             .finish_non_exhaustive()
     }
 }
 
-impl WebDavProvider {
-    pub fn new(base_url: impl AsRef<str>, auth: Option<WebDavAuth>) -> Result<Self, StorageError> {
-        let mut base_url = Url::parse(base_url.as_ref()).map_err(|error| {
-            StorageError::new(
-                StorageErrorKind::InvalidInput,
-                format!("invalid WebDAV URL: {error}"),
-            )
-        })?;
-        if base_url.cannot_be_a_base() {
-            return Err(StorageError::new(
-                StorageErrorKind::InvalidInput,
-                "WebDAV URL cannot be used as a base URL",
-            ));
-        }
-        if !matches!(base_url.scheme(), "http" | "https") {
-            return Err(StorageError::new(
-                StorageErrorKind::InvalidInput,
-                "WebDAV URL must use HTTP or HTTPS",
-            ));
-        }
-        if !base_url.username().is_empty() || base_url.password().is_some() {
-            return Err(StorageError::new(
-                StorageErrorKind::InvalidInput,
-                "WebDAV credentials must be provided through WebDavAuth",
-            ));
-        }
-        if !base_url.path().ends_with('/') {
-            let path = format!("{}/", base_url.path());
-            base_url.set_path(&path);
-        }
+impl Default for WebDavProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-        Ok(Self {
+impl WebDavProvider {
+    pub fn new() -> Self {
+        Self {
             client: Client::new(),
-            base_url,
-            auth,
             max_file_size: DEFAULT_MAX_FILE_SIZE,
-        })
+        }
     }
 
     pub fn with_max_file_size(mut self, max_file_size: usize) -> Self {
@@ -111,31 +47,61 @@ impl WebDavProvider {
         self
     }
 
-    pub fn base_url(&self) -> &Url {
-        &self.base_url
+    pub fn get_normalized_path(path: &str) -> Result<String, StorageError> {
+        let mut url = parse_url(path)?;
+        url.set_username("").map_err(|_| {
+            StorageError::new(
+                StorageErrorKind::InvalidInput,
+                "invalid WebDAV URL username",
+            )
+        })?;
+        url.set_password(None).map_err(|_| {
+            StorageError::new(
+                StorageErrorKind::InvalidInput,
+                "invalid WebDAV URL password",
+            )
+        })?;
+        Ok(url.into())
     }
 
-    fn url_for(&self, path: &str) -> Result<Url, StorageError> {
-        let mut url = self.base_url.clone();
-        {
-            let mut segments = url.path_segments_mut().map_err(|_| {
-                StorageError::new(
+    fn request_url(&self, path: &str) -> Result<(Url, Option<(String, String)>), StorageError> {
+        let mut url = parse_url(path)?;
+        let username = decode_userinfo(url.username())?;
+        let password = url.password().map(decode_userinfo).transpose()?;
+        let auth = match (username.is_empty(), password) {
+            (true, None) => None,
+            (false, Some(password)) => Some((username, password)),
+            _ => {
+                return Err(StorageError::new(
                     StorageErrorKind::InvalidInput,
-                    "WebDAV URL does not support path segments",
-                )
-            })?;
-            segments.pop_if_empty();
-            for segment in normalized_segments(path)? {
-                segments.push(segment);
+                    "WebDAV URL must contain both username and password",
+                ));
             }
-        }
-        Ok(url)
+        };
+        url.set_username("").map_err(|_| {
+            StorageError::new(
+                StorageErrorKind::InvalidInput,
+                "invalid WebDAV URL username",
+            )
+        })?;
+        url.set_password(None).map_err(|_| {
+            StorageError::new(
+                StorageErrorKind::InvalidInput,
+                "invalid WebDAV URL password",
+            )
+        })?;
+        Ok((url, auth))
     }
 
-    fn request(&self, method: Method, url: Url) -> reqwest::RequestBuilder {
+    fn request(
+        &self,
+        method: Method,
+        url: Url,
+        auth: Option<(String, String)>,
+    ) -> reqwest::RequestBuilder {
         let request = self.client.request(method, url);
-        if let Some(auth) = &self.auth {
-            request.basic_auth(auth.username(), Some(auth.password.as_str()))
+        if let Some((username, password)) = auth {
+            request.basic_auth(username, Some(password))
         } else {
             request
         }
@@ -146,14 +112,14 @@ impl WebDavProvider {
         path: &str,
         range: Option<ByteRange>,
     ) -> Result<RemoteFile, StorageError> {
-        let url = self.url_for(path)?;
-        let mut request = self.request(Method::GET, url);
+        let (url, auth) = self.request_url(path)?;
+        let mut request = self.request(Method::GET, url, auth);
         if let Some(range) = range {
             request = request.header(RANGE, format!("bytes={}-{}", range.start, range.end));
         }
         let response = request.send().await.map_err(network_error)?;
         if !response.status().is_success() {
-            return Err(status_error("read", path, response.status()));
+            return Err(status_error("read", response.status()));
         }
 
         let status = response.status();
@@ -162,12 +128,12 @@ impl WebDavProvider {
             if length > self.max_file_size as u64 && range.is_none() {
                 return Err(StorageError::new(
                     StorageErrorKind::InvalidInput,
-                    format!("WebDAV file exceeds {} bytes: {path}", self.max_file_size),
+                    format!("WebDAV file exceeds {} bytes", self.max_file_size),
                 ));
             }
         }
 
-        let mut bytes = read_limited(response, self.max_file_size, "WebDAV file", path).await?;
+        let mut bytes = read_limited(response, self.max_file_size, "WebDAV file").await?;
 
         if let Some(range) = range {
             let expected = range.end.saturating_sub(range.start).saturating_add(1);
@@ -210,8 +176,9 @@ impl StorageProvider for WebDavProvider {
         path: &'a str,
     ) -> StorageFuture<'a, Result<Option<FileMetadata>, StorageError>> {
         Box::pin(async move {
+            let (url, auth) = self.request_url(path)?;
             let response = self
-                .request(Method::HEAD, self.url_for(path)?)
+                .request(Method::HEAD, url, auth)
                 .header(CACHE_CONTROL, "no-cache, no-store")
                 .send()
                 .await
@@ -220,7 +187,7 @@ impl StorageProvider for WebDavProvider {
                 return Ok(None);
             }
             if !response.status().is_success() {
-                return Err(status_error("stat", path, response.status()));
+                return Err(status_error("stat", response.status()));
             }
             let headers = response.headers();
             Ok(Some(FileMetadata {
@@ -239,8 +206,9 @@ impl StorageProvider for WebDavProvider {
     ) -> StorageFuture<'a, Result<WriteOutcome, StorageError>> {
         Box::pin(async move {
             let bytes = bytes::Bytes::from(bytes);
+            let (url, auth) = self.request_url(path)?;
             let mut request = self
-                .request(Method::PUT, self.url_for(path)?)
+                .request(Method::PUT, url, auth)
                 .header(CONTENT_TYPE, "application/octet-stream");
             request = match condition {
                 WriteCondition::Unconditional => request,
@@ -262,7 +230,7 @@ impl StorageProvider for WebDavProvider {
                 return Ok(WriteOutcome::Conflict);
             }
             if !response.status().is_success() {
-                return Err(status_error("write", path, response.status()));
+                return Err(status_error("write", response.status()));
             }
 
             if let Some(revision) = revision_from_headers(response.headers()) {
@@ -283,46 +251,29 @@ impl StorageProvider for WebDavProvider {
 
     fn delete<'a>(&'a self, path: &'a str) -> StorageFuture<'a, Result<(), StorageError>> {
         Box::pin(async move {
+            let (url, auth) = self.request_url(path)?;
             let response = self
-                .request(Method::DELETE, self.url_for(path)?)
+                .request(Method::DELETE, url, auth)
                 .send()
                 .await
                 .map_err(network_error)?;
             if response.status().is_success() || response.status() == StatusCode::NOT_FOUND {
                 return Ok(());
             }
-            Err(status_error("delete", path, response.status()))
+            Err(status_error("delete", response.status()))
         })
     }
-}
-
-fn normalized_segments(path: &str) -> Result<Vec<&str>, StorageError> {
-    let segments: Vec<_> = path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    if segments
-        .iter()
-        .any(|segment| *segment == "." || *segment == "..")
-    {
-        return Err(StorageError::new(
-            StorageErrorKind::InvalidInput,
-            "WebDAV path must not contain '.' or '..' segments",
-        ));
-    }
-    Ok(segments)
 }
 
 async fn read_limited(
     response: reqwest::Response,
     limit: usize,
     kind: &str,
-    path: &str,
 ) -> Result<Vec<u8>, StorageError> {
     if parse_content_length(response.headers()).is_some_and(|length| length > limit as u64) {
         return Err(StorageError::new(
             StorageErrorKind::InvalidInput,
-            format!("{kind} exceeds {limit} bytes: {path}"),
+            format!("{kind} exceeds {limit} bytes"),
         ));
     }
 
@@ -333,7 +284,7 @@ async fn read_limited(
         if bytes.len().saturating_add(chunk.len()) > limit {
             return Err(StorageError::new(
                 StorageErrorKind::InvalidInput,
-                format!("{kind} exceeds {limit} bytes: {path}"),
+                format!("{kind} exceeds {limit} bytes"),
             ));
         }
         bytes.extend_from_slice(&chunk);
@@ -373,7 +324,32 @@ fn network_error(error: reqwest::Error) -> StorageError {
     StorageError::new(StorageErrorKind::Network, error.without_url().to_string())
 }
 
-fn status_error(operation: &str, path: &str, status: StatusCode) -> StorageError {
+fn parse_url(path: &str) -> Result<Url, StorageError> {
+    let url = Url::parse(path)
+        .map_err(|_| StorageError::new(StorageErrorKind::InvalidInput, "invalid WebDAV URL"))?;
+    if url.cannot_be_a_base() || !matches!(url.scheme(), "http" | "https") {
+        return Err(StorageError::new(
+            StorageErrorKind::InvalidInput,
+            "WebDAV URL must use HTTP or HTTPS",
+        ));
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err(StorageError::new(
+            StorageErrorKind::InvalidInput,
+            "WebDAV URL must not contain a query or fragment",
+        ));
+    }
+    Ok(url)
+}
+
+fn decode_userinfo(value: &str) -> Result<String, StorageError> {
+    percent_decode_str(value)
+        .decode_utf8()
+        .map(|value| value.into_owned())
+        .map_err(|_| StorageError::new(StorageErrorKind::InvalidInput, "invalid WebDAV credential"))
+}
+
+fn status_error(operation: &str, status: StatusCode) -> StorageError {
     let kind = match status {
         StatusCode::NOT_FOUND => StorageErrorKind::NotFound,
         StatusCode::UNAUTHORIZED => StorageErrorKind::Authentication,
@@ -382,8 +358,5 @@ fn status_error(operation: &str, path: &str, status: StatusCode) -> StorageError
         status if status.is_server_error() => StorageErrorKind::Server,
         _ => StorageErrorKind::Other,
     };
-    StorageError::new(
-        kind,
-        format!("WebDAV {operation} failed for {path}: HTTP {status}"),
-    )
+    StorageError::new(kind, format!("WebDAV {operation} failed: HTTP {status}"))
 }

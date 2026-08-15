@@ -1,9 +1,9 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
-use keeless_sync::StorageProvider;
+use keeless_sync::StorageProvider as SyncStorageProvider;
 use zeroize::Zeroizing;
 
-use crate::{DatabaseId, Result, StorageDescriptor};
+use crate::{DatabaseId, Result};
 use keeless_lesswire::{KeyScope, StateStore};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -22,14 +22,65 @@ pub trait HostProviderRequirements {}
 #[cfg(target_arch = "wasm32")]
 impl<T: ?Sized> HostProviderRequirements for T {}
 
+fn identity_path(path: &str) -> Result<String> {
+    Ok(path.into())
+}
+
+/// Core-owned metadata around a storage implementation.
+#[derive(Clone)]
+pub struct Storage {
+    provider: Arc<dyn SyncStorageProvider>,
+    get_normalized_path: fn(&str) -> Result<String>,
+    is_persistent: bool,
+}
+
+impl Storage {
+    pub fn persistent(provider: Arc<dyn SyncStorageProvider>) -> Self {
+        Self {
+            provider,
+            get_normalized_path: identity_path,
+            is_persistent: true,
+        }
+    }
+
+    pub fn session(provider: Arc<dyn SyncStorageProvider>) -> Self {
+        Self {
+            provider,
+            get_normalized_path: identity_path,
+            is_persistent: false,
+        }
+    }
+
+    pub fn with_normalized_path(mut self, get_normalized_path: fn(&str) -> Result<String>) -> Self {
+        self.get_normalized_path = get_normalized_path;
+        self
+    }
+
+    pub fn provider(&self) -> Arc<dyn SyncStorageProvider> {
+        Arc::clone(&self.provider)
+    }
+
+    pub fn get_normalized_path(&self, path: &str) -> Result<String> {
+        (self.get_normalized_path)(path)
+    }
+
+    pub const fn is_persistent(&self) -> bool {
+        self.is_persistent
+    }
+}
+
+impl std::fmt::Debug for Storage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Storage")
+            .field("is_persistent", &self.is_persistent)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Durable storage used for the local database cache, mutation journal, and encrypted Core state.
 pub trait DatabasePersistence: HostProviderRequirements {
-    /// Select the persistence namespace associated with a storage capability.
-    fn select<'a>(
-        &'a self,
-        descriptor: &'a StorageDescriptor,
-    ) -> HostFuture<'a, Result<DatabaseId>>;
-    fn select_by_id<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>>;
+    /// Select the local persistence namespace for a database identity.
+    fn select<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>>;
     /// Removes only Core's app-local persistence namespace.
     fn purge<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>>;
     fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>>;
@@ -49,14 +100,6 @@ pub trait DatabasePersistence: HostProviderRequirements {
         name: &'a str,
         bytes: &'a [u8],
     ) -> HostFuture<'a, Result<()>>;
-}
-
-/// Recreates host storage capabilities from encrypted database configuration.
-pub trait StorageConfigurer: HostProviderRequirements {
-    fn configure(
-        &self,
-        config: keeless_schema::DatabaseStorageConfig,
-    ) -> HostFuture<'_, Result<(StorageDescriptor, Arc<dyn StorageProvider>)>>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -169,7 +212,7 @@ impl Clock for SystemClock {
 }
 
 pub struct KeelessHost {
-    pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
+    pub storage_providers: HashMap<String, Arc<Storage>>,
     /// Global plaintext state for the always-available untrusted Lesswire endpoint.
     pub untrusted_state: Arc<dyn StateStore>,
     /// Core-owned global plaintext state, separate from untrusted Lesswire state.
@@ -179,7 +222,6 @@ pub struct KeelessHost {
     pub passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     pub clock: Arc<dyn Clock>,
     pub database_persistence: Arc<dyn DatabasePersistence>,
-    pub storage_configurer: Option<Arc<dyn StorageConfigurer>>,
     pub task_spawner: Option<Arc<dyn TaskSpawner>>,
     pub transfer_provider: Option<Arc<dyn TransferProvider>>,
 }
@@ -192,7 +234,6 @@ impl std::fmt::Debug for KeelessHost {
             .field("has_connection_approval", &true)
             .field("has_passkey_consent", &self.passkey_consent.is_some())
             .field("has_database_persistence", &true)
-            .field("has_storage_configurer", &self.storage_configurer.is_some())
             .field("has_task_spawner", &self.task_spawner.is_some())
             .field("has_transfer_provider", &self.transfer_provider.is_some())
             .finish_non_exhaustive()

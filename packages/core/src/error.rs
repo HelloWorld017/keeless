@@ -15,10 +15,10 @@ pub enum CoreError {
     InvalidRecentDatabase,
     #[error("recent database is unavailable")]
     RecentDatabaseUnavailable,
-    #[error("storage configuration is unavailable")]
-    StorageConfigurationUnavailable,
     #[error("recent database storage does not match its local state")]
     RecentDatabaseMismatch,
+    #[error("remote database has a different root group ID")]
+    RootGroupMismatch,
     #[error("selected recent database cannot be deleted")]
     RecentDatabaseSelected,
     #[error("database does not exist")]
@@ -135,7 +135,8 @@ impl From<keeless_sync::SyncError> for CoreError {
             keeless_sync::SyncError::Database(keeless_kdbx::DatabaseError::SecureMemory(_)) => {
                 Self::SecureMemory
             }
-            keeless_sync::SyncError::RemoteNotFound(_) => Self::DatabaseNotFound,
+            keeless_sync::SyncError::RemoteNotFound => Self::DatabaseNotFound,
+            keeless_sync::SyncError::RootGroupMismatch => Self::RootGroupMismatch,
             error => Self::Sync(error),
         }
     }
@@ -152,13 +153,17 @@ impl From<&CoreError> for OperationError {
             CoreError::InvalidRecentDatabase => {
                 ("recent_database_invalid", "Recent database is invalid")
             }
-            CoreError::RecentDatabaseUnavailable | CoreError::StorageConfigurationUnavailable => (
+            CoreError::RecentDatabaseUnavailable => (
                 "recent_database_unavailable",
                 "Recent database is unavailable",
             ),
             CoreError::RecentDatabaseMismatch => (
                 "recent_database_mismatch",
                 "Recent database storage does not match its local state",
+            ),
+            CoreError::RootGroupMismatch => (
+                "database_root_group_mismatch",
+                "Remote database does not match the selected database",
             ),
             CoreError::RecentDatabaseSelected => (
                 "recent_database_selected",

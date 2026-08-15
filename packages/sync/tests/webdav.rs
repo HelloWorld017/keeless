@@ -1,6 +1,6 @@
 use keeless_sync::{
-    ByteRange, Revision, StorageErrorKind, StorageProvider, WebDavAuth, WebDavProvider,
-    WriteCondition, WriteOutcome,
+    ByteRange, Revision, StorageErrorKind, StorageProvider, WebDavProvider, WriteCondition,
+    WriteOutcome,
 };
 use wiremock::matchers::{header, header_regex, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -10,7 +10,7 @@ async fn read_uses_basic_auth_and_slices_a_server_ignored_range() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/dav/vault.kdbx"))
-        .and(header("authorization", "Basic dXNlcjpwYXNz"))
+        .and(header("authorization", "Basic dXNlcjpwYTpzcw=="))
         .and(header("range", "bytes=2-4"))
         .respond_with(
             ResponseTemplate::new(200)
@@ -20,13 +20,14 @@ async fn read_uses_basic_auth_and_slices_a_server_ignored_range() {
         .mount(&server)
         .await;
 
-    let provider = WebDavProvider::new(
-        format!("{}/dav", server.uri()),
-        Some(WebDavAuth::basic("user", "pass")),
-    )
-    .unwrap();
+    let provider = WebDavProvider::new();
+    let path = format!(
+        "{}{}",
+        server.uri().replacen("http://", "http://user:pa%3Ass@", 1),
+        "/dav/vault.kdbx"
+    );
     let file = provider
-        .read("vault.kdbx", Some(ByteRange::new(2, 4).unwrap()))
+        .read(&path, Some(ByteRange::new(2, 4).unwrap()))
         .await
         .unwrap();
 
@@ -62,10 +63,10 @@ async fn write_maps_etag_conditions_and_precondition_failures() {
         .mount(&server)
         .await;
 
-    let provider = WebDavProvider::new(format!("{}/dav", server.uri()), None).unwrap();
+    let provider = WebDavProvider::new();
     let updated = provider
         .write(
-            "vault.kdbx",
+            &format!("{}/dav/vault.kdbx", server.uri()),
             b"data".to_vec(),
             WriteCondition::MustMatch(Revision::StrongEtag("\"old\"".to_string())),
         )
@@ -79,14 +80,18 @@ async fn write_maps_etag_conditions_and_precondition_failures() {
     );
 
     let created = provider
-        .write("new.kdbx", b"data".to_vec(), WriteCondition::MustNotExist)
+        .write(
+            &format!("{}/dav/new.kdbx", server.uri()),
+            b"data".to_vec(),
+            WriteCondition::MustNotExist,
+        )
         .await
         .unwrap();
     assert_eq!(created, WriteOutcome::Conflict);
 
     let missing_parent = provider
         .write(
-            "missing/new.kdbx",
+            &format!("{}/dav/missing/new.kdbx", server.uri()),
             b"data".to_vec(),
             WriteCondition::MustNotExist,
         )
@@ -123,15 +128,16 @@ async fn weak_etag_falls_back_to_last_modified() {
         .mount(&server)
         .await;
 
-    let provider = WebDavProvider::new(format!("{}/dav", server.uri()), None).unwrap();
-    let remote = provider.read("vault.kdbx", None).await.unwrap();
+    let provider = WebDavProvider::new();
+    let path = format!("{}/dav/vault.kdbx", server.uri());
+    let remote = provider.read(&path, None).await.unwrap();
     assert_eq!(
         remote.metadata.revision,
         Some(Revision::LastModified(modified.to_string()))
     );
     let outcome = provider
         .write(
-            "vault.kdbx",
+            &path,
             b"new".to_vec(),
             WriteCondition::MustMatch(remote.metadata.revision.unwrap()),
         )
@@ -148,26 +154,30 @@ async fn weak_etag_falls_back_to_last_modified() {
 }
 
 #[test]
-fn webdav_debug_output_does_not_expose_passwords() {
-    let provider = WebDavProvider::new(
-        "https://example.com/dav?access_token=query-secret#fragment-secret",
-        Some(WebDavAuth::basic("user", "secret-password")),
+fn webdav_normalized_path_omits_credentials() {
+    let normalized = WebDavProvider::get_normalized_path(
+        "https://user:secret-password@example.com/dav/vault.kdbx",
     )
     .unwrap();
+    assert_eq!(normalized, "https://example.com/dav/vault.kdbx");
+}
+
+#[test]
+fn webdav_debug_output_does_not_expose_paths() {
+    let provider = WebDavProvider::new();
     let debug = format!("{provider:?}");
     assert!(!debug.contains("secret-password"));
-    assert!(!debug.contains("query-secret"));
-    assert!(!debug.contains("fragment-secret"));
-    assert!(debug.contains("[REDACTED]"));
-    assert!(debug.contains("REDACTED"));
+    assert!(!debug.contains("example.com"));
 }
 
 #[tokio::test]
 async fn network_errors_do_not_expose_query_credentials() {
-    let provider =
-        WebDavProvider::new("http://127.0.0.1:0/dav?access_token=query-secret", None).unwrap();
-    let error = provider.read("vault.kdbx", None).await.unwrap_err();
+    let provider = WebDavProvider::new();
+    let error = provider
+        .read("http://user:query-secret@127.0.0.1:0/dav/vault.kdbx", None)
+        .await
+        .unwrap_err();
     let displayed = error.to_string();
     assert!(!displayed.contains("query-secret"));
-    assert!(!displayed.contains("access_token"));
+    assert!(!displayed.contains("user"));
 }
