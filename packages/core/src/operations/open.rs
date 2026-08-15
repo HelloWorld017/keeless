@@ -1,8 +1,12 @@
-use keeless_schema::{EmptyResult, OpenArgs, OperationSuccess};
+use keeless_schema::{DatabaseStorageConfig, EmptyResult, OpenArgs, OperationSuccess};
 
 use crate::{CoreError, KeelessCore, Result, Selection, StorageDescriptor};
 
-pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -> Result<()> {
+pub(crate) async fn run(
+    core: &mut KeelessCore,
+    descriptor: StorageDescriptor,
+    storage_config: Option<DatabaseStorageConfig>,
+) -> Result<()> {
     let provider = core
         .storage_providers
         .get(&descriptor.provider)
@@ -47,10 +51,11 @@ pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -
         sync_error = persistence_error.as_ref().map(Into::into);
     }
     core.selection = Some(Selection {
-        descriptor,
-        provider,
+        descriptor: Some(descriptor),
+        provider: Some(provider),
         database_id,
         exists,
+        storage_config,
     });
     core.sync_status = if sync_error.is_some() {
         crate::SyncStatus::Error
@@ -63,6 +68,6 @@ pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -
 }
 
 pub(super) async fn execute(core: &mut KeelessCore, args: OpenArgs) -> Result<OperationSuccess> {
-    run(core, args.storage).await?;
+    run(core, args.storage, args.storage_config).await?;
     Ok(OperationSuccess::Open(EmptyResult {}))
 }

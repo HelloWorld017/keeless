@@ -14,9 +14,9 @@ use web_sys::{File, FileSystemFileHandle};
 use crate::{
     clock::BrowserClock,
     config::BrowserConfig,
-    persistence::BrowserDatabasePersistence,
+    persistence::{BrowserDatabasePersistence, BrowserStorageConfigurer},
     storages::{indexeddb::IndexedDbStorage, local_file::LocalFileStorage},
-    utils::indexeddb::{IndexedDb, WIRE_CONFIG_KEY, js_error},
+    utils::indexeddb::{CORE_CONFIG_KEY, IndexedDb, WIRE_CONFIG_KEY, js_error},
 };
 
 struct BrowserApproval;
@@ -96,11 +96,16 @@ impl BrowserCore {
                 idb: idb.clone(),
                 key: WIRE_CONFIG_KEY,
             }),
+            core_state: Arc::new(BrowserConfig {
+                idb: idb.clone(),
+                key: CORE_CONFIG_KEY,
+            }),
             connection_approval: Arc::new(BrowserApproval),
             password_input: None,
             passkey_consent: None,
             clock: Arc::new(BrowserClock),
             database_persistence: Arc::new(BrowserDatabasePersistence::new(idb.clone())),
+            storage_configurer: Some(Arc::new(BrowserStorageConfigurer::new(idb.clone()))),
             task_spawner: Some(Arc::new(BrowserTaskSpawner)),
             transfer_provider: None,
         };

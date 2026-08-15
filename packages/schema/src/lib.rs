@@ -11,6 +11,46 @@ pub struct StorageDescriptor {
     pub path: String,
 }
 
+/// Storage connection data retained in the encrypted per-database configuration.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum DatabaseStorageConfig {
+    LocalFile {
+        path: String,
+    },
+    IndexedDb,
+    WebDav {
+        url: String,
+        username: String,
+        password: String,
+        path: String,
+    },
+}
+
+impl DatabaseStorageConfig {
+    pub const fn storage_type(&self) -> &'static str {
+        match self {
+            Self::LocalFile { .. } => "local-file",
+            Self::IndexedDb => "indexeddb",
+            Self::WebDav { .. } => "webdav",
+        }
+    }
+}
+
+/// Plaintext metadata used to present a recently opened database before unlock.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecentDatabase {
+    pub id: String,
+    pub name: String,
+    pub storage_type: String,
+    pub last_opened_at_ms: i64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseStatus {
@@ -288,6 +328,7 @@ pub struct EntryAttachmentUpdate {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OperationResource {
     DatabaseStatus,
+    RecentDatabase,
     StorageDescriptor,
     Config,
     Entry,
@@ -300,6 +341,7 @@ impl OperationResource {
     pub const fn name(self) -> &'static str {
         match self {
             Self::DatabaseStatus => "databaseStatus",
+            Self::RecentDatabase => "recentDatabase",
             Self::StorageDescriptor => "storageDescriptor",
             Self::Config => "config",
             Self::Entry => "entry",
@@ -312,6 +354,7 @@ impl OperationResource {
 
 pub const OPERATION_RESOURCES: &[OperationResource] = &[
     OperationResource::DatabaseStatus,
+    OperationResource::RecentDatabase,
     OperationResource::StorageDescriptor,
     OperationResource::Config,
     OperationResource::Entry,
@@ -342,6 +385,13 @@ operation_schema! {
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
             pub struct OpenArgs {
                 pub storage: StorageDescriptor,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub storage_config: Option<DatabaseStorageConfig>,
             }
         }
         result {
@@ -352,6 +402,52 @@ operation_schema! {
         senders: [App, Passkey],
         recipients: [CoreUntrusted],
         mutates: [DatabaseStatus],
+    }
+
+    GetRecentDatabases("getRecentDatabases") {
+        args {
+            #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(deny_unknown_fields)]
+            pub struct GetRecentDatabasesArgs {}
+        }
+        result {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct RecentDatabasesResult {
+                pub databases: Vec<RecentDatabase>,
+            }
+        }
+        senders: [App],
+        recipients: [CoreUntrusted],
+        queries: [RecentDatabase],
+    }
+
+    OpenRecentDatabase("openRecentDatabase") {
+        args {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct OpenRecentDatabaseArgs {
+                pub id: String,
+            }
+        }
+        result EmptyResult
+        senders: [App],
+        recipients: [CoreUntrusted],
+        mutates: [DatabaseStatus],
+    }
+
+    DeleteRecentDatabase("deleteRecentDatabase") {
+        args {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct DeleteRecentDatabaseArgs {
+                pub id: String,
+            }
+        }
+        result EmptyResult
+        senders: [App],
+        recipients: [CoreUntrusted],
+        mutates: [RecentDatabase],
     }
 
     Create("create") {

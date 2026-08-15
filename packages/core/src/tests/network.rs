@@ -131,6 +131,7 @@ async fn lock_drops_the_taken_core_server_and_preserves_untrusted_status() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -241,6 +242,7 @@ async fn runtime_approved_client_skips_initial_and_upgrade_prompts() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -300,6 +302,7 @@ async fn runtime_client_is_restored_when_the_core_endpoint_is_reopened() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -335,6 +338,7 @@ async fn removing_runtime_clients_revokes_both_endpoints() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();

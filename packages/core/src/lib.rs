@@ -30,8 +30,8 @@ pub use error::{CoreError, Result};
 pub use host::{
     Clock, ConnectionApprovalKind, ConnectionApprovalProvider, ConnectionApprovalRequest,
     DatabasePersistence, HostFuture, KeelessHost, PasskeyConsentMode, PasskeyConsentProvider,
-    PasskeyConsentRequest, PasswordInputMode, PasswordInputProvider, SystemClock, TaskSpawner,
-    TransferProvider,
+    PasskeyConsentRequest, PasswordInputMode, PasswordInputProvider, StorageConfigurer,
+    SystemClock, TaskSpawner, TransferProvider,
 };
 pub use keeless_schema;
 pub use keeless_schema::{
@@ -54,13 +54,29 @@ impl DatabaseId {
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    pub(crate) fn from_recent_id(id: &str) -> Result<Self> {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        URL_SAFE_NO_PAD
+            .decode(id)
+            .map(Self)
+            .map_err(|_| CoreError::InvalidRecentDatabase)
+    }
+
+    pub(crate) fn recent_id(&self) -> String {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        URL_SAFE_NO_PAD.encode(&self.0)
+    }
 }
 
 struct Selection {
-    descriptor: StorageDescriptor,
-    provider: Arc<dyn StorageProvider>,
+    descriptor: Option<StorageDescriptor>,
+    provider: Option<Arc<dyn StorageProvider>>,
     database_id: DatabaseId,
     exists: bool,
+    storage_config: Option<keeless_schema::DatabaseStorageConfig>,
 }
 
 type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>;
@@ -84,6 +100,8 @@ pub struct KeelessCore {
     extensions: extensions::Extensions,
     last_activity_ms: Option<u64>,
     persistence: Arc<dyn DatabasePersistence>,
+    core_state: Arc<dyn keeless_lesswire::StateStore>,
+    storage_configurer: Option<Arc<dyn StorageConfigurer>>,
     journal: Option<operations::mutations::MutationCoordinator>,
     sync_status: SyncStatus,
     sync_error: Option<OperationError>,
@@ -140,6 +158,8 @@ impl KeelessCore {
             extensions: extensions::Extensions::new()?,
             last_activity_ms: None,
             persistence: host.database_persistence,
+            core_state: host.core_state,
+            storage_configurer: host.storage_configurer,
             journal: None,
             sync_status: SyncStatus::Idle,
             sync_error: None,
@@ -415,8 +435,16 @@ impl KeelessCore {
         let Some(selection) = &self.selection else {
             return;
         };
-        let provider = Arc::clone(&selection.provider);
-        let path = selection.descriptor.path.clone();
+        let Some(provider) = selection.provider.as_ref().cloned() else {
+            return;
+        };
+        let Some(path) = selection
+            .descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.path.clone())
+        else {
+            return;
+        };
         let result = Arc::new(Mutex::new(None));
         let task_result = Arc::clone(&result);
         spawner.spawn(Box::pin(async move {
@@ -483,6 +511,10 @@ impl KeelessCore {
         let persisted = PersistedConfig {
             version: CONFIG_VERSION,
             settings: self.settings.clone(),
+            storage_config: self
+                .selection
+                .as_ref()
+                .and_then(|selection| selection.storage_config.clone()),
         };
         let bytes = Zeroizing::new(serde_json::to_vec(&persisted)?);
         state.save_record(CONFIG_RECORD, &bytes).await
@@ -500,17 +532,18 @@ impl KeelessCore {
             .database_id
             .clone();
         let state = EncryptedDatabaseStateStore::new(raw_key, persistence, database_id)?;
-        let settings = match state.load_record(CONFIG_RECORD).await? {
+        let persisted = match state.load_record(CONFIG_RECORD).await? {
             Some(bytes) => {
                 let persisted: PersistedConfig = serde_json::from_slice(&bytes)
                     .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
                 persisted.validate()?;
-                persisted.settings
+                persisted
             }
             None => {
                 let persisted = PersistedConfig {
                     version: CONFIG_VERSION,
                     settings: KeelessConfig::default(),
+                    storage_config: None,
                 };
                 state
                     .save_record(
@@ -518,7 +551,7 @@ impl KeelessCore {
                         &Zeroizing::new(serde_json::to_vec(&persisted)?),
                     )
                     .await?;
-                persisted.settings
+                persisted
             }
         };
         let server = Server::new(ServerHost {
@@ -531,11 +564,64 @@ impl KeelessCore {
         })
         .await
         .map_err(|error| CoreError::Host(error.to_string()))?;
-        self.settings = settings;
+        self.settings = persisted.settings;
+        if let Some(selection) = &mut self.selection
+            && selection.storage_config.is_none()
+        {
+            selection.storage_config = persisted.storage_config;
+        }
         self.core_transfers = Some(server.transfers());
         self.encrypted_state = Some(state);
         self.core_server_generation = self.core_server_generation.wrapping_add(1);
         self.core_server = Some(server);
+        Ok(())
+    }
+
+    pub(crate) async fn restore_recent_selection(
+        &mut self,
+        raw_key: &keeless_kdbx::SecureArray<32>,
+    ) -> Result<()> {
+        let database_id = self
+            .selection
+            .as_ref()
+            .ok_or(CoreError::NoDatabaseSelected)?
+            .database_id
+            .clone();
+        if self
+            .selection
+            .as_ref()
+            .is_some_and(|selection| selection.descriptor.is_some())
+        {
+            return Ok(());
+        }
+        let state = EncryptedDatabaseStateStore::new(
+            raw_key,
+            self.persistence.clone(),
+            database_id.clone(),
+        )?;
+        let bytes = state
+            .load_record(CONFIG_RECORD)
+            .await?
+            .ok_or(CoreError::RecentDatabaseUnavailable)?;
+        let persisted: PersistedConfig = serde_json::from_slice(&bytes)
+            .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
+        persisted.validate()?;
+        let config = persisted
+            .storage_config
+            .ok_or(CoreError::RecentDatabaseUnavailable)?;
+        let configurer = self
+            .storage_configurer
+            .as_ref()
+            .ok_or(CoreError::StorageConfigurationUnavailable)?;
+        let (descriptor, provider) = configurer.configure(config.clone()).await?;
+        let resolved_id = self.persistence.select(&descriptor).await?;
+        if resolved_id != database_id {
+            return Err(CoreError::RecentDatabaseMismatch);
+        }
+        let selection = self.selection.as_mut().expect("selection was checked");
+        selection.descriptor = Some(descriptor);
+        selection.provider = Some(provider);
+        selection.storage_config = Some(config);
         Ok(())
     }
 

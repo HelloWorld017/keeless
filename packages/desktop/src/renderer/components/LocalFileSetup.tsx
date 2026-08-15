@@ -15,9 +15,12 @@ export const LocalFileSetup = ({ isPending, error, onOpen }: StorageSetupCompone
     setIsPicking(true);
     setPickerError(undefined);
     try {
-      const capabilityToken = await window.keelessDesktop.pickLocalFile(mode);
-      if (capabilityToken) {
-        await onOpen(() => ({ provider: 'local-file', path: capabilityToken }));
+      const path = await window.keelessDesktop.pickLocalFile(mode);
+      if (path) {
+        await onOpen(() => ({
+          storage: { provider: 'local-file', path },
+          storageConfig: { type: 'localFile', path },
+        }));
       }
     } catch (nextError) {
       setPickerError(messageFor(nextError));

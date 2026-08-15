@@ -8,19 +8,29 @@ use zeroize::Zeroizing;
 use crate::{CoreError, KeelessCore, Result, credential::CredentialVault};
 
 pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
-    let (provider, path, database_id) = core
+    let database_id = core
+        .selection
+        .as_ref()
+        .map(|selection| selection.database_id.clone())
+        .ok_or(CoreError::NoDatabaseSelected)?;
+    let key = CompositeKey::new().with_password(password)?;
+    let raw_key = key.build_raw_key()?;
+    core.restore_recent_selection(&raw_key).await?;
+    let (provider, path) = core
         .selection
         .as_ref()
         .map(|selection| {
             (
-                Arc::clone(&selection.provider),
-                selection.descriptor.path.clone(),
-                selection.database_id.clone(),
+                selection.provider.as_ref().cloned(),
+                selection
+                    .descriptor
+                    .as_ref()
+                    .map(|descriptor| descriptor.path.clone()),
             )
         })
         .ok_or(CoreError::NoDatabaseSelected)?;
-    let key = CompositeKey::new().with_password(password)?;
-    let raw_key = key.build_raw_key()?;
+    let provider = provider.ok_or(CoreError::RecentDatabaseUnavailable)?;
+    let path = path.ok_or(CoreError::RecentDatabaseUnavailable)?;
     let persistence = core.persistence.clone();
     let mut journal = super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
     let cached = persistence.read_cache().await?;
@@ -90,6 +100,13 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         persistence.write_cache(&cache).await?;
     }
     core.activate_database_state(&raw_key).await?;
+    if core
+        .selection
+        .as_ref()
+        .is_some_and(|selection| selection.storage_config.is_some())
+    {
+        core.persist().await?;
+    }
     let credential = if core.settings.paranoia_mode {
         None
     } else {
@@ -121,6 +138,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         selection.exists = true;
     }
     core.last_activity_ms = Some(core.clock.monotonic_millis());
+    super::recent::record_success(core).await?;
     Ok(())
 }
 

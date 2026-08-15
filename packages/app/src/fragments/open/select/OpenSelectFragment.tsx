@@ -30,12 +30,12 @@ import { useNavigate } from '@/fragments/_providers/RouterProvider';
 import { IconAlertCircle, IconArrowRight, IconLoaderCircle } from '@/icons';
 import { buildRoute } from '@/utils/route';
 import { useRef, useState } from 'react';
+import { SetupLayout } from '../_components/SetupLayout';
+import { StepError } from '../_components/StepError';
 import { errorMessage } from '../_utils/errorMessage';
-import { SetupLayout } from './SetupLayout';
-import { StepError } from './StepError';
 import type { HostKind, HostStorage, StorageDescriptorGetter } from '@/types/Host';
 
-export const SelectStep = () => {
+export const OpenSelectFragment = () => {
   const host = useHost();
   const hosts = useHosts();
   const hostsLoading = useHostsLoading();
@@ -58,8 +58,8 @@ export const SelectStep = () => {
     setIsPending(true);
     setError(undefined);
     try {
-      const descriptor = await getDescriptor();
-      await client.request('open', { storage: descriptor });
+      const openArgs = await getDescriptor();
+      await client.request('open', openArgs);
       const { database } = await client.request('getCoreStatus', {});
       if (database === 'unlocked') {
         await client.upgrade();

@@ -1,10 +1,10 @@
 import type { MessageFrame } from '@keeless/lesswire';
-import type { StorageDescriptor } from '@keeless/schema';
+import type { OpenArgs } from '@keeless/schema';
 import type { ComponentType, ReactNode } from 'react';
 
 export type HostKind = 'desktop' | 'extension' | 'browser';
 
-export type StorageDescriptorGetter = () => StorageDescriptor | Promise<StorageDescriptor>;
+export type StorageDescriptorGetter = () => OpenArgs | Promise<OpenArgs>;
 
 export type StorageSetupComponentProps = {
   isPending: boolean;

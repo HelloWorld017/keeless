@@ -10,6 +10,9 @@ pub(crate) struct PersistedConfig {
     pub version: u8,
     #[serde(default)]
     pub settings: keeless_schema::KeelessConfig,
+    /// Absent in version-1 records written before recent database support.
+    #[serde(default)]
+    pub storage_config: Option<keeless_schema::DatabaseStorageConfig>,
 }
 
 impl PersistedConfig {

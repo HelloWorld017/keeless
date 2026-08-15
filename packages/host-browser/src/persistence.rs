@@ -1,12 +1,17 @@
-use std::sync::Mutex;
+use std::{rc::Rc, sync::Mutex};
 
 use js_sys::{Object, Reflect, Uint8Array};
 use keeless_core::{
-    CoreError, DatabaseId, DatabasePersistence, HostFuture, Result, StorageDescriptor,
+    CoreError, DatabaseId, DatabasePersistence, HostFuture, Result, StorageConfigurer,
+    StorageDescriptor, StorageProvider, keeless_schema::DatabaseStorageConfig,
 };
+use keeless_sync::{WebDavAuth, WebDavProvider};
 use rexie::TransactionMode;
 
-use crate::utils::indexeddb::{IndexedDb, STATE_STORE};
+use crate::{
+    storages::indexeddb::IndexedDbStorage,
+    utils::indexeddb::{IndexedDb, STATE_STORE},
+};
 
 const MAX_STATE_RECORD_SIZE: usize = 128 * 1024;
 
@@ -39,6 +44,66 @@ impl BrowserDatabasePersistence {
             _ => Err(CoreError::Host("invalid database state record name".into())),
         }
     }
+
+    fn state_keys(database_id: &DatabaseId) -> [String; 2] {
+        let id = String::from_utf8_lossy(database_id.as_bytes());
+        [format!("{id}:config"), format!("{id}:core-wire-state")]
+    }
+}
+
+pub(crate) struct BrowserStorageConfigurer {
+    idb: Rc<IndexedDb>,
+}
+
+impl BrowserStorageConfigurer {
+    pub(crate) fn new(idb: Rc<IndexedDb>) -> Self {
+        Self { idb }
+    }
+}
+
+impl StorageConfigurer for BrowserStorageConfigurer {
+    // Core uses Arc for one storage-provider API across native and single-threaded WASM hosts.
+    #[allow(clippy::arc_with_non_send_sync)]
+    fn configure(
+        &self,
+        config: DatabaseStorageConfig,
+    ) -> HostFuture<'_, Result<(StorageDescriptor, std::sync::Arc<dyn StorageProvider>)>> {
+        Box::pin(async move {
+            match config {
+                DatabaseStorageConfig::IndexedDb => Ok((
+                    StorageDescriptor {
+                        provider: "indexeddb".into(),
+                        // Match the browser's existing default descriptor. IndexedDbStorage
+                        // normalizes this to its internal default backing path.
+                        path: String::new(),
+                    },
+                    std::sync::Arc::new(IndexedDbStorage {
+                        idb: self.idb.clone(),
+                    }) as std::sync::Arc<dyn StorageProvider>,
+                )),
+                DatabaseStorageConfig::WebDav {
+                    url,
+                    username,
+                    password,
+                    path,
+                } => {
+                    let provider =
+                        WebDavProvider::new(url, Some(WebDavAuth::basic(username, password)))
+                            .map_err(|error| CoreError::Host(error.to_string()))?;
+                    Ok((
+                        StorageDescriptor {
+                            provider: "webdav".into(),
+                            path,
+                        },
+                        std::sync::Arc::new(provider) as std::sync::Arc<dyn StorageProvider>,
+                    ))
+                }
+                DatabaseStorageConfig::LocalFile { .. } => Err(CoreError::Host(
+                    "browser local-file storage cannot be restored".into(),
+                )),
+            }
+        })
+    }
 }
 
 impl DatabasePersistence for BrowserDatabasePersistence {
@@ -56,6 +121,41 @@ impl DatabasePersistence for BrowserDatabasePersistence {
                 .map_err(|_| CoreError::Host("browser state lock was poisoned".into()))? =
                 Some(id.clone());
             Ok(id)
+        })
+    }
+
+    fn select_by_id<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            *self
+                .selected
+                .lock()
+                .map_err(|_| CoreError::Host("browser state lock was poisoned".into()))? =
+                Some(database_id.clone());
+            Ok(())
+        })
+    }
+
+    fn purge<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            let transaction = self
+                .idb
+                .db
+                .transaction(&[STATE_STORE], TransactionMode::ReadWrite)
+                .map_err(|error| CoreError::Host(error.to_string()))?;
+            let store = transaction
+                .store(STATE_STORE)
+                .map_err(|error| CoreError::Host(error.to_string()))?;
+            for key in Self::state_keys(database_id) {
+                store
+                    .delete(key.into())
+                    .await
+                    .map_err(|error| CoreError::Host(error.to_string()))?;
+            }
+            transaction
+                .done()
+                .await
+                .map_err(|error| CoreError::Host(error.to_string()))?;
+            Ok(())
         })
     }
 

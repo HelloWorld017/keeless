@@ -24,6 +24,7 @@ async fn passkey_core(storage: Arc<MemoryStorage>) -> KeelessCore {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -397,7 +398,7 @@ async fn registered_passkey_survives_journal_replay() {
         provider: "memory".into(),
         path: "vault.kdbx".into(),
     };
-    operations::open::run(&mut core, descriptor.clone())
+    operations::open::run(&mut core, descriptor.clone(), None)
         .await
         .unwrap();
     operations::unlock::run(&mut core, b"correct")
@@ -433,7 +434,7 @@ async fn registered_passkey_survives_journal_replay() {
     })
     .await
     .unwrap();
-    operations::open::run(&mut replayed, descriptor)
+    operations::open::run(&mut replayed, descriptor, None)
         .await
         .unwrap();
     operations::unlock::run(&mut replayed, b"correct")
@@ -504,6 +505,7 @@ async fn failed_passkey_registration_does_not_create_an_entry_or_index() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();

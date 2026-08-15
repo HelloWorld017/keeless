@@ -5,6 +5,7 @@ use keeless_host_desktop_shared::{fs, state::FileStore};
 
 pub const MAX_CONFIG_SIZE: usize = 1024 * 1024;
 pub const WIRE_STATE_FILE: &str = "wire-state.json";
+pub const CORE_STATE_FILE: &str = "core-state.json";
 pub const DESKTOP_WIRE_STATE_FILE: &str = "desktop-wire-state.json";
 
 #[derive(Debug)]
@@ -94,6 +95,7 @@ mod tests {
     #[test]
     fn wire_state_uses_the_current_file_name() {
         assert_eq!(WIRE_STATE_FILE, "wire-state.json");
+        assert_eq!(CORE_STATE_FILE, "core-state.json");
         assert_ne!(DESKTOP_WIRE_STATE_FILE, WIRE_STATE_FILE);
     }
 

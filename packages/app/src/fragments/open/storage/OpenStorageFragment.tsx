@@ -36,8 +36,8 @@ export const OpenStorageFragment = () => {
     setIsPending(true);
     setError(undefined);
     try {
-      const descriptor = await getDescriptor();
-      await requestClient.data.request('open', { storage: descriptor });
+      const openArgs = await getDescriptor();
+      await requestClient.data.request('open', openArgs);
       const { database } = await requestClient.data.request('getCoreStatus', {});
       if (database === 'unlocked') {
         await requestClient.data.upgrade();

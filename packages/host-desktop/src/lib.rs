@@ -33,10 +33,10 @@ use tokio::{
 };
 
 use crate::{
-    config::{DesktopConfig, WIRE_STATE_FILE},
+    config::{CORE_STATE_FILE, DesktopConfig, WIRE_STATE_FILE},
     native_ui::NativeUi,
     persistence::DesktopDatabasePersistence,
-    storage::LocalFileStorage,
+    storage::{DesktopStorageConfigurer, LocalFileStorage},
 };
 use ipc::{Request, Response, ServerListener};
 
@@ -144,6 +144,10 @@ impl DesktopHost {
             DesktopConfig::project(WIRE_STATE_FILE)
                 .map_err(|error| napi_error(error.to_string()))?,
         );
+        let core_state = Arc::new(
+            DesktopConfig::project(CORE_STATE_FILE)
+                .map_err(|error| napi_error(error.to_string()))?,
+        );
         let (shutdown, shutdown_rx) = watch::channel(false);
         let native_ui = Arc::new(NativeUi::new(
             native_ui_path,
@@ -160,11 +164,13 @@ impl DesktopHost {
         let core = KeelessCore::new(KeelessHost {
             storage_providers: providers,
             untrusted_state: wire_config,
+            core_state,
             connection_approval: native_ui.clone(),
             password_input: Some(native_ui.clone()),
             passkey_consent: Some(native_ui.clone()),
             clock: Arc::new(SystemClock),
             database_persistence,
+            storage_configurer: Some(Arc::new(DesktopStorageConfigurer::new(storage.clone()))),
             task_spawner: Some(Arc::new(TokioTaskSpawner)),
             transfer_provider: None,
         })

@@ -37,7 +37,10 @@ export const createBrowserHost = (): Host => {
       icon: <IconDatabaseZap />,
       setup: {
         component: null,
-        getDefaultDescriptor: () => ({ provider: 'indexeddb', path: '' }),
+        getDefaultDescriptor: () => ({
+          storage: { provider: 'indexeddb', path: '' },
+          storageConfig: { type: 'indexedDb' },
+        }),
       },
     },
     {

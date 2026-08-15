@@ -33,7 +33,10 @@ export const WebDavSetup = ({
     void onOpen(async () => {
       try {
         await getCore().configureWebDav(url, username, password);
-        return { provider: 'webdav', path };
+        return {
+          storage: { provider: 'webdav', path },
+          storageConfig: { type: 'webDav', url, username, password, path },
+        };
       } finally {
         password = '';
       }

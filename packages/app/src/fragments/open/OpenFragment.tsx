@@ -8,9 +8,10 @@ import { useEffect, useState } from 'react';
 import { Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
-import { SelectStep } from './_components/SelectStep';
 import { errorMessage } from './_utils/errorMessage';
 import { OpenCreateFragment } from './create';
+import { OpenRecentFragment } from './recent/OpenRecentFragment';
+import { OpenSelectFragment } from './select/OpenSelectFragment';
 import { OpenStorageFragment } from './storage';
 import { OpenUnlockFragment } from './unlock';
 
@@ -101,7 +102,8 @@ export const OpenFragment = () => {
             <Route path={getRoute('openStorage')} component={OpenStorageFragment} />
             <Route path={getRoute('openCreate')} component={OpenCreateFragment} />
             <Route path={getRoute('openUnlock')} component={OpenUnlockFragment} />
-            <Route path={getRoute('open')} component={SelectStep} />
+            <Route path={getRoute('openSelect')} component={OpenSelectFragment} />
+            <Route path={getRoute('open')} component={OpenRecentFragment} />
           </Switch>
         )}
       </div>

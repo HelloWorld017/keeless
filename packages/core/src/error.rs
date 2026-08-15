@@ -11,6 +11,16 @@ pub enum CoreError {
     UnknownStorageProvider(String),
     #[error("no database is selected")]
     NoDatabaseSelected,
+    #[error("recent database is invalid")]
+    InvalidRecentDatabase,
+    #[error("recent database is unavailable")]
+    RecentDatabaseUnavailable,
+    #[error("storage configuration is unavailable")]
+    StorageConfigurationUnavailable,
+    #[error("recent database storage does not match its local state")]
+    RecentDatabaseMismatch,
+    #[error("selected recent database cannot be deleted")]
+    RecentDatabaseSelected,
     #[error("database does not exist")]
     DatabaseNotFound,
     #[error("database already exists")]
@@ -139,6 +149,21 @@ impl From<&CoreError> for OperationError {
                 "Storage provider is unavailable",
             ),
             CoreError::NoDatabaseSelected => ("database_not_selected", "No database is selected"),
+            CoreError::InvalidRecentDatabase => {
+                ("recent_database_invalid", "Recent database is invalid")
+            }
+            CoreError::RecentDatabaseUnavailable | CoreError::StorageConfigurationUnavailable => (
+                "recent_database_unavailable",
+                "Recent database is unavailable",
+            ),
+            CoreError::RecentDatabaseMismatch => (
+                "recent_database_mismatch",
+                "Recent database storage does not match its local state",
+            ),
+            CoreError::RecentDatabaseSelected => (
+                "recent_database_selected",
+                "Selected recent database cannot be deleted",
+            ),
             CoreError::DatabaseNotFound => ("database_not_found", "Database does not exist"),
             CoreError::DatabaseAlreadyExists => {
                 ("database_already_exists", "Database already exists")

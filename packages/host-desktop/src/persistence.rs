@@ -289,6 +289,24 @@ impl DatabasePersistence for DesktopDatabasePersistence {
         })
     }
 
+    fn select_by_id<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            *self.selected.write().await = Some(database_id.clone());
+            Ok(())
+        })
+    }
+
+    fn purge<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            let store = DatabaseStore::at(&self.app_data, database_id, Arc::clone(&self.writes));
+            match tokio::fs::remove_dir_all(store.directory).await {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(host_error(error)),
+            }
+        })
+    }
+
     fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>> {
         Box::pin(async move { self.store().await?.read_cache().await.map_err(host_error) })
     }
@@ -577,6 +595,31 @@ mod tests {
                 .mode()
                 & 0o777,
             0o600
+        );
+    }
+
+    #[tokio::test]
+    async fn select_by_id_and_purge_only_remove_app_local_namespace() {
+        let directory = tempfile::tempdir().unwrap();
+        let storage = Arc::new(LocalFileStorage::new());
+        let persistence = DesktopDatabasePersistence::at(directory.path().join("data"), storage);
+        let source = directory.path().join("vault.kdbx");
+        std::fs::write(&source, b"source").unwrap();
+        let id = database_id_from_backing_path("local-file", &source).unwrap();
+        persistence.select_by_id(&id).await.unwrap();
+        persistence.write_cache(b"cache").await.unwrap();
+        persistence.quarantine_cache("test").await.unwrap();
+        persistence.purge(&id).await.unwrap();
+        assert!(std::fs::read(&source).is_ok());
+        assert!(
+            !directory
+                .path()
+                .join("data")
+                .join(format!(
+                    "db_{}",
+                    std::str::from_utf8(id.as_bytes()).unwrap()
+                ))
+                .exists()
         );
     }
 }

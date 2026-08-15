@@ -1,5 +1,8 @@
 use super::*;
-use keeless_schema::LockArgs;
+use keeless_schema::{
+    DatabaseStorageConfig, DeleteRecentDatabaseArgs, GetRecentDatabasesArgs, LockArgs, OpenArgs,
+    OpenRecentDatabaseArgs, Operation, OperationSuccess,
+};
 
 #[tokio::test]
 async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
@@ -23,7 +26,7 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         provider: "memory".into(),
         path: "vault.kdbx".into(),
     };
-    operations::open::run(&mut core, descriptor.clone())
+    operations::open::run(&mut core, descriptor.clone(), None)
         .await
         .unwrap();
     assert_eq!(
@@ -120,6 +123,7 @@ async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -172,6 +176,7 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -246,6 +251,7 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
             provider: "memory".into(),
             path: "new.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -369,6 +375,7 @@ async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -454,6 +461,7 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -472,4 +480,87 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
         operations::get_database_status::run(&mut core),
         DatabaseStatus::Unlocked
     );
+}
+
+#[tokio::test]
+async fn recent_database_restores_encrypted_storage_configuration() {
+    let clock = Arc::new(FakeClock::new(100));
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let descriptor = StorageDescriptor {
+        provider: "memory".into(),
+        path: "vault.kdbx".into(),
+    };
+    let mut providers: HashMap<String, Arc<dyn StorageProvider>> = HashMap::new();
+    providers.insert("memory".into(), storage.clone());
+    let core_state = Arc::new(MemoryConfig::default());
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        core_state,
+        storage_configurer: Some(Arc::new(MemoryStorageConfigurer {
+            descriptor: descriptor.clone(),
+            provider: storage,
+        })),
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval),
+            clock.clone(),
+        )
+    })
+    .await
+    .unwrap();
+
+    operations::execute(
+        &mut core,
+        Operation::Open(OpenArgs {
+            storage: descriptor,
+            storage_config: Some(DatabaseStorageConfig::LocalFile {
+                path: "/tmp/vault.kdbx".into(),
+            }),
+        }),
+    )
+    .await
+    .unwrap();
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+    let recent = match operations::execute(
+        &mut core,
+        Operation::GetRecentDatabases(GetRecentDatabasesArgs {}),
+    )
+    .await
+    .unwrap()
+    {
+        OperationSuccess::GetRecentDatabases(result) => result.databases,
+        _ => unreachable!(),
+    };
+    assert_eq!(recent.len(), 1);
+    assert_eq!(recent[0].last_opened_at_ms, 100);
+
+    operations::lock::run(&mut core);
+    operations::execute(
+        &mut core,
+        Operation::OpenRecentDatabase(OpenRecentDatabaseArgs {
+            id: recent[0].id.clone(),
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(operations::get_storage_descriptor::run(&mut core), None);
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+    assert_eq!(
+        operations::get_database_status::run(&mut core),
+        DatabaseStatus::Unlocked
+    );
+    assert!(matches!(
+        operations::execute(
+            &mut core,
+            Operation::DeleteRecentDatabase(DeleteRecentDatabaseArgs {
+                id: recent[0].id.clone(),
+            }),
+        )
+        .await,
+        Err(CoreError::RecentDatabaseSelected)
+    ));
 }

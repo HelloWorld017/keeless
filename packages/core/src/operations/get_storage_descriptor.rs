@@ -6,7 +6,7 @@ pub(crate) fn run(core: &mut KeelessCore) -> Option<StorageDescriptor> {
     let descriptor = core
         .selection
         .as_ref()
-        .map(|selection| selection.descriptor.clone());
+        .and_then(|selection| selection.descriptor.clone());
     core.touch_activity();
     descriptor
 }

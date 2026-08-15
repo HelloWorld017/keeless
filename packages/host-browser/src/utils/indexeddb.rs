@@ -9,6 +9,7 @@ const DATABASE_NAME: &str = "keeless";
 pub(crate) const CONFIG_STORE: &str = "config";
 pub(crate) const ENTRY_STORE: &str = "entries";
 pub(crate) const WIRE_CONFIG_KEY: &str = "lesswire-server-v1";
+pub(crate) const CORE_CONFIG_KEY: &str = "core-state-v1";
 pub(crate) const STATE_STORE: &str = "database-state";
 
 pub(crate) fn js_error(error: impl std::fmt::Display) -> JsValue {

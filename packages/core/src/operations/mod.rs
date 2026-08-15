@@ -21,6 +21,7 @@ pub(crate) mod mutations;
 pub(crate) mod open;
 pub(crate) mod prepare_database_export;
 pub(crate) mod prepare_entry_attachment_download;
+pub(crate) mod recent;
 pub(crate) mod reveal_entry_fields;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;
@@ -39,6 +40,9 @@ pub(crate) async fn execute(
 ) -> Result<OperationSuccess> {
     match operation {
         Operation::Open(args) => open::execute(core, args).await,
+        Operation::GetRecentDatabases(args) => recent::get(core, args).await,
+        Operation::OpenRecentDatabase(args) => recent::open(core, args).await,
+        Operation::DeleteRecentDatabase(args) => recent::delete(core, args).await,
         Operation::Create(args) => create::execute(core, args).await,
         Operation::Unlock(args) => unlock::execute(core, args).await,
         Operation::Lock(args) => lock::execute(core, args).await,

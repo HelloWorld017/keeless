@@ -113,6 +113,19 @@ impl DatabasePersistence for MemoryDatabasePersistence {
         })
     }
 
+    fn select_by_id<'a>(&'a self, _database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn purge<'a>(&'a self, _database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>> {
+        Box::pin(async move {
+            *self.cache.lock().unwrap() = None;
+            self.journal.lock().unwrap().clear();
+            self.state.lock().unwrap().clear();
+            Ok(())
+        })
+    }
+
     fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>> {
         Box::pin(async { Ok(self.cache.lock().unwrap().clone()) })
     }
@@ -346,6 +359,20 @@ impl StorageProvider for MemoryStorage {
     }
 }
 
+pub(super) struct MemoryStorageConfigurer {
+    pub(super) descriptor: StorageDescriptor,
+    pub(super) provider: Arc<dyn StorageProvider>,
+}
+
+impl StorageConfigurer for MemoryStorageConfigurer {
+    fn configure(
+        &self,
+        _: keeless_schema::DatabaseStorageConfig,
+    ) -> HostFuture<'_, Result<(StorageDescriptor, Arc<dyn StorageProvider>)>> {
+        Box::pin(async { Ok((self.descriptor.clone(), Arc::clone(&self.provider))) })
+    }
+}
+
 #[derive(Default)]
 pub(super) struct MemoryTransferProvider {
     uploads: Mutex<std::collections::HashMap<String, Zeroizing<Vec<u8>>>>,
@@ -527,6 +554,7 @@ pub(super) async fn query_core() -> (KeelessCore, QueryIds) {
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -546,11 +574,13 @@ pub(super) async fn query_core_with_persistence(
     let mut core = KeelessCore::new(KeelessHost {
         storage_providers: providers,
         untrusted_state: Arc::new(MemoryConfig::default()),
+        core_state: Arc::new(MemoryConfig::default()),
         connection_approval: Arc::new(Approval),
         password_input: None,
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock: Arc::new(FakeClock::new(1234)),
         database_persistence: persistence,
+        storage_configurer: None,
         task_spawner: None,
         transfer_provider: None,
     })
@@ -562,6 +592,7 @@ pub(super) async fn query_core_with_persistence(
             provider: "memory".into(),
             path: "vault.kdbx".into(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -590,11 +621,13 @@ pub(super) fn host(
     KeelessHost {
         storage_providers: HashMap::new(),
         untrusted_state: config,
+        core_state: Arc::new(MemoryConfig::default()),
         connection_approval: Arc::new(Approval),
         password_input: None,
         passkey_consent: Some(Arc::new(PasskeyConsent::approve(0))),
         clock,
         database_persistence: Arc::new(MemoryDatabasePersistence::default()),
+        storage_configurer: None,
         task_spawner: None,
         transfer_provider: None,
     }

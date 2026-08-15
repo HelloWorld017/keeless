@@ -1,6 +1,9 @@
-use std::{collections::HashMap, fmt::Write as _, io, path::PathBuf, sync::RwLock};
+use std::{fmt::Write as _, io, path::PathBuf, sync::Arc};
 
-use keeless_core::DatabaseId;
+use keeless_core::{
+    CoreError, DatabaseId, HostFuture, Result as CoreResult, StorageConfigurer, StorageDescriptor,
+    keeless_schema::DatabaseStorageConfig,
+};
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, Revision, StorageError, StorageErrorKind, StorageFuture,
     StorageProvider, WriteCondition, WriteOutcome,
@@ -15,7 +18,6 @@ pub const MAX_LOCAL_FILE_SIZE: u64 = 128 * 1024 * 1024;
 
 #[derive(Debug, Default)]
 pub struct LocalFileStorage {
-    capabilities: RwLock<HashMap<String, LocalFileCapability>>,
     writes: tokio::sync::Mutex<()>,
 }
 
@@ -43,38 +45,71 @@ impl LocalFileStorage {
     /// The desktop host calls this only with a path returned by the Electron picker.
     pub fn grant_picker_path(&self, path: PathBuf) -> io::Result<String> {
         let path = canonical_backing_path(&path)?;
-        let database_id = database_id_from_backing_path("local-file", &path)?;
-        let mut random = [0_u8; 32];
-        getrandom::getrandom(&mut random).map_err(io::Error::other)?;
-        let token = hex::encode(random);
-        self.capabilities
-            .write()
-            .map_err(|_| io::Error::other("local-file capability lock was poisoned"))?
-            .insert(token.clone(), LocalFileCapability { path, database_id });
-        Ok(token)
+        path.into_os_string().into_string().map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "local file path is not valid UTF-8",
+            )
+        })
     }
 
-    pub fn resolve_capability(&self, token: &str) -> Result<LocalFileCapability, StorageError> {
-        self.capabilities
-            .read()
-            .map_err(|_| {
-                error(
-                    StorageErrorKind::Other,
-                    "local-file capability lock was poisoned",
-                )
-            })?
-            .get(token)
-            .cloned()
-            .ok_or_else(|| {
-                error(
-                    StorageErrorKind::PermissionDenied,
-                    "invalid local-file capability",
-                )
-            })
+    pub fn resolve_capability(
+        &self,
+        descriptor: &str,
+    ) -> Result<LocalFileCapability, StorageError> {
+        let path = PathBuf::from(descriptor);
+        if !path.is_absolute() {
+            return Err(error(
+                StorageErrorKind::InvalidInput,
+                "local file path must be absolute",
+            ));
+        }
+        let path = canonical_backing_path(&path)
+            .map_err(|value| io_error("resolve local file path", value))?;
+        let database_id = database_id_from_backing_path("local-file", &path)
+            .map_err(|value| io_error("identify local file", value))?;
+        Ok(LocalFileCapability { path, database_id })
     }
 
     fn resolve(&self, token: &str) -> Result<PathBuf, StorageError> {
         Ok(self.resolve_capability(token)?.path)
+    }
+}
+
+pub struct DesktopStorageConfigurer {
+    storage: Arc<LocalFileStorage>,
+}
+
+impl DesktopStorageConfigurer {
+    pub fn new(storage: Arc<LocalFileStorage>) -> Self {
+        Self { storage }
+    }
+}
+
+impl StorageConfigurer for DesktopStorageConfigurer {
+    fn configure(
+        &self,
+        config: DatabaseStorageConfig,
+    ) -> HostFuture<'_, CoreResult<(StorageDescriptor, Arc<dyn StorageProvider>)>> {
+        Box::pin(async move {
+            let DatabaseStorageConfig::LocalFile { path } = config else {
+                return Err(CoreError::Host(
+                    "desktop only supports local-file storage".into(),
+                ));
+            };
+            let path = self
+                .storage
+                .grant_picker_path(PathBuf::from(path))
+                .map_err(|error| CoreError::Host(error.to_string()))?;
+            let provider: Arc<dyn StorageProvider> = self.storage.clone();
+            Ok((
+                StorageDescriptor {
+                    provider: "local-file".into(),
+                    path,
+                },
+                provider,
+            ))
+        })
     }
 }
 
@@ -293,20 +328,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_unknown_capabilities() {
+    async fn rejects_relative_paths() {
         let provider = LocalFileStorage::new();
-        let error = provider.stat("/tmp/not-a-token").await.unwrap_err();
-        assert_eq!(error.kind(), StorageErrorKind::PermissionDenied);
+        let error = provider.stat("not-a-path").await.unwrap_err();
+        assert_eq!(error.kind(), StorageErrorKind::InvalidInput);
     }
 
     #[test]
-    fn new_tokens_for_the_same_path_keep_the_same_database_id() {
+    fn picker_grants_canonical_paths_with_stable_database_ids() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("new-vault.kdbx");
         let provider = LocalFileStorage::new();
         let first = provider.grant_picker_path(path.clone()).unwrap();
         let second = provider.grant_picker_path(path).unwrap();
-        assert_ne!(first, second);
+        assert_eq!(first, second);
         assert_eq!(
             provider.resolve_capability(&first).unwrap().database_id(),
             provider.resolve_capability(&second).unwrap().database_id()

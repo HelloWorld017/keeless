@@ -2,6 +2,24 @@
 
 export type StorageDescriptor = { provider: string; path: string };
 
+/**
+ * Storage connection data retained in the encrypted per-database configuration.
+ */
+export type DatabaseStorageConfig =
+  | { type: 'localFile'; path: string }
+  | { type: 'indexedDb' }
+  | { type: 'webDav'; url: string; username: string; password: string; path: string };
+
+/**
+ * Plaintext metadata used to present a recently opened database before unlock.
+ */
+export type RecentDatabase = {
+  id: string;
+  name: string;
+  storageType: string;
+  lastOpenedAtMs: number;
+};
+
 export type DatabaseStatus = 'not_exist' | 'locked' | 'unlocked';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error';
@@ -98,7 +116,13 @@ export type FieldControl =
   | { type: 'select'; options: string[] }
   | { type: 'divider' };
 
-export type OpenArgs = { storage: StorageDescriptor };
+export type OpenArgs = { storage: StorageDescriptor; storageConfig?: DatabaseStorageConfig | null };
+
+export type GetRecentDatabasesArgs = Record<string, never>;
+
+export type OpenRecentDatabaseArgs = { id: string };
+
+export type DeleteRecentDatabaseArgs = { id: string };
 
 export type CreateArgs = { password?: string | null };
 
@@ -246,6 +270,9 @@ export type AssertPasskeyArgs = {
 
 export type Operation =
   | { op: 'open'; args: OpenArgs }
+  | { op: 'getRecentDatabases'; args: GetRecentDatabasesArgs }
+  | { op: 'openRecentDatabase'; args: OpenRecentDatabaseArgs }
+  | { op: 'deleteRecentDatabase'; args: DeleteRecentDatabaseArgs }
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
   | { op: 'lock'; args: LockArgs }
@@ -291,6 +318,9 @@ export type Operation =
 
 export type OperationRequest = (
   | { op: 'open'; args: OpenArgs }
+  | { op: 'getRecentDatabases'; args: GetRecentDatabasesArgs }
+  | { op: 'openRecentDatabase'; args: OpenRecentDatabaseArgs }
+  | { op: 'deleteRecentDatabase'; args: DeleteRecentDatabaseArgs }
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
   | { op: 'lock'; args: LockArgs }
@@ -336,6 +366,8 @@ export type OperationRequest = (
 ) & { requestId: string };
 
 export type EmptyResult = Record<string, never>;
+
+export type RecentDatabasesResult = { databases: RecentDatabase[] };
 
 export type DatabaseStatusResult = {
   status: DatabaseStatus;
@@ -444,6 +476,9 @@ export type AssertPasskeyResult = {
 
 export type OperationSuccess =
   | { op: 'open'; result: EmptyResult }
+  | { op: 'getRecentDatabases'; result: RecentDatabasesResult }
+  | { op: 'openRecentDatabase'; result: EmptyResult }
+  | { op: 'deleteRecentDatabase'; result: EmptyResult }
   | { op: 'create'; result: EmptyResult }
   | { op: 'unlock'; result: EmptyResult }
   | { op: 'lock'; result: EmptyResult }
@@ -497,6 +532,7 @@ export type OperationResponse = OperationOutcome & { requestId: string };
 
 export type OperationResource =
   | 'databaseStatus'
+  | 'recentDatabase'
   | 'storageDescriptor'
   | 'config'
   | 'entry'
@@ -515,7 +551,22 @@ export type OperationMetadata = {
 export const operationMetadata = {
   open: {
     mutates: ['databaseStatus'],
-    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    senders: ['app', 'passkey'],
+    recipients: ['core_untrusted'],
+  },
+  getRecentDatabases: {
+    queries: ['recentDatabase'],
+    senders: ['app'],
+    recipients: ['core_untrusted'],
+  },
+  openRecentDatabase: {
+    mutates: ['databaseStatus'],
+    senders: ['app'],
+    recipients: ['core_untrusted'],
+  },
+  deleteRecentDatabase: {
+    mutates: ['recentDatabase'],
+    senders: ['app'],
     recipients: ['core_untrusted'],
   },
   create: {
@@ -525,19 +576,16 @@ export const operationMetadata = {
   },
   unlock: {
     mutates: ['databaseStatus'],
-    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    senders: ['app', 'passkey'],
     recipients: ['core_untrusted'],
   },
   lock: { mutates: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
   getCoreStatus: {
     queries: ['databaseStatus'],
-    senders: ['core_untrusted', 'core', 'app', 'passkey'],
+    senders: ['app', 'passkey'],
     recipients: ['core_untrusted'],
   },
-  upgrade: {
-    senders: ['core_untrusted', 'core', 'app', 'passkey'],
-    recipients: ['core_untrusted'],
-  },
+  upgrade: { senders: ['app', 'passkey'], recipients: ['core_untrusted'] },
   getDatabaseStatus: { queries: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
   getStorageDescriptor: { queries: ['storageDescriptor'], senders: ['app'], recipients: ['core'] },
   getConfig: { queries: ['config'], senders: ['app'], recipients: ['core'] },

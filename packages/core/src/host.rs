@@ -29,6 +29,9 @@ pub trait DatabasePersistence: HostProviderRequirements {
         &'a self,
         descriptor: &'a StorageDescriptor,
     ) -> HostFuture<'a, Result<DatabaseId>>;
+    fn select_by_id<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>>;
+    /// Removes only Core's app-local persistence namespace.
+    fn purge<'a>(&'a self, database_id: &'a DatabaseId) -> HostFuture<'a, Result<()>>;
     fn read_cache(&self) -> HostFuture<'_, Result<Option<Vec<u8>>>>;
     fn write_cache<'a>(&'a self, cache: &'a [u8]) -> HostFuture<'a, Result<()>>;
     fn read_journal(&self) -> HostFuture<'_, Result<Vec<Vec<u8>>>>;
@@ -46,6 +49,14 @@ pub trait DatabasePersistence: HostProviderRequirements {
         name: &'a str,
         bytes: &'a [u8],
     ) -> HostFuture<'a, Result<()>>;
+}
+
+/// Recreates host storage capabilities from encrypted database configuration.
+pub trait StorageConfigurer: HostProviderRequirements {
+    fn configure(
+        &self,
+        config: keeless_schema::DatabaseStorageConfig,
+    ) -> HostFuture<'_, Result<(StorageDescriptor, Arc<dyn StorageProvider>)>>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,11 +172,14 @@ pub struct KeelessHost {
     pub storage_providers: HashMap<String, Arc<dyn StorageProvider>>,
     /// Global plaintext state for the always-available untrusted Lesswire endpoint.
     pub untrusted_state: Arc<dyn StateStore>,
+    /// Core-owned global plaintext state, separate from untrusted Lesswire state.
+    pub core_state: Arc<dyn StateStore>,
     pub connection_approval: Arc<dyn ConnectionApprovalProvider>,
     pub password_input: Option<Arc<dyn PasswordInputProvider>>,
     pub passkey_consent: Option<Arc<dyn PasskeyConsentProvider>>,
     pub clock: Arc<dyn Clock>,
     pub database_persistence: Arc<dyn DatabasePersistence>,
+    pub storage_configurer: Option<Arc<dyn StorageConfigurer>>,
     pub task_spawner: Option<Arc<dyn TaskSpawner>>,
     pub transfer_provider: Option<Arc<dyn TransferProvider>>,
 }
@@ -178,6 +192,7 @@ impl std::fmt::Debug for KeelessHost {
             .field("has_connection_approval", &true)
             .field("has_passkey_consent", &self.passkey_consent.is_some())
             .field("has_database_persistence", &true)
+            .field("has_storage_configurer", &self.storage_configurer.is_some())
             .field("has_task_spawner", &self.task_spawner.is_some())
             .field("has_transfer_provider", &self.transfer_provider.is_some())
             .finish_non_exhaustive()

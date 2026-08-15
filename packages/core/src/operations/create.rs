@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use keeless_kdbx::{
     CompositeKey, Database, DatabaseVersion, Group, IconImage, IconImageStandard, NodeId,
     get_builtin_templates,
@@ -16,12 +14,17 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         .as_ref()
         .map(|selection| {
             (
-                Arc::clone(&selection.provider),
-                selection.descriptor.path.clone(),
+                selection.provider.as_ref().cloned(),
+                selection
+                    .descriptor
+                    .as_ref()
+                    .map(|descriptor| descriptor.path.clone()),
                 selection.database_id.clone(),
             )
         })
         .ok_or(CoreError::NoDatabaseSelected)?;
+    let provider = provider.ok_or(CoreError::RecentDatabaseUnavailable)?;
+    let path = path.ok_or(CoreError::RecentDatabaseUnavailable)?;
 
     if provider.stat(&path).await?.is_some() {
         mark_existing(core);
@@ -76,6 +79,13 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         core.encrypted_state = None;
         return Err(error);
     }
+    if core
+        .selection
+        .as_ref()
+        .is_some_and(|selection| selection.storage_config.is_some())
+    {
+        core.persist().await?;
+    }
     let credential = if core.settings.paranoia_mode {
         None
     } else {
@@ -92,6 +102,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     core.dirty = false;
     mark_existing(core);
     core.last_activity_ms = Some(core.clock.monotonic_millis());
+    super::recent::record_success(core).await?;
     Ok(())
 }
 

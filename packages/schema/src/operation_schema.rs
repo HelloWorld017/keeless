@@ -291,6 +291,20 @@ macro_rules! operation_schema {
         }
     };
 
+    (@parse $($bad:tt)*) => {
+        compile_error!(concat!(
+            "operation_schema!: failed to parse input near: ",
+            stringify!($($bad)*)
+        ));
+    };
+
+    (@push $($bad:tt)*) => {
+        compile_error!(concat!(
+            "operation_schema!: invalid internal state: ",
+            stringify!($($bad)*)
+        ));
+    };
+
     ($($input:tt)*) => {
         operation_schema!(@parse [] [] [] [] [] $($input)*);
     };
