@@ -13,8 +13,8 @@ use keeless_schema::{
     DeleteGroupArgs, DeleteTagArgs, EmptyRecycleBinArgs, EntryFieldInformation,
     EntryFieldUpdate as SchemaEntryFieldUpdate, EntryPropertiesUpdate, FieldControl,
     GetEntriesArgs, GetEntryDetailArgs, GetGroupEntriesArgs, GetTagEntriesArgs, IconReference,
-    MoveEntryArgs, MoveGroupArgs, Operation, OperationSuccess, RenameGroupArgs, SearchEntriesArgs,
-    SearchFuzzyArgs, TagStyle, UpdateGroupArgs, UpdateTagStyleArgs,
+    MoveEntryArgs, MoveGroupArgs, OpenTarget, Operation, OperationSuccess, RenameGroupArgs,
+    SearchEntriesArgs, SearchFuzzyArgs, TagStyle, UpdateGroupArgs, UpdateTagStyleArgs,
 };
 use keeless_sync::{
     ByteRange, FileMetadata, RemoteFile, StorageError, StorageErrorKind, StorageFuture,
@@ -533,9 +533,11 @@ pub(super) async fn query_core() -> (KeelessCore, QueryIds) {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -569,9 +571,11 @@ pub(super) async fn query_core_with_persistence(
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await

@@ -1,7 +1,7 @@
 use super::*;
 use keeless_schema::{
-    DeleteRecentDatabaseArgs, GetRecentDatabasesArgs, LockArgs, OpenArgs, OpenTarget, Operation,
-    OperationSuccess,
+    DeleteRecentDatabaseArgs, GetDatabaseStatusArgs, GetRecentDatabasesArgs, LockArgs, OpenArgs,
+    OpenTarget, Operation, OperationSuccess,
 };
 
 #[tokio::test]
@@ -26,7 +26,14 @@ async fn state_lifecycle_failed_unlock_auto_lock_and_paranoia_sync() {
         provider: "memory".into(),
         path: "vault.kdbx".into(),
     };
-    operations::open::run(&mut core, descriptor).await.unwrap();
+    operations::open::run(
+        &mut core,
+        OpenTarget::Storage {
+            storage: descriptor,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(
         operations::get_storage_provider::run(&mut core),
         Some("memory".into())
@@ -117,9 +124,11 @@ async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -169,9 +178,11 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -243,9 +254,11 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
     let mut create_core = KeelessCore::new(create_host).await.unwrap();
     operations::open::run(
         &mut create_core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "new.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "new.kdbx".into(),
+            },
         },
     )
     .await
@@ -366,9 +379,11 @@ async fn create_builds_and_unlocks_a_new_database_without_overwriting() {
     ));
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -451,9 +466,11 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -524,6 +541,7 @@ async fn recent_database_restores_encrypted_storage_descriptor() {
     assert_eq!(recent.len(), 1);
     assert_eq!(recent[0].last_opened_at_ms, 100);
 
+    core.persistence.append_journal(b"pending").await.unwrap();
     operations::lock::run(&mut core);
     operations::execute(
         &mut core,
@@ -536,6 +554,17 @@ async fn recent_database_restores_encrypted_storage_descriptor() {
     .await
     .unwrap();
     assert_eq!(operations::get_storage_provider::run(&mut core), None);
+    let status = match operations::execute(
+        &mut core,
+        Operation::GetDatabaseStatus(GetDatabaseStatusArgs {}),
+    )
+    .await
+    .unwrap()
+    {
+        OperationSuccess::GetDatabaseStatus(status) => status,
+        _ => unreachable!(),
+    };
+    assert!(status.dirty);
     operations::unlock::run(&mut core, b"correct")
         .await
         .unwrap();

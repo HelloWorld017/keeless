@@ -127,9 +127,11 @@ async fn lock_drops_the_taken_core_server_and_preserves_untrusted_status() {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -237,9 +239,11 @@ async fn runtime_approved_client_skips_initial_and_upgrade_prompts() {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -296,9 +300,11 @@ async fn runtime_client_is_restored_when_the_core_endpoint_is_reopened() {
         .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -331,9 +337,11 @@ async fn removing_runtime_clients_revokes_both_endpoints() {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await

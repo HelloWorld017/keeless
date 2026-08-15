@@ -1,15 +1,29 @@
 use keeless_schema::{EmptyResult, OpenArgs, OpenTarget, OperationSuccess};
 
-use crate::{CoreError, DatabaseId, KeelessCore, Result, Selection, StorageDescriptor};
+use crate::{CoreError, DatabaseId, KeelessCore, Result, Selection};
 
-pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -> Result<()> {
-    let storage = core
-        .storage_providers
-        .get(&descriptor.provider)
-        .cloned()
-        .ok_or_else(|| CoreError::UnknownStorageProvider(descriptor.provider.clone()))?;
-    let normalized_path = storage.get_normalized_path(&descriptor.path)?;
-    let database_id = DatabaseId::from_storage(&descriptor.provider, &normalized_path)?;
+pub(crate) async fn run(core: &mut KeelessCore, target: OpenTarget) -> Result<()> {
+    let (descriptor, storage, database_id) = match target {
+        OpenTarget::Storage {
+            storage: descriptor,
+        } => {
+            let storage = core
+                .storage_providers
+                .get(&descriptor.provider)
+                .cloned()
+                .ok_or_else(|| CoreError::UnknownStorageProvider(descriptor.provider.clone()))?;
+            let normalized_path = storage.get_normalized_path(&descriptor.path)?;
+            let database_id = DatabaseId::from_storage(&descriptor.provider, &normalized_path)?;
+            (Some(descriptor), Some(storage), database_id)
+        }
+        OpenTarget::Database { database_id: id } => {
+            let database_id = DatabaseId::from_recent_id(&id)?;
+            if !super::recent::contains(core, &id).await? {
+                return Err(CoreError::InvalidRecentDatabase);
+            }
+            (None, None, database_id)
+        }
+    };
     // Persistence selection is process-global in desktop hosts. Drop the old handle and
     // selection before changing namespaces so a failed open cannot journal the old DB elsewhere.
     super::lock::run(core);
@@ -37,20 +51,26 @@ pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -
         };
         (cache_exists, journal_dirty, error)
     };
-    let (exists, mut sync_error) = match storage.provider().stat(&descriptor.path).await {
-        Ok(metadata) => (metadata.is_some() || cache_exists, None),
-        Err(error) if cache_exists => {
-            let error = CoreError::from(error);
-            (true, Some((&error).into()))
+    let (exists, mut sync_error) = match (&storage, &descriptor) {
+        (Some(storage), Some(descriptor)) => {
+            match storage.provider().stat(&descriptor.path).await {
+                Ok(metadata) => (metadata.is_some() || cache_exists, None),
+                Err(error) if cache_exists => {
+                    let error = CoreError::from(error);
+                    (true, Some((&error).into()))
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
-        Err(error) => return Err(error.into()),
+        (None, None) => (true, None),
+        _ => unreachable!("storage and descriptor are resolved together"),
     };
     if sync_error.is_none() {
         sync_error = persistence_error.as_ref().map(Into::into);
     }
     core.selection = Some(Selection {
-        descriptor: Some(descriptor),
-        storage: Some(storage),
+        descriptor,
+        storage,
         database_id,
         exists,
     });
@@ -64,30 +84,7 @@ pub(crate) async fn run(core: &mut KeelessCore, descriptor: StorageDescriptor) -
     Ok(())
 }
 
-async fn run_recent(core: &mut KeelessCore, id: String) -> Result<()> {
-    let database_id = DatabaseId::from_recent_id(&id)?;
-    if !super::recent::contains(core, &id).await? {
-        return Err(CoreError::InvalidRecentDatabase);
-    }
-    super::lock::run(core);
-    core.selection = None;
-    core.persistence.select(&database_id).await?;
-    core.selection = Some(Selection {
-        descriptor: None,
-        storage: None,
-        database_id,
-        exists: true,
-    });
-    core.sync_status = crate::SyncStatus::Idle;
-    core.sync_error = None;
-    core.dirty = false;
-    Ok(())
-}
-
 pub(super) async fn execute(core: &mut KeelessCore, args: OpenArgs) -> Result<OperationSuccess> {
-    match args.target {
-        OpenTarget::Storage { storage } => run(core, storage).await?,
-        OpenTarget::Database { database_id } => run_recent(core, database_id).await?,
-    }
+    run(core, args.target).await?;
     Ok(OperationSuccess::Open(EmptyResult {}))
 }

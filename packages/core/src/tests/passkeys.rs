@@ -20,9 +20,11 @@ async fn passkey_core(storage: Arc<MemoryStorage>) -> KeelessCore {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
@@ -397,9 +399,14 @@ async fn registered_passkey_survives_journal_replay() {
         provider: "memory".into(),
         path: "vault.kdbx".into(),
     };
-    operations::open::run(&mut core, descriptor.clone())
-        .await
-        .unwrap();
+    operations::open::run(
+        &mut core,
+        OpenTarget::Storage {
+            storage: descriptor.clone(),
+        },
+    )
+    .await
+    .unwrap();
     operations::unlock::run(&mut core, b"correct")
         .await
         .unwrap();
@@ -433,9 +440,14 @@ async fn registered_passkey_survives_journal_replay() {
     })
     .await
     .unwrap();
-    operations::open::run(&mut replayed, descriptor)
-        .await
-        .unwrap();
+    operations::open::run(
+        &mut replayed,
+        OpenTarget::Storage {
+            storage: descriptor,
+        },
+    )
+    .await
+    .unwrap();
     operations::unlock::run(&mut replayed, b"correct")
         .await
         .unwrap();
@@ -500,9 +512,11 @@ async fn failed_passkey_registration_does_not_create_an_entry_or_index() {
     .unwrap();
     operations::open::run(
         &mut core,
-        StorageDescriptor {
-            provider: "memory".into(),
-            path: "vault.kdbx".into(),
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
         },
     )
     .await
