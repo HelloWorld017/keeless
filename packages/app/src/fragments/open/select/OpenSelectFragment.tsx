@@ -94,7 +94,6 @@ export const OpenSelectFragment = () => {
     <SetupLayout
       title="Open a database"
       description="Choose where Keeless should run and store its database."
-      showBack={false}
     >
       <div className="space-y-2">
         <Select

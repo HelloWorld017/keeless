@@ -8,12 +8,12 @@ import { useEffect, useState } from 'react';
 import { Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
+import { RecentStep } from './_components/RecentStep';
 import { errorMessage } from './_utils/errorMessage';
 import { OpenCreateFragment } from './create';
 import { OpenSelectFragment } from './select/OpenSelectFragment';
 import { OpenStorageFragment } from './storage';
 import { OpenUnlockFragment } from './unlock';
-import {RecentStep} from './_components/RecentStep';
 
 export const OpenFragment = () => {
   const host = useHost();

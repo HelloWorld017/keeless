@@ -43,10 +43,11 @@ export default defineConfig(({ mode, command }) => ({
     ...(command === 'serve' && {
       __DEV__: 'true',
     }),
-    ...(command === 'build' && mode !== 'lib' && {
-      __DEV__: 'false',
-      __KEELESS_BROWSER_HOST_DISABLED__: 'false',
-    }),
+    ...(command === 'build' &&
+      mode !== 'lib' && {
+        __DEV__: 'false',
+        __KEELESS_BROWSER_HOST_DISABLED__: 'false',
+      }),
   },
 
   resolve: {

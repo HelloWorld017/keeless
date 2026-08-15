@@ -18,6 +18,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from '@/components/item';
+import { useHost } from '@/fragments/_providers/HostProvider';
 import {
   useRequest,
   useRequestClient,
@@ -25,14 +26,13 @@ import {
 } from '@/fragments/_providers/QueryProvider';
 import { useNavigate } from '@/fragments/_providers/RouterProvider';
 import { IconArrowRight, IconDatabase, IconLoaderCircle, IconPlus, IconTrash } from '@/icons';
+import { formatDate } from '@/utils/format';
 import { buildRoute } from '@/utils/route';
 import { useMemo, useState } from 'react';
 import { SetupLayout } from '../_components/SetupLayout';
 import { StepError } from '../_components/StepError';
 import { errorMessage } from '../_utils/errorMessage';
 import type { OperationResult } from '@/utils/request';
-import {formatDate} from '@/utils/format';
-import {useHost} from '@/fragments/_providers/HostProvider';
 
 type RecentDatabase = OperationResult<'getRecentDatabases'>['databases'][number];
 
@@ -80,7 +80,10 @@ export const RecentStep = () => {
   };
 
   const host = useHost();
-  const storageNames = useMemo(() => new Map(host?.storages.map(storage => [storage.kind, storage.label])), [host]);
+  const storageNames = useMemo(
+    () => new Map(host?.storages.map(storage => [storage.kind, storage.label])),
+    [host],
+  );
 
   return (
     <SetupLayout
@@ -90,45 +93,40 @@ export const RecentStep = () => {
     >
       <ItemGroup className="gap-2">
         {recentDatabases.data?.databases.slice(0, 5).map(database => (
-          <Item key={database.id} variant="outline">
-            <ItemMedia variant="icon">
+          <Item key={database.id} variant="outline" className="relative">
+            <button
+              type="button"
+              className="absolute inset-0 z-0 rounded-lg outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              aria-label={`Open ${database.name}`}
+              disabled={open.isPending || deleteRecentDatabase.isPending}
+              onClick={() => void openDatabase(database.id)}
+            />
+            <ItemMedia variant="icon" className="relative z-10 pointer-events-none">
               <IconDatabase />
             </ItemMedia>
-            <ItemContent className="gap-0">
+            <ItemContent className="relative z-10 pointer-events-none gap-0">
               <ItemTitle className="font-semibold">{database.name}</ItemTitle>
-              <ItemDescription className='flex flex-col sm:block'>
+              <ItemDescription className="flex flex-col sm:block">
                 <span>{storageNames.get(database.storageType) ?? database.storageType}</span>
-                <span className='hidden size-[3px] rounded-full mx-3 bg-muted-foreground/50 align-[calc(0.5cap-1.5px)] sm:inline-block' />
+                <span className="hidden size-[3px] rounded-full mx-3 bg-muted-foreground/50 align-[calc(0.5cap-1.5px)] sm:inline-block" />
                 <time dateTime={new Date(database.lastOpenedAtMs).toISOString()}>
                   {formatDate(database.lastOpenedAtMs)}
                 </time>
               </ItemDescription>
             </ItemContent>
-            <ItemActions>
+            <ItemActions className="relative z-10 pointer-events-none">
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
+                className="pointer-events-auto"
                 aria-label={`Delete ${database.name}`}
                 disabled={open.isPending || deleteRecentDatabase.isPending}
                 onClick={() => setDatabaseToDelete(database)}
               >
                 <IconTrash />
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`Open ${database.name}`}
-                disabled={open.isPending || deleteRecentDatabase.isPending}
-                onClick={() => void openDatabase(database.id)}
-              >
-                {open.isPending ? (
-                  <IconLoaderCircle className="animate-spin" />
-                ) : (
-                  <IconArrowRight />
-                )}
-              </Button>
+              {open.isPending ? <IconLoaderCircle className="animate-spin" /> : <IconArrowRight />}
             </ItemActions>
           </Item>
         ))}
