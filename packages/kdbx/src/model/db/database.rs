@@ -135,7 +135,7 @@ impl Database {
             public_custom_data: Vec::new(),
             header_comment: None,
             master_key_hash: None,
-            name: String::new(),
+            name: "Keeless Database".into(),
             description: String::new(),
             default_username: String::new(),
             loaded: false,

@@ -20,6 +20,7 @@ fn test_database_creation() {
     assert_eq!(db.entry_count(), 0);
     assert_eq!(db.group_count(), 0);
     assert_eq!(db.encryption_algorithm, EncryptionAlgorithm::AesRijndael);
+    assert_eq!(db.name, "Keeless Database");
 }
 
 #[test]
