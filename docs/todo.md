@@ -21,7 +21,7 @@
 - [x] core status 감시 및 잠겼을 경우 unlock popup 띄우기
 - [x] 커스텀 윈도우 바
 - [x] native-ui 현재 윈도우와 비슷한 위치에 뜨기
-- [ ] 마지막으로 사용한 스토리지 저장
+- [x] 마지막으로 사용한 스토리지 저장
 - [ ] WebDAV 싱크 테스트 하기
 - [ ] extension + native messaging host 구현
 - [ ] [windows process hardening](./draft/20260731-windows-hardening.md)

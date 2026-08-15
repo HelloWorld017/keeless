@@ -26,15 +26,17 @@ import {
 import { useNavigate } from '@/fragments/_providers/RouterProvider';
 import { IconArrowRight, IconDatabase, IconLoaderCircle, IconPlus, IconTrash } from '@/icons';
 import { buildRoute } from '@/utils/route';
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { SetupLayout } from '../_components/SetupLayout';
 import { StepError } from '../_components/StepError';
 import { errorMessage } from '../_utils/errorMessage';
 import type { OperationResult } from '@/utils/request';
+import {formatDate} from '@/utils/format';
+import {useHost} from '@/fragments/_providers/HostProvider';
 
 type RecentDatabase = OperationResult<'getRecentDatabases'>['databases'][number];
 
-export const OpenRecentFragment = () => {
+export const RecentStep = () => {
   const navigate = useNavigate();
   const requestClient = useRequestClient();
   const recentDatabases = useRequest('getRecentDatabases', {});
@@ -42,12 +44,6 @@ export const OpenRecentFragment = () => {
   const deleteRecentDatabase = useRequestMutation('deleteRecentDatabase');
   const [databaseToDelete, setDatabaseToDelete] = useState<RecentDatabase>();
   const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    if (recentDatabases.isSuccess && recentDatabases.data.databases.length === 0) {
-      navigate(buildRoute('openSelect'), { replace: true });
-    }
-  }, [navigate, recentDatabases.data, recentDatabases.isSuccess]);
 
   const openDatabase = async (id: string) => {
     if (!requestClient.data || open.isPending) {
@@ -83,6 +79,9 @@ export const OpenRecentFragment = () => {
     }
   };
 
+  const host = useHost();
+  const storageNames = useMemo(() => new Map(host?.storages.map(storage => [storage.kind, storage.label])), [host]);
+
   return (
     <SetupLayout
       title="Open a database"
@@ -97,9 +96,12 @@ export const OpenRecentFragment = () => {
             </ItemMedia>
             <ItemContent className="gap-0">
               <ItemTitle className="font-semibold">{database.name}</ItemTitle>
-              <ItemDescription>
-                {database.storageType} - Last opened{' '}
-                {new Date(database.lastOpenedAtMs).toLocaleString()}
+              <ItemDescription className='flex flex-col sm:block'>
+                <span>{storageNames.get(database.storageType) ?? database.storageType}</span>
+                <span className='hidden size-[3px] rounded-full mx-3 bg-muted-foreground/50 align-[calc(0.5cap-1.5px)] sm:inline-block' />
+                <time dateTime={new Date(database.lastOpenedAtMs).toISOString()}>
+                  {formatDate(database.lastOpenedAtMs)}
+                </time>
               </ItemDescription>
             </ItemContent>
             <ItemActions>
@@ -130,12 +132,19 @@ export const OpenRecentFragment = () => {
             </ItemActions>
           </Item>
         ))}
+        <Item
+          variant="outline"
+          render={<button type="button" className="transition-colors hover:bg-muted" />}
+          onClick={() => navigate(buildRoute('openSelect'))}
+        >
+          <ItemMedia variant="icon">
+            <IconPlus />
+          </ItemMedia>
+          <ItemContent>
+            <ItemTitle className="font-semibold">Add database</ItemTitle>
+          </ItemContent>
+        </Item>
       </ItemGroup>
-      <div className="flex justify-end">
-        <Button type="button" onClick={() => navigate(buildRoute('openSelect'))}>
-          <IconPlus /> Add database
-        </Button>
-      </div>
       <StepError
         error={error ?? (recentDatabases.isError ? errorMessage(recentDatabases.error) : undefined)}
       />

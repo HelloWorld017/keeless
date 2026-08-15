@@ -5,15 +5,15 @@ import { invalidateByResource } from '@/utils/request';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Route, Switch, useLocation } from 'wouter';
+import { Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
 import { errorMessage } from './_utils/errorMessage';
 import { OpenCreateFragment } from './create';
-import { OpenRecentFragment } from './recent/OpenRecentFragment';
 import { OpenSelectFragment } from './select/OpenSelectFragment';
 import { OpenStorageFragment } from './storage';
 import { OpenUnlockFragment } from './unlock';
+import {RecentStep} from './_components/RecentStep';
 
 export const OpenFragment = () => {
   const host = useHost();
@@ -22,7 +22,6 @@ export const OpenFragment = () => {
   const requestClient = useRequestClient();
   const client = requestClient.data;
   const navigate = useNavigate();
-  const [location] = useLocation();
   const [isChecking, setIsChecking] = useState(false);
   const [checkingError, setCheckingError] = useState<string>();
   const [checkingAttempt, setCheckingAttempt] = useState(0);
@@ -52,7 +51,7 @@ export const OpenFragment = () => {
           return;
         }
 
-        if (database === 'locked' && location !== getRoute('open')) {
+        if (database === 'locked') {
           navigate(buildRoute('openUnlock'), { replace: true });
         }
       })
@@ -70,7 +69,7 @@ export const OpenFragment = () => {
     return () => {
       active = false;
     };
-  }, [queryClient, checkingAttempt, client, location, navigate]);
+  }, [queryClient, checkingAttempt, client, navigate]);
 
   const isCheckingStepVisible =
     hostsLoading ||
@@ -104,7 +103,7 @@ export const OpenFragment = () => {
             <Route path={getRoute('openCreate')} component={OpenCreateFragment} />
             <Route path={getRoute('openUnlock')} component={OpenUnlockFragment} />
             <Route path={getRoute('openSelect')} component={OpenSelectFragment} />
-            <Route path={getRoute('open')} component={OpenRecentFragment} />
+            <Route path={getRoute('open')} component={RecentStep} />
           </Switch>
         )}
       </div>
