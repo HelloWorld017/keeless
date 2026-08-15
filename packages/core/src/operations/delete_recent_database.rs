@@ -14,7 +14,7 @@ pub(super) async fn execute(
     if selected && core.handle.is_some() {
         return Err(CoreError::RecentDatabaseSelected);
     }
-    let mut state = super::recent::load(core).await?;
+    let mut state = crate::recent::load(core).await?;
     let original_len = state.databases.len();
     state.databases.retain(|database| database.id != args.id);
     if state.databases.len() == original_len {
@@ -24,6 +24,6 @@ pub(super) async fn execute(
     if selected {
         core.selection = None;
     }
-    super::recent::save(core, &state).await?;
+    crate::recent::save(core, &state).await?;
     Ok(OperationSuccess::DeleteRecentDatabase(EmptyResult {}))
 }

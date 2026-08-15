@@ -18,7 +18,7 @@ pub(crate) async fn run(core: &mut KeelessCore, target: OpenTarget) -> Result<()
         }
         OpenTarget::Database { database_id: id } => {
             let database_id = DatabaseId::from_recent_id(&id)?;
-            if !super::recent::contains(core, &id).await? {
+            if !crate::recent::contains(core, &id).await? {
                 return Err(CoreError::InvalidRecentDatabase);
             }
             (None, None, database_id)

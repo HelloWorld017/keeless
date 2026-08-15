@@ -7,12 +7,12 @@ const RECENT_STATE_VERSION: u8 = 1;
 
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct RecentState {
+pub(crate) struct RecentState {
     version: u8,
-    pub(super) databases: Vec<RecentDatabase>,
+    pub(crate) databases: Vec<RecentDatabase>,
 }
 
-pub(super) async fn load(core: &KeelessCore) -> Result<RecentState> {
+pub(crate) async fn load(core: &KeelessCore) -> Result<RecentState> {
     let Some(bytes) = core
         .core_state
         .load()
@@ -34,7 +34,7 @@ pub(super) async fn load(core: &KeelessCore) -> Result<RecentState> {
     Ok(state)
 }
 
-pub(super) async fn save(core: &KeelessCore, state: &RecentState) -> Result<()> {
+pub(crate) async fn save(core: &KeelessCore, state: &RecentState) -> Result<()> {
     let bytes = serde_json::to_vec(state)?;
     core.core_state
         .save(&bytes)
@@ -72,7 +72,7 @@ pub(crate) async fn record_success(core: &KeelessCore) -> Result<()> {
     save(core, &state).await
 }
 
-pub(super) async fn contains(core: &KeelessCore, id: &str) -> Result<bool> {
+pub(crate) async fn contains(core: &KeelessCore, id: &str) -> Result<bool> {
     Ok(load(core)
         .await?
         .databases

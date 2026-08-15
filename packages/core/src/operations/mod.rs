@@ -23,7 +23,6 @@ pub(crate) mod mutations;
 pub(crate) mod open;
 pub(crate) mod prepare_database_export;
 pub(crate) mod prepare_entry_attachment_download;
-pub(crate) mod recent;
 pub(crate) mod reveal_entry_fields;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;

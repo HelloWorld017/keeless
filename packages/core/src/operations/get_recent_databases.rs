@@ -8,7 +8,7 @@ pub(super) async fn execute(
 ) -> Result<OperationSuccess> {
     Ok(OperationSuccess::GetRecentDatabases(
         RecentDatabasesResult {
-            databases: super::recent::load(core).await?.databases,
+            databases: crate::recent::load(core).await?.databases,
         },
     ))
 }

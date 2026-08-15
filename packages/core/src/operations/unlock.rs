@@ -114,7 +114,6 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         Some(CredentialVault::wrap(&raw_key)?)
     };
     core.extensions.unlock(handle.database(), &key)?;
-    core.handle = None;
     core.credential = credential;
     core.handle = Some(handle);
     core.journal = Some(journal);
@@ -139,7 +138,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         selection.exists = true;
     }
     core.last_activity_ms = Some(core.clock.monotonic_millis());
-    super::recent::record_success(core).await?;
+    crate::recent::record_success(core).await?;
     Ok(())
 }
 
