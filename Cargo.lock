@@ -2312,7 +2312,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
  "zeroize",
 ]
 
@@ -2332,7 +2332,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
  "zeroize",
 ]
 
@@ -2478,7 +2478,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
