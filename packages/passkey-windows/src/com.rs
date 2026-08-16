@@ -424,17 +424,17 @@ unsafe fn authenticator_query_interface_inner(
         return E_POINTER;
     }
     unsafe { *result = ptr::null_mut() };
-    let Some(authenticator) = (this as *mut ComAuthenticator).as_ref() else {
+    if unsafe { (this as *mut ComAuthenticator).as_ref() }.is_none() {
         return E_POINTER;
-    };
-    let Some(iid) = iid.as_ref() else {
+    }
+    let Some(iid) = (unsafe { iid.as_ref() }) else {
         return E_POINTER;
     };
     if *iid != IID_IUNKNOWN && *iid != IID_IPLUGIN_AUTHENTICATOR {
         return E_NOINTERFACE;
     }
     unsafe { *result = this };
-    authenticator_add_ref(this);
+    unsafe { authenticator_add_ref(this) };
     S_OK
 }
 
@@ -443,7 +443,7 @@ unsafe extern "system" fn authenticator_add_ref(this: *mut c_void) -> u32 {
 }
 
 unsafe fn authenticator_add_ref_inner(this: *mut c_void) -> u32 {
-    let Some(authenticator) = (this as *mut ComAuthenticator).as_ref() else {
+    let Some(authenticator) = (unsafe { (this as *mut ComAuthenticator).as_ref() }) else {
         return 0;
     };
     authenticator.references.fetch_add(1, Ordering::Relaxed) + 1
@@ -454,7 +454,7 @@ unsafe extern "system" fn authenticator_release(this: *mut c_void) -> u32 {
 }
 
 unsafe fn authenticator_release_inner(this: *mut c_void) -> u32 {
-    let Some(authenticator) = (this as *mut ComAuthenticator).as_ref() else {
+    let Some(authenticator) = (unsafe { (this as *mut ComAuthenticator).as_ref() }) else {
         return 0;
     };
     let previous = authenticator
@@ -493,18 +493,17 @@ unsafe fn class_factory_query_interface_inner(
         return E_POINTER;
     }
     unsafe { *result = ptr::null_mut() };
-    let Some(factory) = (this as *mut ComClassFactory).as_ref() else {
+    if unsafe { (this as *mut ComClassFactory).as_ref() }.is_none() {
         return E_POINTER;
-    };
-    let Some(iid) = iid.as_ref() else {
+    }
+    let Some(iid) = (unsafe { iid.as_ref() }) else {
         return E_POINTER;
     };
     if *iid != IID_IUNKNOWN && *iid != IID_ICLASS_FACTORY {
         return E_NOINTERFACE;
     }
     unsafe { *result = this };
-    class_factory_add_ref(this);
-    let _ = factory;
+    unsafe { class_factory_add_ref(this) };
     S_OK
 }
 
@@ -513,7 +512,7 @@ unsafe extern "system" fn class_factory_add_ref(this: *mut c_void) -> u32 {
 }
 
 unsafe fn class_factory_add_ref_inner(this: *mut c_void) -> u32 {
-    let Some(factory) = (this as *mut ComClassFactory).as_ref() else {
+    let Some(factory) = (unsafe { (this as *mut ComClassFactory).as_ref() }) else {
         return 0;
     };
     factory.provider.factory_referenced();
@@ -525,7 +524,7 @@ unsafe extern "system" fn class_factory_release(this: *mut c_void) -> u32 {
 }
 
 unsafe fn class_factory_release_inner(this: *mut c_void) -> u32 {
-    let Some(factory) = (this as *mut ComClassFactory).as_ref() else {
+    let Some(factory) = (unsafe { (this as *mut ComClassFactory).as_ref() }) else {
         return 0;
     };
     let previous = factory
@@ -569,10 +568,10 @@ unsafe fn class_factory_create_instance_inner(
     if !outer.is_null() {
         return CLASS_E_NOAGGREGATION;
     }
-    let Some(factory) = (this as *mut ComClassFactory).as_ref() else {
+    let Some(factory) = (unsafe { (this as *mut ComClassFactory).as_ref() }) else {
         return E_POINTER;
     };
-    let Some(iid) = iid.as_ref() else {
+    let Some(iid) = (unsafe { iid.as_ref() }) else {
         return E_POINTER;
     };
     if *iid != IID_IUNKNOWN && *iid != IID_IPLUGIN_AUTHENTICATOR {
@@ -593,7 +592,7 @@ unsafe extern "system" fn class_factory_lock_server(this: *mut c_void, locked: B
 }
 
 unsafe fn class_factory_lock_server_inner(this: *mut c_void, locked: Bool) -> HResult {
-    let Some(factory) = (this as *mut ComClassFactory).as_ref() else {
+    let Some(factory) = (unsafe { (this as *mut ComClassFactory).as_ref() }) else {
         return E_POINTER;
     };
     factory.provider.lock_server(locked != 0);

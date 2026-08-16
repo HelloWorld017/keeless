@@ -18,7 +18,7 @@ use crate::{
     com::{ComAuthenticator, Provider},
     error::{
         E_FAIL, E_POINTER, ERROR_BUSY, HResult, NTE_BAD_SIGNATURE, NTE_INVALID_PARAMETER,
-        NTE_NOT_SUPPORTED, NTE_USER_CANCELLED, client_error, request_error,
+        NTE_NOT_SUPPORTED, NTE_USER_CANCELLED, request_error,
     },
     sdk_bindings::*,
     verify,
@@ -338,15 +338,16 @@ unsafe fn make_request(
     request: &WebAuthnCtapCborMakeCredentialRequest,
 ) -> Result<MakeCredentialRequest, HResult> {
     reject_make_extensions(request)?;
-    let rp = required(request.rp_information)?;
-    let user = required(request.user_information)?;
-    let rp_id = utf8(request.rp_id, request.rp_id_len)?;
-    let rp_name = optional_wide(rp.name)?;
-    let user_name = required_wide(user.name)?;
-    let user_handle = bytes(user.id, user.id_len, MAX_STRING_LENGTH)?;
-    let client_data_hash = bytes(request.client_data_hash, request.client_data_hash_len, 64)?;
-    let algorithms = algorithms(&request.credential_parameters)?;
-    let exclude_credential_ids = credential_ids(&request.credential_list)?;
+    let rp = required(unsafe { request.rp_information.as_ref() })?;
+    let user = required(unsafe { request.user_information.as_ref() })?;
+    let rp_id = unsafe { utf8(request.rp_id, request.rp_id_len)? };
+    let rp_name = unsafe { optional_wide(rp.name)? };
+    let user_name = unsafe { required_wide(user.name)? };
+    let user_handle = unsafe { bytes(user.id, user.id_len, MAX_STRING_LENGTH)? };
+    let client_data_hash =
+        unsafe { bytes(request.client_data_hash, request.client_data_hash_len, 64)? };
+    let algorithms = unsafe { algorithms(&request.credential_parameters)? };
+    let exclude_credential_ids = unsafe { credential_ids(&request.credential_list)? };
     Ok(MakeCredentialRequest {
         rp_id,
         rp_name,
@@ -362,7 +363,7 @@ unsafe fn assertion_request(
     request: &WebAuthnCtapCborGetAssertionRequest,
 ) -> Result<GetAssertionRequest, HResult> {
     reject_assertion_extensions(request)?;
-    let user_presence = match request.authenticator_options.as_ref() {
+    let user_presence = match unsafe { request.authenticator_options.as_ref() } {
         Some(options) => {
             validate_option(options.user_presence)?;
             validate_option(options.user_verification)?;
@@ -372,9 +373,11 @@ unsafe fn assertion_request(
         None => true,
     };
     Ok(GetAssertionRequest {
-        rp_id: utf8(request.raw_rp_id, request.raw_rp_id_len)?,
-        client_data_hash: bytes(request.client_data_hash, request.client_data_hash_len, 64)?,
-        allow_credential_ids: credential_ids(&request.credential_list)?,
+        rp_id: unsafe { utf8(request.raw_rp_id, request.raw_rp_id_len)? },
+        client_data_hash: unsafe {
+            bytes(request.client_data_hash, request.client_data_hash_len, 64)?
+        },
+        allow_credential_ids: unsafe { credential_ids(&request.credential_list)? },
         user_presence,
     })
 }
@@ -446,10 +449,10 @@ unsafe fn algorithms(parameters: &WebAuthnCoseCredentialParameters) -> Result<Ve
     if count > 32 {
         return Err(NTE_INVALID_PARAMETER);
     }
-    let parameters = slice(parameters.parameters, count)?;
+    let parameters = unsafe { slice(parameters.parameters, count)? };
     let mut algorithms = Vec::with_capacity(parameters.len());
     for parameter in parameters {
-        if optional_wide(parameter.credential_type)?.as_deref() == Some("public-key") {
+        if unsafe { optional_wide(parameter.credential_type)? }.as_deref() == Some("public-key") {
             algorithms.push(parameter.algorithm);
         }
     }
@@ -461,7 +464,7 @@ unsafe fn credential_ids(list: &WebAuthnCredentialList) -> Result<Vec<Vec<u8>>, 
     if count > keeless_passkey_ctap::response::MAX_CREDENTIAL_COUNT_IN_LIST as usize {
         return Err(NTE_INVALID_PARAMETER);
     }
-    let credentials = slice(list.credentials, count)?;
+    let credentials = unsafe { slice(list.credentials, count)? };
     credentials
         .iter()
         .map(|credential| {
@@ -480,23 +483,27 @@ unsafe fn credential_ids(list: &WebAuthnCredentialList) -> Result<Vec<Vec<u8>>, 
 unsafe fn copy_operation_request(
     request: *const PluginOperationRequest,
 ) -> Result<OperationInput, HResult> {
-    let request = required(request.as_ref())?;
+    let request = required(unsafe { request.as_ref() })?;
     if request.request_type != WEBAUTHN_PLUGIN_REQUEST_TYPE_CTAP2_CBOR {
         return Err(NTE_NOT_SUPPORTED);
     }
     Ok(OperationInput {
         hwnd: request.hwnd,
         transaction_id: request.transaction_id,
-        signature: bytes(
-            request.request_signature,
-            request.request_signature_len,
-            MAX_SIGNATURE_LENGTH,
-        )?,
-        encoded_request: bytes(
-            request.encoded_request,
-            request.encoded_request_len,
-            keeless_passkey_ctap::response::MAX_MESSAGE_SIZE as usize,
-        )?,
+        signature: unsafe {
+            bytes(
+                request.request_signature,
+                request.request_signature_len,
+                MAX_SIGNATURE_LENGTH,
+            )?
+        },
+        encoded_request: unsafe {
+            bytes(
+                request.encoded_request,
+                request.encoded_request_len,
+                keeless_passkey_ctap::response::MAX_MESSAGE_SIZE as usize,
+            )?
+        },
     })
 }
 
@@ -508,18 +515,20 @@ struct CancelInput {
 unsafe fn copy_cancel_request(
     request: *const PluginCancelOperationRequest,
 ) -> Result<CancelInput, HResult> {
-    let request = required(request.as_ref())?;
+    let request = required(unsafe { request.as_ref() })?;
     Ok(CancelInput {
         transaction_id: request.transaction_id,
-        signature: bytes(
-            request.request_signature,
-            request.request_signature_len,
-            MAX_SIGNATURE_LENGTH,
-        )?,
+        signature: unsafe {
+            bytes(
+                request.request_signature,
+                request.request_signature_len,
+                MAX_SIGNATURE_LENGTH,
+            )?
+        },
     })
 }
 
-unsafe fn required<T>(value: Option<&T>) -> Result<&T, HResult> {
+fn required<T>(value: Option<&T>) -> Result<&T, HResult> {
     value.ok_or(NTE_INVALID_PARAMETER)
 }
 
@@ -537,7 +546,7 @@ unsafe fn utf8(pointer: *const u8, len: Dword) -> Result<String, HResult> {
 }
 
 unsafe fn required_wide(pointer: *const u16) -> Result<String, HResult> {
-    optional_wide(pointer)?
+    unsafe { optional_wide(pointer)? }
         .filter(|value| !value.is_empty())
         .ok_or(NTE_INVALID_PARAMETER)
 }
@@ -592,7 +601,7 @@ fn transaction_id(guid: &Guid) -> TransactionId {
 }
 
 unsafe fn provider(this: *mut c_void) -> Result<&'static Provider, HResult> {
-    let authenticator = (this as *mut ComAuthenticator).as_ref().ok_or(E_POINTER)?;
+    let authenticator = unsafe { (this as *mut ComAuthenticator).as_ref() }.ok_or(E_POINTER)?;
     Ok(&authenticator.provider)
 }
 

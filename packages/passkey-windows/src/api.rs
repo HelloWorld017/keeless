@@ -6,10 +6,8 @@ use std::{
 };
 
 use windows_sys::Win32::{
-    Foundation::HMODULE,
-    System::LibraryLoader::{
-        FreeLibrary, GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
-    },
+    Foundation::{FreeLibrary, HMODULE},
+    System::LibraryLoader::{GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW},
 };
 
 use crate::sdk_bindings::*;
@@ -299,7 +297,7 @@ fn supported_windows_build() -> bool {
             value.as_ptr(),
             RRF_RT_REG_DWORD,
             ptr::null_mut(),
-            (&mut update_build_revision).cast(),
+            (&mut update_build_revision as *mut u32).cast(),
             &mut size,
         )
     }) == 0
@@ -320,7 +318,7 @@ impl Drop for Api {
 unsafe fn symbol<T: Copy>(module: HMODULE, name: &'static str) -> Result<T, ApiError> {
     let name = CString::new(name).expect("Windows export name has no NUL");
     let symbol = unsafe { GetProcAddress(module, name.as_ptr() as *const u8) }
-        .ok_or(ApiError::MissingExport(name.to_str().unwrap()))?;
+        .ok_or(ApiError::MissingExport(name))?;
     // All required functions use WINAPI and one pointer-sized function address.
     Ok(unsafe { mem::transmute_copy(&symbol) })
 }
