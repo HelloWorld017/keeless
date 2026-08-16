@@ -115,7 +115,7 @@ export const EntryListHeader = ({
                 type="button"
                 variant="outline"
                 size="icon"
-                className="rounded-r-none"
+                className="rounded-r-none!"
                 aria-label="Add entry"
                 disabled={movePending || addPending}
                 onClick={onAdd}
@@ -129,7 +129,7 @@ export const EntryListHeader = ({
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="-ml-px rounded-l-none"
+                      className="-ml-px rounded-l-none!"
                       aria-label="Add entry from template"
                     />
                   }
