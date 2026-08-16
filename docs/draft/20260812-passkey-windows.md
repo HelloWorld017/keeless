@@ -94,19 +94,23 @@ COM shim이나 C++ bridge는 만들지 않는다. Windows API와 COM server 모�
 `5f8e1504dea507f1d86af7bf5a824eb49ff8b5a5`만으로는 완전한 plugin surface가 없다.
 그 revision에는 일반 `webauthn` API와 일부 experimental structure가 있지만,
 `WebAuthNPlugin*` 함수, CTAP decode/encode API, `IPluginAuthenticator`의 IID/vtable이
-없다. 따라서 이 패키지는 Windows SDK에서 생성한 binding을 source of truth로 사용한다.
+없다. 따라서 이 패키지는 `microsoft/webauthn`의 공개 source를 ABI source of truth로
+사용한다.
 
 ### 생성과 고정
 
-1. Windows SDK `10.0.26100.7175` 이상에서 `webauthnplugin.h`와
-   `pluginauthenticator.h`에 대응하는 SDK IDL/metadata를 입력으로 `windows-bindgen`
-   binding을 생성한다.
+1. `microsoft/webauthn` commit
+   `ef82c157125a0490e05f6ea82a7adb1b8e1bad08`를 ABI source로 고정한다.
+   `pluginauthenticator.idl`, `pluginauthenticator.h`, `webauthnplugin.h`,
+   `webauthn.h`를 입력으로 Rust binding을 생성한다. IDL만으로는 COM callback
+   ABI만 정의하며, plugin 함수와 CTAP-CBOR 구조체는 두 header가 필요하다.
 2. 생성된 Rust source를 `packages/passkey-windows/src/sdk_bindings.rs`에 commit한다.
-   개발자 PC의 Windows SDK path에서 build 때마다 재생성하지 않는다.
-3. source 상단에 SDK version, input header/IDL revision, 생성 tool revision을 기록한다.
-4. 재생성 명령과 SDK 설치 조건은 `packages/passkey-windows/README.md`에 문서화한다.
+   개발자 PC의 Windows SDK path나 network에서 build 때마다 재생성하지 않는다.
+3. source 상단에 upstream commit, input file revision, 생성 tool revision과 upstream
+   MIT license notice를 기록한다.
+4. 재생성 명령과 pinned source 조건은 `packages/passkey-windows/README.md`에 문서화한다.
 5. Windows CI는 generated binding을 다시 만들거나 ABI compile check를 수행해,
-   source와 SDK input의 drift를 검출한다.
+   source와 pinned upstream input의 drift를 검출한다.
 
 생성 binding에는 최소한 다음이 있어야 한다.
 
@@ -114,16 +118,38 @@ COM shim이나 C++ bridge는 만들지 않는다. Windows API와 COM server 모�
 - `WEBAUTHN_PLUGIN_OPERATION_REQUEST`, response, cancellation request, lock status
 - `WebAuthNPluginAddAuthenticator`, remove/update/state/status callback API
 - `WebAuthNPluginGetOperationSigningPublicKey`
-- `EXPERIMENTAL_WebAuthNPluginPerformUserVerification2`, UV public key/count, free API
+- `WebAuthNPluginPerformUserVerification`, UV public key/count, free API
 - `WebAuthNDecodeMakeCredentialRequest`, `WebAuthNDecodeGetAssertionRequest`와 free API
 - `WebAuthNEncodeMakeCredentialResponse`, `WebAuthNEncodeGetAssertionResponse`
 - request/response와 authenticator-info 구조체 및 constants
 
 지원하지 않는 Windows에서 process loader가 plugin DLL import 때문에 시작 자체에
-실패하지 않도록 `WebAuthnPlugin.dll` 함수는 delay-loaded 또는 `LoadLibrary`/
+실패하지 않도록 `webauthn.dll` 함수는 delay-loaded 또는 `LoadLibrary`/
 `GetProcAddress`로 해결한다. 생성 binding의 structure와 interface 정의는 그대로
 사용하되, 호출용 function table은 처음 사용 시 한 번 해석한다. `doctor`와 enable UI는
 DLL, 필요한 export, OS build를 확인한 뒤 지원하지 않는 시스템에서는 명확히 비활성화한다.
+
+### Reference ceremony contract
+
+현재 Windows fixture를 만들 환경이 없으므로 다음 contract는
+`yusei36/KeePassPasskey` commit
+`08a3e0b13b81ee55929c4e9e0895e7197118b3b6`의 동작을 reference로 삼는다.
+해당 프로젝트는 GPL-3.0이므로 source나 test data를 복사하지 않고, 공개 ABI와 아래의
+동작만 독립적으로 Rust로 구현한다.
+
+- operation request와 Windows Hello v1 response의 signed bytes는 정확히
+  `pbEncodedRequest`의 `cbEncodedRequest` bytes다.
+- cancel request는 transaction ID가 아니라 해당 active ceremony에 저장한 원
+  `pbEncodedRequest` bytes에 대해 서명 검증한다.
+- operation-signing key와 Windows Hello UV key는 callback마다
+  `WebAuthNPluginGetOperationSigningPublicKey`와
+  `WebAuthNPluginGetUserVerificationPublicKey`로 읽는다.
+- public key는 CNG `GenericPublicBlob`으로 import하고 signed bytes의 SHA-256
+  digest를 검증한다. RSA는 PSS를 먼저 시도하고 PKCS#1 v1.5를 fallback으로 허용하며,
+  EC는 CNG ECDSA verification을 사용한다.
+- 알 수 없는 key blob magic, malformed length, 지원하지 않는 CNG public key type은
+  허용하지 않는다. RSA/EC fallback은 검증 순서일 뿐 임의 blob format을 허용하는
+  fallback이 아니다.
 
 ## 패키지 구조
 
@@ -136,7 +162,7 @@ packages/passkey-windows/
   src/
     main.rs
     lib.rs
-    sdk_bindings.rs       # Windows SDK에서 생성하여 commit
+    sdk_bindings.rs       # pinned microsoft/webauthn source에서 생성하여 commit
     api.rs                # dynamically resolved WebAuthnPlugin function table
     com.rs                # class factory, COM lifetime, activation loop
     authenticator.rs      # IPluginAuthenticator callback adapter
@@ -219,27 +245,27 @@ metadata cache가 없으므로 remove 시 추가 credential cleanup은 필요 �
 `MakeCredential`과 `GetAssertion`은 callback 진입 직후 다음 순서로 처리한다.
 
 1. request pointer와 길이를 검증하고 `requestType`이 CTAP CBOR인지 확인한다.
-2. `WebAuthNPluginGetOperationSigningPublicKey`의 public key로 request signature를
-   검증한다. 실패하면 decode, Hello, IPC를 수행하지 않고 실패한다.
+2. `WebAuthNPluginGetOperationSigningPublicKey`의 public key로 `pbEncodedRequest`
+   전체의 request signature를 검증한다. 실패하면 decode, Hello, IPC를 수행하지 않고
+   실패한다.
 3. Windows SDK decoder로 request를 structured data로 해석한다.
 4. 알려지지 않은 option, 지원하지 않는 algorithm 또는 요구 extension은 정확한
    `NTE_NOT_SUPPORTED`/invalid-parameter 오류로 끝낸다. 구현하지 않은 기능을
    `authenticatorGetInfo`에 광고하지 않는다.
 
-request signature와 user-verification signature 검증에는 CNG를 사용한다. 지원 Windows
-build에서 capture한 fixture로 key blob format, signed bytes, signature algorithm과
-padding을 먼저 확정한다. 그 contract에 맞는 SHA-256 digest에
-`NCryptVerifySignature`를 수행하고, 임의의 public key format, signature format,
-처리하며 추정해서 허용하지 않는다.
+request signature와 user-verification signature 검증에는 CNG를 사용한다. reference
+contract대로 `pbEncodedRequest`의 SHA-256 digest에 대해 RSA-PSS를 먼저, RSA-PKCS#1
+v1.5를 다음으로 검증하며 EC key는 ECDSA로 검증한다. CNG `GenericPublicBlob`으로
+검증 가능한 RSA/EC public key만 받고, 임의의 public key format이나 oversized buffer를
+허용하지 않는다.
 
 ### Windows Hello
 
-interactive ceremony는 `EXPERIMENTAL_WebAuthNPluginPerformUserVerification2`를 호출한다.
+interactive ceremony는 `WebAuthNPluginPerformUserVerification` v1을 호출한다.
 
 - caller HWND와 transaction ID를 요청에서 가져온다.
-- custom buffer-to-sign에는 검증한 encoded request를 사용해 UV 결과를 현재 ceremony에
-  cryptographically bind한다.
-- UV public key와 counter를 가져오고, 반환 signature를 검증한다.
+- request의 encoded bytes는 v1 API가 반환하는 UV signature의 signed bytes다. UV public
+  key를 가져와 반환 signature를 같은 bytes에 대해 검증한다.
 - cancel은 `NTE_USER_CANCELLED`로, signature failure는 일반 authentication failure로
   매핑한다.
 - Hello display hint는 relying party를 포함한다. account는 아직 Core가 선택하지 않았을
@@ -303,10 +329,12 @@ COM server는 Linux sidecar와 동일하게 `CoreClient`를 사용한다. client
 
 `CancelOperation`은 transaction ID가 현재 active ceremony와 일치할 때만 처리한다.
 
-1. ceremony cancellation token을 signal한다.
-2. pending `CoreClient` request/IPC connection을 drop한다.
-3. desktop host는 requester disconnect를 감지해 in-flight native UI child를 종료한다.
-4. COM callback은 `NTE_USER_CANCELLED`를 반환한다.
+1. active ceremony가 보관한 원 encoded request bytes에 대해 cancellation signature를
+   검증한다. 실패하면 cancellation signal이나 IPC 종료를 수행하지 않는다.
+2. ceremony cancellation token을 signal한다.
+3. pending `CoreClient` request/IPC connection을 drop한다.
+4. desktop host는 requester disconnect를 감지해 in-flight native UI child를 종료한다.
+5. COM callback은 `NTE_USER_CANCELLED`를 반환한다.
 
 Hello, desktop launch, Core IPC, native UI, response encode 각 단계에서 cancellation을
 관찰한다. 취소된 request가 뒤늦게 assertion이나 registration response를 반환하지
@@ -355,7 +383,8 @@ detail을 포함하지 않는다.
 - Windows-independent: operation field 변환, Core error mapping, cancellation state machine,
   raw authenticator-info CBOR fixture
 - Windows native: generated binding compile check, COM reference/lifetime test, malformed
-  pointer/length rejection, request signature와 Hello signature verification fixture
+  pointer/length rejection, CNG RSA-PSS/RSA-PKCS#1/EC request와 Hello signature
+  verification test
 - package test: dynamic export lookup이 필요한 모든 symbol을 확인하고 unsupported OS에서는
   process가 정상적으로 unsupported result를 반환하는지 검증
 
@@ -369,7 +398,7 @@ detail을 포함하지 않는다.
    selection의 순서를 확인한다.
 4. Hello cancel, native UI cancel, browser cancel, desktop 종료, daemon reconnect, pairing
    reset을 검증한다.
-5. request signature 또는 UV response signature를 변조한 test path가 signing 전에
+5. request signature 또는 UV response signature를 변조한 test path가 Core signing 전에
    실패하는지 확인한다.
 6. input field의 conditional/autofill UI에 Keeless credential이 나타나지 않는 것을
    확인한다. 이는 의도된 cache-free 동작이다.

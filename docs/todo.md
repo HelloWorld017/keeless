@@ -22,7 +22,7 @@
 - [x] 커스텀 윈도우 바
 - [x] native-ui 현재 윈도우와 비슷한 위치에 뜨기
 - [x] 마지막으로 사용한 스토리지 저장
-- [ ] WebDAV 싱크 테스트 하기
+- [x] WebDAV 싱크 테스트 하기
 - [ ] extension + native messaging host 구현
 - [ ] [windows process hardening](./draft/20260731-windows-hardening.md)
 - [ ] config에 systemd 서비스 등록화면
