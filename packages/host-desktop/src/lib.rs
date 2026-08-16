@@ -19,6 +19,7 @@ use keeless_core::{
     keeless_schema::{DatabaseNodeId, OperationOutcome, OperationResponse, OperationSuccess},
 };
 use keeless_host_desktop_shared::ipc;
+use keeless_sync::WebDavProvider;
 use napi::{
     ValueType,
     bindgen_prelude::{
@@ -61,6 +62,10 @@ impl TaskSpawner for TokioTaskSpawner {
     fn spawn(&self, task: HostFuture<'static, ()>) {
         tokio::spawn(task);
     }
+}
+
+fn normalize_webdav_path(path: &str) -> keeless_core::Result<String> {
+    WebDavProvider::get_normalized_path(path).map_err(Into::into)
 }
 
 struct HostRuntime {
@@ -164,6 +169,13 @@ impl DesktopHost {
             Arc::new(Storage::persistent(
                 storage.clone() as Arc<dyn StorageProvider>
             )),
+        );
+        providers.insert(
+            "webdav".into(),
+            Arc::new(
+                Storage::persistent(Arc::new(WebDavProvider::new()) as Arc<dyn StorageProvider>)
+                    .with_normalized_path(normalize_webdav_path),
+            ),
         );
         let core = KeelessCore::new(KeelessHost {
             storage_providers: providers,
