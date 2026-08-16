@@ -13,6 +13,7 @@ use windows_sys::Win32::{
 use crate::sdk_bindings::*;
 
 const E_NOTIMPL: HResult = 0x8000_4001_u32 as i32;
+const APPMODEL_ERROR_NO_PACKAGE: HResult = 0x8007_3d54_u32 as i32;
 
 #[link(name = "ole32")]
 unsafe extern "system" {
@@ -23,6 +24,8 @@ unsafe extern "system" {
 pub enum ApiError {
     #[error("Windows WebAuthn plugin APIs are not available")]
     Unsupported,
+    #[error("Windows package identity is required; install the Keeless external-location package")]
+    PackageIdentityRequired,
     #[error("webauthn.dll does not export {0}")]
     MissingExport(&'static str),
     #[error("Windows WebAuthn API failed with HRESULT {0:#x}")]
@@ -35,6 +38,7 @@ impl ApiError {
     pub fn hresult(&self) -> HResult {
         match self {
             Self::Unsupported | Self::MissingExport(_) => E_NOTIMPL,
+            Self::PackageIdentityRequired => APPMODEL_ERROR_NO_PACKAGE,
             Self::HResult(value) => *value,
             Self::InvalidBuffer => crate::error::NTE_INVALID_PARAMETER,
         }
@@ -326,6 +330,8 @@ unsafe fn symbol<T: Copy>(module: HMODULE, name: &'static str) -> Result<T, ApiE
 fn check(result: HResult) -> Result<(), ApiError> {
     if result >= S_OK {
         Ok(())
+    } else if result == APPMODEL_ERROR_NO_PACKAGE {
+        Err(ApiError::PackageIdentityRequired)
     } else {
         Err(ApiError::HResult(result))
     }

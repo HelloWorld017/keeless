@@ -11,6 +11,10 @@ asarUnpack:
 extraResources:
   - from: resources/bin
     to: bin
+  - from: resources/passkey-windows
+    to: passkey-windows
+  - from: build/passkey-identity/manage-identity-package.ps1
+    to: passkey-windows/manage-identity-package.ps1
   - from: icons
     to: icons
 linux:

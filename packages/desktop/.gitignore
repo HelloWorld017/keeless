@@ -1,4 +1,5 @@
 out/
 release/
 resources/bin/
+resources/passkey-windows/*.msix
 binaries/

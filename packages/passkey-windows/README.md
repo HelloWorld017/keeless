@@ -78,13 +78,47 @@ not use `PATH` or user-writable configuration.
 
 ## Packaging
 
-The Windows NSIS installer registers the COM local server under the stable
-`COM_CLASS_ID` in the 64-bit `HKLM\\Software\\Classes\\CLSID` view. This crate
-produces `keeless-passkey-windows.exe`; staging it into
-`$INSTDIR\\resources\\bin` is owned by the desktop packaging build. The
-installer owns machine-wide registry writes. The desktop app must never
-self-register from an unelevated process.
+The Windows NSIS installer deploys an external-location MSIX identity package
+alongside the classic installation. The package manifest owns the stable
+`COM_CLASS_ID` registration through `windows.comServer`; it replaces direct
+`HKLM\\Software\\Classes\\CLSID` writes and causes COM activation to include
+package identity. That identity is required by `WebAuthNPluginAddAuthenticator`.
+
+The manifest template and packaging scripts are in
+`packages/desktop/build/passkey-identity`. Before each Windows release:
+
+1. Build an unsigned MSIX per target architecture with
+   `build-identity-package.ps1`. Its publisher must exactly match the subject
+   of the release signing certificate, and the four-part version must advance
+   on updates.
+2. Submit each MSIX to SignPath for package signing. Keep the package name
+   `dev.nenw.keeless.passkey` and the publisher stable after the first release;
+   changing either changes the package family.
+3. Use `stage-signed-identity-package.ps1` to copy the signed, matching
+   architecture package to `packages/desktop/resources/passkey-windows/` before
+   building the corresponding NSIS installer. The staging script requires the
+   `AppxSignature.p7x` produced by package signing.
+
+For example, the pre-signing build step on a Windows build agent is:
+
+```powershell
+./packages/desktop/build/passkey-identity/build-identity-package.ps1 `
+  -Publisher 'CN=Keeless' `
+  -Version 0.0.0.0 `
+  -Architecture x64 `
+  -OutputPath .\artifacts\keeless-passkey-identity-x64.msix
+```
+
+`CN=Keeless` is only an example: production builds must use the exact SignPath
+certificate subject. An unsigned package is useful only as SignPath input; the
+NSIS installer never uses `-AllowUnsigned` and Windows rejects it.
+
+The per-machine installer stages the signed package with its external location
+set to `$INSTDIR`, then provisions it for all users. The sidecar remains in
+`$INSTDIR\\resources\\bin`; `--enable` and `--disable` must run after package
+identity is installed. Uninstall disables the provider before removing the
+provisioned identity package and its manifest-provided COM registration.
 
 `--disable` idempotently calls `WebAuthNPluginRemoveAuthenticator`. The
-uninstaller invokes it before removing the COM class and leaves the application
-installed if disabling fails.
+uninstaller invokes it before removing the identity package and leaves the
+application installed if disabling fails.
