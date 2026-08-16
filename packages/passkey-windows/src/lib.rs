@@ -14,3 +14,21 @@ pub mod cancellation;
 pub mod ceremony;
 pub mod error;
 pub mod session;
+
+#[cfg(windows)]
+pub mod api;
+#[cfg(windows)]
+pub mod authenticator;
+#[cfg(windows)]
+pub mod com;
+#[cfg(windows)]
+pub mod registration;
+#[cfg(windows)]
+pub mod sdk_bindings;
+#[cfg(windows)]
+pub mod verify;
+
+#[cfg(windows)]
+pub fn main(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(), String> {
+    com::main(arguments)
+}

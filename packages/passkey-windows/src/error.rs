@@ -11,6 +11,10 @@ pub const NTE_NOT_SUPPORTED: HResult = 0x8009_0029_u32 as i32;
 pub const NTE_USER_CANCELLED: HResult = 0x8009_0036_u32 as i32;
 pub const ERROR_BUSY: HResult = 0x8007_00aa_u32 as i32;
 pub const E_FAIL: HResult = 0x8000_4005_u32 as i32;
+pub const E_POINTER: HResult = 0x8000_4003_u32 as i32;
+pub const E_NOINTERFACE: HResult = 0x8000_4002_u32 as i32;
+pub const CLASS_E_NOAGGREGATION: HResult = 0x8004_0110_u32 as i32;
+pub const E_NOTIMPL: HResult = 0x8000_4001_u32 as i32;
 
 /// Map a Core operation error code without exposing database or cryptographic
 /// detail to the browser.
@@ -22,6 +26,22 @@ pub fn core_operation_error(code: &str) -> HResult {
         "invalid_passkey_request" => NTE_INVALID_PARAMETER,
         "passkey_consent_denied" | "password_required" | "invalid_credentials" => {
             NTE_USER_CANCELLED
+        }
+        _ => E_FAIL,
+    }
+}
+
+pub fn request_error(error: crate::ceremony::RequestError) -> HResult {
+    match error {
+        crate::ceremony::RequestError::InvalidParameter => NTE_INVALID_PARAMETER,
+        crate::ceremony::RequestError::UnsupportedAlgorithm => NTE_NOT_SUPPORTED,
+    }
+}
+
+pub fn client_error(error: &keeless_host_desktop_shared::ClientError) -> HResult {
+    match error {
+        keeless_host_desktop_shared::ClientError::Operation { code, .. } => {
+            core_operation_error(code)
         }
         _ => E_FAIL,
     }
@@ -44,5 +64,17 @@ mod tests {
             NTE_USER_CANCELLED
         );
         assert_eq!(core_operation_error("unknown"), E_FAIL);
+    }
+
+    #[test]
+    fn maps_local_request_errors_without_leaking_details() {
+        assert_eq!(
+            request_error(crate::ceremony::RequestError::InvalidParameter),
+            NTE_INVALID_PARAMETER
+        );
+        assert_eq!(
+            request_error(crate::ceremony::RequestError::UnsupportedAlgorithm),
+            NTE_NOT_SUPPORTED
+        );
     }
 }

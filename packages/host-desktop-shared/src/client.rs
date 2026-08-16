@@ -108,6 +108,7 @@ impl CoreClient {
             && !matches!(
                 operation,
                 Operation::GetPasskeys(_)
+                    | Operation::GetCoreStatus(_)
                     | Operation::RegisterPasskey(_)
                     | Operation::AssertPasskey(_)
             )

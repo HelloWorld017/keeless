@@ -47,6 +47,12 @@ impl FileStore {
     /// Reads at most `limit` bytes and fails past it, so a corrupt or hostile file
     /// cannot force an unbounded allocation.
     pub async fn load(&self, limit: usize) -> io::Result<Option<Zeroizing<Vec<u8>>>> {
+        #[cfg(windows)]
+        if self.path.exists() {
+            // Pairing identities are credentials. Repair an ACL left by an older
+            // version before opening an existing state file.
+            fs::ensure_file_permissions(&self.path)?;
+        }
         let file = match tokio::fs::File::open(&self.path).await {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -77,7 +83,7 @@ impl FileStore {
         fs::set_private_create_mode(&mut options);
         let mut file = options.open(&temporary).await?;
         let result = async {
-            fs::set_file_permissions(&file).await?;
+            fs::set_file_permissions(&file, &temporary).await?;
             file.write_all(contents).await?;
             file.sync_all().await?;
             drop(file);

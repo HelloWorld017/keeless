@@ -2475,8 +2475,10 @@ dependencies = [
  "keeless_lesswire",
  "keeless_passkey_ctap",
  "keeless_schema",
+ "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

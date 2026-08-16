@@ -132,8 +132,8 @@ impl DatabaseStore {
         let mut options = tokio::fs::OpenOptions::new();
         options.create(true).append(true);
         set_private_create_mode(&mut options);
-        let mut file = options.open(path).await?;
-        set_file_permissions(&file).await?;
+        let mut file = options.open(&path).await?;
+        set_file_permissions(&file, &path).await?;
         file.write_all(line).await?;
         file.write_all(b"\n").await?;
         file.sync_all().await?;

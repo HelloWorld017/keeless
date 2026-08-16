@@ -1,24 +1,35 @@
 # @keeless/passkey-windows
 
-Platform-independent ceremony primitives for the Windows WebAuthn Plugin
-Passkey Manager. The current crate converts decoded Windows requests to existing
-Keeless Core operations, maps Core failures to browser-visible HRESULTs, owns
-one active transaction, and persists authenticated local IPC client state. The
-COM server and provider registration are not implemented yet.
+Windows WebAuthn Plugin Passkey Manager sidecar for Keeless. It is a classic
+out-of-process COM server which verifies Windows operation signatures and
+Windows Hello verification before sending a ceremony to the authenticated
+Keeless desktop host. The desktop host remains the only process that unlocks
+the database, prompts for consent, and accesses passkey private keys.
+
+The provider intentionally does not use Windows credential metadata cache APIs.
+Browsers therefore require an explicit Keeless selection and conditional/autofill
+discovery returns `NTE_NOT_FOUND` without starting Keeless or prompting.
 
 ## ABI Source
 
-The future Windows adapter pins `microsoft/webauthn` commit
-`ef82c157125a0490e05f6ea82a7adb1b8e1bad08` and commits generated bindings.
-The generator consumes all of these MIT-licensed inputs:
+`src/sdk_bindings.rs` is a checked-in, ABI-reviewed subset derived from
+`microsoft/webauthn` commit `ef82c157125a0490e05f6ea82a7adb1b8e1bad08`.
+It never reads a developer Windows SDK or the network during a normal build.
+The MIT-licensed ABI inputs are:
 
 - `pluginauthenticator.idl` and `pluginauthenticator.h` for the COM callback ABI
 - `webauthnplugin.h` for plugin management, CTAP-CBOR codec, and Hello APIs
 - `webauthn.h` for the nested request and response structures
 
-The executable dynamically resolves required exports from `webauthn.dll`, so
-unsupported Windows versions return an explicit unsupported result instead of
-failing during process loading.
+To update the binding, download exactly that commit, compare the four input
+files above with the source header notice, regenerate the ABI subset with a
+current `bindgen` in a Windows SDK build environment, and review the resulting
+layout changes before committing. The normal Cargo build only compiles the
+checked-in Rust source.
+
+The executable dynamically resolves every required export from the System32
+copy of `webauthn.dll`, so unsupported Windows versions return an explicit
+unsupported result instead of failing during process loading.
 
 ## Ceremony Contract
 
@@ -38,22 +49,42 @@ copied; Keeless independently implements only the public ABI and this contract:
 - `WebAuthNPluginPerformUserVerification` v1 is used, rather than the v2 custom
   buffer API.
 
-This contract must be covered by Windows-native CNG and browser integration
-tests before the provider is enabled for release.
+The Windows-native CNG tests must be run before release. Browser/VM integration
+testing and installer staging are owned by the desktop package, not this crate.
 
 `keeless_passkey_ctap::response::authenticator_info_cbor` supplies the raw
 `authenticatorGetInfo` CBOR used by the registration adapter; it does not
 include CTAPHID's leading status byte.
 
-## Installation
+## Commands
 
-The Windows NSIS installer registers the future COM local server under the
-stable `COM_CLASS_ID` in the 64-bit `HKLM\\Software\\Classes\\CLSID` view. It
-only does so when `keeless-passkey-windows.exe` is present at
-`$INSTDIR\\resources\\bin`; the current package does not yet produce that
-server. The installer owns machine-wide registry writes. The desktop app must
-never self-register from an unelevated process.
+The installed sidecar accepts:
 
-The server's future `--disable` command must idempotently call
-`WebAuthNPluginRemoveAuthenticator`. The uninstaller invokes it before removing
-the COM class and leaves the application installed if disabling fails.
+```text
+keeless-passkey-windows --enable
+keeless-passkey-windows --disable
+keeless-passkey-windows doctor
+keeless-passkey-windows reset-pairing
+```
+
+`--enable` and `--disable` only add or remove the Windows provider registration;
+they never alter KDBX passkeys. `doctor` verifies dynamic API availability and
+reports the provider state. COM activation uses `-PluginActivated -Embedding`.
+
+For development only, `-PluginActivated --desktop C:\absolute\keeless.exe`
+starts an explicit desktop executable on demand. Installed activation derives
+the desktop executable from the sidecar's fixed installation directory; it does
+not use `PATH` or user-writable configuration.
+
+## Packaging
+
+The Windows NSIS installer registers the COM local server under the stable
+`COM_CLASS_ID` in the 64-bit `HKLM\\Software\\Classes\\CLSID` view. This crate
+produces `keeless-passkey-windows.exe`; staging it into
+`$INSTDIR\\resources\\bin` is owned by the desktop packaging build. The
+installer owns machine-wide registry writes. The desktop app must never
+self-register from an unelevated process.
+
+`--disable` idempotently calls `WebAuthNPluginRemoveAuthenticator`. The
+uninstaller invokes it before removing the COM class and leaves the application
+installed if disabling fails.
