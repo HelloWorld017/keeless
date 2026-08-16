@@ -50,7 +50,10 @@ export class RequestClient {
     memoryClientStore ??= createMemoryClientStore();
     return new RequestClient(
       host,
-      await WireClient.connect(host, 'app', undefined, memoryClientStore, `${host.id}:untrusted`),
+      await WireClient.connect(host, 'app', {
+        store: memoryClientStore,
+        endpointId: `${host.id}:untrusted`,
+      }),
     );
   }
 
@@ -98,17 +101,19 @@ export class RequestClient {
 
   async upgrade() {
     if (this.coreWire) {
-      return;
+      try {
+        await this.request('getDatabaseStatus', {});
+        return;
+      } catch {
+        this.coreWire = undefined;
+      }
     }
 
     const { publicKey } = await this.request('upgrade', {});
-    this.coreWire = await WireClient.connect(
-      this.host,
-      'app',
-      publicKey,
-      memoryClientStore,
-      `${this.host.id}:core`,
-    );
+    this.coreWire = await WireClient.connect(this.host, 'app', {
+      recipient: publicKey,
+      store: memoryClientStore,
+    });
   }
 
   private getWire(op: OperationName) {

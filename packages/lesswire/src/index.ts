@@ -37,6 +37,12 @@ export interface ClientStore {
   saveTrustedServer(endpointId: string, bundle: string): Promise<void>;
 }
 
+export type ClientConnectOptions = {
+  recipient?: string;
+  store?: ClientStore;
+  endpointId?: string;
+};
+
 export const MAX_FRAME_SIZE = 1024 * 1024;
 const FRAME_TIMESTAMP_TOLERANCE_MS = 500;
 const NONCE_CACHE_CAPACITY = 2048;
@@ -166,17 +172,17 @@ export class Client {
     private readonly serverKeys: PublicKeyBundle,
   ) {}
 
-  static async connect(
-    relay: Relay,
-    scope: KeyScope,
-    recipient?: string,
-    store: ClientStore = new IndexedDbClientStore(),
-    endpointId = relay.id,
-  ) {
+  static async connect(relay: Relay, scope: KeyScope, options: ClientConnectOptions = {}) {
+    const { recipient, store = new IndexedDbClientStore(), endpointId } = options;
     const identity = await deriveIdentity(store, scope);
     const serverBundle = recipient ?? (await relay.connect(identity.bundle));
     parseBundle(serverBundle);
-    const trusted = await store.loadTrustedServer(endpointId);
+    // An explicit recipient is authenticated by the caller (for example, an
+    // upgrade response from a pinned endpoint), so it does not need storage pinning.
+    const trustedEndpointId = endpointId ?? (recipient === undefined ? relay.id : undefined);
+    const trusted = trustedEndpointId
+      ? await store.loadTrustedServer(trustedEndpointId)
+      : undefined;
     if (trusted && trusted !== serverBundle) {
       throw new Error('Server identity changed');
     }
@@ -201,8 +207,8 @@ export class Client {
       throw new Error('Server returned a frame for another recipient');
     }
     verifyFrame(response, serverBundle);
-    if (!trusted) {
-      await store.saveTrustedServer(endpointId, response.publicKey);
+    if (!trusted && trustedEndpointId) {
+      await store.saveTrustedServer(trustedEndpointId, response.publicKey);
     }
     return new Client(relay, identity, serverBundle, parseBundle(serverBundle));
   }

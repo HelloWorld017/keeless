@@ -132,7 +132,7 @@ export const RecentStep = () => {
         ))}
         <Item
           variant="outline"
-          render={<button type="button" className="transition-colors hover:bg-muted" />}
+          render={<button type="button" className="transition-colors hover:bg-muted" aria-label="Add database" />}
           onClick={() => navigate(buildRoute('openSelect'))}
         >
           <ItemMedia variant="icon">
@@ -149,8 +149,8 @@ export const RecentStep = () => {
 
       <AlertDialog
         open={Boolean(databaseToDelete)}
-        onOpenChange={open =>
-          !deleteRecentDatabase.isPending && !open && setDatabaseToDelete(undefined)
+        onOpenChange={isOpen =>
+          !deleteRecentDatabase.isPending && !isOpen && setDatabaseToDelete(undefined)
         }
       >
         <AlertDialogContent>
