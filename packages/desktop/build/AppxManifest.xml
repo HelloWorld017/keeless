@@ -2,9 +2,8 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap com rescap">
+  IgnorableNamespaces="uap rescap">
   <Identity
     Name="dev.nenw.keeless.passkey"
     Publisher="__PUBLISHER__"
@@ -40,20 +39,6 @@
         DisplayName="Keeless Passkey Provider"
         Square150x150Logo="assets\passkey.png"
         Square44x44Logo="assets\passkey.png" />
-      <Extensions>
-        <com:Extension Category="windows.comServer">
-          <com:ComServer>
-            <com:ExeServer
-              Executable="resources\bin\keeless-passkey-windows.exe"
-              Arguments="-PluginActivated"
-              DisplayName="Keeless Passkey Provider">
-              <com:Class
-                Id="13ABEFF0-71C5-49E3-9F2F-C207A28CDB9D"
-                DisplayName="Keeless Passkey Provider" />
-            </com:ExeServer>
-          </com:ComServer>
-        </com:Extension>
-      </Extensions>
     </Application>
   </Applications>
 

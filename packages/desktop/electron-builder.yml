@@ -4,17 +4,11 @@ directories:
   output: release
   buildResources: icons
 files:
-  - out/**
+  - dist/**
   - package.json
 asarUnpack:
   - assets/*.node
 extraResources:
-  - from: resources/bin
-    to: bin
-  - from: resources/passkey-windows
-    to: passkey-windows
-  - from: build/passkey-identity/manage-identity-package.ps1
-    to: passkey-windows/manage-identity-package.ps1
   - from: icons
     to: icons
 linux:
@@ -23,6 +17,11 @@ linux:
     - AppImage
 win:
   icon: icons/icon.ico
+  extraResources:
+    - from: dist/main/assets/keeless-passkey-windows.exe
+      to: bin/keeless-passkey-windows.exe
+    - from: dist/main/assets/keeless-passkey-windows.msix
+      to: passkey-windows/keeless-passkey-windows.msix
   target:
     - nsis
 nsis:

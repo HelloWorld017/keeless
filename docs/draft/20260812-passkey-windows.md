@@ -184,32 +184,35 @@ workspace test를 실행할 때 새 package가 Windows API 때문에 실패하�
 
 ### External-location package and NSIS install
 
-plugin은 classic out-of-process COM local server로 배포한다. signed NSIS installer는
-external-location MSIX identity package를 `$INSTDIR`에 연결해 stage/provision하고,
-manifest의 `windows.comServer` extension이 COM local server를 등록한다. Windows
-WebAuthn service는 CLSID로 COM activation을 수행하며, package identity가 포함된
-token으로 `keeless-passkey-windows.exe -PluginActivated -Embedding`을 실행한다.
+plugin은 classic out-of-process COM local server로 배포한다. signed NSIS installer가
+관리자 권한으로 `HKLM\\Software\\Classes\\CLSID\\{CLSID}\\LocalServer32`의 64-bit view에
+server를 등록한다. 같은 installer는 installed root를 external location으로 가리키는
+MSIX를 `Add-AppxPackage`로 등록한다. Windows WebAuthn service는 CLSID로 COM
+activation을 수행하고 `keeless-passkey-windows.exe -PluginActivated -Embedding`을
+실행하며, sidecar는 MSIX identity를 사용해 plugin API를 호출한다.
 
 - CLSID `13ABEFF0-71C5-49E3-9F2F-C207A28CDB9D`와 Keeless AAGUID는 release 후 변경하지
   않는다. CLSID는 Rust `COM_CLASS_ID`와 NSIS
   `packages/desktop/build/installer.nsh`에서 동일해야 한다.
 - installer는 `keeless-passkey-windows.exe`를 `$INSTDIR\\resources\\bin`에 설치하고,
-  manifest의 relative `ExeServer` path로 활성화한다. NSIS는 `HKLM`에 `LocalServer32`
-  key를 직접 만들지 않는다.
+  `LocalServer32` default value와 `ServerExecutable` 모두에 absolute installed path를
+  쓴다. 전자는 quote하고 후자는 quote하지 않아 COM command-path ambiguity를 막는다.
 - `packages/desktop/electron-builder.yml`는 `nsis.perMachine: true`와 elevation을
-  요구한다. installer는 `Add-AppxPackage -Stage -ExternalLocation`와
-  `Add-AppxProvisionedPackage`로 identity package를 모든 사용자에 provisioning한다.
+  요구한다. installer는 sidecar와 MSIX를 Vite가 `dist`에 emit한 artifact에서 직접
+  포함하고, `Add-AppxPackage -ExternalLocation`으로 현재 사용자 identity를 등록한다.
 - server executable과 설치 directory는 administrator만 수정할 수 있어야 하며,
   installer, sidecar, identity MSIX는 code signed여야 한다. identity manifest publisher는
-  MSIX signing certificate subject와 정확히 일치해야 한다. user-writable path, config,
-  `PATH`는 registration이나 launcher에 사용하지 않는다.
+  MSIX signing certificate subject와 정확히 일치해야 한다. development build는 current
+  user Trusted People store의 self-signed certificate를 사용한다. user-writable path,
+  config, `PATH`는 registration이나 launcher에 사용하지 않는다.
 - uninstall은 sidecar의 idempotent `--disable` command로
   `WebAuthNPluginRemoveAuthenticator`를 먼저 호출한다. 성공했을 때만 installer가
-  provisioned identity package를 제거하며, disable 실패 시 uninstall을 중단해 stale
-  provider를 남기지 않는다.
+  external package identity와 CLSID key를 제거하며, disable 실패 시 uninstall을
+  중단해 stale provider를 남기지 않는다.
 - `WebAuthNPluginAddAuthenticator`는 calling process의 package identity를 요구한다.
-  unsigned MSIX는 SignPath 입력용이며 release installer가 `-AllowUnsigned`로 우회하지
-  않는다.
+  release `pnpm build`는 unsigned MSIX를 만들고 SignPath가 Vite output의 EXE와 MSIX를
+  모두 서명한 뒤 `electron-builder`가 실행된다. release마다 `MSIX_VERSION`의 four-part
+  package version을 증가시킨다.
 
 ### Activation
 

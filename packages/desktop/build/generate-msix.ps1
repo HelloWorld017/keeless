@@ -1,0 +1,102 @@
+[CmdletBinding()]
+param(
+    [switch]$Development
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$profile = if ($Development) { 'debug' } else { 'release' }
+$publisher = if ($Development) { 'CN=Keeless Development' } else { $env:MSIX_PUBLISHER }
+$version = if ($Development) {
+    if ($env:MSIX_VERSION) { $env:MSIX_VERSION } else { '0.0.0.0' }
+} else {
+    $env:MSIX_VERSION
+}
+$architecture = if ($env:MSIX_ARCHITECTURE) { $env:MSIX_ARCHITECTURE } else { 'x64' }
+
+if (-not $publisher) {
+    throw 'MSIX_PUBLISHER must match the SignPath certificate subject.'
+}
+if (-not $version) {
+    throw 'MSIX_VERSION must advance for each release package.'
+}
+if ($version -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$' -or ($version.Split('.') | Where-Object { [int]$_ -gt 65535 })) {
+    throw 'MSIX_VERSION must use four parts from 0 through 65535.'
+}
+if ($architecture -notin @('x64', 'arm64')) {
+    throw 'MSIX_ARCHITECTURE must be x64 or arm64.'
+}
+
+$makeAppx = Get-Command MakeAppx.exe -ErrorAction SilentlyContinue
+if (-not $makeAppx) {
+    throw 'MakeAppx.exe was not found. Install the Windows SDK before generating the MSIX.'
+}
+
+$template = Join-Path $PSScriptRoot 'AppxManifest.xml'
+$icon = Join-Path $root 'packages\desktop\icons\icon.png'
+$output = Join-Path $root "target\$profile\keeless-passkey-windows.msix"
+if (-not (Test-Path -LiteralPath $icon -PathType Leaf)) {
+    throw "Missing MSIX icon: $icon"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $root "target\$profile\keeless-passkey-windows.exe") -PathType Leaf)) {
+    throw "Build keeless-passkey-windows for the $profile profile before generating the MSIX."
+}
+
+$stagingDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "keeless-msix-$PID"
+try {
+    New-Item -ItemType Directory -Force -Path (Join-Path $stagingDirectory 'assets') | Out-Null
+    Copy-Item -LiteralPath $icon -Destination (Join-Path $stagingDirectory 'assets\passkey.png')
+
+    $manifest = Get-Content -LiteralPath $template -Raw
+    $manifest = $manifest.Replace('__PUBLISHER__', [System.Security.SecurityElement]::Escape($publisher))
+    $manifest = $manifest.Replace('__VERSION__', $version)
+    $manifest = $manifest.Replace('__ARCHITECTURE__', $architecture)
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stagingDirectory 'AppxManifest.xml'),
+        $manifest,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
+    & $makeAppx.Path pack /d $stagingDirectory /p $output /o
+    if ($LASTEXITCODE -ne 0) {
+        throw "MakeAppx.exe failed with exit code $LASTEXITCODE."
+    }
+
+    if ($Development) {
+        $certificate = Get-ChildItem Cert:\CurrentUser\My |
+            Where-Object { $_.Subject -eq $publisher -and $_.HasPrivateKey } |
+            Select-Object -First 1
+        if (-not $certificate) {
+            $certificate = New-SelfSignedCertificate `
+                -Type Custom `
+                -Subject $publisher `
+                -CertStoreLocation Cert:\CurrentUser\My `
+                -KeyAlgorithm RSA `
+                -KeyLength 2048 `
+                -KeyUsage DigitalSignature `
+                -HashAlgorithm SHA256 `
+                -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3') `
+                -FriendlyName 'Keeless Passkey Development'
+        }
+        if (-not (Get-ChildItem Cert:\CurrentUser\TrustedPeople | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
+            Copy-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Destination Cert:\CurrentUser\TrustedPeople
+        }
+
+        $signTool = Get-Command SignTool.exe -ErrorAction SilentlyContinue
+        if (-not $signTool) {
+            throw 'SignTool.exe was not found. Install the Windows SDK before self-signing the MSIX.'
+        }
+        & $signTool.Path sign /fd SHA256 /sha $certificate.Thumbprint $output
+        if ($LASTEXITCODE -ne 0) {
+            throw "SignTool.exe failed with exit code $LASTEXITCODE."
+        }
+    }
+}
+finally {
+    Remove-Item -LiteralPath $stagingDirectory -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Output "MSIX generated: $output"

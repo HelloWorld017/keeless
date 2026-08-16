@@ -219,6 +219,9 @@ importers:
       '@keeless/native-ui':
         specifier: workspace:*
         version: link:../native-ui
+      '@keeless/passkey-windows':
+        specifier: workspace:*
+        version: link:../passkey-windows
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.3(vite@8.1.5(patch_hash=acafada8dc3e4748f549f937af21509f994451bc914a553fd7e66d1d1b753d9c)(@types/node@26.1.1)(jiti@2.7.0)(yaml@2.9.0))

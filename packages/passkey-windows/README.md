@@ -78,46 +78,33 @@ not use `PATH` or user-writable configuration.
 
 ## Packaging
 
-The Windows NSIS installer deploys an external-location MSIX identity package
-alongside the classic installation. The package manifest owns the stable
-`COM_CLASS_ID` registration through `windows.comServer`; it replaces direct
-`HKLM\\Software\\Classes\\CLSID` writes and causes COM activation to include
-package identity. That identity is required by `WebAuthNPluginAddAuthenticator`.
+The Windows NSIS installer retains the classic `COM_CLASS_ID` registration in
+the 64-bit `HKLM\\Software\\Classes\\CLSID` view. It also registers a minimal
+external-location MSIX whose application is the installed sidecar. This grants
+the sidecar the package identity required by `WebAuthNPluginAddAuthenticator`;
+the MSIX does not own COM registration.
 
-The manifest template and packaging scripts are in
-`packages/desktop/build/passkey-identity`. Before each Windows release:
+`packages/desktop/build/AppxManifest.xml` is the only manifest. Vite's
+`binary:` plugin emits both the sidecar and its MSIX from `target` into
+`dist/main/assets`; electron-builder packages those emitted artifacts directly.
+There is no resource staging directory or package lifecycle helper.
 
-1. Build an unsigned MSIX per target architecture with
-   `build-identity-package.ps1`. Its publisher must exactly match the subject
-   of the release signing certificate, and the four-part version must advance
-   on updates.
-2. Submit each MSIX to SignPath for package signing. Keep the package name
-   `dev.nenw.keeless.passkey` and the publisher stable after the first release;
-   changing either changes the package family.
-3. Use `stage-signed-identity-package.ps1` to copy the signed, matching
-   architecture package to `packages/desktop/resources/passkey-windows/` before
-   building the corresponding NSIS installer. The staging script requires the
-   `AppxSignature.p7x` produced by package signing.
+On a Windows release build agent, set `MSIX_PUBLISHER` to the exact subject of
+the SignPath certificate and set an advancing four-part `MSIX_VERSION`, then
+run `pnpm build`. This produces an unsigned MSIX and sidecar in `dist`. SignPath
+must sign both artifacts before `pnpm dist` runs electron-builder.
+`MSIX_ARCHITECTURE` optionally selects `x64` or `arm64`.
 
-For example, the pre-signing build step on a Windows build agent is:
+For development, `pnpm generate:msix:dev` creates or reuses a local
+`CN=Keeless Development` code-signing certificate, trusts its public portion in
+the current user's Trusted People store, and self-signs the debug MSIX. The
+development build path invokes this command before Vite emits the MSIX. The
+private key remains in the Windows certificate store and is never committed.
 
-```powershell
-./packages/desktop/build/passkey-identity/build-identity-package.ps1 `
-  -Publisher 'CN=Keeless' `
-  -Version 0.0.0.0 `
-  -Architecture x64 `
-  -OutputPath .\artifacts\keeless-passkey-identity-x64.msix
-```
-
-`CN=Keeless` is only an example: production builds must use the exact SignPath
-certificate subject. An unsigned package is useful only as SignPath input; the
-NSIS installer never uses `-AllowUnsigned` and Windows rejects it.
-
-The per-machine installer stages the signed package with its external location
-set to `$INSTDIR`, then provisions it for all users. The sidecar remains in
-`$INSTDIR\\resources\\bin`; `--enable` and `--disable` must run after package
-identity is installed. Uninstall disables the provider before removing the
-provisioned identity package and its manifest-provided COM registration.
+The sidecar remains in `$INSTDIR\\resources\\bin`; `--enable` and `--disable`
+must run after the external package identity is registered. Uninstall disables
+the provider, removes the current user's package identity, then removes the
+classic COM registration.
 
 `--disable` idempotently calls `WebAuthNPluginRemoveAuthenticator`. The
 uninstaller invokes it before removing the identity package and leaves the

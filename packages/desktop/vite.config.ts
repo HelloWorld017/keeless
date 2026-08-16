@@ -55,16 +55,21 @@ const binary = (): Plugin => {
 
       const name = id.slice(binaryPrefix.length + 1);
       const profile = env === 'production' ? 'release' : 'debug';
-      const executableSuffix = platform === 'win32' ? '.exe' : '';
-      const assetPath = resolve(dirname, `../../target/${profile}/${name}${executableSuffix}`);
+      if (platform !== 'win32' && name.startsWith('keeless-passkey-windows')) {
+        return 'export default undefined;';
+      }
+
+      const executableSuffix = platform === 'win32' && !name.includes('.') ? '.exe' : '';
+      const assetName = `${name}${executableSuffix}`;
+      const assetPath = resolve(dirname, `../../target/${profile}/${assetName}`);
 
       const referenceId = this.emitFile({
         type: 'asset',
-        name: `${name}${executableSuffix}`,
+        name: assetName,
         source: await readFile(assetPath),
       });
 
-      emittedBinaries.set(referenceId, `${name}${executableSuffix}`);
+      emittedBinaries.set(referenceId, assetName);
 
       return ts`
         import { fileURLToPath } from 'node:url';
