@@ -1,0 +1,19 @@
+{
+  "name": "@keeless/passkey-windows",
+  "version": "0.0.0",
+  "private": true,
+  "description": "webauthn plugin authenticator serving keeless passkeys on windows",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "cargo build --release -p keeless_passkey_windows",
+    "check": "pnpm run \"/^check:.*/\"",
+    "check:format": "cargo fmt --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "cargo fmt",
+    "lint": "cargo clippy -p keeless_passkey_windows --all-targets -- -D warnings",
+    "test": "cargo test -p keeless_passkey_windows",
+    "typecheck": "cargo check -p keeless_passkey_windows"
+  }
+}

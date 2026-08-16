@@ -323,6 +323,8 @@ importers:
 
   packages/passkey-linux: {}
 
+  packages/passkey-windows: {}
+
   packages/schema:
     devDependencies:
       tsdown:
