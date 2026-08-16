@@ -316,8 +316,8 @@ impl Drop for Api {
 }
 
 unsafe fn symbol<T: Copy>(module: HMODULE, name: &'static str) -> Result<T, ApiError> {
-    let name = CString::new(name).expect("Windows export name has no NUL");
-    let symbol = unsafe { GetProcAddress(module, name.as_ptr() as *const u8) }
+    let export_name = CString::new(name).expect("Windows export name has no NUL");
+    let symbol = unsafe { GetProcAddress(module, export_name.as_ptr() as *const u8) }
         .ok_or(ApiError::MissingExport(name))?;
     // All required functions use WINAPI and one pointer-sized function address.
     Ok(unsafe { mem::transmute_copy(&symbol) })
