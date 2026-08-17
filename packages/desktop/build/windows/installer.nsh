@@ -9,11 +9,6 @@
 !define POWERSHELL "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
 
 !macro customInstall
-  IfFileExists "${KEELESS_PASSKEY_WINDOWS_SERVER}" 0 missing_passkey_server
-  IfFileExists "${KEELESS_PASSKEY_WINDOWS_PACKAGE}" 0 missing_identity_package
-
-  ; The external package grants identity to the installed sidecar without
-  ; moving its executable into an MSIX-owned installation directory.
   ExecWait '$\"${POWERSHELL}$\" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command $\"Add-AppxPackage -Path ''${KEELESS_PASSKEY_WINDOWS_PACKAGE}'' -ExternalLocation ''$INSTDIR'' -ForceUpdateFromAnyVersion$\"' $0
   StrCmp $0 0 register_com_server
   Abort "Keeless passkey package identity could not be installed. The application was not installed."
@@ -22,15 +17,6 @@
   SetRegView 64
   WriteRegStr HKLM "${KEELESS_PASSKEY_WINDOWS_KEY}\LocalServer32" "" '$\"${KEELESS_PASSKEY_WINDOWS_SERVER}$\" -PluginActivated'
   WriteRegStr HKLM "${KEELESS_PASSKEY_WINDOWS_KEY}\LocalServer32" "ServerExecutable" "${KEELESS_PASSKEY_WINDOWS_SERVER}"
-  Goto passkey_identity_done
-
- missing_passkey_server:
-  Abort "Keeless passkey server is missing from this installer."
-
- missing_identity_package:
-  Abort "Keeless passkey package identity is missing."
-
- passkey_identity_done:
 !macroend
 
 !macro customUnInstall
@@ -45,8 +31,6 @@
 
  remove_identity_package:
   ExecWait '$\"${POWERSHELL}$\" -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command $\"Get-AppxPackage -Name ''${KEELESS_PASSKEY_WINDOWS_PACKAGE_NAME}'' | Remove-AppxPackage$\"' $0
-  StrCmp $0 0 remove_com_registration
-  Abort "Keeless passkey package identity could not be removed. The application remains installed."
 
  remove_com_registration:
   ReadRegStr $0 HKLM "${KEELESS_PASSKEY_WINDOWS_KEY}\LocalServer32" "ServerExecutable"
