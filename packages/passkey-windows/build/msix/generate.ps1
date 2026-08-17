@@ -104,7 +104,7 @@ try {
         if (-not $signTool) {
             throw 'SignTool.exe was not found. Install the Windows SDK before self-signing the MSIX.'
         }
-        & $signTool sign /fd SHA256 /sha $certificate.Thumbprint $output
+        & $signTool sign /fd SHA256 /sha1 $certificate.Thumbprint $output
         if ($LASTEXITCODE -ne 0) {
             throw "SignTool.exe failed with exit code $LASTEXITCODE."
         }
