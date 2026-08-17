@@ -9,7 +9,7 @@ import { cx } from '@/utils/css';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDraggable } from '@dnd-kit/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Redirect, useRoute, useSearchParams } from 'wouter';
 import {
   databaseNodeKey,
@@ -111,6 +111,13 @@ const VirtualEntryList = ({
     getItemKey: index => entryDndId(entries[index].id),
     overscan: 4,
   });
+
+  useEffect(() => {
+    const selectedIndex = entries.findIndex(entry => String(entry.id) === selectedEntry);
+    if (selectedIndex >= 0) {
+      virtualizer.scrollToIndex(selectedIndex, { align: 'auto' });
+    }
+  }, [entries, selectedEntry, virtualizer]);
 
   return (
     <div ref={scrollRef} className={cx('h-full overflow-auto py-2', className)}>
