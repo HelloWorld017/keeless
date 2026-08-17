@@ -26,6 +26,8 @@ pub const PLUGIN_UNLOCKED: Long = 1;
 pub const AUTHENTICATOR_STATE_DISABLED: Dword = 0;
 pub const AUTHENTICATOR_STATE_ENABLED: Dword = 1;
 pub const WEBAUTHN_CTAP_TRANSPORT_INTERNAL: Dword = 0x10;
+pub const WEBAUTHN_CREDENTIAL_ATTESTATION_CURRENT_VERSION: Dword = 8;
+pub const WEBAUTHN_ASSERTION_CURRENT_VERSION: Dword = 6;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

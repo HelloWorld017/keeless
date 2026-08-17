@@ -276,7 +276,7 @@ fn encode_make(
     let mut credential_id = decode_base64(&result.credential_id)?;
     let none = wide("none");
     let response = WebAuthnCredentialAttestation {
-        version: 3,
+        version: WEBAUTHN_CREDENTIAL_ATTESTATION_CURRENT_VERSION,
         format_type: none.as_ptr(),
         authenticator_data_len: byte_len(&authenticator_data)?,
         authenticator_data: authenticator_data.as_mut_ptr(),
@@ -301,7 +301,7 @@ fn encode_make(
         unsigned_extension_outputs: ptr::null_mut(),
         hmac_secret: ptr::null_mut(),
         third_party_payment: 0,
-        transports: 0,
+        transports: WEBAUTHN_CTAP_TRANSPORT_INTERNAL,
         client_data_json_len: 0,
         client_data_json: ptr::null_mut(),
         registration_response_json_len: 0,
@@ -332,7 +332,7 @@ fn encode_assertion(
         display_name: ptr::null(),
     };
     let assertion = WebAuthnAssertion {
-        version: 4,
+        version: WEBAUTHN_ASSERTION_CURRENT_VERSION,
         authenticator_data_len: byte_len(&authenticator_data)?,
         authenticator_data: authenticator_data.as_mut_ptr(),
         signature_len: byte_len(&signature)?,
