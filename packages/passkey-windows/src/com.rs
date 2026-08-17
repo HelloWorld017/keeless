@@ -24,7 +24,7 @@ use crate::{
     cancellation::{ActiveCeremony, CeremonyGuard},
     error::{
         CLASS_E_NOAGGREGATION, E_FAIL, E_NOINTERFACE, E_POINTER, HResult, NTE_USER_CANCELLED,
-        client_error,
+        session_request_error,
     },
     registration,
     sdk_bindings::*,
@@ -122,7 +122,7 @@ impl Provider {
             );
             tokio::select! {
                 _ = guard.cancelled() => Err(NTE_USER_CANCELLED),
-                result = session.request(operation) => result.map_err(|error| client_error(&error)),
+                result = session.request(operation) => result.map_err(|error| session_request_error(&error)),
             }
         });
         match &result {

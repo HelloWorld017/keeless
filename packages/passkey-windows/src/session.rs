@@ -54,14 +54,17 @@ impl Session {
 
     /// Dropping this future drops the in-flight IPC connection, which lets the
     /// desktop host cancel its dependent native UI child.
-    pub async fn request(&mut self, operation: Operation) -> Result<OperationSuccess, ClientError> {
+    pub async fn request(
+        &mut self,
+        operation: Operation,
+    ) -> Result<OperationSuccess, SessionRequestError> {
         crate::diagnostics::diagnostic!(
             "keeless-passkey-windows: session connecting to desktop host"
         );
         if let Err(error) = self.ensure_connected(true).await {
             crate::diagnostics::diagnostic!(
                 "keeless-passkey-windows: session connection failed ({})",
-                client_error_kind(&error)
+                request_error_kind(&error)
             );
             return Err(error);
         }
@@ -84,7 +87,7 @@ impl Session {
                 if !matches!(error, ClientError::Operation { .. }) {
                     self.client = None;
                 }
-                Err(error)
+                Err(error.into())
             }
         }
     }
@@ -142,7 +145,7 @@ impl Session {
         }
     }
 
-    async fn ensure_connected(&mut self, launch_desktop: bool) -> Result<(), ClientError> {
+    async fn ensure_connected(&mut self, launch_desktop: bool) -> Result<(), SessionRequestError> {
         if self.client.is_none() {
             if launch_desktop {
                 if let Some(launcher) = &self.launcher {
@@ -153,7 +156,7 @@ impl Session {
                         crate::diagnostics::diagnostic!(
                             "keeless-passkey-windows: desktop host did not start"
                         );
-                        return Err(error.into());
+                        return Err(ClientError::from(error).into());
                     }
                     crate::diagnostics::diagnostic!(
                         "keeless-passkey-windows: desktop host is reachable"
@@ -175,14 +178,14 @@ impl Session {
                             "keeless-passkey-windows: bootstrap connection failed ({})",
                             client_error_kind(&error)
                         );
-                        return Err(error);
+                        return Err(error.into());
                     }
                 };
             let OperationSuccess::GetCoreStatus(status) = untrusted
                 .request(Operation::GetCoreStatus(GetCoreStatusArgs {}))
                 .await?
             else {
-                return Err(ClientError::Rejected);
+                return Err(ClientError::Rejected.into());
             };
             match status.database {
                 DatabaseStatus::Unlocked => {}
@@ -191,10 +194,15 @@ impl Session {
                         .request(Operation::Unlock(UnlockArgs { password: None }))
                         .await?
                     else {
-                        return Err(ClientError::Rejected);
+                        return Err(ClientError::Rejected.into());
                     };
                 }
-                DatabaseStatus::NotExist => return Err(ClientError::Rejected),
+                DatabaseStatus::NotExist => {
+                    if let Some(launcher) = &self.launcher {
+                        let _ = launcher.show();
+                    }
+                    return Err(SessionRequestError::DatabaseUnavailable);
+                }
             }
             crate::diagnostics::diagnostic!(
                 "keeless-passkey-windows: requesting desktop endpoint upgrade"
@@ -205,14 +213,14 @@ impl Session {
                     crate::diagnostics::diagnostic!(
                         "keeless-passkey-windows: desktop returned unexpected upgrade result"
                     );
-                    return Err(ClientError::Rejected);
+                    return Err(ClientError::Rejected.into());
                 }
                 Err(error) => {
                     crate::diagnostics::diagnostic!(
                         "keeless-passkey-windows: desktop upgrade failed ({})",
                         client_error_kind(&error)
                     );
-                    return Err(error);
+                    return Err(error.into());
                 }
             };
             crate::diagnostics::diagnostic!(
@@ -231,7 +239,7 @@ impl Session {
                         "keeless-passkey-windows: core connection failed ({})",
                         client_error_kind(&error)
                     );
-                    return Err(error);
+                    return Err(error.into());
                 }
             };
             self.client = Some(client);
@@ -255,6 +263,21 @@ fn client_error_kind(error: &ClientError) -> String {
         ClientError::ServerIdentityChanged => "server-identity-changed".into(),
         ClientError::Operation { code, .. } => format!("core-operation:{code}"),
     }
+}
+
+fn request_error_kind(error: &SessionRequestError) -> String {
+    match error {
+        SessionRequestError::Client(error) => client_error_kind(error),
+        SessionRequestError::DatabaseUnavailable => "database-unavailable".into(),
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SessionRequestError {
+    #[error(transparent)]
+    Client(#[from] ClientError),
+    #[error("selected database is unavailable")]
+    DatabaseUnavailable,
 }
 
 #[derive(Debug, thiserror::Error)]

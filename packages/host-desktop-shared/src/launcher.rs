@@ -40,7 +40,7 @@ impl DesktopLauncher {
             return Ok(());
         }
 
-        let mut child = desktop_command(&self.executable)
+        let mut child = desktop_command(&self.executable, true)
             .spawn()
             .map_err(|source| LauncherError::Spawn {
                 executable: self.executable.clone(),
@@ -63,12 +63,28 @@ impl DesktopLauncher {
             tokio::time::sleep(RETRY_INTERVAL).await;
         }
     }
+
+    /// Open the desktop window, including when it is already running.
+    pub fn show(&self) -> Result<(), LauncherError> {
+        let mut child = desktop_command(&self.executable, false)
+            .spawn()
+            .map_err(|source| LauncherError::Spawn {
+                executable: self.executable.clone(),
+                source,
+            })?;
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    }
 }
 
-fn desktop_command(executable: &Path) -> Command {
+fn desktop_command(executable: &Path, minimized: bool) -> Command {
     let mut command = Command::new(executable);
+    if minimized {
+        command.arg("--minimized");
+    }
     command
-        .arg("--minimized")
         // The daemon must not keep the desktop process attached to its stdio.
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -104,8 +120,16 @@ mod tests {
     #[test]
     fn starts_the_configured_program_minimized() {
         let executable = Path::new("/opt/keeless/keeless");
-        let command = desktop_command(executable);
+        let command = desktop_command(executable, true);
         assert_eq!(command.get_program(), executable.as_os_str());
         assert_eq!(command.get_args().collect::<Vec<_>>(), ["--minimized"]);
+    }
+
+    #[test]
+    fn starts_the_configured_program_visibly() {
+        let executable = Path::new("/opt/keeless/keeless");
+        let command = desktop_command(executable, false);
+        assert_eq!(command.get_program(), executable.as_os_str());
+        assert!(command.get_args().next().is_none());
     }
 }

@@ -47,6 +47,13 @@ pub fn client_error(error: &keeless_host_desktop_shared::ClientError) -> HResult
     }
 }
 
+pub fn session_request_error(error: &crate::session::SessionRequestError) -> HResult {
+    match error {
+        crate::session::SessionRequestError::Client(error) => client_error(error),
+        crate::session::SessionRequestError::DatabaseUnavailable => NTE_NOT_FOUND,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,6 +82,14 @@ mod tests {
         assert_eq!(
             request_error(crate::ceremony::RequestError::UnsupportedAlgorithm),
             NTE_NOT_SUPPORTED
+        );
+    }
+
+    #[test]
+    fn maps_an_unavailable_database_to_not_found() {
+        assert_eq!(
+            session_request_error(&crate::session::SessionRequestError::DatabaseUnavailable),
+            NTE_NOT_FOUND
         );
     }
 }
