@@ -4,8 +4,6 @@ import iconIco from '@/assets/icons/icon.ico?asset';
 import iconPng from '@/assets/icons/icon.png?asset';
 import keeless from '@keeless/host-desktop';
 import nativeUiPath from 'binary:keeless-native-ui';
-import passkeyWindowsPath from 'binary:keeless-passkey-windows';
-import passkeyWindowsMsixPath from 'binary:keeless-passkey-windows.msix';
 import {
   app,
   BrowserWindow,
@@ -23,11 +21,6 @@ import type { MessageFrame } from '@keeless/lesswire';
 const dirname = fileURLToPath(new URL('.', import.meta.url));
 const minimized = process.argv.slice(1).includes('--minimized');
 const hasLock = app.requestSingleInstanceLock();
-const passkeyWindowsAssets = [passkeyWindowsPath, passkeyWindowsMsixPath];
-
-if (__PLATFORM__ === 'win32' && passkeyWindowsAssets.some(path => !path)) {
-  throw new Error('Windows passkey assets are missing from the desktop build');
-}
 
 let browserWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -293,4 +286,9 @@ if (!hasLock) {
     createTray();
     await createWindow();
   });
+}
+
+if (__PLATFORM__ === "win32") {
+  await import("binary:keeless-passkey-windows");
+  await import("binary:keeless-passkey-windows.msix");
 }

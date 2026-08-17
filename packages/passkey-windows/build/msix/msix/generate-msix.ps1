@@ -35,7 +35,7 @@ if (-not $makeAppx) {
 }
 
 $template = Join-Path $PSScriptRoot 'AppxManifest.xml'
-$icon = Join-Path $root 'packages\desktop\icons\icon.png'
+$icon = Join-Path $root 'packages\desktop\src\assets\icons\icon.png'
 $output = Join-Path $root "target\$profile\keeless-passkey-windows.msix"
 if (-not (Test-Path -LiteralPath $icon -PathType Leaf)) {
     throw "Missing MSIX icon: $icon"

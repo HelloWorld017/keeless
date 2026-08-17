@@ -17,9 +17,12 @@
     }
   },
   "scripts": {
-    "build": "pnpm run \"/^build:.*$/\"",
+    "build": "pnpm run \"/^build:(?!dev).*$/\"",
+    "build:dev": "pnpm run \"/^build:(?!dev).*:dev\"",
     "build:rust": "cargo build --release -p keeless_lesswire",
+    "build:rust:dev": "cargo build -p keeless_lesswire",
     "build:lib": "tsdown",
+    "build:lib:dev": "pnpm run build:lib",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check && oxfmt --check",
     "check:lint": "pnpm run lint",

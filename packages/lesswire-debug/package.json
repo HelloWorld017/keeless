@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "cargo build --release -p keeless_lesswire_debug",
+    "build:dev": "cargo build -p keeless_lesswire_debug",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",

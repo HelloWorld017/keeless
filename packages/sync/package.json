@@ -6,7 +6,6 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cargo build --release -p keeless_sync",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",

@@ -6,7 +6,12 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cargo build --release -p keeless_passkey_windows",
+    "build": "pnpm run \"/^build:(?!dev).*$/\"",
+    "build:dev": "pnpm run \"/^build:(?!dev).*:dev\"",
+    "build:rust": "cargo build --release -p keeless_passkey_windows",
+    "build:rust:dev": "cargo build -p keeless_passkey_windows",
+    "build:msix": "pnpm run posh build/windows/msix/generate-msix.ps1",
+    "build:msix:dev": "pnpm run posh build/windows/msix/generate-msix.ps1 -Development",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",
@@ -14,6 +19,7 @@
     "format": "cargo fmt",
     "lint": "cargo clippy -p keeless_passkey_windows --all-targets -- -D warnings",
     "test": "cargo test -p keeless_passkey_windows",
-    "typecheck": "cargo check -p keeless_passkey_windows"
+    "typecheck": "cargo check -p keeless_passkey_windows",
+    "posh": "powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File"
   }
 }

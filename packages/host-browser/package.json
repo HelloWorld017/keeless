@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "wasm-pack build --target web --out-dir dist --out-name keeless_host_browser",
+    "build:dev": "wasm-pack build --debug --target web --out-dir dist --out-name keeless_host_browser",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",

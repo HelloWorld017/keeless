@@ -18,6 +18,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "build:dev": "pnpm run build",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check && oxfmt --check src/index.ts",
     "check:lint": "pnpm run lint",

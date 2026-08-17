@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "cargo build --release -p keeless_native_ui",
+    "build:dev": "cargo build -p keeless_native_ui",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",
