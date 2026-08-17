@@ -29,7 +29,25 @@ if ($architecture -notin @('x64', 'arm64')) {
     throw 'MSIX_ARCHITECTURE must be x64 or arm64.'
 }
 
-$makeAppx = Get-Command MakeAppx.exe -ErrorAction SilentlyContinue
+function Get-WindowsSdkTool {
+    param([string]$Name)
+
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Path }
+
+    $sdkBase = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    if (Test-Path -LiteralPath $sdkBase) {
+        $found = Get-ChildItem -Path $sdkBase -Filter $Name -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Sort-Object -Property LastWriteTime -Descending |
+            Select-Object -First 1
+
+        if ($found) { return $found.FullName }
+    }
+    return $null
+}
+
+$makeAppx = Get-WindowsSdkTool 'MakeAppx.exe'
 if (-not $makeAppx) {
     throw 'MakeAppx.exe was not found. Install the Windows SDK before generating the MSIX.'
 }
@@ -85,7 +103,7 @@ try {
             Copy-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Destination Cert:\CurrentUser\TrustedPeople
         }
 
-        $signTool = Get-Command SignTool.exe -ErrorAction SilentlyContinue
+        $signTool = Get-WindowsSdkTool 'SignTool.exe'
         if (-not $signTool) {
             throw 'SignTool.exe was not found. Install the Windows SDK before self-signing the MSIX.'
         }
