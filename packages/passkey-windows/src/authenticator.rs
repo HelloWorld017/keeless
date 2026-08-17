@@ -234,11 +234,12 @@ fn verify_user(
     crate::diagnostics::diagnostic!(
         "keeless-passkey-windows: user verification requesting Windows Hello"
     );
+    let username = wide("");
     let display_hint = wide(&format!("Use Keeless for {rp_id}"));
     let request = PluginUserVerificationRequest {
         hwnd: input.hwnd,
         transaction_id: &input.transaction_id,
-        username: ptr::null(),
+        username: username.as_ptr(),
         display_hint: display_hint.as_ptr(),
     };
     let signature = provider
