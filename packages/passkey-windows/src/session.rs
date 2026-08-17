@@ -4,7 +4,9 @@ use keeless_host_desktop_shared::client::{CORE_ENDPOINT_ID, UNTRUSTED_ENDPOINT_I
 use keeless_host_desktop_shared::state::{ClientState, FileStore};
 use keeless_host_desktop_shared::{ClientError, CoreClient, DesktopLauncher};
 use keeless_lesswire::KeyScope;
-use keeless_schema::{DatabaseStatus, GetCoreStatusArgs, Operation, OperationSuccess, UpgradeArgs};
+use keeless_schema::{
+    DatabaseStatus, GetCoreStatusArgs, Operation, OperationSuccess, UnlockArgs, UpgradeArgs,
+};
 
 /// File holding the provider's lesswire identity and pinned desktop host key.
 pub const STATE_FILE: &str = "passkey-windows-state.json";
@@ -176,6 +178,24 @@ impl Session {
                         return Err(error);
                     }
                 };
+            let OperationSuccess::GetCoreStatus(status) = untrusted
+                .request(Operation::GetCoreStatus(GetCoreStatusArgs {}))
+                .await?
+            else {
+                return Err(ClientError::Rejected);
+            };
+            match status.database {
+                DatabaseStatus::Unlocked => {}
+                DatabaseStatus::Locked => {
+                    let OperationSuccess::Unlock(_) = untrusted
+                        .request(Operation::Unlock(UnlockArgs { password: None }))
+                        .await?
+                    else {
+                        return Err(ClientError::Rejected);
+                    };
+                }
+                DatabaseStatus::NotExist => return Err(ClientError::Rejected),
+            }
             crate::diagnostics::diagnostic!(
                 "keeless-passkey-windows: requesting desktop endpoint upgrade"
             );
@@ -223,17 +243,17 @@ impl Session {
     }
 }
 
-fn client_error_kind(error: &ClientError) -> &'static str {
+fn client_error_kind(error: &ClientError) -> String {
     match error {
-        ClientError::Ipc(_) => "ipc",
-        ClientError::Wire(_) => "lesswire",
-        ClientError::State(_) => "state",
-        ClientError::Launcher(_) => "launcher",
-        ClientError::Malformed(_) => "malformed-response",
-        ClientError::Rejected => "rejected",
-        ClientError::MismatchedResponse => "mismatched-response",
-        ClientError::ServerIdentityChanged => "server-identity-changed",
-        ClientError::Operation { .. } => "core-operation",
+        ClientError::Ipc(_) => "ipc".into(),
+        ClientError::Wire(_) => "lesswire".into(),
+        ClientError::State(_) => "state".into(),
+        ClientError::Launcher(_) => "launcher".into(),
+        ClientError::Malformed(_) => "malformed-response".into(),
+        ClientError::Rejected => "rejected".into(),
+        ClientError::MismatchedResponse => "mismatched-response".into(),
+        ClientError::ServerIdentityChanged => "server-identity-changed".into(),
+        ClientError::Operation { code, .. } => format!("core-operation:{code}"),
     }
 }
 
