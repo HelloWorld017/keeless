@@ -104,17 +104,6 @@ impl CoreClient {
     }
 
     pub async fn request(&mut self, operation: Operation) -> Result<OperationSuccess, ClientError> {
-        if self.wire.public_key_bundle().ends_with(".passkey")
-            && !matches!(
-                operation,
-                Operation::GetPasskeys(_)
-                    | Operation::GetCoreStatus(_)
-                    | Operation::RegisterPasskey(_)
-                    | Operation::AssertPasskey(_)
-            )
-        {
-            return Err(ClientError::Rejected);
-        }
         self.next_request += 1;
         let request_id = format!("{}-{}", self.session, self.next_request);
         let payload = serde_json::to_vec(&OperationRequest {
