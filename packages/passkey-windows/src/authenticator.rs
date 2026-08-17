@@ -39,7 +39,7 @@ pub unsafe extern "system" fn make_credential(
     request: *const PluginOperationRequest,
     response: *mut PluginOperationResponse,
 ) -> HResult {
-    boundary(|| {
+    boundary("make_credential", || {
         if response.is_null() {
             return Err(E_POINTER);
         }
@@ -49,7 +49,9 @@ pub unsafe extern "system" fn make_credential(
         }
         let provider = unsafe { provider(this)? };
         let input = unsafe { copy_operation_request(request)? };
+        println!("keeless-passkey-windows: make_credential copied request");
         verify_operation(provider, &input)?;
+        println!("keeless-passkey-windows: make_credential verified operation signature");
         let guard = provider
             .active
             .begin(
@@ -57,21 +59,28 @@ pub unsafe extern "system" fn make_credential(
                 input.encoded_request.clone(),
             )
             .map_err(|_| ERROR_BUSY)?;
+        println!("keeless-passkey-windows: make_credential started ceremony");
         let decoded = provider
             .api
             .decode_make(&input.encoded_request)
             .map_err(|error| error.hresult())?;
+        println!("keeless-passkey-windows: make_credential decoded request");
         let operation = unsafe { make_request(decoded.get())? };
         let operation = make_credential_operation(operation).map_err(request_error)?;
+        println!("keeless-passkey-windows: make_credential translated request");
         verify_user(provider, &guard, &input, &rp_id_from_make(decoded.get())?)?;
+        println!("keeless-passkey-windows: make_credential verified user");
         if guard.is_cancelled() {
             return Err(NTE_USER_CANCELLED);
         }
+        println!("keeless-passkey-windows: make_credential requesting desktop host");
         let success = provider.request(&guard, operation)?;
         let OperationSuccess::RegisterPasskey(result) = success else {
             return Err(E_FAIL);
         };
+        println!("keeless-passkey-windows: make_credential received desktop result");
         let encoded = encode_make(provider, result)?;
+        println!("keeless-passkey-windows: make_credential encoded response");
         transfer_response(&guard, response, encoded)
     })
 }
@@ -81,7 +90,7 @@ pub unsafe extern "system" fn get_assertion(
     request: *const PluginOperationRequest,
     response: *mut PluginOperationResponse,
 ) -> HResult {
-    boundary(|| {
+    boundary("get_assertion", || {
         if response.is_null() {
             return Err(E_POINTER);
         }
@@ -91,7 +100,9 @@ pub unsafe extern "system" fn get_assertion(
         }
         let provider = unsafe { provider(this)? };
         let input = unsafe { copy_operation_request(request)? };
+        println!("keeless-passkey-windows: get_assertion copied request");
         verify_operation(provider, &input)?;
+        println!("keeless-passkey-windows: get_assertion verified operation signature");
         let guard = provider
             .active
             .begin(
@@ -99,10 +110,12 @@ pub unsafe extern "system" fn get_assertion(
                 input.encoded_request.clone(),
             )
             .map_err(|_| ERROR_BUSY)?;
+        println!("keeless-passkey-windows: get_assertion started ceremony");
         let decoded = provider
             .api
             .decode_assertion(&input.encoded_request)
             .map_err(|error| error.hresult())?;
+        println!("keeless-passkey-windows: get_assertion decoded request");
         let request = unsafe { assertion_request(decoded.get())? };
         let rp_id = request.rp_id.clone();
         let AssertionOperation::Interactive(operation) =
@@ -110,15 +123,20 @@ pub unsafe extern "system" fn get_assertion(
         else {
             return Err(crate::error::NTE_NOT_FOUND);
         };
+        println!("keeless-passkey-windows: get_assertion translated request");
         verify_user(provider, &guard, &input, &rp_id)?;
+        println!("keeless-passkey-windows: get_assertion verified user");
         if guard.is_cancelled() {
             return Err(NTE_USER_CANCELLED);
         }
+        println!("keeless-passkey-windows: get_assertion requesting desktop host");
         let success = provider.request(&guard, *operation)?;
         let OperationSuccess::AssertPasskey(result) = success else {
             return Err(E_FAIL);
         };
+        println!("keeless-passkey-windows: get_assertion received desktop result");
         let encoded = encode_assertion(provider, result)?;
+        println!("keeless-passkey-windows: get_assertion encoded response");
         transfer_response(&guard, response, encoded)
     })
 }
@@ -127,13 +145,15 @@ pub unsafe extern "system" fn cancel_operation(
     this: *mut c_void,
     request: *const PluginCancelOperationRequest,
 ) -> HResult {
-    boundary(|| {
+    boundary("cancel_operation", || {
         let provider = unsafe { provider(this)? };
         let request = unsafe { copy_cancel_request(request)? };
+        println!("keeless-passkey-windows: cancel_operation copied request");
         let Some(target) = provider
             .active
             .cancellation_target(transaction_id(&request.transaction_id))
         else {
+            println!("keeless-passkey-windows: cancel_operation has no active ceremony");
             return Ok(());
         };
         let public_key = provider
@@ -147,12 +167,13 @@ pub unsafe extern "system" fn cancel_operation(
         )
         .map_err(|_| NTE_BAD_SIGNATURE)?;
         let _ = target.cancel();
+        println!("keeless-passkey-windows: cancel_operation cancelled ceremony");
         Ok(())
     })
 }
 
 pub unsafe extern "system" fn get_lock_status(this: *mut c_void, status: *mut Long) -> HResult {
-    boundary(|| {
+    boundary("get_lock_status", || {
         if status.is_null() {
             return Err(E_POINTER);
         }
@@ -160,6 +181,10 @@ pub unsafe extern "system" fn get_lock_status(this: *mut c_void, status: *mut Lo
         unsafe {
             *status = provider.lock_status();
         }
+        println!(
+            "keeless-passkey-windows: get_lock_status returned {}",
+            unsafe { *status }
+        );
         Ok(())
     })
 }
@@ -182,6 +207,7 @@ fn verify_user(
     if guard.is_cancelled() {
         return Err(NTE_USER_CANCELLED);
     }
+    println!("keeless-passkey-windows: user verification requesting Windows Hello");
     let display_hint = wide(&format!("Use Keeless for {rp_id}"));
     let request = PluginUserVerificationRequest {
         hwnd: input.hwnd,
@@ -193,6 +219,7 @@ fn verify_user(
         .api
         .perform_user_verification(&request)
         .map_err(|error| error.hresult())?;
+    println!("keeless-passkey-windows: user verification received Windows Hello result");
     if guard.is_cancelled() {
         return Err(NTE_USER_CANCELLED);
     }
@@ -205,7 +232,9 @@ fn verify_user(
         &input.encoded_request,
         signature.bytes(),
     )
-    .map_err(|_| NTE_BAD_SIGNATURE)
+    .map_err(|_| NTE_BAD_SIGNATURE)?;
+    println!("keeless-passkey-windows: user verification signature verified");
+    Ok(())
 }
 
 fn encode_make(
@@ -605,10 +634,20 @@ unsafe fn provider(this: *mut c_void) -> Result<&'static Provider, HResult> {
     Ok(&authenticator.provider)
 }
 
-fn boundary(callback: impl FnOnce() -> Result<(), HResult>) -> HResult {
+fn boundary(name: &str, callback: impl FnOnce() -> Result<(), HResult>) -> HResult {
+    println!("keeless-passkey-windows: {name} entered");
     match catch_unwind(AssertUnwindSafe(callback)) {
-        Ok(Ok(())) => S_OK,
-        Ok(Err(error)) => error,
-        Err(_) => E_FAIL,
+        Ok(Ok(())) => {
+            println!("keeless-passkey-windows: {name} completed with 0x00000000");
+            S_OK
+        }
+        Ok(Err(error)) => {
+            println!("keeless-passkey-windows: {name} failed with {error:#010x}");
+            error
+        }
+        Err(_) => {
+            println!("keeless-passkey-windows: {name} panicked");
+            E_FAIL
+        }
     }
 }

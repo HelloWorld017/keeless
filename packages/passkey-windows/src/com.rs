@@ -81,6 +81,7 @@ struct ServerLifetime {
 
 impl Provider {
     fn new(launcher: Option<DesktopLauncher>) -> Result<Self, String> {
+        println!("keeless-passkey-windows: initializing provider");
         let runtime = Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -88,8 +89,14 @@ impl Provider {
         let session = runtime
             .block_on(Session::load_with_launcher(launcher))
             .map_err(|error| error.to_string())?;
+        println!(
+            "keeless-passkey-windows: provider session initialized (paired={})",
+            session.is_paired()
+        );
+        let api = Api::load().map_err(|error| error.to_string())?;
+        println!("keeless-passkey-windows: Windows WebAuthn API loaded");
         Ok(Self {
-            api: Arc::new(Api::load().map_err(|error| error.to_string())?),
+            api: Arc::new(api),
             runtime,
             session: AsyncMutex::new(session),
             active: ActiveCeremony::default(),
@@ -102,22 +109,33 @@ impl Provider {
         guard: &CeremonyGuard<'_>,
         operation: Operation,
     ) -> Result<OperationSuccess, HResult> {
-        self.runtime.block_on(async {
+        println!("keeless-passkey-windows: provider waiting for session lock");
+        let result = self.runtime.block_on(async {
             let mut session = tokio::select! {
                 _ = guard.cancelled() => return Err(NTE_USER_CANCELLED),
                 session = self.session.lock() => session,
             };
+            println!("keeless-passkey-windows: provider acquired session lock");
             tokio::select! {
                 _ = guard.cancelled() => Err(NTE_USER_CANCELLED),
                 result = session.request(operation) => result.map_err(|error| client_error(&error)),
             }
-        })
+        });
+        match &result {
+            Ok(_) => println!("keeless-passkey-windows: provider desktop request completed"),
+            Err(error) => println!(
+                "keeless-passkey-windows: provider desktop request failed with {error:#010x}"
+            ),
+        }
+        result
     }
 
     pub(crate) fn lock_status(&self) -> Long {
         if self.active.is_active() {
+            println!("keeless-passkey-windows: lock status is locked because a ceremony is active");
             return PLUGIN_LOCKED;
         }
+        println!("keeless-passkey-windows: querying desktop lock status");
         let result = self.runtime.block_on(async {
             let mut session = tokio::time::timeout(LOCK_STATUS_TIMEOUT, self.session.lock())
                 .await
@@ -128,8 +146,18 @@ impl Provider {
                 .map_err(|_| ())
         });
         match result {
-            Ok(DatabaseStatus::Unlocked) => PLUGIN_UNLOCKED,
-            Ok(DatabaseStatus::Locked | DatabaseStatus::NotExist) | Err(_) => PLUGIN_LOCKED,
+            Ok(DatabaseStatus::Unlocked) => {
+                println!("keeless-passkey-windows: desktop reports unlocked");
+                PLUGIN_UNLOCKED
+            }
+            Ok(DatabaseStatus::Locked | DatabaseStatus::NotExist) => {
+                println!("keeless-passkey-windows: desktop reports locked or no database");
+                PLUGIN_LOCKED
+            }
+            Err(_) => {
+                println!("keeless-passkey-windows: desktop lock status query failed");
+                PLUGIN_LOCKED
+            }
         }
     }
 
@@ -304,10 +332,15 @@ pub fn main(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(
         return Err("--desktop is only available in development builds".into());
     }
     let launcher = desktop.or_else(installed_desktop_launcher);
+    println!(
+        "keeless-passkey-windows: starting COM server (desktop launcher configured={})",
+        launcher.is_some()
+    );
     serve(Arc::new(Provider::new(launcher)?))
 }
 
 fn run_command(command: &str) -> Result<(), String> {
+    println!("keeless-passkey-windows: running {command}");
     match command {
         "--enable" => registration::enable(&Api::load().map_err(|error| error.to_string())?)
             .map_err(|error| error.to_string()),
@@ -346,6 +379,7 @@ fn installed_desktop_launcher() -> Option<DesktopLauncher> {
 }
 
 fn serve(provider: Arc<Provider>) -> Result<(), String> {
+    println!("keeless-passkey-windows: initializing COM runtime");
     let initialized = unsafe { CoInitializeEx(ptr::null(), COINIT_MULTITHREADED) };
     if initialized < S_OK {
         return Err(format!("CoInitializeEx failed with {initialized:#x}"));
@@ -367,6 +401,7 @@ fn serve(provider: Arc<Provider>) -> Result<(), String> {
         if security < S_OK && security != RPC_E_TOO_LATE {
             return Err(format!("CoInitializeSecurity failed with {security:#x}"));
         }
+        println!("keeless-passkey-windows: COM security initialized");
         let factory = Box::into_raw(Box::new(ComClassFactory {
             vtable: &CLASS_FACTORY_VTABLE,
             references: AtomicU32::new(1),
@@ -387,6 +422,7 @@ fn serve(provider: Arc<Provider>) -> Result<(), String> {
             unsafe { class_factory_release(factory.cast()) };
             return Err(format!("CoRegisterClassObject failed with {registered:#x}"));
         }
+        println!("keeless-passkey-windows: COM class factory registered");
         let resumed = unsafe { CoResumeClassObjects() };
         if resumed < S_OK {
             unsafe {
@@ -395,7 +431,9 @@ fn serve(provider: Arc<Provider>) -> Result<(), String> {
             }
             return Err(format!("CoResumeClassObjects failed with {resumed:#x}"));
         }
+        println!("keeless-passkey-windows: COM class factory accepting requests");
         provider.wait_for_shutdown();
+        println!("keeless-passkey-windows: COM server shutting down");
         unsafe {
             CoRevokeClassObject(registration);
             class_factory_release(factory.cast());
@@ -561,6 +599,7 @@ unsafe fn class_factory_create_instance_inner(
     iid: *const Guid,
     result: *mut *mut c_void,
 ) -> HResult {
+    println!("keeless-passkey-windows: COM class factory creating authenticator");
     if result.is_null() {
         return E_POINTER;
     }
@@ -584,6 +623,7 @@ unsafe fn class_factory_create_instance_inner(
     });
     factory.provider.object_created();
     unsafe { *result = Box::into_raw(object).cast() };
+    println!("keeless-passkey-windows: COM authenticator created");
     S_OK
 }
 

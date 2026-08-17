@@ -26,8 +26,14 @@ impl Session {
         launcher: Option<DesktopLauncher>,
     ) -> Result<Self, SessionError> {
         let store = FileStore::project(STATE_FILE)?;
+        println!("keeless-passkey-windows: loading passkey session state");
+        let state = ClientState::load(store, KeyScope::Passkey).await?;
+        println!(
+            "keeless-passkey-windows: passkey session state loaded (paired={})",
+            state.has_trusted_servers()
+        );
         Ok(Self {
-            state: ClientState::load(store, KeyScope::Passkey).await?,
+            state,
             client: None,
             launcher,
         })
@@ -46,11 +52,26 @@ impl Session {
     /// Dropping this future drops the in-flight IPC connection, which lets the
     /// desktop host cancel its dependent native UI child.
     pub async fn request(&mut self, operation: Operation) -> Result<OperationSuccess, ClientError> {
-        self.ensure_connected(true).await?;
+        println!("keeless-passkey-windows: session connecting to desktop host");
+        if let Err(error) = self.ensure_connected(true).await {
+            println!(
+                "keeless-passkey-windows: session connection failed ({})",
+                client_error_kind(&error)
+            );
+            return Err(error);
+        }
+        println!("keeless-passkey-windows: session sending desktop operation");
         let client = self.client.as_mut().expect("client was just connected");
         match client.request(operation).await {
-            Ok(success) => Ok(success),
+            Ok(success) => {
+                println!("keeless-passkey-windows: session received desktop operation result");
+                Ok(success)
+            }
             Err(error) => {
+                println!(
+                    "keeless-passkey-windows: session desktop operation failed ({})",
+                    client_error_kind(&error)
+                );
                 if !matches!(error, ClientError::Operation { .. }) {
                     self.client = None;
                 }
@@ -64,16 +85,43 @@ impl Session {
     /// treated as locked by the COM boundary.
     pub async fn lock_status(&mut self) -> Result<DatabaseStatus, ClientError> {
         if self.state.trusted_server(UNTRUSTED_ENDPOINT_ID).is_none() {
+            println!(
+                "keeless-passkey-windows: lock status unavailable because no trusted bootstrap endpoint exists"
+            );
             return Err(ClientError::Rejected);
         }
-        let mut client = CoreClient::connect(&mut self.state, UNTRUSTED_ENDPOINT_ID, None).await?;
+        println!("keeless-passkey-windows: lock status connecting to trusted desktop host");
+        let mut client =
+            match CoreClient::connect(&mut self.state, UNTRUSTED_ENDPOINT_ID, None).await {
+                Ok(client) => client,
+                Err(error) => {
+                    println!(
+                        "keeless-passkey-windows: lock status connection failed ({})",
+                        client_error_kind(&error)
+                    );
+                    return Err(error);
+                }
+            };
+        println!("keeless-passkey-windows: lock status requesting desktop status");
         match client
             .request(Operation::GetCoreStatus(GetCoreStatusArgs {}))
             .await
         {
-            Ok(OperationSuccess::GetCoreStatus(status)) => Ok(status.database),
-            Ok(_) => Err(ClientError::Rejected),
-            Err(error) => Err(error),
+            Ok(OperationSuccess::GetCoreStatus(status)) => {
+                println!("keeless-passkey-windows: lock status received desktop status");
+                Ok(status.database)
+            }
+            Ok(_) => {
+                println!("keeless-passkey-windows: lock status received unexpected desktop result");
+                Err(ClientError::Rejected)
+            }
+            Err(error) => {
+                println!(
+                    "keeless-passkey-windows: lock status request failed ({})",
+                    client_error_kind(&error)
+                );
+                Err(error)
+            }
         }
     }
 
@@ -81,23 +129,78 @@ impl Session {
         if self.client.is_none() {
             if launch_desktop {
                 if let Some(launcher) = &self.launcher {
-                    launcher.ensure_running().await?;
+                    println!("keeless-passkey-windows: starting desktop host if needed");
+                    if let Err(error) = launcher.ensure_running().await {
+                        println!("keeless-passkey-windows: desktop host did not start");
+                        return Err(error.into());
+                    }
+                    println!("keeless-passkey-windows: desktop host is reachable");
+                } else {
+                    println!("keeless-passkey-windows: no desktop launcher is configured");
                 }
             }
+            println!("keeless-passkey-windows: connecting to bootstrap endpoint");
             let mut untrusted =
-                CoreClient::connect(&mut self.state, UNTRUSTED_ENDPOINT_ID, None).await?;
-            let OperationSuccess::Upgrade(upgrade) = untrusted
-                .request(Operation::Upgrade(UpgradeArgs {}))
-                .await?
-            else {
-                return Err(ClientError::Rejected);
+                match CoreClient::connect(&mut self.state, UNTRUSTED_ENDPOINT_ID, None).await {
+                    Ok(client) => client,
+                    Err(error) => {
+                        println!(
+                            "keeless-passkey-windows: bootstrap connection failed ({})",
+                            client_error_kind(&error)
+                        );
+                        return Err(error);
+                    }
+                };
+            println!("keeless-passkey-windows: requesting desktop endpoint upgrade");
+            let upgrade = match untrusted.request(Operation::Upgrade(UpgradeArgs {})).await {
+                Ok(OperationSuccess::Upgrade(upgrade)) => upgrade,
+                Ok(_) => {
+                    println!("keeless-passkey-windows: desktop returned unexpected upgrade result");
+                    return Err(ClientError::Rejected);
+                }
+                Err(error) => {
+                    println!(
+                        "keeless-passkey-windows: desktop upgrade failed ({})",
+                        client_error_kind(&error)
+                    );
+                    return Err(error);
+                }
             };
-            self.client = Some(
-                CoreClient::connect(&mut self.state, CORE_ENDPOINT_ID, Some(upgrade.public_key))
-                    .await?,
-            );
+            println!("keeless-passkey-windows: connecting to trusted core endpoint");
+            let client = match CoreClient::connect(
+                &mut self.state,
+                CORE_ENDPOINT_ID,
+                Some(upgrade.public_key),
+            )
+            .await
+            {
+                Ok(client) => client,
+                Err(error) => {
+                    println!(
+                        "keeless-passkey-windows: core connection failed ({})",
+                        client_error_kind(&error)
+                    );
+                    return Err(error);
+                }
+            };
+            self.client = Some(client);
+            println!("keeless-passkey-windows: connected to trusted core endpoint");
         }
         Ok(())
+    }
+}
+
+fn client_error_kind(error: &ClientError) -> &'static str {
+    match error {
+        ClientError::Ipc(_) => "ipc",
+        ClientError::Wire(_) => "lesswire",
+        ClientError::State(_) => "state",
+        ClientError::Launcher(_) => "launcher",
+        ClientError::Malformed(_) => "malformed-response",
+        ClientError::Rejected => "rejected",
+        ClientError::MismatchedResponse => "mismatched-response",
+        ClientError::ServerIdentityChanged => "server-identity-changed",
+        ClientError::Operation { .. } => "core-operation",
     }
 }
 
