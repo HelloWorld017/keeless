@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm run \"/^build:(?!dev).*$/\"",
-    "build:dev": "pnpm run \"/^build:(?!dev).*:dev\"",
+    "build:dev": "pnpm run \"/^build:(?!dev).*:dev$/\"",
     "build:rust": "cargo build --release -p keeless_passkey_windows",
     "build:rust:dev": "cargo build -p keeless_passkey_windows",
     "build:msix": "pnpm run posh build/msix/generate.ps1",

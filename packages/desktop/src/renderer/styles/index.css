@@ -1,4 +1,4 @@
-@import 'tailwindcss/theme';
-@import 'tailwindcss/utilities';
+@import 'tailwindcss';
+@import '@keeless/app/styles.css';
 
 @reference '@keeless/app/tokens.css';

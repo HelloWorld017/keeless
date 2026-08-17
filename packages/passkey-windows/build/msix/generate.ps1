@@ -43,6 +43,36 @@ function Get-WindowsSdkTool {
     return $null
 }
 
+function Import-DevelopmentCertificate {
+    param([string]$FilePath)
+
+    $administrator = [System.Security.Principal.WindowsPrincipal]::new(
+        [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($administrator) {
+        Import-Certificate -FilePath $FilePath -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+        return
+    }
+
+    $escapedFilePath = $FilePath.Replace("'", "''")
+    $command = "Import-Certificate -FilePath '$escapedFilePath' -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' -ErrorAction Stop | Out-Null"
+    $arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$command`""
+    try {
+        $process = Start-Process `
+            -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') `
+            -ArgumentList $arguments `
+            -Verb RunAs `
+            -Wait `
+            -PassThru `
+            -WindowStyle Hidden
+    } catch {
+        throw "Administrator approval is required to trust the development MSIX certificate. $($_.Exception.Message)"
+    }
+    if ($process.ExitCode -ne 0) {
+        throw "Trusting the development MSIX certificate failed with exit code $($process.ExitCode)."
+    }
+}
+
 $makeAppx = Get-WindowsSdkTool 'MakeAppx.exe'
 if (-not $makeAppx) {
     throw 'MakeAppx.exe was not found. Install the Windows SDK before generating the MSIX.'
@@ -94,10 +124,10 @@ try {
                 -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3') `
                 -FriendlyName 'Keeless Passkey Development'
         }
-        if (-not (Get-ChildItem Cert:\CurrentUser\TrustedPeople | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
+        if (-not (Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
             $certificateFile = Join-Path $stagingDirectory 'keeless-development.cer'
             Export-Certificate -Cert $certificate -FilePath $certificateFile | Out-Null
-            Import-Certificate -FilePath $certificateFile -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
+            Import-DevelopmentCertificate -FilePath $certificateFile
         }
 
         $signTool = Get-WindowsSdkTool 'SignTool.exe'

@@ -6,7 +6,6 @@
   "license": "AGPL-3.0",
   "type": "module",
   "scripts": {
-    "build": "cargo build --release -p keeless_core",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",
