@@ -132,6 +132,7 @@ async fn passkey_operations_register_enumerate_and_assert() {
     assert_eq!(named("Title"), Some("Example".into()));
     assert_eq!(named("UserName"), Some("alice".into()));
     assert_eq!(named("URL"), Some("https://example.com".into()));
+    assert_eq!(detail.tags, ["Passkey"]);
     assert_eq!(
         named("KPEX_PASSKEY_RELYING_PARTY"),
         Some("example.com".into())
@@ -462,6 +463,18 @@ async fn registered_passkey_survives_journal_replay() {
             .history_count(),
         0,
         "journal replay should not create a blank history entry"
+    );
+    assert_eq!(
+        replayed
+            .handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&model_id(DatabaseNodeId::Uuid(entry_id.clone())))
+            .unwrap()
+            .tags,
+        ["Passkey"],
+        "journal replay should retain the passkey tag"
     );
 
     let listed = dispatch_json(

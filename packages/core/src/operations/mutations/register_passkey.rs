@@ -130,7 +130,14 @@ pub(crate) async fn run(
         entry: update_entry::Mutation {
             id: entry_id,
             fields,
-            properties: None,
+            properties: Some(update_entry::JournalEntryProperties {
+                override_url: String::new(),
+                tags: vec!["Passkey".into()],
+                expires: false,
+                expiry_time_ms: None,
+                standard_icon: None,
+                custom_icon: None,
+            }),
             attachments: Vec::new(),
             removed_attachment_indices: Vec::new(),
             timestamp_ms: core.clock.now_millis(),
