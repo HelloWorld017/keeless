@@ -88,3 +88,7 @@ An approval dialog ensures that only explicitly authorized devices can establish
 * **Can you guarantee that the memory protection thing works well?**  
   No, I can not. But I tested for a few basic smoke tests manually on Windows.
   If you are concerned about it, just test it yourself and share the results with me via issues.
+
+* **I've found a vuln!**  
+  I really hope that this is not a frequently asked question.
+  Please refer to [SECURITY.md](./SECURITY.md).
