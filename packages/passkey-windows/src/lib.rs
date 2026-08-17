@@ -12,6 +12,7 @@ pub const COM_CLASS_ID: &str = "{13ABEFF0-71C5-49E3-9F2F-C207A28CDB9D}";
 
 pub mod cancellation;
 pub mod ceremony;
+pub(crate) mod diagnostics;
 pub mod error;
 pub mod session;
 

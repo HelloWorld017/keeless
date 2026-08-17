@@ -26,9 +26,10 @@ impl Session {
         launcher: Option<DesktopLauncher>,
     ) -> Result<Self, SessionError> {
         let store = FileStore::project(STATE_FILE)?;
-        println!("keeless-passkey-windows: loading passkey session state");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: loading passkey session state");
         let state = ClientState::load(store, KeyScope::Passkey).await?;
-        println!(
+        crate::diagnostics::initialize();
+        crate::diagnostics::diagnostic!(
             "keeless-passkey-windows: passkey session state loaded (paired={})",
             state.has_trusted_servers()
         );
@@ -52,23 +53,29 @@ impl Session {
     /// Dropping this future drops the in-flight IPC connection, which lets the
     /// desktop host cancel its dependent native UI child.
     pub async fn request(&mut self, operation: Operation) -> Result<OperationSuccess, ClientError> {
-        println!("keeless-passkey-windows: session connecting to desktop host");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: session connecting to desktop host"
+        );
         if let Err(error) = self.ensure_connected(true).await {
-            println!(
+            crate::diagnostics::diagnostic!(
                 "keeless-passkey-windows: session connection failed ({})",
                 client_error_kind(&error)
             );
             return Err(error);
         }
-        println!("keeless-passkey-windows: session sending desktop operation");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: session sending desktop operation"
+        );
         let client = self.client.as_mut().expect("client was just connected");
         match client.request(operation).await {
             Ok(success) => {
-                println!("keeless-passkey-windows: session received desktop operation result");
+                crate::diagnostics::diagnostic!(
+                    "keeless-passkey-windows: session received desktop operation result"
+                );
                 Ok(success)
             }
             Err(error) => {
-                println!(
+                crate::diagnostics::diagnostic!(
                     "keeless-passkey-windows: session desktop operation failed ({})",
                     client_error_kind(&error)
                 );
@@ -85,38 +92,46 @@ impl Session {
     /// treated as locked by the COM boundary.
     pub async fn lock_status(&mut self) -> Result<DatabaseStatus, ClientError> {
         if self.state.trusted_server(UNTRUSTED_ENDPOINT_ID).is_none() {
-            println!(
+            crate::diagnostics::diagnostic!(
                 "keeless-passkey-windows: lock status unavailable because no trusted bootstrap endpoint exists"
             );
             return Err(ClientError::Rejected);
         }
-        println!("keeless-passkey-windows: lock status connecting to trusted desktop host");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: lock status connecting to trusted desktop host"
+        );
         let mut client =
             match CoreClient::connect(&mut self.state, UNTRUSTED_ENDPOINT_ID, None).await {
                 Ok(client) => client,
                 Err(error) => {
-                    println!(
+                    crate::diagnostics::diagnostic!(
                         "keeless-passkey-windows: lock status connection failed ({})",
                         client_error_kind(&error)
                     );
                     return Err(error);
                 }
             };
-        println!("keeless-passkey-windows: lock status requesting desktop status");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: lock status requesting desktop status"
+        );
         match client
             .request(Operation::GetCoreStatus(GetCoreStatusArgs {}))
             .await
         {
             Ok(OperationSuccess::GetCoreStatus(status)) => {
-                println!("keeless-passkey-windows: lock status received desktop status");
+                crate::diagnostics::diagnostic!(
+                    "keeless-passkey-windows: lock status received desktop status"
+                );
                 Ok(status.database)
             }
             Ok(_) => {
-                println!("keeless-passkey-windows: lock status received unexpected desktop result");
+                crate::diagnostics::diagnostic!(
+                    "keeless-passkey-windows: lock status received unexpected desktop result"
+                );
                 Err(ClientError::Rejected)
             }
             Err(error) => {
-                println!(
+                crate::diagnostics::diagnostic!(
                     "keeless-passkey-windows: lock status request failed ({})",
                     client_error_kind(&error)
                 );
@@ -129,44 +144,60 @@ impl Session {
         if self.client.is_none() {
             if launch_desktop {
                 if let Some(launcher) = &self.launcher {
-                    println!("keeless-passkey-windows: starting desktop host if needed");
+                    crate::diagnostics::diagnostic!(
+                        "keeless-passkey-windows: starting desktop host if needed"
+                    );
                     if let Err(error) = launcher.ensure_running().await {
-                        println!("keeless-passkey-windows: desktop host did not start");
+                        crate::diagnostics::diagnostic!(
+                            "keeless-passkey-windows: desktop host did not start"
+                        );
                         return Err(error.into());
                     }
-                    println!("keeless-passkey-windows: desktop host is reachable");
+                    crate::diagnostics::diagnostic!(
+                        "keeless-passkey-windows: desktop host is reachable"
+                    );
                 } else {
-                    println!("keeless-passkey-windows: no desktop launcher is configured");
+                    crate::diagnostics::diagnostic!(
+                        "keeless-passkey-windows: no desktop launcher is configured"
+                    );
                 }
             }
-            println!("keeless-passkey-windows: connecting to bootstrap endpoint");
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: connecting to bootstrap endpoint"
+            );
             let mut untrusted =
                 match CoreClient::connect(&mut self.state, UNTRUSTED_ENDPOINT_ID, None).await {
                     Ok(client) => client,
                     Err(error) => {
-                        println!(
+                        crate::diagnostics::diagnostic!(
                             "keeless-passkey-windows: bootstrap connection failed ({})",
                             client_error_kind(&error)
                         );
                         return Err(error);
                     }
                 };
-            println!("keeless-passkey-windows: requesting desktop endpoint upgrade");
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: requesting desktop endpoint upgrade"
+            );
             let upgrade = match untrusted.request(Operation::Upgrade(UpgradeArgs {})).await {
                 Ok(OperationSuccess::Upgrade(upgrade)) => upgrade,
                 Ok(_) => {
-                    println!("keeless-passkey-windows: desktop returned unexpected upgrade result");
+                    crate::diagnostics::diagnostic!(
+                        "keeless-passkey-windows: desktop returned unexpected upgrade result"
+                    );
                     return Err(ClientError::Rejected);
                 }
                 Err(error) => {
-                    println!(
+                    crate::diagnostics::diagnostic!(
                         "keeless-passkey-windows: desktop upgrade failed ({})",
                         client_error_kind(&error)
                     );
                     return Err(error);
                 }
             };
-            println!("keeless-passkey-windows: connecting to trusted core endpoint");
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: connecting to trusted core endpoint"
+            );
             let client = match CoreClient::connect(
                 &mut self.state,
                 CORE_ENDPOINT_ID,
@@ -176,7 +207,7 @@ impl Session {
             {
                 Ok(client) => client,
                 Err(error) => {
-                    println!(
+                    crate::diagnostics::diagnostic!(
                         "keeless-passkey-windows: core connection failed ({})",
                         client_error_kind(&error)
                     );
@@ -184,7 +215,9 @@ impl Session {
                 }
             };
             self.client = Some(client);
-            println!("keeless-passkey-windows: connected to trusted core endpoint");
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: connected to trusted core endpoint"
+            );
         }
         Ok(())
     }

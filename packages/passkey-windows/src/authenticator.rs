@@ -49,9 +49,11 @@ pub unsafe extern "system" fn make_credential(
         }
         let provider = unsafe { provider(this)? };
         let input = unsafe { copy_operation_request(request)? };
-        println!("keeless-passkey-windows: make_credential copied request");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: make_credential copied request");
         verify_operation(provider, &input)?;
-        println!("keeless-passkey-windows: make_credential verified operation signature");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: make_credential verified operation signature"
+        );
         let guard = provider
             .active
             .begin(
@@ -59,28 +61,38 @@ pub unsafe extern "system" fn make_credential(
                 input.encoded_request.clone(),
             )
             .map_err(|_| ERROR_BUSY)?;
-        println!("keeless-passkey-windows: make_credential started ceremony");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: make_credential started ceremony"
+        );
         let decoded = provider
             .api
             .decode_make(&input.encoded_request)
             .map_err(|error| error.hresult())?;
-        println!("keeless-passkey-windows: make_credential decoded request");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: make_credential decoded request");
         let operation = unsafe { make_request(decoded.get())? };
         let operation = make_credential_operation(operation).map_err(request_error)?;
-        println!("keeless-passkey-windows: make_credential translated request");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: make_credential translated request"
+        );
         verify_user(provider, &guard, &input, &rp_id_from_make(decoded.get())?)?;
-        println!("keeless-passkey-windows: make_credential verified user");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: make_credential verified user");
         if guard.is_cancelled() {
             return Err(NTE_USER_CANCELLED);
         }
-        println!("keeless-passkey-windows: make_credential requesting desktop host");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: make_credential requesting desktop host"
+        );
         let success = provider.request(&guard, operation)?;
         let OperationSuccess::RegisterPasskey(result) = success else {
             return Err(E_FAIL);
         };
-        println!("keeless-passkey-windows: make_credential received desktop result");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: make_credential received desktop result"
+        );
         let encoded = encode_make(provider, result)?;
-        println!("keeless-passkey-windows: make_credential encoded response");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: make_credential encoded response"
+        );
         transfer_response(&guard, response, encoded)
     })
 }
@@ -100,9 +112,11 @@ pub unsafe extern "system" fn get_assertion(
         }
         let provider = unsafe { provider(this)? };
         let input = unsafe { copy_operation_request(request)? };
-        println!("keeless-passkey-windows: get_assertion copied request");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: get_assertion copied request");
         verify_operation(provider, &input)?;
-        println!("keeless-passkey-windows: get_assertion verified operation signature");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: get_assertion verified operation signature"
+        );
         let guard = provider
             .active
             .begin(
@@ -110,12 +124,12 @@ pub unsafe extern "system" fn get_assertion(
                 input.encoded_request.clone(),
             )
             .map_err(|_| ERROR_BUSY)?;
-        println!("keeless-passkey-windows: get_assertion started ceremony");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: get_assertion started ceremony");
         let decoded = provider
             .api
             .decode_assertion(&input.encoded_request)
             .map_err(|error| error.hresult())?;
-        println!("keeless-passkey-windows: get_assertion decoded request");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: get_assertion decoded request");
         let request = unsafe { assertion_request(decoded.get())? };
         let rp_id = request.rp_id.clone();
         let AssertionOperation::Interactive(operation) =
@@ -123,20 +137,26 @@ pub unsafe extern "system" fn get_assertion(
         else {
             return Err(crate::error::NTE_NOT_FOUND);
         };
-        println!("keeless-passkey-windows: get_assertion translated request");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: get_assertion translated request"
+        );
         verify_user(provider, &guard, &input, &rp_id)?;
-        println!("keeless-passkey-windows: get_assertion verified user");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: get_assertion verified user");
         if guard.is_cancelled() {
             return Err(NTE_USER_CANCELLED);
         }
-        println!("keeless-passkey-windows: get_assertion requesting desktop host");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: get_assertion requesting desktop host"
+        );
         let success = provider.request(&guard, *operation)?;
         let OperationSuccess::AssertPasskey(result) = success else {
             return Err(E_FAIL);
         };
-        println!("keeless-passkey-windows: get_assertion received desktop result");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: get_assertion received desktop result"
+        );
         let encoded = encode_assertion(provider, result)?;
-        println!("keeless-passkey-windows: get_assertion encoded response");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: get_assertion encoded response");
         transfer_response(&guard, response, encoded)
     })
 }
@@ -148,12 +168,14 @@ pub unsafe extern "system" fn cancel_operation(
     boundary("cancel_operation", || {
         let provider = unsafe { provider(this)? };
         let request = unsafe { copy_cancel_request(request)? };
-        println!("keeless-passkey-windows: cancel_operation copied request");
+        crate::diagnostics::diagnostic!("keeless-passkey-windows: cancel_operation copied request");
         let Some(target) = provider
             .active
             .cancellation_target(transaction_id(&request.transaction_id))
         else {
-            println!("keeless-passkey-windows: cancel_operation has no active ceremony");
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: cancel_operation has no active ceremony"
+            );
             return Ok(());
         };
         let public_key = provider
@@ -167,7 +189,9 @@ pub unsafe extern "system" fn cancel_operation(
         )
         .map_err(|_| NTE_BAD_SIGNATURE)?;
         let _ = target.cancel();
-        println!("keeless-passkey-windows: cancel_operation cancelled ceremony");
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: cancel_operation cancelled ceremony"
+        );
         Ok(())
     })
 }
@@ -181,7 +205,7 @@ pub unsafe extern "system" fn get_lock_status(this: *mut c_void, status: *mut Lo
         unsafe {
             *status = provider.lock_status();
         }
-        println!(
+        crate::diagnostics::diagnostic!(
             "keeless-passkey-windows: get_lock_status returned {}",
             unsafe { *status }
         );
@@ -207,7 +231,9 @@ fn verify_user(
     if guard.is_cancelled() {
         return Err(NTE_USER_CANCELLED);
     }
-    println!("keeless-passkey-windows: user verification requesting Windows Hello");
+    crate::diagnostics::diagnostic!(
+        "keeless-passkey-windows: user verification requesting Windows Hello"
+    );
     let display_hint = wide(&format!("Use Keeless for {rp_id}"));
     let request = PluginUserVerificationRequest {
         hwnd: input.hwnd,
@@ -219,7 +245,9 @@ fn verify_user(
         .api
         .perform_user_verification(&request)
         .map_err(|error| error.hresult())?;
-    println!("keeless-passkey-windows: user verification received Windows Hello result");
+    crate::diagnostics::diagnostic!(
+        "keeless-passkey-windows: user verification received Windows Hello result"
+    );
     if guard.is_cancelled() {
         return Err(NTE_USER_CANCELLED);
     }
@@ -233,7 +261,9 @@ fn verify_user(
         signature.bytes(),
     )
     .map_err(|_| NTE_BAD_SIGNATURE)?;
-    println!("keeless-passkey-windows: user verification signature verified");
+    crate::diagnostics::diagnostic!(
+        "keeless-passkey-windows: user verification signature verified"
+    );
     Ok(())
 }
 
@@ -635,18 +665,22 @@ unsafe fn provider(this: *mut c_void) -> Result<&'static Provider, HResult> {
 }
 
 fn boundary(name: &str, callback: impl FnOnce() -> Result<(), HResult>) -> HResult {
-    println!("keeless-passkey-windows: {name} entered");
+    crate::diagnostics::diagnostic!("keeless-passkey-windows: {name} entered");
     match catch_unwind(AssertUnwindSafe(callback)) {
         Ok(Ok(())) => {
-            println!("keeless-passkey-windows: {name} completed with 0x00000000");
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: {name} completed with 0x00000000"
+            );
             S_OK
         }
         Ok(Err(error)) => {
-            println!("keeless-passkey-windows: {name} failed with {error:#010x}");
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: {name} failed with {error:#010x}"
+            );
             error
         }
         Err(_) => {
-            println!("keeless-passkey-windows: {name} panicked");
+            crate::diagnostics::diagnostic!("keeless-passkey-windows: {name} panicked");
             E_FAIL
         }
     }
