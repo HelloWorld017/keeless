@@ -95,7 +95,9 @@ try {
                 -FriendlyName 'Keeless Passkey Development'
         }
         if (-not (Get-ChildItem Cert:\CurrentUser\TrustedPeople | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
-            Copy-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Destination Cert:\CurrentUser\TrustedPeople
+            $certificateFile = Join-Path $stagingDirectory 'keeless-development.cer'
+            Export-Certificate -Cert $certificate -FilePath $certificateFile | Out-Null
+            Import-Certificate -FilePath $certificateFile -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
         }
 
         $signTool = Get-WindowsSdkTool 'SignTool.exe'
