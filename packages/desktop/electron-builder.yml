@@ -2,21 +2,20 @@ appId: dev.nenw.keeless
 productName: keeless
 directories:
   output: release
-  buildResources: icons
 files:
   - dist/**
   - package.json
 asarUnpack:
-  - assets/*.node
+  - dist/main/assets/*.node
 extraResources:
-  - from: icons
+  - from: src/assets/icons
     to: icons
 linux:
-  icon: icons/icon.png
+  icon: src/assets/icons/icon.png
   target:
     - AppImage
 win:
-  icon: icons/icon.ico
+  icon: src/assets/icons/icon.ico
   extraResources:
     - from: dist/main/assets/keeless-passkey-windows.exe
       to: bin/keeless-passkey-windows.exe

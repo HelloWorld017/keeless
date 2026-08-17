@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $profile = if ($Development) { 'debug' } else { 'release' }
 $publisher = if ($Development) { 'CN=Keeless Development' } else { $env:MSIX_PUBLISHER }
 $version = if ($Development) {
@@ -14,7 +14,6 @@ $version = if ($Development) {
 } else {
     $env:MSIX_VERSION
 }
-$architecture = if ($env:MSIX_ARCHITECTURE) { $env:MSIX_ARCHITECTURE } else { 'x64' }
 
 if (-not $publisher) {
     throw 'MSIX_PUBLISHER must match the SignPath certificate subject.'
@@ -24,9 +23,6 @@ if (-not $version) {
 }
 if ($version -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$' -or ($version.Split('.') | Where-Object { [int]$_ -gt 65535 })) {
     throw 'MSIX_VERSION must use four parts from 0 through 65535.'
-}
-if ($architecture -notin @('x64', 'arm64')) {
-    throw 'MSIX_ARCHITECTURE must be x64 or arm64.'
 }
 
 function Get-WindowsSdkTool {
@@ -70,7 +66,6 @@ try {
     $manifest = Get-Content -LiteralPath $template -Raw
     $manifest = $manifest.Replace('__PUBLISHER__', [System.Security.SecurityElement]::Escape($publisher))
     $manifest = $manifest.Replace('__VERSION__', $version)
-    $manifest = $manifest.Replace('__ARCHITECTURE__', $architecture)
     [System.IO.File]::WriteAllText(
         (Join-Path $stagingDirectory 'AppxManifest.xml'),
         $manifest,
@@ -78,7 +73,7 @@ try {
     )
 
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
-    & $makeAppx.Path pack /d $stagingDirectory /p $output /o
+    & $makeAppx pack /d $stagingDirectory /p $output /o /nv
     if ($LASTEXITCODE -ne 0) {
         throw "MakeAppx.exe failed with exit code $LASTEXITCODE."
     }
@@ -107,7 +102,7 @@ try {
         if (-not $signTool) {
             throw 'SignTool.exe was not found. Install the Windows SDK before self-signing the MSIX.'
         }
-        & $signTool.Path sign /fd SHA256 /sha $certificate.Thumbprint $output
+        & $signTool sign /fd SHA256 /sha $certificate.Thumbprint $output
         if ($LASTEXITCODE -ne 0) {
             throw "SignTool.exe failed with exit code $LASTEXITCODE."
         }

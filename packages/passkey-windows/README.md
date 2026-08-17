@@ -84,22 +84,25 @@ external-location MSIX whose application is the installed sidecar. This grants
 the sidecar the package identity required by `WebAuthNPluginAddAuthenticator`;
 the MSIX does not own COM registration.
 
-`packages/desktop/build/AppxManifest.xml` is the only manifest. Vite's
-`binary:` plugin emits both the sidecar and its MSIX from `target` into
-`dist/main/assets`; electron-builder packages those emitted artifacts directly.
-There is no resource staging directory or package lifecycle helper.
+`build/msix/AppxManifest.xml` declares the sparse package. `build.rs` embeds
+the corresponding Win32 application manifest in the sidecar so direct COM
+activation receives the registered package identity. Its publisher must match
+the package manifest exactly. Vite's `binary:` plugin emits both artifacts from
+`target` into `dist/main/assets`; electron-builder packages them directly.
 
 On a Windows release build agent, set `MSIX_PUBLISHER` to the exact subject of
 the SignPath certificate and set an advancing four-part `MSIX_VERSION`, then
 run `pnpm build`. This produces an unsigned MSIX and sidecar in `dist`. SignPath
 must sign both artifacts before `pnpm dist` runs electron-builder.
-`MSIX_ARCHITECTURE` optionally selects `x64` or `arm64`.
+The sparse package uses neutral architecture because the executable resides in
+the installer-provided external location.
 
-For development, `pnpm generate:msix:dev` creates or reuses a local
-`CN=Keeless Development` code-signing certificate, trusts its public portion in
-the current user's Trusted People store, and self-signs the debug MSIX. The
-development build path invokes this command before Vite emits the MSIX. The
-private key remains in the Windows certificate store and is never committed.
+For development, `pnpm --filter @keeless/passkey-windows build:msix:dev`
+creates or reuses a local `CN=Keeless Development` code-signing certificate,
+trusts its public portion in the current user's Trusted People store, and
+self-signs the debug MSIX. The development build path invokes this command
+before Vite emits the MSIX. The private key remains in the Windows certificate
+store and is never committed.
 
 The sidecar remains in `$INSTDIR\\resources\\bin`; `--enable` and `--disable`
 must run after the external package identity is registered. Uninstall disables
