@@ -29,6 +29,7 @@
 > If you intend to use this, please backup your database and expect data loss.
 
 ## Installation
+To be determined
 
 ## Screenshot
 
@@ -99,8 +100,8 @@ An approval dialog ensures that only explicitly authorized devices can establish
   Please refer to [SECURITY.md](./SECURITY.md).
 
 ## Contributors
-* @HelloWorld017 **Main Contributor**
-* @JellyBrick
+* [@HelloWorld017](https://github.com/HelloWorld017) `Maintainer`
+* [@JellyBrick](https://github.com/JellyBrick)
 
 ## License
 This project is licensed under multiple licenses depending on the package:

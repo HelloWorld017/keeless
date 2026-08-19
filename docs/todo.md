@@ -30,6 +30,7 @@
 - [ ] kdbx에 operations에서 쓰는 주요 작업 수행 시 zeroize로 기밀 유지되는 것 테스트코드화 하기
 
 ### Good to have
+- [ ] History 보여주기
 - [ ] operation별 rate limiting 추가
 - [ ] Google Authenticator Import
 - [ ] Yubikey Support
