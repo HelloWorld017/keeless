@@ -67,7 +67,7 @@ pub(crate) async fn run(
     core: &mut KeelessCore,
     args: RegisterPasskeyArgs,
 ) -> Result<RegisterPasskeyResult> {
-    passkeys::ensure_database_unlocked(core).await?;
+    passkeys::ensure_database_unlocked(core, args.password_session.clone()).await?;
     let client_data_hash = passkeys::decode(&args.client_data_hash)?;
     let user_handle = passkeys::decode(&args.user_handle)?;
     let exclude_credential_ids = args
@@ -123,7 +123,7 @@ pub(crate) async fn run(
         .filter(|name| !name.is_empty())
         .unwrap_or(result.credential.rp_id());
     let fields = entry_fields(title, &args.user_name, &result.credential)?;
-    let key = passkeys::unlock(core, PasswordInputMode::Save).await?;
+    let key = passkeys::unlock(core, PasswordInputMode::Save, args.password_session).await?;
     let entry_id = keeless_kdbx::NodeId::new_uuid();
     let payload = Mutation {
         parent: parent_group_id,

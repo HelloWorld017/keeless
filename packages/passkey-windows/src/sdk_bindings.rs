@@ -5,10 +5,10 @@
 //! `pluginauthenticator.idl`, `pluginauthenticator.h`, `webauthnplugin.h`, and
 //! `webauthn.h`. Those inputs are MIT licensed by Microsoft Corporation.
 //!
-//! This checked-in subset deliberately contains only the ABI used by the
-//! cache-free Keeless provider. It is not linked to `webauthn.dll`; `api.rs`
-//! resolves every function at runtime so unsupported Windows versions can load
-//! the executable and report an unsupported result.
+//! This checked-in subset contains the ABI used by the Keeless provider. It is
+//! not linked to `webauthn.dll`; `api.rs` resolves every function at runtime so
+//! unsupported Windows versions can load the executable and report a degraded
+//! result.
 
 use std::ffi::c_void;
 
@@ -159,6 +159,19 @@ pub struct WebAuthnCredentialEx {
 pub struct WebAuthnCredentialList {
     pub count: Dword,
     pub credentials: *mut *mut WebAuthnCredentialEx,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct WebAuthnPluginCredentialDetails {
+    pub credential_id_len: Dword,
+    pub credential_id: *const Byte,
+    pub rp_id: *const u16,
+    pub rp_name: *const u16,
+    pub user_id_len: Dword,
+    pub user_id: *const Byte,
+    pub user_name: *const u16,
+    pub user_display_name: *const u16,
 }
 
 #[repr(C)]
@@ -365,6 +378,25 @@ pub type WebAuthNPluginAddAuthenticator = unsafe extern "system" fn(
 pub type WebAuthNPluginFreeAddAuthenticatorResponse =
     unsafe extern "system" fn(*mut PluginAddAuthenticatorResponse);
 pub type WebAuthNPluginRemoveAuthenticator = unsafe extern "system" fn(*const Guid) -> HResult;
+pub type WebAuthNPluginAuthenticatorAddCredentials = unsafe extern "system" fn(
+    *const Guid,
+    Dword,
+    *const WebAuthnPluginCredentialDetails,
+) -> HResult;
+pub type WebAuthNPluginAuthenticatorRemoveCredentials = unsafe extern "system" fn(
+    *const Guid,
+    Dword,
+    *const WebAuthnPluginCredentialDetails,
+) -> HResult;
+pub type WebAuthNPluginAuthenticatorRemoveAllCredentials =
+    unsafe extern "system" fn(*const Guid) -> HResult;
+pub type WebAuthNPluginAuthenticatorGetAllCredentials = unsafe extern "system" fn(
+    *const Guid,
+    *mut Dword,
+    *mut *mut WebAuthnPluginCredentialDetails,
+) -> HResult;
+pub type WebAuthNPluginAuthenticatorFreeCredentialDetailsArray =
+    unsafe extern "system" fn(Dword, *mut WebAuthnPluginCredentialDetails);
 pub type WebAuthNPluginPerformUserVerification = unsafe extern "system" fn(
     *const PluginUserVerificationRequest,
     *mut Dword,

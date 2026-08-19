@@ -144,7 +144,7 @@ async fn passkey_operations_register_enumerate_and_assert() {
         &mut core,
         serde_json::json!({
             "requestId": "request-3",
-            "op": "getPasskeys",
+            "op": "getPasskeysMetadata",
             "args": { "rpId": "example.com" },
         }),
     )
@@ -164,11 +164,37 @@ async fn passkey_operations_register_enumerate_and_assert() {
     assert_eq!(summary["entryId"], entry_id);
     assert_eq!(summary["rpId"], "example.com");
 
+    let detailed = dispatch_json(
+        &mut core,
+        serde_json::json!({
+            "requestId": "request-3a",
+            "op": "getPasskeys",
+            "args": {},
+        }),
+    )
+    .await;
+    assert_eq!(detailed["status"], "success", "{detailed}");
+    let detailed = detailed["result"]["credentials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|credential| credential["entryId"] == entry_id)
+        .unwrap();
+    assert_eq!(detailed["credentialId"], credential_id);
+    assert_eq!(detailed["rpId"], "example.com");
+    assert_eq!(detailed["rpName"], "Example");
+    assert_eq!(
+        detailed["userId"],
+        URL_SAFE_NO_PAD.encode(b"alice").as_str()
+    );
+    assert_eq!(detailed["userName"], "alice");
+    assert_eq!(detailed["userDisplayName"], "alice");
+
     let other_rp = dispatch_json(
         &mut core,
         serde_json::json!({
             "requestId": "request-4",
-            "op": "getPasskeys",
+            "op": "getPasskeysMetadata",
             "args": { "rpId": "example.net" },
         }),
     )
@@ -244,6 +270,55 @@ async fn a_silent_assertion_signs_without_the_user_presence_flag() {
         .decode(asserted["result"]["authenticatorData"].as_str().unwrap())
         .unwrap();
     assert_eq!(authenticator_data[32], 0x18);
+}
+
+#[tokio::test]
+async fn passkey_secret_operations_reuse_one_password_session() {
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let mut core = passkey_core(storage).await;
+    let registered = dispatch_json(&mut core, register_request("request-1", "alice")).await;
+    let credential_id = registered["result"]["credentialId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let password_input = Arc::new(PasswordInput::new(b"correct"));
+    core.password_input = Some(password_input.clone());
+    core.settings.paranoia_mode = true;
+    core.credential = None;
+
+    let password_session = core
+        .extensions
+        .get_mut::<crate::extensions::password_session::PasswordSessionExtension>()
+        .create(b"correct", 100)
+        .unwrap();
+    let detailed = dispatch_json(
+        &mut core,
+        serde_json::json!({
+            "requestId": "request-2",
+            "op": "getPasskeys",
+            "args": { "passwordSession": password_session },
+        }),
+    )
+    .await;
+    assert_eq!(detailed["status"], "success", "{detailed}");
+
+    let asserted = dispatch_json(
+        &mut core,
+        serde_json::json!({
+            "requestId": "request-3",
+            "op": "assertPasskey",
+            "args": {
+                "rpId": "example.com",
+                "clientDataHash": URL_SAFE_NO_PAD.encode([9u8; 32]),
+                "allowCredentialIds": [credential_id],
+                "userPresent": true,
+                "passwordSession": password_session,
+            },
+        }),
+    )
+    .await;
+    assert_eq!(asserted["status"], "success", "{asserted}");
+    assert!(password_input.modes.lock().unwrap().len() <= 1);
 }
 
 #[tokio::test]
@@ -481,7 +556,7 @@ async fn registered_passkey_survives_journal_replay() {
         &mut replayed,
         serde_json::json!({
             "requestId": "request-2",
-            "op": "getPasskeys",
+            "op": "getPasskeysMetadata",
             "args": {},
         }),
     )
@@ -552,7 +627,7 @@ async fn failed_passkey_registration_does_not_create_an_entry_or_index() {
         &mut core,
         serde_json::json!({
             "requestId": "request-2",
-            "op": "getPasskeys",
+            "op": "getPasskeysMetadata",
             "args": {},
         }),
     )

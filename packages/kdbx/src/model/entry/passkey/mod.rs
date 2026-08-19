@@ -229,6 +229,15 @@ pub struct PasskeyCredentialSummary {
     pub username: String,
 }
 
+/// Protected identifiers and public labels needed for credential discovery.
+/// This intentionally does not parse or retain the credential's private key.
+pub struct PasskeyCredentialMetadata {
+    pub rp_id: String,
+    pub username: String,
+    pub credential_id: Vec<u8>,
+    pub user_handle: Vec<u8>,
+}
+
 /// A credential ID read from protected storage for in-memory indexing.
 pub type PasskeyCredentialId = (NodeId, Zeroizing<Vec<u8>>);
 
@@ -321,6 +330,47 @@ impl PasskeyCredential {
             .semantic_clone(&mut unlock)
             .map_err(|_| PasskeyError::ProtectedFieldAccess)?;
         Self::from_entry(&entry)
+    }
+
+    /// Read only the metadata required by a platform credential cache.
+    pub fn metadata_from_database_entry(
+        database: &Database,
+        composite_key: &CompositeKey,
+        entry_id: &NodeId,
+    ) -> Result<Option<PasskeyCredentialMetadata>, PasskeyError> {
+        let entry = database
+            .entries
+            .get(entry_id)
+            .ok_or(PasskeyError::ProtectedFieldAccess)?;
+        if !is_passkey_entry(entry) {
+            return Ok(None);
+        }
+
+        let credential_id_name = if has_field(entry, FIELD_GENERATED_USER_ID) {
+            FIELD_GENERATED_USER_ID
+        } else {
+            FIELD_CREDENTIAL_ID
+        };
+        let username_name = if has_field(entry, FIELD_COMPATIBLE_USERNAME) {
+            FIELD_COMPATIBLE_USERNAME
+        } else {
+            FIELD_USERNAME
+        };
+        let mut unlock = database.memory_unlock(composite_key);
+        let credential_id = protected_identifier(entry, credential_id_name, &mut unlock)?
+            .ok_or(PasskeyError::MissingField(credential_id_name))?
+            .to_vec();
+        let user_handle = protected_identifier(entry, FIELD_USER_HANDLE, &mut unlock)?
+            .ok_or(PasskeyError::MissingField(FIELD_USER_HANDLE))?
+            .to_vec();
+        validate_user_handle(&user_handle)?;
+
+        Ok(Some(PasskeyCredentialMetadata {
+            rp_id: webauthn::normalize_stored_rp_id(required_field(entry, FIELD_RELYING_PARTY)?)?,
+            username: required_field(entry, username_name)?.to_owned(),
+            credential_id,
+            user_handle,
+        }))
     }
 
     /// Store this credential unless the entry already contains passkey fields.

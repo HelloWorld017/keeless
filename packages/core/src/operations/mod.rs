@@ -13,6 +13,7 @@ pub(crate) mod get_entry_totp;
 pub(crate) mod get_group_entries;
 pub(crate) mod get_group_hierarchy;
 pub(crate) mod get_passkeys;
+pub(crate) mod get_passkeys_metadata;
 pub(crate) mod get_recent_databases;
 pub(crate) mod get_storage_provider;
 pub(crate) mod get_tag_entries;
@@ -96,6 +97,7 @@ pub(crate) async fn execute(
         Operation::UpdateTagStyle(args) => mutations::update_tag_style::execute(core, args).await,
         Operation::DeleteTag(args) => mutations::delete_tag::execute(core, args).await,
         Operation::RevealEntryFields(args) => reveal_entry_fields::execute(core, args).await,
+        Operation::GetPasskeysMetadata(args) => get_passkeys_metadata::execute(core, args).await,
         Operation::GetPasskeys(args) => get_passkeys::execute(core, args).await,
         Operation::RegisterPasskey(args) => mutations::register_passkey::execute(core, args).await,
         Operation::AssertPasskey(args) => assert_passkey::execute(core, args).await,

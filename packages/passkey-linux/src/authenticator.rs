@@ -108,6 +108,7 @@ impl Authenticator {
                         .iter()
                         .map(|id| encode(id))
                         .collect(),
+                    password_session: None,
                 }),
             )
             .await?;
@@ -131,6 +132,7 @@ impl Authenticator {
                 .map(|id| encode(id))
                 .collect(),
             user_present: request.user_presence,
+            password_session: None,
         });
         let result = if request.user_presence {
             self.request_interactive(progress, operation).await?

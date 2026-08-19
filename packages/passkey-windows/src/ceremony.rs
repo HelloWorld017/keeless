@@ -74,6 +74,7 @@ pub fn make_credential_operation(
             .iter()
             .map(|credential_id| encode(credential_id))
             .collect(),
+        password_session: None,
     }))
 }
 
@@ -100,6 +101,7 @@ pub fn get_assertion_operation(
             // Windows Hello has already completed at this point. Core still owns
             // the existing database unlock and Keeless consent flows.
             user_present: true,
+            password_session: None,
         }),
     )))
 }

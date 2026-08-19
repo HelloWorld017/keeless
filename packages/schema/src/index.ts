@@ -250,7 +250,9 @@ export type GetEntryTotpArgs = {
   passwordSession?: string | null;
 };
 
-export type GetPasskeysArgs = { rpId?: string | null; allowCredentialIds?: string[] };
+export type GetPasskeysMetadataArgs = { rpId?: string | null; allowCredentialIds?: string[] };
+
+export type GetPasskeysArgs = { password?: string | null; passwordSession?: string | null };
 
 export type RegisterPasskeyArgs = {
   rpId: string;
@@ -260,6 +262,7 @@ export type RegisterPasskeyArgs = {
   clientDataHash: string;
   algorithms: number[];
   excludeCredentialIds: string[];
+  passwordSession?: string | null;
 };
 
 export type AssertPasskeyArgs = {
@@ -267,6 +270,7 @@ export type AssertPasskeyArgs = {
   clientDataHash: string;
   allowCredentialIds?: string[];
   userPresent: boolean;
+  passwordSession?: string | null;
 };
 
 export type Operation =
@@ -314,6 +318,7 @@ export type Operation =
   | { op: 'deleteTag'; args: DeleteTagArgs }
   | { op: 'revealEntryFields'; args: RevealEntryFieldsArgs }
   | { op: 'getEntryTotp'; args: GetEntryTotpArgs }
+  | { op: 'getPasskeysMetadata'; args: GetPasskeysMetadataArgs }
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
   | { op: 'assertPasskey'; args: AssertPasskeyArgs };
@@ -363,6 +368,7 @@ export type OperationRequest = (
   | { op: 'deleteTag'; args: DeleteTagArgs }
   | { op: 'revealEntryFields'; args: RevealEntryFieldsArgs }
   | { op: 'getEntryTotp'; args: GetEntryTotpArgs }
+  | { op: 'getPasskeysMetadata'; args: GetPasskeysMetadataArgs }
   | { op: 'getPasskeys'; args: GetPasskeysArgs }
   | { op: 'registerPasskey'; args: RegisterPasskeyArgs }
   | { op: 'assertPasskey'; args: AssertPasskeyArgs }
@@ -462,7 +468,22 @@ export type GetEntryTotpResult = {
  */
 export type PasskeySummary = { entryId: DatabaseNodeId; rpId: string; username: string };
 
-export type PasskeysResult = { credentials: PasskeySummary[] };
+export type PasskeysMetadataResult = { credentials: PasskeySummary[] };
+
+/**
+ * Protected metadata needed by platform credential discovery.
+ */
+export type PasskeyCredentialInfo = {
+  entryId: DatabaseNodeId;
+  credentialId: string;
+  rpId: string;
+  rpName: string;
+  userId: string;
+  userName: string;
+  userDisplayName: string;
+};
+
+export type PasskeysResult = { credentials: PasskeyCredentialInfo[] };
 
 export type RegisterPasskeyResult = {
   entryId: DatabaseNodeId;
@@ -524,6 +545,7 @@ export type OperationSuccess =
   | { op: 'deleteTag'; result: EmptyResult }
   | { op: 'revealEntryFields'; result: RevealEntryFieldsResult }
   | { op: 'getEntryTotp'; result: GetEntryTotpResult }
+  | { op: 'getPasskeysMetadata'; result: PasskeysMetadataResult }
   | { op: 'getPasskeys'; result: PasskeysResult }
   | { op: 'registerPasskey'; result: RegisterPasskeyResult }
   | { op: 'assertPasskey'; result: AssertPasskeyResult };
@@ -580,8 +602,8 @@ export const operationMetadata = {
     senders: ['app', 'passkey'],
     recipients: ['core_untrusted'],
   },
-  createPasswordSession: { senders: ['app', 'passkey'], recipients: ['core_untrusted'] },
-  revokePasswordSession: { senders: ['app', 'passkey'], recipients: ['core_untrusted'] },
+  createPasswordSession: { senders: ['app', 'passkey'], recipients: ['core_untrusted', 'core'] },
+  revokePasswordSession: { senders: ['app', 'passkey'], recipients: ['core_untrusted', 'core'] },
   lock: { mutates: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
   getCoreStatus: {
     queries: ['databaseStatus'],
@@ -591,7 +613,7 @@ export const operationMetadata = {
   upgrade: { senders: ['app', 'passkey'], recipients: ['core_untrusted'] },
   getDatabaseStatus: { queries: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
   getStorageProvider: { queries: ['storageProvider'], senders: ['app'], recipients: ['core'] },
-  getConfig: { queries: ['config'], senders: ['app'], recipients: ['core'] },
+  getConfig: { queries: ['config'], senders: ['app', 'passkey'], recipients: ['core'] },
   setConfig: { mutates: ['config', 'databaseStatus'], senders: ['app'], recipients: ['core'] },
   getEntries: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
   searchEntries: { queries: ['entry'], senders: ['app'], recipients: ['core'] },
@@ -659,7 +681,8 @@ export const operationMetadata = {
   deleteTag: { mutates: ['databaseStatus', 'tag'], senders: ['app'], recipients: ['core'] },
   revealEntryFields: { fetches: ['entry'], senders: ['app'], recipients: ['core'] },
   getEntryTotp: { fetches: ['entry'], senders: ['app'], recipients: ['core'] },
-  getPasskeys: { queries: ['entry'], senders: ['app', 'passkey'], recipients: ['core'] },
+  getPasskeysMetadata: { queries: ['entry'], senders: ['app', 'passkey'], recipients: ['core'] },
+  getPasskeys: { fetches: ['entry'], senders: ['app', 'passkey'], recipients: ['core'] },
   registerPasskey: {
     mutates: ['databaseStatus', 'entry'],
     senders: ['app', 'passkey'],

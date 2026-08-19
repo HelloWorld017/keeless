@@ -45,15 +45,52 @@ pub(crate) fn user_presence(user_present: bool) -> UserPresence {
 pub(crate) async fn unlock(
     core: &mut KeelessCore,
     mode: PasswordInputMode,
+    password_session: Option<String>,
 ) -> Result<CompositeKey> {
     if core.handle.is_none() {
         return Err(CoreError::DatabaseLocked);
+    }
+    if let Some(password_session) = password_session {
+        let password = core
+            .extensions
+            .get_mut::<crate::extensions::password_session::PasswordSessionExtension>()
+            .resolve_argument(None, Some(password_session), core.clock.monotonic_millis())?
+            .ok_or(CoreError::InvalidPasswordSession)?;
+        return verify_password(core, &password);
     }
     if let Some(credential) = &core.credential {
         return credential.restore_key();
     }
     let password = core.request_password(mode).await?;
-    let key = CompositeKey::new().with_password(&password)?;
+    verify_password(core, &password)
+}
+
+/// Resolve a key without prompting. Metadata synchronization owns prompting via
+/// an explicit password session instead.
+pub(crate) async fn unlock_without_prompt(
+    core: &mut KeelessCore,
+    password: Option<String>,
+    password_session: Option<String>,
+) -> Result<CompositeKey> {
+    if core.handle.is_none() {
+        return Err(CoreError::DatabaseLocked);
+    }
+    let password = core
+        .extensions
+        .get_mut::<crate::extensions::password_session::PasswordSessionExtension>()
+        .resolve_argument(password, password_session, core.clock.monotonic_millis())?;
+    match password {
+        Some(password) => verify_password(core, &password),
+        None => core
+            .credential
+            .as_ref()
+            .ok_or(CoreError::DatabaseLocked)
+            .and_then(|credential| credential.restore_key()),
+    }
+}
+
+fn verify_password(core: &KeelessCore, password: &[u8]) -> Result<CompositeKey> {
+    let key = CompositeKey::new().with_password(password)?;
     core.handle
         .as_ref()
         .ok_or(CoreError::DatabaseLocked)?
@@ -65,13 +102,25 @@ pub(crate) async fn unlock(
 ///
 /// A silent assertion deliberately never uses this path: a page can issue one
 /// without user interaction, so it must not cause a password prompt.
-pub(crate) async fn ensure_database_unlocked(core: &mut KeelessCore) -> Result<()> {
+pub(crate) async fn ensure_database_unlocked(
+    core: &mut KeelessCore,
+    password_session: Option<String>,
+) -> Result<()> {
     match crate::operations::get_database_status::run(core) {
         crate::DatabaseStatus::Unlocked => Ok(()),
         crate::DatabaseStatus::NotExist => Err(CoreError::PasskeyNotFound),
         crate::DatabaseStatus::Locked => {
-            let password = core.request_password(PasswordInputMode::Unlock).await?;
-            crate::operations::unlock::run(core, &password).await
+            if let Some(password_session) = password_session {
+                let password = core
+                    .extensions
+                    .get_mut::<crate::extensions::password_session::PasswordSessionExtension>()
+                    .resolve_argument(None, Some(password_session), core.clock.monotonic_millis())?
+                    .ok_or(CoreError::InvalidPasswordSession)?;
+                crate::operations::unlock::run(core, &password).await
+            } else {
+                let password = core.request_password(PasswordInputMode::Unlock).await?;
+                crate::operations::unlock::run(core, &password).await
+            }
         }
     }
 }

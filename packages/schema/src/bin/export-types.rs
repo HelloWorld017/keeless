@@ -85,6 +85,7 @@ fn generate() -> String {
     export::<DeleteTagArgs>(&mut output);
     export::<RevealEntryFieldsArgs>(&mut output);
     export::<GetEntryTotpArgs>(&mut output);
+    export::<GetPasskeysMetadataArgs>(&mut output);
     export::<GetPasskeysArgs>(&mut output);
     export::<RegisterPasskeyArgs>(&mut output);
     export::<AssertPasskeyArgs>(&mut output);
@@ -112,6 +113,8 @@ fn generate() -> String {
     export::<RevealEntryFieldsResult>(&mut output);
     export::<GetEntryTotpResult>(&mut output);
     export::<PasskeySummary>(&mut output);
+    export::<PasskeysMetadataResult>(&mut output);
+    export::<PasskeyCredentialInfo>(&mut output);
     export::<PasskeysResult>(&mut output);
     export::<RegisterPasskeyResult>(&mut output);
     export::<AssertPasskeyResult>(&mut output);

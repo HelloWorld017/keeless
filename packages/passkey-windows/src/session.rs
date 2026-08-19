@@ -1,11 +1,16 @@
 //! Authenticated local IPC state for the Windows passkey provider.
 
+#[cfg(windows)]
+use base64::Engine as _;
+#[cfg(windows)]
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use keeless_host_desktop_shared::client::{CORE_ENDPOINT_ID, UNTRUSTED_ENDPOINT_ID};
 use keeless_host_desktop_shared::state::{ClientState, FileStore};
 use keeless_host_desktop_shared::{ClientError, CoreClient, DesktopLauncher};
 use keeless_lesswire::KeyScope;
 use keeless_schema::{
-    DatabaseStatus, GetCoreStatusArgs, Operation, OperationSuccess, UnlockArgs, UpgradeArgs,
+    AssertPasskeyArgs, CreatePasswordSessionArgs, DatabaseStatus, GetConfigArgs, GetCoreStatusArgs,
+    GetPasskeysArgs, Operation, OperationSuccess, RegisterPasskeyArgs, UnlockArgs, UpgradeArgs,
 };
 
 /// File holding the provider's lesswire identity and pinned desktop host key.
@@ -16,6 +21,9 @@ pub struct Session {
     state: ClientState,
     client: Option<CoreClient>,
     launcher: Option<DesktopLauncher>,
+    password_session: Option<String>,
+    paranoia_mode: Option<bool>,
+    needs_sync: bool,
 }
 
 impl Session {
@@ -39,11 +47,14 @@ impl Session {
             state,
             client: None,
             launcher,
+            password_session: None,
+            paranoia_mode: None,
+            needs_sync: false,
         })
     }
 
     pub async fn reset_pairing(&mut self) -> Result<(), SessionError> {
-        self.client = None;
+        self.clear_connection();
         self.state.reset_pairing().await?;
         Ok(())
     }
@@ -68,10 +79,68 @@ impl Session {
             );
             return Err(error);
         }
+        self.request_connected(operation).await
+    }
+
+    #[cfg(windows)]
+    pub(crate) async fn request_with_sync(
+        &mut self,
+        operation: Operation,
+        api: &crate::api::Api,
+    ) -> Result<OperationSuccess, SessionRequestError> {
+        self.ensure_connected(true).await?;
+        if self.needs_sync {
+            if let Err(error) = self.sync_credentials(api).await {
+                if is_transport_error(&error) {
+                    self.clear_connection();
+                    self.ensure_connected(true).await?;
+                    self.sync_credentials(api).await?;
+                } else {
+                    return Err(error);
+                }
+            }
+            self.needs_sync = false;
+        }
+        self.request_connected(operation).await
+    }
+
+    async fn request_connected(
+        &mut self,
+        operation: Operation,
+    ) -> Result<OperationSuccess, SessionRequestError> {
+        let uses_secret = supports_password_session(&operation);
+        if uses_secret && self.paranoia_mode == Some(true) && self.password_session.is_none() {
+            self.ensure_password_session().await?;
+        }
+        let (operation, retry) = with_password_session(operation, self.password_session.clone());
+        let result = self.request_once(operation).await;
+        match result {
+            Err(error) if uses_secret && has_operation_code(&error, "password_session_invalid") => {
+                self.password_session = None;
+                self.ensure_password_session().await?;
+                let retry = retry.ok_or(error)?;
+                self.request_once(retry.with_session(self.password_session.clone()))
+                    .await
+            }
+            Err(error) if has_operation_code(&error, "database_locked") => {
+                self.clear_connection();
+                Err(error)
+            }
+            other => other,
+        }
+    }
+
+    async fn request_once(
+        &mut self,
+        operation: Operation,
+    ) -> Result<OperationSuccess, SessionRequestError> {
         crate::diagnostics::diagnostic!(
             "keeless-passkey-windows: session sending desktop operation"
         );
-        let client = self.client.as_mut().expect("client was just connected");
+        let client = self
+            .client
+            .as_mut()
+            .ok_or(SessionRequestError::Client(ClientError::Rejected))?;
         match client.request(operation).await {
             Ok(success) => {
                 crate::diagnostics::diagnostic!(
@@ -85,11 +154,79 @@ impl Session {
                     client_error_kind(&error)
                 );
                 if !matches!(error, ClientError::Operation { .. }) {
-                    self.client = None;
+                    self.clear_connection();
                 }
                 Err(error.into())
             }
         }
+    }
+
+    async fn ensure_password_session(&mut self) -> Result<(), SessionRequestError> {
+        if self.password_session.is_some() {
+            return Ok(());
+        }
+        let client = self
+            .client
+            .as_mut()
+            .ok_or(SessionRequestError::Client(ClientError::Rejected))?;
+        self.password_session = Some(create_password_session(client).await?);
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    pub(crate) async fn sync_credentials(
+        &mut self,
+        api: &crate::api::Api,
+    ) -> Result<(), SessionRequestError> {
+        let operation = || {
+            Operation::GetPasskeys(GetPasskeysArgs {
+                password: None,
+                password_session: self.password_session.clone(),
+            })
+        };
+        let result = match self.request_connected(operation()).await {
+            Ok(OperationSuccess::GetPasskeys(result)) => result,
+            Ok(_) => return Err(ClientError::Rejected.into()),
+            Err(SessionRequestError::Client(ClientError::Operation { code, .. }))
+                if code == "database_locked" || code == "password_required" =>
+            {
+                if code == "database_locked" {
+                    self.ensure_connected(true).await?;
+                } else {
+                    self.password_session = None;
+                }
+                self.ensure_password_session().await?;
+                match self.request_connected(operation()).await? {
+                    OperationSuccess::GetPasskeys(result) => result,
+                    _ => return Err(ClientError::Rejected.into()),
+                }
+            }
+            Err(error) => return Err(error),
+        };
+        let desired = result
+            .credentials
+            .into_iter()
+            .map(|credential| {
+                Ok(crate::credential_cache::CredentialDetails {
+                    credential_id: URL_SAFE_NO_PAD
+                        .decode(credential.credential_id)
+                        .map_err(|_| ClientError::Rejected)?,
+                    rp_id: credential.rp_id,
+                    rp_name: credential.rp_name,
+                    user_id: URL_SAFE_NO_PAD
+                        .decode(credential.user_id)
+                        .map_err(|_| ClientError::Rejected)?,
+                    user_name: credential.user_name,
+                    user_display_name: credential.user_display_name,
+                })
+            })
+            .collect::<Result<Vec<_>, ClientError>>()?;
+        if let Err(error) = crate::credential_cache::sync(api, &desired) {
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: credential cache synchronization degraded ({error})"
+            );
+        }
+        Ok(())
     }
 
     /// Query a trusted running host without starting the desktop app or creating
@@ -119,7 +256,7 @@ impl Session {
         crate::diagnostics::diagnostic!(
             "keeless-passkey-windows: lock status requesting desktop status"
         );
-        match client
+        let status = match client
             .request(Operation::GetCoreStatus(GetCoreStatusArgs {}))
             .await
         {
@@ -142,7 +279,11 @@ impl Session {
                 );
                 Err(error)
             }
+        };
+        if matches!(status, Ok(DatabaseStatus::Locked)) {
+            self.clear_connection();
         }
+        status
     }
 
     async fn ensure_connected(&mut self, launch_desktop: bool) -> Result<(), SessionRequestError> {
@@ -190,10 +331,12 @@ impl Session {
             match status.database {
                 DatabaseStatus::Unlocked => {}
                 DatabaseStatus::Locked => {
+                    let password_session = create_password_session(&mut untrusted).await?;
+                    self.password_session = Some(password_session.clone());
                     let OperationSuccess::Unlock(_) = untrusted
                         .request(Operation::Unlock(UnlockArgs {
                             password: None,
-                            password_session: None,
+                            password_session: Some(password_session),
                         }))
                         .await?
                     else {
@@ -246,11 +389,122 @@ impl Session {
                 }
             };
             self.client = Some(client);
+            self.needs_sync = true;
+            self.refresh_mode().await?;
             crate::diagnostics::diagnostic!(
                 "keeless-passkey-windows: connected to trusted core endpoint"
             );
         }
         Ok(())
+    }
+
+    async fn refresh_mode(&mut self) -> Result<(), SessionRequestError> {
+        let client = self
+            .client
+            .as_mut()
+            .ok_or(SessionRequestError::Client(ClientError::Rejected))?;
+        let config = match client
+            .request(Operation::GetConfig(GetConfigArgs {}))
+            .await?
+        {
+            OperationSuccess::GetConfig(result) => result.config,
+            _ => return Err(ClientError::Rejected.into()),
+        };
+        self.paranoia_mode = Some(config.paranoia_mode);
+        if config.paranoia_mode {
+            self.ensure_password_session().await?;
+        }
+        Ok(())
+    }
+
+    fn clear_connection(&mut self) {
+        self.client = None;
+        self.password_session = None;
+        self.paranoia_mode = None;
+        self.needs_sync = true;
+    }
+}
+
+async fn create_password_session(client: &mut CoreClient) -> Result<String, SessionRequestError> {
+    match client
+        .request(Operation::CreatePasswordSession(
+            CreatePasswordSessionArgs { password: None },
+        ))
+        .await?
+    {
+        OperationSuccess::CreatePasswordSession(result) => Ok(result.password_session),
+        _ => Err(ClientError::Rejected.into()),
+    }
+}
+
+fn supports_password_session(operation: &Operation) -> bool {
+    matches!(
+        operation,
+        Operation::GetPasskeys(_) | Operation::RegisterPasskey(_) | Operation::AssertPasskey(_)
+    )
+}
+
+fn has_operation_code(error: &SessionRequestError, expected: &str) -> bool {
+    matches!(
+        error,
+        SessionRequestError::Client(ClientError::Operation { code, .. }) if code == expected
+    )
+}
+
+#[cfg(windows)]
+fn is_transport_error(error: &SessionRequestError) -> bool {
+    matches!(
+        error,
+        SessionRequestError::Client(error) if !matches!(error, ClientError::Operation { .. })
+    )
+}
+
+enum PasswordSessionOperation {
+    GetPasskeys(GetPasskeysArgs),
+    RegisterPasskey(RegisterPasskeyArgs),
+    AssertPasskey(AssertPasskeyArgs),
+}
+
+impl PasswordSessionOperation {
+    fn with_session(self, password_session: Option<String>) -> Operation {
+        match self {
+            Self::GetPasskeys(mut args) => {
+                args.password_session = password_session;
+                Operation::GetPasskeys(args)
+            }
+            Self::RegisterPasskey(mut args) => {
+                args.password_session = password_session;
+                Operation::RegisterPasskey(args)
+            }
+            Self::AssertPasskey(mut args) => {
+                args.password_session = password_session;
+                Operation::AssertPasskey(args)
+            }
+        }
+    }
+}
+
+fn with_password_session(
+    operation: Operation,
+    password_session: Option<String>,
+) -> (Operation, Option<PasswordSessionOperation>) {
+    match operation {
+        Operation::GetPasskeys(mut args) => {
+            let retry = PasswordSessionOperation::GetPasskeys(args.clone());
+            args.password_session = password_session;
+            (Operation::GetPasskeys(args), Some(retry))
+        }
+        Operation::RegisterPasskey(mut args) => {
+            let retry = PasswordSessionOperation::RegisterPasskey(args.clone());
+            args.password_session = password_session;
+            (Operation::RegisterPasskey(args), Some(retry))
+        }
+        Operation::AssertPasskey(mut args) => {
+            let retry = PasswordSessionOperation::AssertPasskey(args.clone());
+            args.password_session = password_session;
+            (Operation::AssertPasskey(args), Some(retry))
+        }
+        operation => (operation, None),
     }
 }
 

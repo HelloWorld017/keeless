@@ -52,6 +52,12 @@ pub struct Api {
     pub add_authenticator: WebAuthNPluginAddAuthenticator,
     pub free_add_authenticator_response: WebAuthNPluginFreeAddAuthenticatorResponse,
     pub remove_authenticator: WebAuthNPluginRemoveAuthenticator,
+    pub add_credentials: Option<WebAuthNPluginAuthenticatorAddCredentials>,
+    pub remove_credentials: Option<WebAuthNPluginAuthenticatorRemoveCredentials>,
+    pub remove_all_credentials: Option<WebAuthNPluginAuthenticatorRemoveAllCredentials>,
+    pub get_all_credentials: Option<WebAuthNPluginAuthenticatorGetAllCredentials>,
+    pub free_credential_details_array:
+        Option<WebAuthNPluginAuthenticatorFreeCredentialDetailsArray>,
     pub perform_user_verification: WebAuthNPluginPerformUserVerification,
     pub free_user_verification_response: WebAuthNPluginFreeUserVerificationResponse,
     pub get_user_verification_public_key: WebAuthNPluginGetUserVerificationPublicKey,
@@ -89,6 +95,26 @@ impl Api {
                     "WebAuthNPluginFreeAddAuthenticatorResponse",
                 )?,
                 remove_authenticator: symbol(module, "WebAuthNPluginRemoveAuthenticator")?,
+                add_credentials: optional_symbol(
+                    module,
+                    "WebAuthNPluginAuthenticatorAddCredentials",
+                ),
+                remove_credentials: optional_symbol(
+                    module,
+                    "WebAuthNPluginAuthenticatorRemoveCredentials",
+                ),
+                remove_all_credentials: optional_symbol(
+                    module,
+                    "WebAuthNPluginAuthenticatorRemoveAllCredentials",
+                ),
+                get_all_credentials: optional_symbol(
+                    module,
+                    "WebAuthNPluginAuthenticatorGetAllCredentials",
+                ),
+                free_credential_details_array: optional_symbol(
+                    module,
+                    "WebAuthNPluginAuthenticatorFreeCredentialDetailsArray",
+                ),
                 perform_user_verification: symbol(module, "WebAuthNPluginPerformUserVerification")?,
                 free_user_verification_response: symbol(
                     module,
@@ -325,6 +351,12 @@ unsafe fn symbol<T: Copy>(module: HMODULE, name: &'static str) -> Result<T, ApiE
         .ok_or(ApiError::MissingExport(name))?;
     // All required functions use WINAPI and one pointer-sized function address.
     Ok(unsafe { mem::transmute_copy(&symbol) })
+}
+
+unsafe fn optional_symbol<T: Copy>(module: HMODULE, name: &'static str) -> Option<T> {
+    let export_name = CString::new(name).expect("Windows export name has no NUL");
+    let symbol = unsafe { GetProcAddress(module, export_name.as_ptr() as *const u8) }?;
+    Some(unsafe { mem::transmute_copy(&symbol) })
 }
 
 fn check(result: HResult) -> Result<(), ApiError> {

@@ -1,4 +1,4 @@
-//! Registration lifecycle for the cache-free Keeless provider.
+//! Registration lifecycle for the Keeless provider.
 
 use std::ptr;
 

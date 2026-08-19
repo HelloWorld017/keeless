@@ -89,6 +89,7 @@ pub unsafe extern "system" fn make_credential(
         crate::diagnostics::diagnostic!(
             "keeless-passkey-windows: make_credential received desktop result"
         );
+        let _ = provider.sync_credentials(&guard);
         let encoded = encode_make(provider, result)?;
         crate::diagnostics::diagnostic!(
             "keeless-passkey-windows: make_credential encoded response"

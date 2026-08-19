@@ -477,7 +477,7 @@ operation_schema! {
             }
         }
         senders: [App, Passkey],
-        recipients: [CoreUntrusted],
+        recipients: [CoreUntrusted, Core],
     }
 
     RevokePasswordSession("revokePasswordSession") {
@@ -488,7 +488,7 @@ operation_schema! {
         }
         result EmptyResult
         senders: [App, Passkey],
-        recipients: [CoreUntrusted],
+        recipients: [CoreUntrusted, Core],
     }
 
     Lock("lock") {
@@ -597,6 +597,7 @@ operation_schema! {
                 pub config: KeelessConfig,
             }
         }
+        senders: [App, Passkey],
         queries: [Config],
     }
 
@@ -1171,11 +1172,11 @@ operation_schema! {
         fetches: [Entry],
     }
 
-    GetPasskeys("getPasskeys") {
+    GetPasskeysMetadata("getPasskeysMetadata") {
         args {
             #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            pub struct GetPasskeysArgs {
+            pub struct GetPasskeysMetadataArgs {
                 // Limits the result to one relying party when set.
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
@@ -1188,13 +1189,42 @@ operation_schema! {
         result {
             #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            pub struct PasskeysResult {
+            pub struct PasskeysMetadataResult {
                 pub credentials: Vec<PasskeySummary>,
             }
         }
         senders: [App, Passkey],
         recipients: [Core],
         queries: [Entry],
+    }
+
+    GetPasskeys("getPasskeys") {
+        args {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct GetPasskeysArgs {
+                #[serde(default, deserialize_with = "deserialize_nullable")]
+                #[specta(optional = true)]
+                pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
+            }
+        }
+        result {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct PasskeysResult {
+                pub credentials: Vec<PasskeyCredentialInfo>,
+            }
+        }
+        senders: [App, Passkey],
+        recipients: [Core],
+        fetches: [Entry],
     }
 
     RegisterPasskey("registerPasskey") {
@@ -1217,6 +1247,13 @@ operation_schema! {
                 pub algorithms: Vec<i32>,
                 // Credential IDs from the CTAP2 `excludeList`, base64url without padding.
                 pub exclude_credential_ids: Vec<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
 
@@ -1253,6 +1290,13 @@ operation_schema! {
                 // credentials before prompting, sets this false and produces an assertion
                 // relying parties reject.
                 pub user_present: bool,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result {
@@ -1297,6 +1341,19 @@ pub struct PasskeySummary {
     pub entry_id: DatabaseNodeId,
     pub rp_id: String,
     pub username: String,
+}
+
+/// Protected metadata needed by platform credential discovery.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasskeyCredentialInfo {
+    pub entry_id: DatabaseNodeId,
+    pub credential_id: String,
+    pub rp_id: String,
+    pub rp_name: String,
+    pub user_id: String,
+    pub user_name: String,
+    pub user_display_name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]

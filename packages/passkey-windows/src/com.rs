@@ -122,7 +122,7 @@ impl Provider {
             );
             tokio::select! {
                 _ = guard.cancelled() => Err(NTE_USER_CANCELLED),
-                result = session.request(operation) => result.map_err(|error| session_request_error(&error)),
+                result = session.request_with_sync(operation, &self.api) => result.map_err(|error| session_request_error(&error)),
             }
         });
         match &result {
@@ -132,6 +132,25 @@ impl Provider {
             Err(error) => crate::diagnostics::diagnostic!(
                 "keeless-passkey-windows: provider desktop request failed with {error:#010x}"
             ),
+        }
+        result
+    }
+
+    pub(crate) fn sync_credentials(&self, guard: &CeremonyGuard<'_>) -> Result<(), HResult> {
+        let result = self.runtime.block_on(async {
+            let mut session = tokio::select! {
+                _ = guard.cancelled() => return Err(NTE_USER_CANCELLED),
+                session = self.session.lock() => session,
+            };
+            tokio::select! {
+                _ = guard.cancelled() => Err(NTE_USER_CANCELLED),
+                result = session.sync_credentials(&self.api) => result.map_err(|error| session_request_error(&error)),
+            }
+        });
+        if let Err(error) = &result {
+            crate::diagnostics::diagnostic!(
+                "keeless-passkey-windows: post-registration credential sync failed with {error:#010x}"
+            );
         }
         result
     }

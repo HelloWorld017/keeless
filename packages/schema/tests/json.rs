@@ -127,6 +127,7 @@ fn operations_expose_query_fetch_and_mutation_metadata() {
             ),
             ("revealEntryFields", &[OperationResource::Entry][..]),
             ("getEntryTotp", &[OperationResource::Entry][..]),
+            ("getPasskeys", &[OperationResource::Entry][..]),
             ("assertPasskey", &[OperationResource::Entry][..]),
         ]
     );
@@ -1191,6 +1192,7 @@ fn core_owned_passkey_ceremonies_have_stable_shapes() {
                 client_data_hash: "hash".into(),
                 allow_credential_ids: vec!["credential".into()],
                 user_present: true,
+                password_session: None,
             }),
         },
         json!({

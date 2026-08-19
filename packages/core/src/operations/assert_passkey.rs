@@ -14,7 +14,7 @@ pub(crate) async fn run(
     args: AssertPasskeyArgs,
 ) -> Result<AssertPasskeyResult> {
     if args.user_present {
-        passkeys::ensure_database_unlocked(core).await?;
+        passkeys::ensure_database_unlocked(core, args.password_session.clone()).await?;
     } else if core.handle.is_none() || core.credential.is_none() {
         // A silent assertion may not make a user enter their password, including
         // in paranoia mode where the database remains open but no key is cached.
@@ -59,7 +59,7 @@ pub(crate) async fn run(
         (entry_id, None, false)
     };
 
-    let key = passkeys::unlock(core, PasswordInputMode::Reveal).await?;
+    let key = passkeys::unlock(core, PasswordInputMode::Reveal, args.password_session).await?;
 
     let database = core
         .handle
