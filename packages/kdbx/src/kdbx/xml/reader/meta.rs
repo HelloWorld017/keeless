@@ -5,7 +5,6 @@ pub(super) fn read_meta<R: std::io::BufRead>(
     db: &mut Database,
     inner_stream: &mut dyn InnerStreamCipher,
     buf: &mut Vec<u8>,
-    header_hash: &mut Option<Vec<u8>>,
 ) -> DatabaseResult<()> {
     let mut seen = std::collections::HashSet::new();
     loop {
@@ -37,20 +36,7 @@ pub(super) fn read_meta<R: std::io::BufRead>(
                         let _ = read_text_content(reader, buf)?;
                     }
                     "HeaderHash" => {
-                        let encoded = read_text_content(reader, buf)?;
-                        let decoded = base64::engine::general_purpose::STANDARD
-                            .decode(encoded.trim())
-                            .map_err(|err| {
-                                DatabaseError::InvalidFormat(format!(
-                                    "invalid Meta/HeaderHash base64: {err}"
-                                ))
-                            })?;
-                        if decoded.len() != 32 {
-                            return Err(DatabaseError::InvalidFormat(
-                                "Meta/HeaderHash must be 32 bytes".into(),
-                            ));
-                        }
-                        *header_hash = Some(decoded);
+                        let _ = read_text_content(reader, buf)?;
                     }
                     "DatabaseDescription" => db.description = read_text_content(reader, buf)?,
                     "DefaultUserName" => db.default_username = read_text_content(reader, buf)?,

@@ -3,6 +3,7 @@
 //! Pipeline: Database → XML → compress → hashed block stream → encrypt
 //!           → stream start bytes → outer header → signature
 
+use base64::Engine;
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -73,12 +74,8 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
 
     // 4. Serialize database to XML with inner stream protection
     let mut inner_stream = create_inner_stream(CrsAlgorithm::Salsa20, &inner_stream_key)?;
-    let xml = KdbxXmlWriter::write_with_credentials_and_header_hash(
-        database,
-        inner_stream.as_mut(),
-        memory_key,
-        &header_hash,
-    )?;
+    let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
+    let xml = insert_kdbx31_header_hash(xml, &header_hash)?;
 
     // 5. Compress
     let xml_bytes = Zeroizing::new(xml.into_bytes());
@@ -112,6 +109,22 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     writer.write_all(&encrypted)?;
 
     Ok(())
+}
+
+fn insert_kdbx31_header_hash(mut xml: String, header_hash: &[u8]) -> DatabaseResult<String> {
+    if header_hash.len() != 32 {
+        return Err(DatabaseError::InvalidFormat(
+            "KDBX 3.1 header hash must be 32 bytes".into(),
+        ));
+    }
+    let meta = "<Meta>";
+    let insertion = xml
+        .find(meta)
+        .map(|index| index + meta.len())
+        .ok_or_else(|| DatabaseError::InvalidFormat("XML is missing Meta element".into()))?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(header_hash);
+    xml.insert_str(insertion, &format!("<HeaderHash>{encoded}</HeaderHash>"));
+    Ok(xml)
 }
 
 fn derive_key(

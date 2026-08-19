@@ -3,8 +3,11 @@
 //! Pipeline: signature → outer header → key derivation → decrypt → verify streamStartBytes
 //!           → hashed block stream → decompress → inner stream decrypt → XML → Database
 
+use base64::Engine;
 use keeless_secure_types::{SecureArray, SecureBytes};
-use std::io::Read;
+use quick_xml::events::Event;
+use quick_xml::Reader;
+use std::io::{BufRead, Read};
 use zeroize::Zeroizing;
 
 use crate::crypto::cipher_engine::create_cipher_engine;
@@ -152,44 +155,35 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
         |xml| Some(format!("{} bytes", xml.len())),
     )?;
 
+    // 9. Verify the hash stored in Meta/HeaderHash before parsing the database.
+    diagnostics.run(
+        DiagnosticStage::HeaderHash,
+        || verify_kdbx31_header_hash(xml_data.as_slice(), &header_buf),
+        |_| None,
+    )?;
+
     diagnostics.write_xml(xml_data.as_slice())?;
 
-    // 9. Parse XML with inner stream protection
+    // 10. Parse XML with inner stream protection
     let mut inner_stream = diagnostics.run(
         DiagnosticStage::InnerProtection,
         || create_inner_stream(header.inner_random_stream, &header.inner_random_stream_key),
         |_| None,
     )?;
-    let (mut database, header_hash) = diagnostics.run(
+    let mut database = diagnostics.run(
         DiagnosticStage::XmlParse,
         || {
             let xml_str = std::str::from_utf8(xml_data.as_slice())
                 .map_err(|e| DatabaseError::InvalidFormat(format!("XML not UTF-8: {e}")))?;
-            KdbxXmlReader::read_with_header_hash(xml_str, inner_stream.as_mut())
+            KdbxXmlReader::read(xml_str, inner_stream.as_mut())
         },
-        |(database, _)| {
+        |database| {
             Some(format!(
                 "{} groups, {} entries",
                 database.groups.len(),
                 database.entries.len()
             ))
         },
-    )?;
-
-    // 10. Verify the hash stored in Meta/HeaderHash.
-    diagnostics.run(
-        DiagnosticStage::HeaderHash,
-        || {
-            let Some(stored_hash) = header_hash.as_deref() else {
-                return Ok(());
-            };
-            let expected_hash = HashEngine::sha256(&header_buf);
-            if stored_hash != expected_hash.as_slice() {
-                return Err(DatabaseError::InvalidFormat("Header hash mismatch".into()));
-            }
-            Ok(())
-        },
-        |_| None,
     )?;
 
     // 11. Populate database metadata from header
@@ -199,6 +193,120 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
     database.loaded = true;
 
     Ok(database)
+}
+
+fn verify_kdbx31_header_hash(xml_data: &[u8], header: &[u8]) -> DatabaseResult<()> {
+    let xml = std::str::from_utf8(xml_data)
+        .map_err(|e| DatabaseError::InvalidFormat(format!("XML not UTF-8: {e}")))?;
+    let Some(stored_hash) = read_kdbx31_header_hash(xml)? else {
+        return Ok(());
+    };
+    let expected_hash = HashEngine::sha256(header);
+    if stored_hash != expected_hash {
+        return Err(DatabaseError::InvalidFormat("Header hash mismatch".into()));
+    }
+    Ok(())
+}
+
+fn read_kdbx31_header_hash(xml: &str) -> DatabaseResult<Option<[u8; 32]>> {
+    let mut reader = Reader::from_str(xml);
+    let mut buf = Zeroizing::new(Vec::new());
+    let mut depth = 0usize;
+    let mut in_meta = false;
+    let mut header_hash = None;
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) => {
+                let element_name = e.name();
+                let name = std::str::from_utf8(element_name.as_ref()).unwrap_or("");
+                if in_meta && depth == 2 && name == "HeaderHash" {
+                    let value = read_kdbx31_text_content(&mut reader, &mut buf)?;
+                    let decoded = decode_kdbx31_header_hash(&value)?;
+                    if header_hash.replace(decoded).is_some() {
+                        return Err(DatabaseError::InvalidFormat(
+                            "duplicate Meta/HeaderHash element".into(),
+                        ));
+                    }
+                    continue;
+                }
+                if depth == 1 && name == "Meta" {
+                    in_meta = true;
+                }
+                depth = depth.checked_add(1).ok_or_else(|| {
+                    DatabaseError::InvalidFormat("XML nesting depth overflow".into())
+                })?;
+            }
+            Event::Empty(e) if in_meta && depth == 2 => {
+                if std::str::from_utf8(e.name().as_ref()).unwrap_or("") == "HeaderHash" {
+                    return Err(DatabaseError::InvalidFormat(
+                        "Meta/HeaderHash value is empty".into(),
+                    ));
+                }
+            }
+            Event::End(e) => {
+                let element_name = e.name();
+                let name = std::str::from_utf8(element_name.as_ref()).unwrap_or("");
+                if in_meta && depth == 2 && name == "HeaderHash" {
+                    continue;
+                }
+                if in_meta && depth == 2 && name == "Meta" {
+                    return Ok(header_hash);
+                }
+                depth = depth.checked_sub(1).ok_or_else(|| {
+                    DatabaseError::InvalidFormat("Unbalanced XML end element".into())
+                })?;
+            }
+            Event::Eof => return Ok(header_hash),
+            _ => {}
+        }
+    }
+}
+
+fn read_kdbx31_text_content<R: BufRead>(
+    reader: &mut Reader<R>,
+    buf: &mut Vec<u8>,
+) -> DatabaseResult<String> {
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf)? {
+            Event::Text(text) => {
+                return Ok(text
+                    .unescape()
+                    .map_err(|err| DatabaseError::InvalidFormat(err.to_string()))?
+                    .into_owned())
+            }
+            Event::CData(value) => {
+                return std::str::from_utf8(value.as_ref())
+                    .map(str::to_owned)
+                    .map_err(|err| DatabaseError::InvalidFormat(err.to_string()))
+            }
+            Event::End(_) => return Ok(String::new()),
+            Event::Start(_) | Event::Empty(_) => {
+                return Err(DatabaseError::InvalidFormat(
+                    "Meta/HeaderHash contains nested elements".into(),
+                ))
+            }
+            Event::Eof => {
+                return Err(DatabaseError::InvalidFormat(
+                    "unexpected end of Meta/HeaderHash element".into(),
+                ))
+            }
+            _ => {}
+        }
+    }
+}
+
+fn decode_kdbx31_header_hash(value: &str) -> DatabaseResult<[u8; 32]> {
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(value.trim())
+        .map_err(|err| {
+            DatabaseError::InvalidFormat(format!("invalid Meta/HeaderHash base64: {err}"))
+        })?;
+    decoded
+        .try_into()
+        .map_err(|_| DatabaseError::InvalidFormat("Meta/HeaderHash must be 32 bytes".into()))
 }
 
 /// Derive the final encryption key for KDBX 3.1 using AES-KDF.
