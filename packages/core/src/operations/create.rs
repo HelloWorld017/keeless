@@ -75,8 +75,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     core.persistence.write_cache(&cache).await?;
     core.persistence.clear_journal().await?;
     if let Err(error) = core.activate_database_state(&raw_key).await {
-        core.core_server = None;
-        core.core_transfers = None;
+        core.drop_core_server();
         core.encrypted_state = None;
         return Err(error);
     }
@@ -97,10 +96,9 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     core.credential = credential;
     core.handle = Some(handle);
     core.journal = Some(journal);
-    core.pending_sync_key = None;
-    core.sync_status = crate::SyncStatus::Idle;
-    core.sync_error = None;
-    core.dirty = false;
+    core.reset_sync_state();
+    core.set_sync_state(crate::SyncStatus::Idle, None);
+    core.set_sync_dirty(false);
     mark_existing(core);
     core.last_activity_ms = Some(core.clock.monotonic_millis());
     crate::recent::record_success(core).await?;

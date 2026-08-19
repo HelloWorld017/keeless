@@ -7,6 +7,7 @@ use crate::Result;
 
 pub(crate) mod passkey;
 pub(crate) mod password_session;
+pub(crate) mod sync;
 
 pub(crate) trait CoreExtension: Any + Send + Sync {
     fn unlock(&mut self, database: &Database, key: &CompositeKey) -> Result<()>;

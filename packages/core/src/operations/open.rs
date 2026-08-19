@@ -74,13 +74,13 @@ pub(crate) async fn run(core: &mut KeelessCore, target: OpenTarget) -> Result<()
         database_id,
         exists,
     });
-    core.sync_status = if sync_error.is_some() {
+    let sync_status = if sync_error.is_some() {
         crate::SyncStatus::Error
     } else {
         crate::SyncStatus::Idle
     };
-    core.sync_error = sync_error;
-    core.dirty = journal_dirty;
+    core.set_sync_state(sync_status, sync_error);
+    core.set_sync_dirty(journal_dirty);
     Ok(())
 }
 

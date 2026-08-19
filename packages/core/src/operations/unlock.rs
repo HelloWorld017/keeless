@@ -118,23 +118,24 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     core.credential = credential;
     core.handle = Some(handle);
     core.journal = Some(journal);
-    core.dirty = core
-        .journal
-        .as_ref()
-        .is_some_and(|journal| journal.is_dirty());
     if should_sync {
         core.start_background_sync(key);
     } else {
-        core.pending_sync_key = None;
+        core.reset_sync_state();
     }
-    core.sync_status = if should_sync {
+    let status = if should_sync {
         crate::SyncStatus::Syncing
     } else if recovered_error.is_some() {
         crate::SyncStatus::Error
     } else {
         crate::SyncStatus::Idle
     };
-    core.sync_error = recovered_error.as_ref().map(Into::into);
+    core.set_sync_state(status, recovered_error.as_ref().map(Into::into));
+    core.set_sync_dirty(
+        core.journal
+            .as_ref()
+            .is_some_and(|journal| journal.is_dirty()),
+    );
     if let Some(selection) = &mut core.selection {
         selection.exists = true;
     }

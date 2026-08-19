@@ -16,7 +16,7 @@ pub(super) fn execute(
     _args: GetDatabaseStatusArgs,
 ) -> Result<OperationSuccess> {
     let status = run(core);
-    let dirty = core.dirty
+    let dirty = core.is_sync_dirty()
         || core.handle.as_ref().is_some_and(|handle| handle.is_dirty())
         || core
             .journal
@@ -24,8 +24,8 @@ pub(super) fn execute(
             .is_some_and(|journal| journal.is_dirty());
     Ok(OperationSuccess::GetDatabaseStatus(DatabaseStatusResult {
         status,
-        sync_status: core.sync_status,
+        sync_status: core.sync_status(),
         dirty,
-        sync_error: core.sync_error.clone(),
+        sync_error: core.sync_error(),
     }))
 }

@@ -120,7 +120,7 @@ pub(in crate::operations::mutations) async fn mutate(
         .as_mut()
         .ok_or(CoreError::DatabaseLocked)?
         .commit_prepared(commit);
-    core.dirty = true;
+    core.set_sync_dirty(true);
     Ok(())
 }
 

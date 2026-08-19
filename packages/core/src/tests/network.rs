@@ -70,12 +70,12 @@ async fn upgrade_reports_database_locked_without_active_core_server() {
     ))
     .await
     .unwrap();
-    core.authenticated_sender = Some(keeless_lesswire::AuthenticatedSender {
+    core.set_authenticated_sender(Some(keeless_lesswire::AuthenticatedSender {
         public_key_bundle: Identity::from_secrets(KeyScope::App, [92; 32], [93; 32])
             .public_key_bundle(),
         scope: KeyScope::App,
         approval: keeless_lesswire::SenderApproval::Persisted,
-    });
+    }));
     assert!(matches!(
         operations::upgrade::execute(&mut core, UpgradeArgs {}).await,
         Err(CoreError::DatabaseLocked)

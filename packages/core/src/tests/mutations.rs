@@ -307,8 +307,8 @@ async fn update_entry_adds_transferred_attachments_and_download_verifies_name() 
     let (mut core, ids) = query_core().await;
     let transfers = Arc::new(MemoryTransferProvider::default());
     transfers.add_upload("upload-1", b"new attachment".to_vec());
-    core.transfer_provider = Some(transfers.clone());
-    core.transfer_owner = Some("test-client".into());
+    core.set_transfer_provider(Some(transfers.clone()));
+    core.set_transfer_owner(Some("test-client".into()));
     let entry_id = schema_id(ids.root_entry);
     let fields = operations::get_entry_detail::run(
         &mut core,

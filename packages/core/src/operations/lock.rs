@@ -4,9 +4,7 @@ use crate::{KeelessCore, Result, extensions::password_session::PasswordSessionEx
 
 pub(crate) fn run(core: &mut KeelessCore) {
     core.clear_transfers();
-    core.core_server_generation = core.core_server_generation.wrapping_add(1);
-    core.core_server = None;
-    core.core_transfers = None;
+    core.drop_core_server();
     core.encrypted_state = None;
     core.settings = keeless_schema::KeelessConfig::default();
     core.extensions.lock();
@@ -14,12 +12,7 @@ pub(crate) fn run(core: &mut KeelessCore) {
     core.credential = None;
     core.last_activity_ms = None;
     core.journal = None;
-    core.pending_sync_key = None;
-    core.background_fetch = None;
-    core.background_started_ms = None;
-    if core.sync_status == crate::SyncStatus::Syncing {
-        core.sync_status = crate::SyncStatus::Idle;
-    }
+    core.reset_sync_state();
 }
 
 pub(super) async fn execute(

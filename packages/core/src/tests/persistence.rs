@@ -105,9 +105,9 @@ async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
     assert!(database.get_entry(&first_id).is_some());
     assert!(database.get_entry(&model_id(second.id)).is_some());
     assert!(!replayed.handle.as_ref().unwrap().is_dirty());
-    assert_eq!(replayed.sync_status, SyncStatus::Syncing);
+    assert_eq!(replayed.sync_status(), SyncStatus::Syncing);
     replayed.tick().await;
-    assert_eq!(replayed.sync_status, SyncStatus::Error);
-    assert!(replayed.sync_error.is_some());
+    assert_eq!(replayed.sync_status(), SyncStatus::Error);
+    assert!(replayed.sync_error().is_some());
     assert!(replayed.handle.is_some());
 }
