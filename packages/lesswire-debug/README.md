@@ -45,5 +45,4 @@ The identity value is secret key material. Passing it as an argument can expose
 it to local process inspection and shell history, so this tool must only be used
 for local testing. Decrypt trusts the sender public key embedded in the input
 frame; it verifies the signature but does not independently authenticate that
-sender. For `keeless-native-ui`, trust comes from reading the frame directly
-from the stdout pipe of the child process that the host spawned.
+sender.

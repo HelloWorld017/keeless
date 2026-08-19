@@ -2,7 +2,7 @@
   "name": "@keeless/app",
   "version": "0.0.0",
   "private": true,
-  "description": "keeless: minimal password manager",
+  "description": "keeless: modern password manager",
   "license": "AGPL-3.0",
   "files": [
     "dist"

@@ -1,5 +1,5 @@
 ## `keeless`
-**minimal password manager**
+**modern password manager**
 
 > [!warning]
 > **AI-Generated code ahead**  
@@ -89,6 +89,24 @@ An approval dialog ensures that only explicitly authorized devices can establish
   No, I can not. But I tested for a few basic smoke tests manually on Windows.
   If you are concerned about it, just test it yourself and share the results with me via issues.
 
+* **Is paranoia mode safe?**  
+  No, it is just security theater and it serves as pure quackery for your paranoia.
+  For example, attackers can tamper with the UI binary to harvest and steal your master password and database.  
+  Please do not trust it.
+
 * **I've found a vuln!**  
   I really hope that this is not a frequently asked question.
   Please refer to [SECURITY.md](./SECURITY.md).
+
+## Contributors
+* @HelloWorld017 **Main Contributor**
+* @JellyBrick
+
+## License
+This project is licensed under multiple licenses depending on the package:
+
+* **Package-Specific Licenses:** Please refer to the `LICENSE` file within each individual package under the `packages/` directory for exact terms.
+* **General Rule:**
+  * Packages related to the **core** and **user interface** are generally licensed under the **AGPL-3.0** license.
+  * Most other packages are licensed under the **MIT** license.
+* **Forks (`kdbx`, `secure-types`):** The `kdbx` and `secure-types` packages are forked from separate upstream repositories and are subject to their respective original licenses.
