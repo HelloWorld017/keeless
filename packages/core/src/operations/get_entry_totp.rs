@@ -7,7 +7,9 @@ use keeless_schema::{GetEntryTotpArgs, GetEntryTotpResult, OperationSuccess};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::model::parse_node_id;
-use crate::{CoreError, KeelessCore, Result};
+use crate::{
+    CoreError, KeelessCore, Result, extensions::password_session::PasswordSessionExtension,
+};
 
 pub(crate) async fn run(
     core: &mut KeelessCore,
@@ -151,10 +153,16 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: GetEntryTotpArgs,
 ) -> Result<OperationSuccess> {
-    let password = args
-        .password
-        .take()
-        .map(|password| Zeroizing::new(password.into_bytes()));
+    let password = {
+        let now_millis = core.clock.monotonic_millis();
+        core.extensions
+            .get_mut::<PasswordSessionExtension>()
+            .resolve_argument(
+                args.password.take(),
+                args.password_session.take(),
+                now_millis,
+            )?
+    };
     Ok(OperationSuccess::GetEntryTotp(
         run(
             core,

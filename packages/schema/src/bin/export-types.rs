@@ -44,6 +44,8 @@ fn generate() -> String {
     export::<CreateArgs>(&mut output);
     export::<UnlockArgs>(&mut output);
     export::<LockArgs>(&mut output);
+    export::<CreatePasswordSessionArgs>(&mut output);
+    export_empty("RevokePasswordSessionArgs", &mut output);
     export_empty("GetDatabaseStatusArgs", &mut output);
     export_empty("GetCoreStatusArgs", &mut output);
     export_empty("UpgradeArgs", &mut output);
@@ -89,6 +91,7 @@ fn generate() -> String {
     export::<Operation>(&mut output);
     export::<OperationRequest>(&mut output);
     export_empty("EmptyResult", &mut output);
+    export::<CreatePasswordSessionResult>(&mut output);
     export::<RecentDatabasesResult>(&mut output);
     export::<DatabaseStatusResult>(&mut output);
     export::<CoreStatusResult>(&mut output);

@@ -6,10 +6,12 @@ use keeless_kdbx::{CompositeKey, Database};
 use crate::Result;
 
 pub(crate) mod passkey;
+pub(crate) mod password_session;
 
 pub(crate) trait CoreExtension: Any + Send + Sync {
     fn unlock(&mut self, database: &Database, key: &CompositeKey) -> Result<()>;
     fn lock(&mut self);
+    fn tick(&mut self, monotonic_millis: u64);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
@@ -25,6 +27,10 @@ impl Extensions {
             TypeId::of::<passkey::PasskeyExtension>(),
             Box::new(passkey::PasskeyExtension::new()?),
         );
+        values.insert(
+            TypeId::of::<password_session::PasswordSessionExtension>(),
+            Box::new(password_session::PasswordSessionExtension::new()),
+        );
         Ok(Self { values })
     }
 
@@ -38,6 +44,12 @@ impl Extensions {
     pub(crate) fn lock(&mut self) {
         for extension in self.values.values_mut() {
             extension.lock();
+        }
+    }
+
+    pub(crate) fn tick(&mut self, monotonic_millis: u64) {
+        for extension in self.values.values_mut() {
+            extension.tick(monotonic_millis);
         }
     }
 

@@ -33,6 +33,10 @@ pub enum CoreError {
     InvalidSourceCredentials,
     #[error("password is required")]
     PasswordRequired,
+    #[error("password and password session cannot both be supplied")]
+    PasswordAndSession,
+    #[error("password session is invalid or expired")]
+    InvalidPasswordSession,
     #[error("group does not exist")]
     GroupNotFound,
     #[error("entry does not exist")]
@@ -182,6 +186,14 @@ impl From<&CoreError> for OperationError {
                 "Source database credentials are invalid",
             ),
             CoreError::PasswordRequired => ("password_required", "Password is required"),
+            CoreError::PasswordAndSession => (
+                "password_and_session",
+                "Password and password session cannot both be supplied",
+            ),
+            CoreError::InvalidPasswordSession => (
+                "password_session_invalid",
+                "Password session is invalid or expired",
+            ),
             CoreError::GroupNotFound => ("group_not_found", "Group does not exist"),
             CoreError::EntryNotFound => ("entry_not_found", "Entry does not exist"),
             CoreError::AttachmentNotFound => {

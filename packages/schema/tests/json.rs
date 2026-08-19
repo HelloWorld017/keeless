@@ -88,7 +88,11 @@ fn operations_expose_query_fetch_and_mutation_metadata() {
         &[OperationResource::DatabaseStatus, OperationResource::Tag]
     );
 
-    let save_database = Operation::SaveDatabase(SaveDatabaseArgs { password: None }).metadata();
+    let save_database = Operation::SaveDatabase(SaveDatabaseArgs {
+        password: None,
+        password_session: None,
+    })
+    .metadata();
     assert_eq!(
         save_database.mutates,
         &[
@@ -141,6 +145,7 @@ fn create_request_and_response_have_stable_shapes() {
             request_id: "create-1".into(),
             operation: Operation::Create(CreateArgs {
                 password: Some("secret".into()),
+                password_session: None,
             }),
         },
         json!({ "requestId": "create-1", "op": "create", "args": { "password": "secret" } }),
@@ -160,15 +165,24 @@ fn create_request_and_response_have_stable_shapes() {
 fn create_unlock_and_lock_passwords_are_optional_and_nullable() {
     for (operation, expected) in [
         (
-            Operation::Create(CreateArgs { password: None }),
+            Operation::Create(CreateArgs {
+                password: None,
+                password_session: None,
+            }),
             json!({ "op": "create", "args": { "password": null } }),
         ),
         (
-            Operation::Unlock(UnlockArgs { password: None }),
+            Operation::Unlock(UnlockArgs {
+                password: None,
+                password_session: None,
+            }),
             json!({ "op": "unlock", "args": { "password": null } }),
         ),
         (
-            Operation::Lock(LockArgs { password: None }),
+            Operation::Lock(LockArgs {
+                password: None,
+                password_session: None,
+            }),
             json!({ "op": "lock", "args": { "password": null } }),
         ),
     ] {
@@ -176,12 +190,51 @@ fn create_unlock_and_lock_passwords_are_optional_and_nullable() {
     }
 
     assert!(
-        serde_json::from_value::<CreateArgs>(json!({})).unwrap() == CreateArgs { password: None }
+        serde_json::from_value::<CreateArgs>(json!({})).unwrap()
+            == CreateArgs {
+                password: None,
+                password_session: None,
+            }
     );
     assert!(
-        serde_json::from_value::<UnlockArgs>(json!({})).unwrap() == UnlockArgs { password: None }
+        serde_json::from_value::<UnlockArgs>(json!({})).unwrap()
+            == UnlockArgs {
+                password: None,
+                password_session: None,
+            }
     );
-    assert!(serde_json::from_value::<LockArgs>(json!({})).unwrap() == LockArgs { password: None });
+    assert!(
+        serde_json::from_value::<LockArgs>(json!({})).unwrap()
+            == LockArgs {
+                password: None,
+                password_session: None,
+            }
+    );
+
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "session-1".into(),
+            operation: Operation::CreatePasswordSession(CreatePasswordSessionArgs {
+                password: Some("secret".into()),
+            }),
+        },
+        json!({
+            "requestId": "session-1",
+            "op": "createPasswordSession",
+            "args": { "password": "secret" }
+        }),
+    );
+    assert_roundtrip(
+        OperationRequest {
+            request_id: "revoke-session-1".into(),
+            operation: Operation::RevokePasswordSession(RevokePasswordSessionArgs {}),
+        },
+        json!({
+            "requestId": "revoke-session-1",
+            "op": "revokePasswordSession",
+            "args": {}
+        }),
+    );
 }
 
 #[test]
@@ -379,6 +432,7 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
                 attachments: None,
                 removed_attachment_indices: None,
                 password: None,
+                password_session: None,
             }),
         },
         json!({
@@ -420,6 +474,7 @@ fn entry_edit_requests_preserve_nullable_field_and_password_shapes() {
     assert_roundtrip(
         Operation::SaveDatabase(SaveDatabaseArgs {
             password: Some("secret".into()),
+            password_session: None,
         }),
         json!({ "op": "saveDatabase", "args": { "password": "secret" } }),
     );
@@ -890,6 +945,7 @@ fn database_editing_operations_have_stable_shapes() {
                 entry_id: DatabaseNodeId::Int(8),
                 field_ids: vec!["standard:Password".into(), "custom:OTP".into()],
                 password: None,
+                password_session: None,
             }),
         },
         json!({ "requestId": "reveal-1", "op": "revealEntryFields", "args": { "entryId": 8, "fieldIds": ["standard:Password", "custom:OTP"], "password": null } }),
@@ -920,6 +976,7 @@ fn database_editing_operations_have_stable_shapes() {
                 entry_id: DatabaseNodeId::Int(8),
                 field_id: Some("custom:OTP".into()),
                 password: None,
+                password_session: None,
             }),
         },
         json!({ "requestId": "totp-1", "op": "getEntryTotp", "args": { "entryId": 8, "fieldId": "custom:OTP", "password": null } }),

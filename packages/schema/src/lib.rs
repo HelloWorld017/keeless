@@ -421,6 +421,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result EmptyResult
@@ -437,12 +444,51 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result EmptyResult
         senders: [App, Passkey],
         recipients: [CoreUntrusted],
         mutates: [DatabaseStatus],
+    }
+
+    CreatePasswordSession("createPasswordSession") {
+        args {
+            #[derive(PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct CreatePasswordSessionArgs {
+                #[serde(default, deserialize_with = "deserialize_nullable")]
+                #[specta(optional = true)]
+                pub password: Option<String>,
+            }
+        }
+        result {
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            pub struct CreatePasswordSessionResult {
+                pub password_session: String,
+            }
+        }
+        senders: [App, Passkey],
+        recipients: [CoreUntrusted],
+    }
+
+    RevokePasswordSession("revokePasswordSession") {
+        args {
+            #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+            #[serde(deny_unknown_fields)]
+            pub struct RevokePasswordSessionArgs {}
+        }
+        result EmptyResult
+        senders: [App, Passkey],
+        recipients: [CoreUntrusted],
     }
 
     Lock("lock") {
@@ -453,6 +499,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result EmptyResult
@@ -748,6 +801,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result EmptyResult
@@ -805,6 +865,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result EmptyResult
@@ -819,6 +886,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result {
@@ -841,6 +915,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result {
@@ -1037,6 +1118,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result {
@@ -1061,6 +1149,13 @@ operation_schema! {
                 #[serde(default, deserialize_with = "deserialize_nullable")]
                 #[specta(optional = true)]
                 pub password: Option<String>,
+                #[serde(
+                    default,
+                    deserialize_with = "deserialize_nullable",
+                    skip_serializing_if = "Option::is_none"
+                )]
+                #[specta(optional = true)]
+                pub password_session: Option<String>,
             }
         }
         result {

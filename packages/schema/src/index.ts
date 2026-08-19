@@ -114,11 +114,15 @@ export type GetRecentDatabasesArgs = Record<string, never>;
 
 export type DeleteRecentDatabaseArgs = { id: string };
 
-export type CreateArgs = { password?: string | null };
+export type CreateArgs = { password?: string | null; passwordSession?: string | null };
 
-export type UnlockArgs = { password?: string | null };
+export type UnlockArgs = { password?: string | null; passwordSession?: string | null };
 
-export type LockArgs = { password?: string | null };
+export type LockArgs = { password?: string | null; passwordSession?: string | null };
+
+export type CreatePasswordSessionArgs = { password?: string | null };
+
+export type RevokePasswordSessionArgs = Record<string, never>;
 
 export type GetDatabaseStatusArgs = Record<string, never>;
 
@@ -174,6 +178,7 @@ export type UpdateEntryArgs = {
   attachments?: EntryAttachmentUpdate[] | null;
   removedAttachmentIndices?: number[] | null;
   password?: string | null;
+  passwordSession?: string | null;
 };
 
 export type PrepareEntryAttachmentDownloadArgs = {
@@ -186,14 +191,18 @@ export type DeleteEntryArgs = { entryId: DatabaseNodeId; permanent: boolean };
 
 export type EmptyRecycleBinArgs = Record<string, never>;
 
-export type SaveDatabaseArgs = { password?: string | null };
+export type SaveDatabaseArgs = { password?: string | null; passwordSession?: string | null };
 
-export type PrepareDatabaseExportArgs = { password?: string | null };
+export type PrepareDatabaseExportArgs = {
+  password?: string | null;
+  passwordSession?: string | null;
+};
 
 export type MergeTransferredDatabaseArgs = {
   transferId: string;
   sourcePassword: string;
   password?: string | null;
+  passwordSession?: string | null;
 };
 
 export type GetCustomIconsArgs = Record<string, never>;
@@ -231,12 +240,14 @@ export type RevealEntryFieldsArgs = {
   entryId: DatabaseNodeId;
   fieldIds: string[];
   password?: string | null;
+  passwordSession?: string | null;
 };
 
 export type GetEntryTotpArgs = {
   entryId: DatabaseNodeId;
   fieldId?: string | null;
   password?: string | null;
+  passwordSession?: string | null;
 };
 
 export type GetPasskeysArgs = { rpId?: string | null; allowCredentialIds?: string[] };
@@ -264,6 +275,8 @@ export type Operation =
   | { op: 'deleteRecentDatabase'; args: DeleteRecentDatabaseArgs }
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
+  | { op: 'createPasswordSession'; args: CreatePasswordSessionArgs }
+  | { op: 'revokePasswordSession'; args: RevokePasswordSessionArgs }
   | { op: 'lock'; args: LockArgs }
   | { op: 'getCoreStatus'; args: GetCoreStatusArgs }
   | { op: 'upgrade'; args: UpgradeArgs }
@@ -311,6 +324,8 @@ export type OperationRequest = (
   | { op: 'deleteRecentDatabase'; args: DeleteRecentDatabaseArgs }
   | { op: 'create'; args: CreateArgs }
   | { op: 'unlock'; args: UnlockArgs }
+  | { op: 'createPasswordSession'; args: CreatePasswordSessionArgs }
+  | { op: 'revokePasswordSession'; args: RevokePasswordSessionArgs }
   | { op: 'lock'; args: LockArgs }
   | { op: 'getCoreStatus'; args: GetCoreStatusArgs }
   | { op: 'upgrade'; args: UpgradeArgs }
@@ -354,6 +369,8 @@ export type OperationRequest = (
 ) & { requestId: string };
 
 export type EmptyResult = Record<string, never>;
+
+export type CreatePasswordSessionResult = { passwordSession: string };
 
 export type RecentDatabasesResult = { databases: RecentDatabase[] };
 
@@ -468,6 +485,8 @@ export type OperationSuccess =
   | { op: 'deleteRecentDatabase'; result: EmptyResult }
   | { op: 'create'; result: EmptyResult }
   | { op: 'unlock'; result: EmptyResult }
+  | { op: 'createPasswordSession'; result: CreatePasswordSessionResult }
+  | { op: 'revokePasswordSession'; result: EmptyResult }
   | { op: 'lock'; result: EmptyResult }
   | { op: 'getCoreStatus'; result: CoreStatusResult }
   | { op: 'upgrade'; result: UpgradeResult }
@@ -561,6 +580,8 @@ export const operationMetadata = {
     senders: ['app', 'passkey'],
     recipients: ['core_untrusted'],
   },
+  createPasswordSession: { senders: ['app', 'passkey'], recipients: ['core_untrusted'] },
+  revokePasswordSession: { senders: ['app', 'passkey'], recipients: ['core_untrusted'] },
   lock: { mutates: ['databaseStatus'], senders: ['app'], recipients: ['core'] },
   getCoreStatus: {
     queries: ['databaseStatus'],

@@ -59,6 +59,8 @@ impl CoreExtension for PasskeyExtension {
         self.credential_hashes.clear();
     }
 
+    fn tick(&mut self, _: u64) {}
+
     fn as_any(&self) -> &dyn Any {
         self
     }

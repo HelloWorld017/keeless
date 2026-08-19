@@ -61,6 +61,7 @@ impl NativeUi {
             mode: match mode {
                 PasswordInputMode::Create => "create",
                 PasswordInputMode::Unlock => "unlock",
+                PasswordInputMode::Session => "session",
                 PasswordInputMode::Reveal => "reveal",
                 PasswordInputMode::Save => "save",
             },

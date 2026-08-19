@@ -387,6 +387,7 @@ impl KeelessCore {
     }
 
     pub async fn tick(&mut self) {
+        self.extensions.tick(self.clock.monotonic_millis());
         self.enforce_auto_lock();
         if self.handle.is_none() {
             self.pending_sync_key = None;

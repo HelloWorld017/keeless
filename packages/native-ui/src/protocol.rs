@@ -115,6 +115,7 @@ impl UiRequest {
 pub enum PasswordMode {
     Create,
     Unlock,
+    Session,
     Reveal,
     Save,
 }

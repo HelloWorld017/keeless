@@ -191,7 +191,10 @@ impl Session {
                 DatabaseStatus::Unlocked => {}
                 DatabaseStatus::Locked => {
                     let OperationSuccess::Unlock(_) = untrusted
-                        .request(Operation::Unlock(UnlockArgs { password: None }))
+                        .request(Operation::Unlock(UnlockArgs {
+                            password: None,
+                            password_session: None,
+                        }))
                         .await?
                     else {
                         return Err(ClientError::Rejected.into());

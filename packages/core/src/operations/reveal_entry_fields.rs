@@ -1,9 +1,10 @@
 use keeless_kdbx::{CompositeKey, EntryFieldId};
 use keeless_schema::{OperationSuccess, RevealEntryFieldsArgs, RevealEntryFieldsResult};
-use zeroize::Zeroizing;
 
 use crate::model::parse_node_id;
-use crate::{CoreError, KeelessCore, Result};
+use crate::{
+    CoreError, KeelessCore, Result, extensions::password_session::PasswordSessionExtension,
+};
 
 pub(crate) async fn run(
     core: &mut KeelessCore,
@@ -71,10 +72,16 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: RevealEntryFieldsArgs,
 ) -> Result<OperationSuccess> {
-    let password = args
-        .password
-        .take()
-        .map(|password| Zeroizing::new(password.into_bytes()));
+    let password = {
+        let now_millis = core.clock.monotonic_millis();
+        core.extensions
+            .get_mut::<PasswordSessionExtension>()
+            .resolve_argument(
+                args.password.take(),
+                args.password_session.take(),
+                now_millis,
+            )?
+    };
     Ok(OperationSuccess::RevealEntryFields(
         run(
             core,

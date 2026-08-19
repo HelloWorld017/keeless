@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use crate::{
+    CoreError, KeelessCore, Result, credential::CredentialVault,
+    extensions::password_session::PasswordSessionExtension,
+};
 use keeless_kdbx::CompositeKey;
 use keeless_schema::{EmptyResult, OperationSuccess, UnlockArgs};
 use keeless_sync::{FileHandle, SyncError, SyncOptions};
-use zeroize::Zeroizing;
-
-use crate::{CoreError, KeelessCore, Result, credential::CredentialVault};
 
 pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     let database_id = core
@@ -173,8 +174,18 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: UnlockArgs,
 ) -> Result<OperationSuccess> {
-    let password = match args.password.take() {
-        Some(password) => Zeroizing::new(password.into_bytes()),
+    let password_argument = {
+        let now_millis = core.clock.monotonic_millis();
+        core.extensions
+            .get_mut::<PasswordSessionExtension>()
+            .resolve_argument(
+                args.password.take(),
+                args.password_session.take(),
+                now_millis,
+            )?
+    };
+    let password = match password_argument {
+        Some(password) => password,
         None => {
             core.request_password(crate::PasswordInputMode::Unlock)
                 .await?

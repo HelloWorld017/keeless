@@ -42,7 +42,10 @@ async fn untrusted_endpoint_drops_core_operations_before_execution() {
         .unwrap();
     let payload = serde_json::to_vec(&OperationRequest {
         request_id: "request".into(),
-        operation: Operation::Lock(keeless_schema::LockArgs { password: None }),
+        operation: Operation::Lock(keeless_schema::LockArgs {
+            password: None,
+            password_session: None,
+        }),
     })
     .unwrap();
     let request = client.encrypt(&payload).unwrap();
@@ -165,7 +168,10 @@ async fn lock_drops_the_taken_core_server_and_preserves_untrusted_status() {
         request(
             &mut core,
             &database,
-            Operation::Lock(LockArgs { password: None })
+            Operation::Lock(LockArgs {
+                password: None,
+                password_session: None,
+            })
         )
         .await
         .is_some()

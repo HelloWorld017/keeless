@@ -141,6 +141,7 @@ pub trait TransferProvider: HostProviderRequirements {
 pub enum PasswordInputMode {
     Create,
     Unlock,
+    Session,
     Reveal,
     Save,
 }

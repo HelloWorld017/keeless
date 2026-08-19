@@ -145,7 +145,10 @@ const CONNECTION_DIALOG_SIZE: [f32; 2] = [440.0, 292.0];
 fn password_dialog_size(mode: PasswordMode) -> [f32; 2] {
     match mode {
         PasswordMode::Create => [400.0, 224.0],
-        PasswordMode::Unlock | PasswordMode::Reveal | PasswordMode::Save => [400.0, 192.0],
+        PasswordMode::Unlock
+        | PasswordMode::Session
+        | PasswordMode::Reveal
+        | PasswordMode::Save => [400.0, 192.0],
     }
 }
 
@@ -486,6 +489,7 @@ fn password_title(mode: PasswordMode) -> &'static str {
     match mode {
         PasswordMode::Create => "Create database password",
         PasswordMode::Unlock => "Unlock database",
+        PasswordMode::Session => "Unlock database",
         PasswordMode::Reveal => "Confirm to reveal password",
         PasswordMode::Save => "Confirm to save database",
     }

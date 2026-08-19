@@ -1,7 +1,6 @@
 use keeless_schema::{EmptyResult, LockArgs, OperationSuccess};
-use zeroize::Zeroizing;
 
-use crate::{KeelessCore, Result};
+use crate::{KeelessCore, Result, extensions::password_session::PasswordSessionExtension};
 
 pub(crate) fn run(core: &mut KeelessCore) {
     core.clear_transfers();
@@ -27,10 +26,16 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: LockArgs,
 ) -> Result<OperationSuccess> {
-    let password = args
-        .password
-        .take()
-        .map(|password| Zeroizing::new(password.into_bytes()));
+    let password = {
+        let now_millis = core.clock.monotonic_millis();
+        core.extensions
+            .get_mut::<PasswordSessionExtension>()
+            .resolve_argument(
+                args.password.take(),
+                args.password_session.take(),
+                now_millis,
+            )?
+    };
     if core.handle.is_some() {
         core.sync(password.as_ref().map(|password| password.as_slice()))
             .await?;

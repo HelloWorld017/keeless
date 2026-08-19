@@ -8,11 +8,13 @@ use keeless_schema::{
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroize;
 
 use super::{Mutation as JournalMutation, mutate};
 use crate::model::{parse_icon_reference, parse_node_id};
-use crate::{CoreError, KeelessCore, Result};
+use crate::{
+    CoreError, KeelessCore, Result, extensions::password_session::PasswordSessionExtension,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct Mutation {
@@ -324,10 +326,16 @@ pub(crate) async fn execute(
     core: &mut KeelessCore,
     mut args: UpdateEntryArgs,
 ) -> Result<OperationSuccess> {
-    let password = args
-        .password
-        .take()
-        .map(|password| Zeroizing::new(password.into_bytes()));
+    let password = {
+        let now_millis = core.clock.monotonic_millis();
+        core.extensions
+            .get_mut::<PasswordSessionExtension>()
+            .resolve_argument(
+                args.password.take(),
+                args.password_session.take(),
+                now_millis,
+            )?
+    };
     Ok(OperationSuccess::UpdateEntry(
         run(
             core,

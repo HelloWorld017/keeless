@@ -1,5 +1,6 @@
 pub(crate) mod assert_passkey;
 pub(crate) mod create;
+pub(crate) mod create_password_session;
 pub(crate) mod delete_recent_database;
 pub(crate) mod get_config;
 pub(crate) mod get_core_status;
@@ -24,6 +25,7 @@ pub(crate) mod open;
 pub(crate) mod prepare_database_export;
 pub(crate) mod prepare_entry_attachment_download;
 pub(crate) mod reveal_entry_fields;
+pub(crate) mod revoke_password_session;
 pub(crate) mod save_database;
 pub(crate) mod search_entries;
 pub(crate) mod search_fuzzy;
@@ -44,7 +46,11 @@ pub(crate) async fn execute(
         Operation::GetRecentDatabases(args) => get_recent_databases::execute(core, args).await,
         Operation::DeleteRecentDatabase(args) => delete_recent_database::execute(core, args).await,
         Operation::Create(args) => create::execute(core, args).await,
+        Operation::CreatePasswordSession(args) => {
+            create_password_session::execute(core, args).await
+        }
         Operation::Unlock(args) => unlock::execute(core, args).await,
+        Operation::RevokePasswordSession(args) => revoke_password_session::execute(core, args),
         Operation::Lock(args) => lock::execute(core, args).await,
         Operation::GetCoreStatus(args) => get_core_status::execute(core, args),
         Operation::Upgrade(args) => upgrade::execute(core, args).await,

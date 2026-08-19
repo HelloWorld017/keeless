@@ -139,7 +139,14 @@ async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
     core.credential = None;
 
     assert!(matches!(
-        operations::execute(&mut core, Operation::Lock(LockArgs { password: None })).await,
+        operations::execute(
+            &mut core,
+            Operation::Lock(LockArgs {
+                password: None,
+                password_session: None,
+            }),
+        )
+        .await,
         Err(CoreError::PasswordRequired)
     ));
     assert_eq!(
@@ -151,6 +158,7 @@ async fn explicit_lock_syncs_before_discarding_the_unlocked_database() {
         &mut core,
         Operation::Lock(LockArgs {
             password: Some("correct".into()),
+            password_session: None,
         }),
     )
     .await
@@ -191,7 +199,10 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
     assert!(matches!(
         operations::execute(
             &mut core,
-            Operation::Unlock(keeless_schema::UnlockArgs { password: None }),
+            Operation::Unlock(keeless_schema::UnlockArgs {
+                password: None,
+                password_session: None,
+            }),
         )
         .await,
         Err(CoreError::PasswordRequired)
@@ -202,7 +213,10 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
     assert!(matches!(
         operations::execute(
             &mut core,
-            Operation::Unlock(keeless_schema::UnlockArgs { password: None }),
+            Operation::Unlock(keeless_schema::UnlockArgs {
+                password: None,
+                password_session: None,
+            }),
         )
         .await,
         Err(CoreError::PasswordRequired)
@@ -218,7 +232,8 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
         operations::execute(
             &mut core,
             Operation::Unlock(keeless_schema::UnlockArgs {
-                password: Some("wrong".into())
+                password: Some("wrong".into()),
+                password_session: None,
             }),
         )
         .await,
@@ -228,7 +243,10 @@ async fn password_provider_handles_missing_input_and_supplied_passwords_win() {
 
     operations::execute(
         &mut core,
-        Operation::Unlock(keeless_schema::UnlockArgs { password: None }),
+        Operation::Unlock(keeless_schema::UnlockArgs {
+            password: None,
+            password_session: None,
+        }),
     )
     .await
     .unwrap();
@@ -265,7 +283,10 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
     .unwrap();
     operations::execute(
         &mut create_core,
-        Operation::Create(keeless_schema::CreateArgs { password: None }),
+        Operation::Create(keeless_schema::CreateArgs {
+            password: None,
+            password_session: None,
+        }),
     )
     .await
     .unwrap();
@@ -355,6 +376,112 @@ async fn password_provider_receives_create_reveal_and_save_modes() {
             PasswordInputMode::Save,
         ]
     );
+}
+
+#[tokio::test]
+async fn password_session_is_reusable_until_expiration_and_revocable() {
+    let clock = Arc::new(FakeClock::new(100));
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
+    let mut providers: HashMap<String, Arc<Storage>> = HashMap::new();
+    providers.insert("memory".into(), persistent_storage(storage));
+    let mut core = KeelessCore::new(KeelessHost {
+        storage_providers: providers,
+        ..host(
+            Arc::new(MemoryConfig::default()),
+            Arc::new(Approval),
+            clock.clone(),
+        )
+    })
+    .await
+    .unwrap();
+    operations::open::run(
+        &mut core,
+        OpenTarget::Storage {
+            storage: StorageDescriptor {
+                provider: "memory".into(),
+                path: "vault.kdbx".into(),
+            },
+        },
+    )
+    .await
+    .unwrap();
+
+    let result = operations::execute(
+        &mut core,
+        Operation::CreatePasswordSession(keeless_schema::CreatePasswordSessionArgs {
+            password: Some("correct".into()),
+        }),
+    )
+    .await
+    .unwrap();
+    let token = match result {
+        OperationSuccess::CreatePasswordSession(result) => result.password_session,
+        result => panic!("unexpected result: {result:?}"),
+    };
+
+    operations::execute(
+        &mut core,
+        Operation::Unlock(keeless_schema::UnlockArgs {
+            password: None,
+            password_session: Some(token.clone()),
+        }),
+    )
+    .await
+    .unwrap();
+
+    clock.set(60_099);
+    operations::execute(
+        &mut core,
+        Operation::SaveDatabase(keeless_schema::SaveDatabaseArgs {
+            password: None,
+            password_session: Some(token.clone()),
+        }),
+    )
+    .await
+    .unwrap();
+
+    clock.set(60_100);
+    assert!(matches!(
+        operations::execute(
+            &mut core,
+            Operation::SaveDatabase(keeless_schema::SaveDatabaseArgs {
+                password: None,
+                password_session: Some(token.clone()),
+            }),
+        )
+        .await,
+        Err(CoreError::InvalidPasswordSession)
+    ));
+
+    let result = operations::execute(
+        &mut core,
+        Operation::CreatePasswordSession(keeless_schema::CreatePasswordSessionArgs {
+            password: Some("correct".into()),
+        }),
+    )
+    .await
+    .unwrap();
+    let token = match result {
+        OperationSuccess::CreatePasswordSession(result) => result.password_session,
+        result => panic!("unexpected result: {result:?}"),
+    };
+    operations::execute(
+        &mut core,
+        Operation::RevokePasswordSession(keeless_schema::RevokePasswordSessionArgs {}),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        operations::execute(
+            &mut core,
+            Operation::SaveDatabase(keeless_schema::SaveDatabaseArgs {
+                password: None,
+                password_session: Some(token),
+            }),
+        )
+        .await,
+        Err(CoreError::InvalidPasswordSession)
+    ));
 }
 
 #[tokio::test]

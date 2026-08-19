@@ -22,6 +22,7 @@ fn parses_each_ui_kind() {
     );
     for (kind, json) in [
         ("password", r#"{"mode":"unlock"}"#),
+        ("password", r#"{"mode":"session"}"#),
         ("connection", connection.as_str()),
         (
             "passkey",

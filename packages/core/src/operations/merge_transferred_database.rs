@@ -6,19 +6,27 @@ use keeless_schema::{
 };
 use zeroize::Zeroizing;
 
-use crate::{CoreError, KeelessCore, Result};
+use crate::{
+    CoreError, KeelessCore, Result, extensions::password_session::PasswordSessionExtension,
+};
 
 pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: MergeTransferredDatabaseArgs,
 ) -> Result<OperationSuccess> {
     let source_password = Zeroizing::new(std::mem::take(&mut args.source_password).into_bytes());
-    let target_password = args
-        .password
-        .take()
-        .map(|password| Zeroizing::new(password.into_bytes()));
+    let target_password = {
+        let now_millis = core.clock.monotonic_millis();
+        core.extensions
+            .get_mut::<PasswordSessionExtension>()
+            .resolve_argument(
+                args.password.take(),
+                args.password_session.take(),
+                now_millis,
+            )?
+    };
     let target_key = core
-        .current_key(target_password.as_deref().map(Vec::as_slice))
+        .current_key(target_password.as_ref().map(|password| password.as_slice()))
         .await?;
     let bytes = core.consume_upload_transfer(&args.transfer_id)?;
     let source_key = CompositeKey::new().with_password(&source_password)?;
