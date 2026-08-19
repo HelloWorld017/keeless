@@ -32,6 +32,15 @@ impl KdbxXmlReader {
     pub fn read(xml: &str, inner_stream: &mut dyn InnerStreamCipher) -> DatabaseResult<Database> {
         let binaries = read_meta_binaries(xml)?;
         Self::read_internal(xml, inner_stream, BinaryReferences::ById(&binaries))
+            .map(|(database, _)| database)
+    }
+
+    pub(crate) fn read_with_header_hash(
+        xml: &str,
+        inner_stream: &mut dyn InnerStreamCipher,
+    ) -> DatabaseResult<(Database, Option<Vec<u8>>)> {
+        let binaries = read_meta_binaries(xml)?;
+        Self::read_internal(xml, inner_stream, BinaryReferences::ById(&binaries))
     }
 
     /// Parse XML and resolve KDBX4 inner-header binary references.
@@ -41,17 +50,19 @@ impl KdbxXmlReader {
         binaries: &[(Vec<u8>, bool)],
     ) -> DatabaseResult<Database> {
         Self::read_internal(xml, inner_stream, BinaryReferences::ByIndex(binaries))
+            .map(|(database, _)| database)
     }
 
     fn read_internal(
         xml: &str,
         inner_stream: &mut dyn InnerStreamCipher,
         binaries: BinaryReferences<'_>,
-    ) -> DatabaseResult<Database> {
+    ) -> DatabaseResult<(Database, Option<Vec<u8>>)> {
         validate_nesting(xml)?;
         let mut reader = Reader::from_str(xml);
         let mut buf = Zeroizing::new(Vec::new());
         let mut db = Database::default();
+        let mut header_hash = None;
         let mut saw_keepass_file = false;
         let mut saw_meta = false;
         let mut saw_root = false;
@@ -68,7 +79,13 @@ impl KdbxXmlReader {
                     }
                     "Meta" if saw_keepass_file && !saw_meta && !saw_root => {
                         saw_meta = true;
-                        meta::read_meta(&mut reader, &mut db, inner_stream, &mut buf)?
+                        meta::read_meta(
+                            &mut reader,
+                            &mut db,
+                            inner_stream,
+                            &mut buf,
+                            &mut header_hash,
+                        )?
                     }
                     "Meta" => {
                         return Err(DatabaseError::InvalidFormat(
@@ -147,7 +164,7 @@ impl KdbxXmlReader {
             }
         }
 
-        Ok(db)
+        Ok((db, header_hash))
     }
 }
 

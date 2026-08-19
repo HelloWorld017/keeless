@@ -11,6 +11,26 @@ use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::model::db::database::DatabaseVersion;
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
+/// Read wrapper that copies all bytes consumed from the inner reader.
+pub(crate) struct TeeReader<'a, R> {
+    inner: &'a mut R,
+    sink: &'a mut Vec<u8>,
+}
+
+impl<'a, R: Read> TeeReader<'a, R> {
+    pub(crate) fn new(inner: &'a mut R, sink: &'a mut Vec<u8>) -> Self {
+        Self { inner, sink }
+    }
+}
+
+impl<R: Read> Read for TeeReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.sink.extend_from_slice(&buf[..n]);
+        Ok(n)
+    }
+}
+
 /// Database file reader.
 pub struct DatabaseReader;
 

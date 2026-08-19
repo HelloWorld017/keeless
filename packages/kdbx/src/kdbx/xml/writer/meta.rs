@@ -4,9 +4,17 @@ pub(super) fn write_meta(
     writer: &mut XmlWriter,
     db: &Database,
     inner_stream: &mut dyn InnerStreamCipher,
+    header_hash: Option<&[u8]>,
 ) -> DatabaseResult<()> {
     write_element(writer, "Meta", |writer| {
         write_tag(writer, "Generator", "KeePassFR Rust")?;
+        if let Some(header_hash) = header_hash {
+            write_tag(
+                writer,
+                "HeaderHash",
+                &base64::engine::general_purpose::STANDARD.encode(header_hash),
+            )?;
+        }
         write_tag(writer, "DatabaseName", &db.name)?;
         write_tag(writer, "DatabaseDescription", &db.description)?;
         write_tag(writer, "DefaultUserName", &db.default_username)?;

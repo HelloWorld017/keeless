@@ -45,7 +45,7 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(32)?;
     let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
-    let inner_stream_key = SecureBytes::from_vec(generate_random_bytes(32)?)?;
+    let inner_stream_key = SecureBytes::from_vec(generate_random_bytes(64)?)?;
 
     // Get KDF parameters (use existing or default)
     let kdf_uuid = database

@@ -24,7 +24,7 @@ impl KdbxXmlWriter {
         inner_stream: &mut dyn InnerStreamCipher,
     ) -> DatabaseResult<String> {
         let mut memory = MemoryWriteAccess::Unsealed;
-        Self::write_internal(db, inner_stream, &mut memory)
+        Self::write_internal(db, inner_stream, &mut memory, None)
     }
 
     pub(crate) fn write_with_credentials(
@@ -33,13 +33,24 @@ impl KdbxXmlWriter {
         composite_key: &CompositeKey,
     ) -> DatabaseResult<String> {
         let mut memory = MemoryWriteAccess::Unlocked(db.memory_unlock(composite_key));
-        Self::write_internal(db, inner_stream, &mut memory)
+        Self::write_internal(db, inner_stream, &mut memory, None)
+    }
+
+    pub(crate) fn write_with_credentials_and_header_hash(
+        db: &Database,
+        inner_stream: &mut dyn InnerStreamCipher,
+        composite_key: &CompositeKey,
+        header_hash: &[u8],
+    ) -> DatabaseResult<String> {
+        let mut memory = MemoryWriteAccess::Unlocked(db.memory_unlock(composite_key));
+        Self::write_internal(db, inner_stream, &mut memory, Some(header_hash))
     }
 
     fn write_internal(
         db: &Database,
         inner_stream: &mut dyn InnerStreamCipher,
         memory: &mut MemoryWriteAccess<'_>,
+        header_hash: Option<&[u8]>,
     ) -> DatabaseResult<String> {
         let mut writer = XmlWriter::new(Vec::new());
         let mut binary_index = 0usize;
@@ -50,7 +61,7 @@ impl KdbxXmlWriter {
             .map_err(|err| DatabaseError::InvalidFormat(err.to_string()))?;
 
         write_element(&mut writer, "KeePassFile", |writer| {
-            meta::write_meta(writer, db, inner_stream)?;
+            meta::write_meta(writer, db, inner_stream, header_hash)?;
             write_element(writer, "Root", |writer| {
                 if let Some(root_group) = db.root_group() {
                     group::write_group(

@@ -5,6 +5,7 @@
 
 use std::io::Cursor;
 
+use base64::Engine;
 use keeless_kdbx::kdbx::kdf::argon2_kdf::ARGON2ID_UUID;
 use keeless_kdbx::kdbx::kdf::create_kdf;
 use keeless_kdbx::model::core::node::NodeId;
@@ -13,6 +14,8 @@ use keeless_kdbx::model::db::composite_key::CompositeKey;
 use keeless_kdbx::model::db::database::{Database, DatabaseVersion};
 use keeless_kdbx::model::entry::Entry;
 use keeless_kdbx::model::group::Group;
+use keeless_kdbx::{diagnose_database, DatabaseError, DiagnosticOptions};
+use sha2::{Digest, Sha256};
 
 /// Build a realistic test database with multiple groups and entries.
 fn build_realistic_database() -> Database {
@@ -107,6 +110,24 @@ fn make_key() -> CompositeKey {
         .unwrap()
 }
 
+fn kdbx31_header_end(bytes: &[u8]) -> usize {
+    let mut offset = 12;
+    loop {
+        assert!(offset + 3 <= bytes.len(), "truncated KDBX 3.1 header");
+        let field_id = bytes[offset];
+        let field_len = u16::from_le_bytes([bytes[offset + 1], bytes[offset + 2]]) as usize;
+        offset += 3;
+        assert!(
+            offset + field_len <= bytes.len(),
+            "truncated KDBX 3.1 field"
+        );
+        offset += field_len;
+        if field_id == 0 {
+            return offset;
+        }
+    }
+}
+
 /// Verify that a round-tripped database preserved key data.
 fn verify_database(db: &Database) {
     assert!(db.root_group().is_some(), "Root group should exist");
@@ -164,6 +185,56 @@ fn test_e2e_kdbx31_roundtrip() {
         .expect("KDBX 3.1 read should succeed");
 
     verify_database(&loaded);
+}
+
+#[test]
+fn test_e2e_kdbx31_header_hash_matches_outer_header() {
+    let mut db = build_realistic_database();
+    db.version = DatabaseVersion::KDBX31;
+    let key = make_key();
+
+    let mut encoded = Vec::new();
+    keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut encoded, &db, &key)
+        .expect("KDBX 3.1 write should succeed");
+
+    let header_end = kdbx31_header_end(&encoded);
+    let expected_hash =
+        base64::engine::general_purpose::STANDARD.encode(Sha256::digest(&encoded[..header_end]));
+    let mut xml = Vec::new();
+    diagnose_database(
+        Cursor::new(&encoded),
+        &key,
+        DiagnosticOptions::new().with_xml_output(&mut xml),
+    )
+    .expect("KDBX 3.1 output should pass header hash verification");
+    let xml = std::str::from_utf8(&xml).expect("diagnostic XML should be UTF-8");
+
+    assert!(xml.contains(&format!("<HeaderHash>{expected_hash}</HeaderHash>")));
+}
+
+#[test]
+fn test_e2e_kdbx31_rejects_outer_header_hash_mismatch() {
+    let mut db = build_realistic_database();
+    db.version = DatabaseVersion::KDBX31;
+    let key = make_key();
+
+    let mut encoded = Vec::new();
+    keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut encoded, &db, &key)
+        .expect("KDBX 3.1 write should succeed");
+
+    // Add an ignored outer-header comment. This keeps decryption valid while
+    // changing the header bytes covered by Meta/HeaderHash.
+    let header_end = kdbx31_header_end(&encoded);
+    let end_field_start = header_end - 7;
+    encoded.splice(end_field_start..end_field_start, [1, 0, 0]);
+
+    let error =
+        keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut Cursor::new(encoded), &key)
+            .expect_err("header hash mismatch should be rejected");
+    assert!(matches!(
+        error,
+        DatabaseError::InvalidFormat(message) if message == "Header hash mismatch"
+    ));
 }
 
 // ── KDBX 3.1 with wrong password ──

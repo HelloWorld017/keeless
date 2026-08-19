@@ -13,7 +13,7 @@ use crate::crypto::inner_stream::create_inner_stream;
 use crate::crypto::HashEngine;
 use crate::kdbx::diagnostics::{DiagnosticContext, DiagnosticStage};
 use crate::kdbx::file::header::KdbxHeader31;
-use crate::kdbx::file::reader::DatabaseReader;
+use crate::kdbx::file::reader::{DatabaseReader, TeeReader};
 use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
 use crate::kdbx::kdf::kdf_engine::KdfEngine;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
@@ -37,8 +37,12 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
     composite_key: &CompositeKey,
     diagnostics: &mut DiagnosticContext<'_>,
 ) -> DatabaseResult<Database> {
-    // 1. Read and verify signature
-    let version = DatabaseReader::detect_version(reader)?;
+    // 1. Read and verify signature while retaining the exact header bytes.
+    let mut header_buf = Vec::new();
+    let version = {
+        let mut tee = TeeReader::new(reader, &mut header_buf);
+        DatabaseReader::detect_version(&mut tee)?
+    };
     if version != DatabaseVersion::KDBX31 {
         return Err(DatabaseError::InvalidVersion(format!(
             "Expected KDBX 3.1, got {version:?}"
@@ -48,7 +52,10 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
     // 2. Read outer header
     let header = diagnostics.run(
         DiagnosticStage::OuterHeader,
-        || DatabaseReader::read_kdbx31_header(reader),
+        || {
+            let mut tee = TeeReader::new(reader, &mut header_buf);
+            DatabaseReader::read_kdbx31_header(&mut tee)
+        },
         |_| None,
     )?;
     diagnostics.set_kdbx31_header(&header);
@@ -153,14 +160,14 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
         || create_inner_stream(header.inner_random_stream, &header.inner_random_stream_key),
         |_| None,
     )?;
-    let mut database = diagnostics.run(
+    let (mut database, header_hash) = diagnostics.run(
         DiagnosticStage::XmlParse,
         || {
             let xml_str = std::str::from_utf8(xml_data.as_slice())
                 .map_err(|e| DatabaseError::InvalidFormat(format!("XML not UTF-8: {e}")))?;
-            KdbxXmlReader::read(xml_str, inner_stream.as_mut())
+            KdbxXmlReader::read_with_header_hash(xml_str, inner_stream.as_mut())
         },
-        |database| {
+        |(database, _)| {
             Some(format!(
                 "{} groups, {} entries",
                 database.groups.len(),
@@ -169,7 +176,23 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
         },
     )?;
 
-    // 10. Populate database metadata from header
+    // 10. Verify the hash stored in Meta/HeaderHash.
+    diagnostics.run(
+        DiagnosticStage::HeaderHash,
+        || {
+            let Some(stored_hash) = header_hash.as_deref() else {
+                return Ok(());
+            };
+            let expected_hash = HashEngine::sha256(&header_buf);
+            if stored_hash != expected_hash.as_slice() {
+                return Err(DatabaseError::InvalidFormat("Header hash mismatch".into()));
+            }
+            Ok(())
+        },
+        |_| None,
+    )?;
+
+    // 11. Populate database metadata from header
     database.version = DatabaseVersion::KDBX31;
     database.encryption_algorithm = header.encryption_algorithm;
     database.compression = header.compression;

@@ -19,6 +19,7 @@ use crate::kdbx::file::header::{
     header_field_4, inner_header_field_4, CrsAlgorithm, KdbxBinary, KdbxHeader4, KdbxInnerHeader4,
     FILE_VERSION_4, KDBX_SIGNATURE_1, KDBX_SIGNATURE_2,
 };
+use crate::kdbx::file::reader::TeeReader;
 use crate::kdbx::kdf::create_kdf;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::limits::{
@@ -476,27 +477,6 @@ impl Drop for SensitiveBinaries {
         for (data, _) in &mut self.0 {
             data.zeroize();
         }
-    }
-}
-
-/// TeeReader copies all read bytes to a sink buffer.
-/// Borrows the inner reader instead of owning it.
-struct TeeReader<'a, R> {
-    inner: &'a mut R,
-    sink: &'a mut Vec<u8>,
-}
-
-impl<'a, R: Read> TeeReader<'a, R> {
-    fn new(inner: &'a mut R, sink: &'a mut Vec<u8>) -> Self {
-        Self { inner, sink }
-    }
-}
-
-impl<'a, R: Read> Read for TeeReader<'a, R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let n = self.inner.read(buf)?;
-        self.sink.extend_from_slice(&buf[..n]);
-        Ok(n)
     }
 }
 

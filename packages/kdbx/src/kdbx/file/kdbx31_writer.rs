@@ -62,33 +62,44 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
         inner_random_stream: CrsAlgorithm::Salsa20,
     };
 
-    // 2. Derive final key
+    // 2. Build the exact header bytes used for the KDBX 3.1 header hash.
+    let mut header_buf = Vec::new();
+    write_signature(&mut header_buf)?;
+    write_kdbx31_header(&mut header_buf, &header)?;
+    let header_hash = HashEngine::sha256(&header_buf);
+
+    // 3. Derive final key
     let final_key = derive_key(file_key, &master_seed, &transform_seed, transform_rounds)?;
 
-    // 3. Serialize database to XML with inner stream protection
+    // 4. Serialize database to XML with inner stream protection
     let mut inner_stream = create_inner_stream(CrsAlgorithm::Salsa20, &inner_stream_key)?;
-    let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
+    let xml = KdbxXmlWriter::write_with_credentials_and_header_hash(
+        database,
+        inner_stream.as_mut(),
+        memory_key,
+        &header_hash,
+    )?;
 
-    // 4. Compress
+    // 5. Compress
     let xml_bytes = Zeroizing::new(xml.into_bytes());
     let compressed = Zeroizing::new(match database.compression {
         CompressionAlgorithm::Gzip => compress(&xml_bytes)?,
         CompressionAlgorithm::None => xml_bytes.to_vec(),
     });
 
-    // 5. Wrap in hashed blocks
+    // 6. Wrap in hashed blocks
     let mut hashed_blocks = Vec::new();
     {
         let mut hbw = HashedBlockWriter::new(&mut hashed_blocks);
         hbw.write_all(&compressed)?;
     }
 
-    // 6. Prepend the random stream start bytes recorded in the header.
+    // 7. Prepend the random stream start bytes recorded in the header.
     let mut plaintext = Zeroizing::new(Vec::with_capacity(32 + hashed_blocks.len()));
     plaintext.extend_from_slice(&stream_start_bytes);
     plaintext.extend_from_slice(&hashed_blocks);
 
-    // 7. Encrypt
+    // 8. Encrypt
     let cipher = create_cipher_engine(database.encryption_algorithm);
     let encrypted = final_key.unlock(|key| {
         cipher
@@ -96,9 +107,8 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
             .map_err(DatabaseError::from_encryption_error)
     })??;
 
-    // 8. Write file: signature + header + encrypted data
-    write_signature(writer)?;
-    write_kdbx31_header(writer, &header)?;
+    // 9. Write file: signature + header + encrypted data
+    writer.write_all(&header_buf)?;
     writer.write_all(&encrypted)?;
 
     Ok(())

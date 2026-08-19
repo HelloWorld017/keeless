@@ -27,6 +27,7 @@
 - [ ] [windows process hardening](./draft/20260731-windows-hardening.md)
 - [ ] config에 systemd 서비스 등록화면
 - [ ] Windows WebAuthn plugin authenticator 구현
+- [ ] kdbx에 operations에서 쓰는 주요 작업 수행 시 zeroize로 기밀 유지되는 것 테스트코드화 하기
 
 ### Good to have
 - [ ] operation별 rate limiting 추가
