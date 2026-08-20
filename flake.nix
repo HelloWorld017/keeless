@@ -4,6 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     crane.url = "github:ipetkov/crane";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     flake-utils = {
       url = "github:numtide/flake-utils";
       inputs.systems.follows = "systems";
@@ -11,10 +15,15 @@
     systems.url = "github:nix-systems/default-linux";
   };
 
-  outputs = { nixpkgs, crane, flake-utils, ... }:
+  outputs = { nixpkgs, crane, fenix, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs { inherit system; };
-      craneLib = crane.mkLib pkgs;
+      rustToolchain = fenix.packages.${system}.combine [
+        fenix.packages.${system}.stable.toolchain
+        fenix.packages.${system}.stable.rust-src
+      ];
+
+      craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
       libBuildInputs = with pkgs; [
         libayatana-appindicator
         libGL
