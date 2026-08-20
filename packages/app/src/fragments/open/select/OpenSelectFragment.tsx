@@ -33,9 +33,16 @@ import { useRef, useState } from 'react';
 import { SetupLayout } from '../_components/SetupLayout';
 import { StepError } from '../_components/StepError';
 import { errorMessage } from '../_utils/errorMessage';
+import type { OpenStepChange } from '../_types/Step';
 import type { HostKind, HostStorage, StorageProviderGetter } from '@/types/Host';
 
-export const OpenSelectFragment = () => {
+export const OpenSelectFragment = ({
+  onStepChange,
+  onBack,
+}: {
+  onStepChange: OpenStepChange;
+  onBack: () => void;
+}) => {
   const host = useHost();
   const hosts = useHosts();
   const hostsLoading = useHostsLoading();
@@ -64,7 +71,7 @@ export const OpenSelectFragment = () => {
         await client.upgrade();
         navigate(buildRoute('database'), { replace: true });
       } else {
-        navigate(buildRoute(database === 'locked' ? 'openUnlock' : 'openCreate'));
+        onStepChange({ kind: database === 'locked' ? 'unlock' : 'create' });
       }
     } catch (nextError) {
       setError(errorMessage(nextError));
@@ -78,7 +85,7 @@ export const OpenSelectFragment = () => {
     setStorage(nextStorage);
     setError(undefined);
     if (nextStorage.setup.component) {
-      navigate(buildRoute('openStorage', { storage: nextStorage.kind }));
+      onStepChange({ kind: 'storage', storage: nextStorage.kind });
       return;
     }
     void openStorage(nextStorage.setup.getDefaultProvider);
@@ -94,6 +101,7 @@ export const OpenSelectFragment = () => {
     <SetupLayout
       title="Open a database"
       description="Choose where Keeless should run and store its database."
+      onBack={onBack}
     >
       <div className="space-y-2">
         <Select

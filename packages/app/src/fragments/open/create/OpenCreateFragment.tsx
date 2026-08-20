@@ -12,9 +12,16 @@ import { useNavigate } from '../../_providers/RouterProvider';
 import { SetupLayout } from '../_components/SetupLayout';
 import { StepError } from '../_components/StepError';
 import { errorMessage } from '../_utils/errorMessage';
+import type { OpenStepChange } from '../_types/Step';
 import type { SubmitEvent } from 'react';
 
-export const OpenCreateFragment = () => {
+export const OpenCreateFragment = ({
+  onStepChange,
+  onBack,
+}: {
+  onStepChange: OpenStepChange;
+  onBack: () => void;
+}) => {
   const hasNativePasswordInput = useHasNativePasswordInput();
   const requestClient = useRequestClient();
   const navigate = useNavigate();
@@ -65,9 +72,7 @@ export const OpenCreateFragment = () => {
             await requestClient.data.upgrade();
             navigate(buildRoute('database'), { replace: true });
           } else {
-            navigate(buildRoute(database === 'locked' ? 'openUnlock' : 'openCreate'), {
-              replace: true,
-            });
+            onStepChange({ kind: database === 'locked' ? 'unlock' : 'create' }, { replace: true });
           }
         } catch (statusError) {
           setError(errorMessage(statusError));
@@ -86,6 +91,7 @@ export const OpenCreateFragment = () => {
     <SetupLayout
       title="Create database"
       description="Choose the master password for this database."
+      onBack={onBack}
     >
       <form onSubmit={event => void submit(event)} className="space-y-4">
         {!hasNativePasswordInput && (

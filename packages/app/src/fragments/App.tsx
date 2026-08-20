@@ -14,7 +14,7 @@ import type { AppIntegration } from '@/types/AppIntegration';
 
 export const AppContents = () => (
   <Switch>
-    <Route path={getRoute('open', true)} component={OpenFragment} />
+    <Route path={getRoute('open')} component={OpenFragment} />
     <Route path={getRoute('search')} component={DatabaseFragment} />
     <Route path={getRoute('group')} component={DatabaseFragment} />
     <Route path={getRoute('tag')} component={DatabaseFragment} />

@@ -12,7 +12,7 @@ import { Input } from '@/components/input';
 import { Label } from '@/components/label';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequest, useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { useHistoryBackUntil } from '@/fragments/_providers/RouterProvider';
+import { useNavigate } from '@/fragments/_providers/RouterProvider';
 import { StepError } from '@/fragments/open/_components/StepError';
 import { errorMessage } from '@/fragments/open/_utils/errorMessage';
 import { IconArrowRight, IconLoaderCircle } from '@/icons';
@@ -119,8 +119,8 @@ const DatabaseUnlockDialog = () => {
 };
 
 export const DatabaseStatusHandler = ({ children }: { children: ReactNode }) => {
-  const historyBackUntil = useHistoryBackUntil();
-  const historyBackUntilPending = useRef(false);
+  const navigate = useNavigate();
+  const redirectPending = useRef(false);
   const coreStatus = useRequest(
     'getCoreStatus',
     {},
@@ -131,7 +131,7 @@ export const DatabaseStatusHandler = ({ children }: { children: ReactNode }) => 
   );
 
   useEffect(() => {
-    if (historyBackUntilPending.current) {
+    if (redirectPending.current) {
       return;
     }
 
@@ -140,10 +140,10 @@ export const DatabaseStatusHandler = ({ children }: { children: ReactNode }) => 
     }
 
     if (coreStatus.data?.database === 'not_exist') {
-      historyBackUntilPending.current = true;
-      historyBackUntil(buildRoute('open'));
+      redirectPending.current = true;
+      navigate(buildRoute('open'), { replace: true });
     }
-  }, [coreStatus.isFetchedAfterMount, coreStatus.data?.database, historyBackUntil]);
+  }, [coreStatus.isFetchedAfterMount, coreStatus.data?.database, navigate]);
 
   if (!coreStatus.data) {
     return null;

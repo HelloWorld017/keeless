@@ -32,11 +32,12 @@ import { useMemo, useState } from 'react';
 import { SetupLayout } from '../_components/SetupLayout';
 import { StepError } from '../_components/StepError';
 import { errorMessage } from '../_utils/errorMessage';
+import type { OpenStepChange } from '../_types/Step';
 import type { OperationResult } from '@/utils/request';
 
 type RecentDatabase = OperationResult<'getRecentDatabases'>['databases'][number];
 
-export const RecentStep = () => {
+export const RecentStep = ({ onStepChange }: { onStepChange: OpenStepChange }) => {
   const navigate = useNavigate();
   const requestClient = useRequestClient();
   const recentDatabases = useRequest('getRecentDatabases', {});
@@ -58,7 +59,7 @@ export const RecentStep = () => {
         await requestClient.data.upgrade();
         navigate(buildRoute('database'), { replace: true });
       } else {
-        navigate(buildRoute(database === 'locked' ? 'openUnlock' : 'openCreate'));
+        onStepChange({ kind: database === 'locked' ? 'unlock' : 'create' });
       }
     } catch (nextError) {
       setError(errorMessage(nextError));
@@ -132,8 +133,14 @@ export const RecentStep = () => {
         ))}
         <Item
           variant="outline"
-          render={<button type="button" className="transition-colors hover:bg-muted" aria-label="Add database" />}
-          onClick={() => navigate(buildRoute('openSelect'))}
+          render={
+            <button
+              type="button"
+              className="transition-colors hover:bg-muted"
+              aria-label="Add database"
+            />
+          }
+          onClick={() => onStepChange({ kind: 'select' })}
         >
           <ItemMedia variant="icon">
             <IconPlus />

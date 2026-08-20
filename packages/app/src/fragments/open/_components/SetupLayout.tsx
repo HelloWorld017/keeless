@@ -8,11 +8,13 @@ export const SetupLayout = ({
   description,
   children,
   showBack = true,
+  onBack,
 }: {
   title: string;
   description: string;
   children: ReactNode;
   showBack?: boolean;
+  onBack?: () => void;
 }) => {
   const historyBack = useHistoryBack();
 
@@ -24,7 +26,7 @@ export const SetupLayout = ({
             type="button"
             variant="ghost"
             className="self-start -ml-2"
-            onClick={() => historyBack()}
+            onClick={onBack ?? historyBack}
           >
             <IconArrowLeft /> Back
           </Button>

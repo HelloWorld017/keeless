@@ -2,10 +2,9 @@ import BackgroundImage from '@/assets/images/background.webp?url';
 import { useHost, useHostsLoading } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { invalidateByResource } from '@/utils/request';
-import { buildRoute, getRoute } from '@/utils/route';
+import { buildRoute } from '@/utils/route';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Route, Switch } from 'wouter';
 import { useNavigate } from '../_providers/RouterProvider';
 import { CheckingStep } from './_components/CheckingStep';
 import { RecentStep } from './_components/RecentStep';
@@ -14,6 +13,7 @@ import { OpenCreateFragment } from './create';
 import { OpenSelectFragment } from './select/OpenSelectFragment';
 import { OpenStorageFragment } from './storage';
 import { OpenUnlockFragment } from './unlock';
+import type { OpenStep, OpenStepChange } from './_types/Step';
 
 export const OpenFragment = () => {
   const host = useHost();
@@ -25,6 +25,17 @@ export const OpenFragment = () => {
   const [isChecking, setIsChecking] = useState(false);
   const [checkingError, setCheckingError] = useState<string>();
   const [checkingAttempt, setCheckingAttempt] = useState(0);
+  const [steps, setSteps] = useState<OpenStep[]>([{ kind: 'recent' }]);
+  const step = steps.at(-1);
+
+  const changeStep: OpenStepChange = (nextStep, options) => {
+    setSteps(current =>
+      options?.replace ? [...current.slice(0, -1), nextStep] : [...current, nextStep],
+    );
+  };
+  const backStep = () => {
+    setSteps(current => (current.length > 1 ? current.slice(0, -1) : current));
+  };
 
   useEffect(() => {
     if (!client) {
@@ -52,7 +63,12 @@ export const OpenFragment = () => {
         }
 
         if (database === 'locked') {
-          navigate(buildRoute('openUnlock'), { replace: true });
+          setSteps(current => {
+            if (current.at(-1)?.kind === 'unlock') {
+              return current;
+            }
+            return [...current.slice(0, -1), { kind: 'unlock' }];
+          });
         }
       })
       .catch(nextError => {
@@ -98,13 +114,25 @@ export const OpenFragment = () => {
             }}
           />
         ) : (
-          <Switch>
-            <Route path={getRoute('openStorage')} component={OpenStorageFragment} />
-            <Route path={getRoute('openCreate')} component={OpenCreateFragment} />
-            <Route path={getRoute('openUnlock')} component={OpenUnlockFragment} />
-            <Route path={getRoute('openSelect')} component={OpenSelectFragment} />
-            <Route path={getRoute('open')} component={RecentStep} />
-          </Switch>
+          <>
+            {step?.kind === 'recent' && <RecentStep onStepChange={changeStep} />}
+            {step?.kind === 'select' && (
+              <OpenSelectFragment onStepChange={changeStep} onBack={backStep} />
+            )}
+            {step?.kind === 'storage' && (
+              <OpenStorageFragment
+                storageKind={step.storage}
+                onStepChange={changeStep}
+                onBack={backStep}
+              />
+            )}
+            {step?.kind === 'create' && (
+              <OpenCreateFragment onStepChange={changeStep} onBack={backStep} />
+            )}
+            {step?.kind === 'unlock' && (
+              <OpenUnlockFragment onStepChange={changeStep} onBack={backStep} />
+            )}
+          </>
         )}
       </div>
       <div className="p-6 flex-[1_1_0] self-stretch">

@@ -14,10 +14,6 @@ export const RouteMap = {
   trash: '/trash',
   config: '/config',
   open: '/open',
-  openSelect: '/open/select',
-  openStorage: '/open/storage/:storage',
-  openCreate: '/open/create',
-  openUnlock: '/open/unlock',
 } as const;
 
 export type RouteParams = Simplify<{

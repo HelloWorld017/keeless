@@ -1,31 +1,37 @@
 import { useHost, useHostsLoading } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
-import { buildRoute, getRoute } from '@/utils/route';
+import { buildRoute } from '@/utils/route';
 import { useEffect, useRef, useState } from 'react';
-import { useRoute } from 'wouter';
-import { useHistoryBackUntil, useNavigate } from '../../_providers/RouterProvider';
+import { useNavigate } from '../../_providers/RouterProvider';
 import { SetupLayout } from '../_components/SetupLayout';
 import { errorMessage } from '../_utils/errorMessage';
+import type { OpenStepChange } from '../_types/Step';
 import type { StorageProviderGetter } from '@/types/Host';
 
-export const OpenStorageFragment = () => {
+export const OpenStorageFragment = ({
+  storageKind,
+  onStepChange,
+  onBack,
+}: {
+  storageKind: string;
+  onStepChange: OpenStepChange;
+  onBack: () => void;
+}) => {
   const host = useHost();
   const hostsLoading = useHostsLoading();
   const requestClient = useRequestClient();
   const navigate = useNavigate();
-  const historyBackUntil = useHistoryBackUntil();
-  const [, params] = useRoute<{ storage: string }>(getRoute('openStorage'));
   const operationPendingRef = useRef(false);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string>();
-  const storage = host?.storages.find(candidate => candidate.kind === params?.storage);
+  const storage = host?.storages.find(candidate => candidate.kind === storageKind);
   const StorageSetup = storage?.setup.component;
 
   useEffect(() => {
     if (!hostsLoading && !StorageSetup) {
-      historyBackUntil(buildRoute('open'));
+      onStepChange({ kind: 'select' }, { replace: true });
     }
-  }, [StorageSetup, historyBackUntil, hostsLoading]);
+  }, [StorageSetup, hostsLoading, onStepChange]);
 
   const openStorage = async (getProvider: StorageProviderGetter) => {
     if (!requestClient.data || operationPendingRef.current) {
@@ -42,7 +48,7 @@ export const OpenStorageFragment = () => {
         await requestClient.data.upgrade();
         navigate(buildRoute('database'), { replace: true });
       } else {
-        navigate(buildRoute(database === 'locked' ? 'openUnlock' : 'openCreate'));
+        onStepChange({ kind: database === 'locked' ? 'unlock' : 'create' });
       }
     } catch (nextError) {
       setError(errorMessage(nextError));
@@ -60,6 +66,7 @@ export const OpenStorageFragment = () => {
     <SetupLayout
       title={storage.setup.title ?? storage.label}
       description={storage.setup.description ?? storage.description}
+      onBack={onBack}
     >
       <StorageSetup
         isPending={isPending || requestClient.isPending || !requestClient.data}
