@@ -187,36 +187,7 @@ impl Provider {
             );
             return PLUGIN_LOCKED;
         }
-        crate::diagnostics::diagnostic!("keeless-passkey-windows: querying desktop lock status");
-        let result = self.runtime.block_on(async {
-            let mut session = tokio::time::timeout(LOCK_STATUS_TIMEOUT, self.session.lock())
-                .await
-                .map_err(|_| ())?;
-            tokio::time::timeout(LOCK_STATUS_TIMEOUT, session.lock_status())
-                .await
-                .map_err(|_| ())?
-                .map_err(|_| ())
-        });
-        match result {
-            Ok(DatabaseStatus::Unlocked) => {
-                crate::diagnostics::diagnostic!(
-                    "keeless-passkey-windows: desktop reports unlocked"
-                );
-                PLUGIN_UNLOCKED
-            }
-            Ok(DatabaseStatus::Locked | DatabaseStatus::NotExist) => {
-                crate::diagnostics::diagnostic!(
-                    "keeless-passkey-windows: desktop reports locked or no database"
-                );
-                PLUGIN_LOCKED
-            }
-            Err(_) => {
-                crate::diagnostics::diagnostic!(
-                    "keeless-passkey-windows: desktop lock status query failed"
-                );
-                PLUGIN_LOCKED
-            }
-        }
+        PLUGIN_UNLOCKED
     }
 
     fn object_created(&self) {
