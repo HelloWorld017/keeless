@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use keeless_secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::SecureArray;
 use zeroize::Zeroizing;
 
 use crate::crypto::cipher_engine::create_cipher_engine;
@@ -14,9 +14,7 @@ use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::crypto::memory_protection::MemoryUnlockSession;
 use crate::crypto::HashEngine;
 use crate::kdbx::file::header::{KDB_SIGNATURE_1, KDB_SIGNATURE_2};
-use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
-use crate::kdbx::kdf::kdf_engine::KdfEngine;
-use crate::kdbx::kdf::kdf_parameters::KdfParameters;
+use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
 use crate::model::core::node::NodeId;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::db::database::Database;
@@ -30,20 +28,31 @@ pub fn write_kdb<W: Write>(
     database: &Database,
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
-    write_kdb_with_credentials(writer, database, composite_key, composite_key)
-}
-
-pub(crate) fn write_kdb_with_credentials<W: Write>(
-    writer: &mut W,
-    database: &Database,
-    memory_key: &CompositeKey,
-    file_key: &CompositeKey,
-) -> DatabaseResult<()> {
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(16)?;
     let encryption_iv = generate_random_bytes(16)?;
-    let transform_seed = generate_random_bytes(32)?;
-    let transform_rounds: u32 = 100;
+    let kdf_params = database
+        .kdf_parameters
+        .as_ref()
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    if kdf_params.kdf_uuid != AES_KDF_UUID {
+        return Err(DatabaseError::InvalidFormat(
+            "KDB requires AES-KDF parameters".into(),
+        ));
+    }
+    if !composite_key.matches(kdf_params) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
+    let transform_seed: [u8; 32] = kdf_params
+        .get_byte_array("S")
+        .ok_or(DatabaseError::MissingKdfParameters)?
+        .try_into()
+        .map_err(|_| DatabaseError::InvalidFormat("KDB transform seed must be 32 bytes".into()))?;
+    let transform_rounds = kdf_params
+        .get_uint64("R")
+        .ok_or(DatabaseError::MissingKdfParameters)?
+        .try_into()
+        .map_err(|_| DatabaseError::InvalidFormat("KDB transform rounds exceed u32".into()))?;
 
     // 2. Count groups and entries
     let number_of_groups = database.groups.len() as u32;
@@ -52,27 +61,15 @@ pub(crate) fn write_kdb_with_credentials<W: Write>(
     // 3. Serialize groups and entries to binary
     let mut content = Zeroizing::new(Vec::new());
     write_kdb_groups(&mut *content, database)?;
-    let mut memory = database.memory_unlock(memory_key);
+    let mut memory = database.memory_unlock(composite_key);
     write_kdb_entries(&mut *content, database, &mut memory)?;
 
     // 4. Compute content hash
     let content_hash = HashEngine::sha256(&content);
 
     // 5. Derive master key
-    let raw_key = file_key.build_raw_key()?;
-
-    let mut params = KdfParameters::new(AES_KDF_UUID);
-    params.set_byte_array("S", &transform_seed);
-    params.set_uint64("R", transform_rounds as u64);
-
-    let kdf = AesKdf;
-    let transformed =
-        SecureBytes::from_vec(raw_key.unlock(|key| KdfEngine::transform(&kdf, key, &params))??)?;
-
-    let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
-    combined.extend_from_slice(&master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut master_key_bytes = HashEngine::sha256(&combined);
+    let mut master_key_bytes = composite_key
+        .with_key(|transformed| HashEngine::sha256_multi(&[&master_seed, transformed]))?;
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
 
     // 6. Encrypt content
@@ -293,6 +290,7 @@ fn generate_random_bytes(len: usize) -> DatabaseResult<Vec<u8>> {
 mod tests {
     use super::*;
     use crate::model::core::security::ProtectedString;
+    use crate::model::db::composite_key::CompositeCredentials;
     use crate::model::db::database::DatabaseVersion;
     use crate::model::entry::Entry;
     use crate::model::group::Group;
@@ -319,7 +317,10 @@ mod tests {
         });
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new().with_password(b"test_password").unwrap();
+        let credentials = CompositeCredentials::new()
+            .with_password(b"test_password")
+            .unwrap();
+        let key = crate::initialize_database_key(&mut db, &credentials).unwrap();
 
         let mut buf = Vec::new();
         let result = write_kdb(&mut buf, &db, &key);

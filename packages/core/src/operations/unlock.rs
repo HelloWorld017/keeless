@@ -4,7 +4,7 @@ use crate::{
     CoreError, KeelessCore, Result, credential::CredentialVault,
     extensions::password_session::PasswordSessionExtension,
 };
-use keeless_kdbx::CompositeKey;
+use keeless_kdbx::{CompositeCredentials, CompositeKey};
 use keeless_schema::{EmptyResult, OperationSuccess, UnlockArgs};
 use keeless_sync::{FileHandle, SyncError, SyncOptions};
 
@@ -14,9 +14,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         .as_ref()
         .map(|selection| selection.database_id.clone())
         .ok_or(CoreError::NoDatabaseSelected)?;
-    let key = CompositeKey::new().with_password(password)?;
-    let raw_key = key.build_raw_key()?;
-    core.restore_recent_selection(&raw_key).await?;
+    let credentials = CompositeCredentials::new().with_password(password)?;
     let (provider, path) = core
         .selection
         .as_ref()
@@ -33,63 +31,71 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     let provider = provider.ok_or(CoreError::RecentDatabaseUnavailable)?;
     let path = path.ok_or(CoreError::RecentDatabaseUnavailable)?;
     let persistence = core.persistence.clone();
-    let mut journal = super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
     let cached = persistence.read_cache().await?;
-    let mut opened_from_cache = false;
-    let mut recovered_error = None;
-    let mut handle = if let Some(cache) = cached {
-        match journal.decode_cache(&cache).and_then(|(sequence, bytes)| {
-            FileHandle::open_cached(
-                Arc::clone(&provider),
-                path.clone(),
-                bytes,
-                &key,
-                SyncOptions::default(),
-            )
-            .map_err(CoreError::from)
-            .map(|handle| (sequence, handle))
-        }) {
-            Ok((sequence, handle)) => {
-                journal.set_sequence(sequence);
-                opened_from_cache = true;
-                handle
-            }
-            Err(cache_error) => {
-                let remote =
-                    open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
-                persistence
-                    .quarantine_cache(&cache_error.to_string())
+    let (mut handle, key, mut journal, mut opened_from_cache, mut recovered_error) =
+        if let Some(cache) = cached {
+            match super::mutations::MutationCoordinator::cache_kdf_parameters(&cache)
+                .and_then(|parameters| credentials.derive_key(&parameters).map_err(Into::into))
+                .and_then(|key| {
+                    let mut journal =
+                        super::mutations::MutationCoordinator::new(&key, database_id.clone(), 0)?;
+                    let (sequence, bytes) = journal.decode_cache(&cache)?;
+                    let handle = FileHandle::open_cached(
+                        Arc::clone(&provider),
+                        path.clone(),
+                        bytes,
+                        &key,
+                        SyncOptions::default(),
+                    )?;
+                    journal.set_sequence(sequence);
+                    Ok::<_, CoreError>((handle, key, journal))
+                }) {
+                Ok((handle, key, journal)) => (handle, key, journal, true, None),
+                Err(cache_error) => {
+                    persistence
+                        .quarantine_cache(&cache_error.to_string())
+                        .await?;
+                    let (handle, key) = open_remote_selected(
+                        core,
+                        Arc::clone(&provider),
+                        path.clone(),
+                        &credentials,
+                    )
                     .await?;
-                recovered_error = Some(cache_error);
-                remote
+                    let journal =
+                        super::mutations::MutationCoordinator::new(&key, database_id.clone(), 0)?;
+                    (handle, key, journal, false, Some(cache_error))
+                }
             }
-        }
-    } else {
-        open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?
-    };
+        } else {
+            let (handle, key) =
+                open_remote_selected(core, Arc::clone(&provider), path.clone(), &credentials)
+                    .await?;
+            let journal = super::mutations::MutationCoordinator::new(&key, database_id.clone(), 0)?;
+            (handle, key, journal, false, None)
+        };
     match persistence.read_journal().await {
         Ok(lines) => {
             if let Err(error) =
                 super::mutations::replay_lines(&mut journal, handle.replay_database(), &key, &lines)
             {
-                let remote =
+                let (remote, _) =
                     open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
                 persistence.quarantine_journal(&error.to_string()).await?;
                 handle = remote;
                 opened_from_cache = false;
                 recovered_error = Some(error);
-                journal =
-                    super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
+                journal = super::mutations::MutationCoordinator::new(&key, database_id.clone(), 0)?;
             }
         }
         Err(error) => {
-            let remote =
+            let (remote, _) =
                 open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
             persistence.quarantine_journal(&error.to_string()).await?;
             handle = remote;
             opened_from_cache = false;
             recovered_error = Some(error);
-            journal = super::mutations::MutationCoordinator::new(&raw_key, database_id.clone(), 0)?;
+            journal = super::mutations::MutationCoordinator::new(&key, database_id.clone(), 0)?;
         }
     }
     if journal.is_dirty() {
@@ -97,10 +103,17 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     }
     let should_sync = opened_from_cache || journal.is_dirty();
     if !opened_from_cache && !journal.is_dirty() {
-        let cache = journal.encode_cache(handle.checkpoint_bytes())?;
+        let cache = journal.encode_cache(
+            handle.checkpoint_bytes(),
+            handle
+                .database()
+                .kdf_parameters
+                .as_ref()
+                .ok_or(CoreError::Crypto)?,
+        )?;
         persistence.write_cache(&cache).await?;
     }
-    core.activate_database_state(&raw_key).await?;
+    core.activate_database_state(&key).await?;
     if core.selection.as_ref().is_some_and(|selection| {
         selection
             .storage
@@ -112,7 +125,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     let credential = if core.settings.paranoia_mode {
         None
     } else {
-        Some(CredentialVault::wrap(&raw_key)?)
+        Some(CredentialVault::wrap(&key)?)
     };
     core.extensions.unlock(handle.database(), &key)?;
     core.credential = credential;
@@ -147,9 +160,9 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
 async fn open_remote(
     provider: Arc<dyn crate::StorageProvider>,
     path: String,
-    key: &CompositeKey,
-) -> Result<FileHandle> {
-    match FileHandle::open(provider, path, key, SyncOptions::default()).await {
+    credentials: &CompositeCredentials,
+) -> Result<(FileHandle, CompositeKey)> {
+    match FileHandle::open(provider, path, credentials, SyncOptions::default()).await {
         Ok(handle) => Ok(handle),
         Err(SyncError::RemoteNotFound) => Err(CoreError::DatabaseNotFound),
         Err(error) => Err(error.into()),
@@ -160,15 +173,40 @@ async fn open_remote_selected(
     core: &mut KeelessCore,
     provider: Arc<dyn crate::StorageProvider>,
     path: String,
-    key: &CompositeKey,
-) -> Result<FileHandle> {
-    let result = open_remote(provider, path, key).await;
+    key: impl Into<OpenRemoteKey<'_>>,
+) -> Result<(FileHandle, CompositeKey)> {
+    let result = match key.into() {
+        OpenRemoteKey::Credentials(credentials) => open_remote(provider, path, credentials).await,
+        OpenRemoteKey::Derived(key) => {
+            let handle = FileHandle::open_with_key(provider, path, key, SyncOptions::default())
+                .await
+                .map_err(CoreError::from)?;
+            Ok((handle, key.try_clone()?))
+        }
+    };
     if matches!(result, Err(CoreError::DatabaseNotFound)) && core.handle.is_none() {
         if let Some(selection) = &mut core.selection {
             selection.exists = false;
         }
     }
     result
+}
+
+enum OpenRemoteKey<'a> {
+    Credentials(&'a CompositeCredentials),
+    Derived(&'a CompositeKey),
+}
+
+impl<'a> From<&'a CompositeCredentials> for OpenRemoteKey<'a> {
+    fn from(value: &'a CompositeCredentials) -> Self {
+        Self::Credentials(value)
+    }
+}
+
+impl<'a> From<&'a CompositeKey> for OpenRemoteKey<'a> {
+    fn from(value: &'a CompositeKey) -> Self {
+        Self::Derived(value)
+    }
 }
 
 pub(super) async fn execute(

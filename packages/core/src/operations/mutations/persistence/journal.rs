@@ -9,9 +9,9 @@ use zeroize::Zeroizing;
 use super::super::{Mutation, apply};
 use crate::{CoreError, DatabaseId, KeelessCore, Result, random_array};
 
-pub(super) const JOURNAL_VERSION: u8 = 1;
-const STORAGE_HKDF_INFO: &[u8] = b"keeless storage key v1";
-const JOURNAL_HKDF_INFO: &[u8] = b"keeless mutation journal key v1";
+pub(super) const JOURNAL_VERSION: u8 = 2;
+const STORAGE_HKDF_INFO: &[u8] = b"keeless/core/mutation/root/v2";
+const JOURNAL_HKDF_INFO: &[u8] = b"keeless/core/mutation/journal/v2";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JournalLine {
@@ -39,21 +39,17 @@ impl std::fmt::Debug for MutationCoordinator {
 
 impl MutationCoordinator {
     pub(crate) fn new(
-        raw_key: &SecureArray<32>,
+        key: &CompositeKey,
         database_id: DatabaseId,
         next_sequence: u64,
     ) -> Result<Self> {
-        let mut storage_key = [0; 32];
-        raw_key.unlock(|raw| {
-            Hkdf::<Sha256>::new(Some(database_id.as_bytes()), raw)
-                .expand(STORAGE_HKDF_INFO, &mut storage_key)
-                .map_err(|_| CoreError::Crypto)
-        })??;
+        let storage_key = key.derive_key::<32>(Some(database_id.as_bytes()), STORAGE_HKDF_INFO)?;
         let mut journal_key = [0; 32];
-        Hkdf::<Sha256>::new(None, &storage_key)
-            .expand(JOURNAL_HKDF_INFO, &mut journal_key)
+        storage_key
+            .unlock(|storage_key| {
+                Hkdf::<Sha256>::new(None, storage_key).expand(JOURNAL_HKDF_INFO, &mut journal_key)
+            })?
             .map_err(|_| CoreError::Crypto)?;
-        storage_key.fill(0);
         Ok(Self {
             key: SecureArray::from_array_mut(&mut journal_key)?,
             database_id,
@@ -218,9 +214,10 @@ mod tests {
 
     #[test]
     fn update_entry_password_is_only_present_inside_encryption() {
-        let raw = SecureArray::from_slice(&[7; 32]).unwrap();
+        let key =
+            CompositeKey::from_derived_key(SecureArray::from_slice(&[7; 32]).unwrap(), [0; 32]);
         let coordinator =
-            MutationCoordinator::new(&raw, DatabaseId::new(b"database-id".to_vec()), 0).unwrap();
+            MutationCoordinator::new(&key, DatabaseId::new(b"database-id".to_vec()), 0).unwrap();
         let mutation = Mutation::UpdateEntry(update_entry::Mutation {
             id: keeless_kdbx::NodeId::from_uuid(Uuid::from_u128(1)),
             fields: vec![update_entry::JournalEntryField {
@@ -251,10 +248,11 @@ mod tests {
 
     #[test]
     fn database_id_bytes_preserve_journal_authentication() {
-        let raw = SecureArray::from_slice(&[8; 32]).unwrap();
+        let key =
+            CompositeKey::from_derived_key(SecureArray::from_slice(&[8; 32]).unwrap(), [0; 32]);
         let bytes = b"local-file\0vault.kdbx".to_vec();
         let coordinator =
-            MutationCoordinator::new(&raw, DatabaseId::new(bytes.clone()), 5).unwrap();
+            MutationCoordinator::new(&key, DatabaseId::new(bytes.clone()), 5).unwrap();
         let mutation = Mutation::UpdateEntry(update_entry::Mutation {
             id: keeless_kdbx::NodeId::from_uuid(Uuid::from_u128(1)),
             fields: Vec::new(),
@@ -265,9 +263,9 @@ mod tests {
         });
         let encoded = coordinator.encode(&mutation).unwrap();
 
-        let same = MutationCoordinator::new(&raw, DatabaseId::new(bytes), 0).unwrap();
+        let same = MutationCoordinator::new(&key, DatabaseId::new(bytes), 0).unwrap();
         assert!(decrypt(&same, &encoded).is_ok());
-        let other = MutationCoordinator::new(&raw, DatabaseId::new(b"other".to_vec()), 0).unwrap();
+        let other = MutationCoordinator::new(&key, DatabaseId::new(b"other".to_vec()), 0).unwrap();
         assert!(decrypt(&other, &encoded).is_err());
     }
 }

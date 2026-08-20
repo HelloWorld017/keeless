@@ -3,7 +3,8 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use keeless_kdbx::{
-    CompositeKey, NodeId, PasskeyCredentialSummary, PasskeyError, UserPresence, UserVerification,
+    CompositeCredentials, CompositeKey, NodeId, PasskeyCredentialSummary, PasskeyError,
+    UserPresence, UserVerification,
 };
 use keeless_schema::PasskeySummary;
 use std::collections::HashSet;
@@ -90,12 +91,12 @@ pub(crate) async fn unlock_without_prompt(
 }
 
 fn verify_password(core: &KeelessCore, password: &[u8]) -> Result<CompositeKey> {
-    let key = CompositeKey::new().with_password(password)?;
-    core.handle
+    let credentials = CompositeCredentials::new().with_password(password)?;
+    Ok(core
+        .handle
         .as_ref()
         .ok_or(CoreError::DatabaseLocked)?
-        .verify_credentials(&key)?;
-    Ok(key)
+        .derive_key(&credentials)?)
 }
 
 /// Open the selected database for an interactive passkey ceremony.

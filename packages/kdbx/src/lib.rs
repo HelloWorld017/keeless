@@ -23,13 +23,13 @@ pub use model::exception::{DatabaseError, DatabaseResult};
 pub use model::{
     get_builtin_templates, parse_tags, serialize_tags, AutoType, AutoTypeAssociation, BinaryCache,
     BinaryData, BinaryPool, BinaryStreamReader, BinaryStreamWriter, ChangeRecord, ChangeTracker,
-    ChangeType, CompositeKey, CustomData, CustomDataItem, Database, DatabaseVersion, DateInstant,
-    DeletedObject, DiffResult, Entry, EntryBinary, EntryField, EntryFieldId, EntryFieldSelector,
-    EntryFieldUpdate, EntryKDB, EntryKDBX, EntryPropertiesUpdate, EntryUpdate, FieldReference,
-    Group, GroupKDB, GroupKDBX, IconImage, IconImageCustom, IconImageStandard, IconUpdate,
-    MasterCredential, MemoryProtectionConfig, Node, NodeHandler, NodeId, NodeType,
-    PreparedEntryUpdate, ProtectedString, RefTarget, SortNodeEnum, StandardField, Tag, Template,
-    TemplateField, TemplateFieldType, TraversalOrder, NUMBER_STANDARD_ICONS,
+    ChangeType, CompositeCredentials, CompositeKey, CustomData, CustomDataItem, Database,
+    DatabaseVersion, DateInstant, DeletedObject, DiffResult, Entry, EntryBinary, EntryField,
+    EntryFieldId, EntryFieldSelector, EntryFieldUpdate, EntryKDB, EntryKDBX, EntryPropertiesUpdate,
+    EntryUpdate, FieldReference, Group, GroupKDB, GroupKDBX, IconImage, IconImageCustom,
+    IconImageStandard, IconUpdate, MasterCredential, MemoryProtectionConfig, Node, NodeHandler,
+    NodeId, NodeType, PreparedEntryUpdate, ProtectedString, RefTarget, SortNodeEnum, StandardField,
+    Tag, Template, TemplateField, TemplateFieldType, TraversalOrder, NUMBER_STANDARD_ICONS,
 };
 
 // ─── Crypto ───────────────────────────────────────────────────────────
@@ -101,7 +101,28 @@ pub use kdbx::fuzz::{FuzzOutcome, FuzzResult, FuzzTarget};
 // ─── XML ──────────────────────────────────────────────────────────────
 pub use kdbx::xml::{KdbxXmlReader, KdbxXmlWriter};
 
-/// Open a KeePass database from a reader.
+/// A database opened with its transformed key.
+#[derive(Debug)]
+pub struct OpenedDatabase {
+    pub database: Database,
+    pub key: CompositeKey,
+}
+
+impl std::ops::Deref for OpenedDatabase {
+    type Target = Database;
+
+    fn deref(&self) -> &Self::Target {
+        &self.database
+    }
+}
+
+impl std::ops::DerefMut for OpenedDatabase {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.database
+    }
+}
+
+/// Open a KeePass database from a reader and credentials.
 ///
 /// Automatically detects the format (KDB, KDBX 3.1, KDBX 4.0) and reads the database.
 ///
@@ -115,29 +136,55 @@ pub use kdbx::xml::{KdbxXmlReader, KdbxXmlWriter};
 ///
 /// # Example
 /// ```ignore
-/// use keeless_kdbx::{open_database, CompositeKey};
+/// use keeless_kdbx::{open_database, CompositeCredentials};
 ///
 /// let file = std::fs::File::open("database.kdbx")?;
-/// let key = CompositeKey::new().with_password(b"mypassword").unwrap();
-/// let db = open_database(file, &key)?;
-/// println!("Opened {} entries", db.entry_count());
+/// let credentials = CompositeCredentials::new().with_password(b"mypassword").unwrap();
+/// let opened = open_database(file, &credentials)?;
+/// println!("Opened {} entries", opened.database.entry_count());
 /// ```
-pub fn open_database<R: std::io::Read>(reader: R, key: &CompositeKey) -> DatabaseResult<Database> {
+pub fn open_database<R: std::io::Read>(
+    reader: R,
+    credentials: &CompositeCredentials,
+) -> DatabaseResult<OpenedDatabase> {
     let mut diagnostics = kdbx::diagnostics::DiagnosticContext::disabled();
-    open_database_internal(reader, key, &mut diagnostics, false)
+    open_database_internal(
+        reader,
+        OpenKey::Credentials(credentials),
+        &mut diagnostics,
+        false,
+    )
+}
+
+/// Open a database using a transformed key already derived for its header.
+///
+/// This path verifies the KDF fingerprint before decrypting and never invokes
+/// the database KDF. It is used by ordinary saves, reveals, and background sync.
+pub fn open_database_with_key<R: std::io::Read>(
+    reader: R,
+    key: &CompositeKey,
+) -> DatabaseResult<Database> {
+    let mut diagnostics = kdbx::diagnostics::DiagnosticContext::disabled();
+    open_database_internal(reader, OpenKey::Derived(key), &mut diagnostics, false)
+        .map(|opened| opened.database)
 }
 
 /// Open a KDBX database and return a structured report even when opening fails.
 pub fn diagnose_database<R: std::io::Read>(
     reader: R,
-    key: &CompositeKey,
+    credentials: &CompositeCredentials,
     options: DiagnosticOptions<'_>,
 ) -> Result<DiagnosticSuccess, DiagnosticFailure> {
     let mut diagnostics = kdbx::diagnostics::DiagnosticContext::enabled(options);
-    let result = open_database_internal(reader, key, &mut diagnostics, true);
+    let result = open_database_internal(
+        reader,
+        OpenKey::Credentials(credentials),
+        &mut diagnostics,
+        true,
+    );
     match result {
-        Ok(database) => Ok(DiagnosticSuccess {
-            database,
+        Ok(opened) => Ok(DiagnosticSuccess {
+            database: opened.database,
             report: diagnostics.into_report(),
         }),
         Err(error) => Err(DiagnosticFailure {
@@ -147,12 +194,17 @@ pub fn diagnose_database<R: std::io::Read>(
     }
 }
 
+enum OpenKey<'a> {
+    Credentials(&'a CompositeCredentials),
+    Derived(&'a CompositeKey),
+}
+
 fn open_database_internal<R: std::io::Read>(
     mut reader: R,
-    key: &CompositeKey,
+    key: OpenKey<'_>,
     diagnostics: &mut kdbx::diagnostics::DiagnosticContext<'_>,
     kdbx_only: bool,
-) -> DatabaseResult<Database> {
+) -> DatabaseResult<OpenedDatabase> {
     use kdbx::diagnostics::DiagnosticStage;
     use kdbx::file::header::{KDBX_SIGNATURE_1, KDBX_SIGNATURE_2, KDB_SIGNATURE_2};
     use std::io::Read;
@@ -198,14 +250,38 @@ fn open_database_internal<R: std::io::Read>(
     // verbatim, with no full-file buffering.
     let mut chained = std::io::Cursor::new(sig).chain(reader);
 
-    let mut database = match version {
-        DatabaseVersion::KDB => kdbx::file::kdb_reader::read_kdb(&mut chained, key),
-        DatabaseVersion::KDBX31 => {
-            kdbx::file::kdbx31_reader::read_kdbx31_diagnostic(&mut chained, key, diagnostics)
-        }
-        DatabaseVersion::KDBX4 => {
-            kdbx::file::kdbx4_reader::read_kdbx4_diagnostic(&mut chained, key, diagnostics)
-        }
+    let (mut database, key) = match key {
+        OpenKey::Credentials(credentials) => match version {
+            DatabaseVersion::KDB => {
+                kdbx::file::kdb_reader::read_kdb_with_credentials(&mut chained, credentials)
+            }
+            DatabaseVersion::KDBX31 => {
+                kdbx::file::kdbx31_reader::read_kdbx31_with_credentials_diagnostic(
+                    &mut chained,
+                    credentials,
+                    diagnostics,
+                )
+            }
+            DatabaseVersion::KDBX4 => {
+                kdbx::file::kdbx4_reader::read_kdbx4_with_credentials_diagnostic(
+                    &mut chained,
+                    credentials,
+                    diagnostics,
+                )
+            }
+        },
+        OpenKey::Derived(key) => match version {
+            DatabaseVersion::KDB => kdbx::file::kdb_reader::read_kdb(&mut chained, key)
+                .and_then(|database| Ok((database, key.try_clone()?))),
+            DatabaseVersion::KDBX31 => {
+                kdbx::file::kdbx31_reader::read_kdbx31_diagnostic(&mut chained, key, diagnostics)
+                    .and_then(|database| Ok((database, key.try_clone()?)))
+            }
+            DatabaseVersion::KDBX4 => {
+                kdbx::file::kdbx4_reader::read_kdbx4_diagnostic(&mut chained, key, diagnostics)
+                    .and_then(|database| Ok((database, key.try_clone()?)))
+            }
+        },
     }?;
     if diagnostics.is_enabled() {
         diagnostics.run(
@@ -216,11 +292,11 @@ fn open_database_internal<R: std::io::Read>(
     }
     diagnostics.run(
         DiagnosticStage::MemoryProtection,
-        || database.seal_protected_strings(key),
+        || database.seal_protected_strings(&key),
         |_| None,
     )?;
     diagnostics.set_summary(&database);
-    Ok(database)
+    Ok(OpenedDatabase { database, key })
 }
 
 /// Save a KeePass database to a writer.
@@ -239,28 +315,92 @@ pub fn save_database<W: std::io::Write>(
     database: &Database,
     key: &CompositeKey,
 ) -> DatabaseResult<()> {
-    save_database_with_credentials(writer, database, key, key)
-}
-
-/// Save using one credential to unlock memory and another for the output file.
-pub fn save_database_with_credentials<W: std::io::Write>(
-    writer: &mut W,
-    database: &Database,
-    memory_key: &CompositeKey,
-    file_key: &CompositeKey,
-) -> DatabaseResult<()> {
     database.validate()?;
     match database.version {
-        DatabaseVersion::KDB => kdbx::file::kdb_writer::write_kdb_with_credentials(
-            writer, database, memory_key, file_key,
-        ),
-        DatabaseVersion::KDBX31 => kdbx::file::kdbx31_writer::write_kdbx31_with_credentials(
-            writer, database, memory_key, file_key,
-        ),
-        DatabaseVersion::KDBX4 => kdbx::file::kdbx4_writer::write_kdbx4_with_credentials(
-            writer, database, memory_key, file_key,
-        ),
+        DatabaseVersion::KDB => kdbx::file::kdb_writer::write_kdb(writer, database, key),
+        DatabaseVersion::KDBX31 => kdbx::file::kdbx31_writer::write_kdbx31(writer, database, key),
+        DatabaseVersion::KDBX4 => kdbx::file::kdbx4_writer::write_kdbx4(writer, database, key),
     }
+}
+
+/// Initialize KDF parameters for a new database and derive its active key.
+pub fn initialize_database_key(
+    database: &mut Database,
+    credentials: &CompositeCredentials,
+) -> DatabaseResult<CompositeKey> {
+    use kdbx::kdf::aes_kdf::AesKdf;
+    use kdbx::kdf::argon2_kdf::Argon2Kdf;
+
+    let kdf: Box<dyn KdfEngine> = match database.version {
+        DatabaseVersion::KDB | DatabaseVersion::KDBX31 => Box::new(AesKdf),
+        DatabaseVersion::KDBX4 => Box::new(Argon2Kdf::argon2id()),
+    };
+    let mut parameters = kdf.default_parameters();
+    kdf.randomize(&mut parameters)?;
+    let key = credentials.derive_key(&parameters)?;
+    database.kdf_parameters = Some(parameters);
+    Ok(key)
+}
+
+/// Controls how a credential rotation changes the database KDF.
+#[derive(Debug, Clone)]
+pub struct RekeyOptions {
+    /// Regenerate the KDF salt when no replacement parameters are supplied.
+    pub regenerate_kdf_salt: bool,
+    /// Replace all KDF parameters before deriving the new key.
+    pub kdf_parameters: Option<KdfParameters>,
+}
+
+impl Default for RekeyOptions {
+    fn default() -> Self {
+        Self {
+            regenerate_kdf_salt: true,
+            kdf_parameters: None,
+        }
+    }
+}
+
+/// Rotate credentials and reseal runtime-protected strings under the new key.
+pub fn rekey_database(
+    database: &mut Database,
+    old_key: &CompositeKey,
+    credentials: &CompositeCredentials,
+    options: RekeyOptions,
+) -> DatabaseResult<CompositeKey> {
+    let current = database
+        .kdf_parameters
+        .as_ref()
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    if !old_key.matches(current) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
+    let mut parameters = options.kdf_parameters.unwrap_or_else(|| current.clone());
+    if options.regenerate_kdf_salt {
+        let kdf = kdbx::kdf::create_kdf(&parameters.kdf_uuid)
+            .ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
+        kdf.randomize(&mut parameters)?;
+    }
+    let new_key = credentials.derive_key(&parameters)?;
+    let mut rekeyed = database.clone();
+    rekeyed.rekey_memory_protection(old_key, &new_key)?;
+    rekeyed.kdf_parameters = Some(parameters);
+    *database = rekeyed;
+    Ok(new_key)
+}
+
+/// Re-encrypt runtime memory protection without changing on-disk KDF parameters.
+///
+/// This is used when importing an already-opened database into another active
+/// database; it does not rotate the file credentials.
+pub fn reencrypt_memory_protection(
+    database: &mut Database,
+    old_key: &CompositeKey,
+    new_key: &CompositeKey,
+) -> DatabaseResult<()> {
+    let mut rekeyed = database.clone();
+    rekeyed.rekey_memory_protection(old_key, new_key)?;
+    *database = rekeyed;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -295,9 +435,11 @@ mod tests {
         db.entries.insert(entry_id, entry);
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new()
+        let credentials = CompositeCredentials::new()
             .with_password(b"streaming-test-pw")
             .unwrap();
+        let key = initialize_database_key(&mut db, &credentials).unwrap();
+        let kdf_parameters = db.kdf_parameters.clone();
         let mut bytes = Vec::new();
         save_database(&mut bytes, &db, &key).expect("save must succeed");
 
@@ -314,9 +456,10 @@ mod tests {
         }
         let reader = ForwardOnly(std::io::Cursor::new(bytes));
 
-        let loaded = open_database(reader, &key).expect("streaming open must succeed");
-        assert_eq!(loaded.entries.len(), 1);
-        assert_eq!(loaded.root_group().unwrap().title, "Root");
+        let loaded = open_database(reader, &credentials).expect("streaming open must succeed");
+        assert_eq!(loaded.database.entries.len(), 1);
+        assert_eq!(loaded.database.root_group().unwrap().title, "Root");
+        assert_eq!(loaded.database.kdf_parameters, kdf_parameters);
     }
 
     /// open_database must surface a clear error (not panic / not OOM) when
@@ -324,8 +467,8 @@ mod tests {
     #[test]
     fn test_open_database_rejects_truncated_signature() {
         let short = [0u8; 5]; // less than 12 bytes
-        let key = CompositeKey::new().with_password(b"x").unwrap();
-        let err = open_database(&short[..], &key);
+        let credentials = CompositeCredentials::new().with_password(b"x").unwrap();
+        let err = open_database(&short[..], &credentials);
         assert!(err.is_err(), "truncated signature must error, not panic");
         match err.unwrap_err() {
             DatabaseError::Io(_) => {} // expected: UnexpectedEof
@@ -341,8 +484,8 @@ mod tests {
         // Pad with a bit more so the format reader has something to fail on
         // *after* signature validation (shouldn't be reached).
         garbage.extend_from_slice(&[0u8; 64]);
-        let key = CompositeKey::new().with_password(b"x").unwrap();
-        let err = open_database(&garbage[..], &key);
+        let credentials = CompositeCredentials::new().with_password(b"x").unwrap();
+        let err = open_database(&garbage[..], &credentials);
         assert!(err.is_err());
     }
 
@@ -361,10 +504,15 @@ mod tests {
         database.entries.insert(entry_id, entry);
         database.root_group_id = Some(root_id);
 
-        let old_key = CompositeKey::new().with_password(b"old password").unwrap();
+        let old_credentials = CompositeCredentials::new()
+            .with_password(b"old password")
+            .unwrap();
+        let old_key = initialize_database_key(&mut database, &old_credentials).unwrap();
         let mut bytes = Vec::new();
         save_database(&mut bytes, &database, &old_key).unwrap();
-        let mut loaded = open_database(bytes.as_slice(), &old_key).unwrap();
+        let opened = open_database(bytes.as_slice(), &old_credentials).unwrap();
+        let mut loaded = opened.database;
+        let old_key = opened.key;
 
         let loaded_entry = &loaded.entries[&entry_id];
         assert!(loaded_entry.password().is_memory_protected());
@@ -392,8 +540,10 @@ mod tests {
             "hidden title"
         );
 
-        let wrong_key = CompositeKey::new()
+        let wrong_key = CompositeCredentials::new()
             .with_password(b"wrong password")
+            .unwrap()
+            .derive_key(loaded.kdf_parameters.as_ref().unwrap())
             .unwrap();
         assert!(matches!(
             loaded.with_entry_field(&wrong_key, &entry_id, &EntryFieldSelector::Password, |_| (),),
@@ -409,13 +559,23 @@ mod tests {
             )
             .unwrap();
 
-        let new_key = CompositeKey::new().with_password(b"new password").unwrap();
+        let new_credentials = CompositeCredentials::new()
+            .with_password(b"new password")
+            .unwrap();
+        let new_key = rekey_database(
+            &mut loaded,
+            &old_key,
+            &new_credentials,
+            RekeyOptions::default(),
+        )
+        .unwrap();
         let mut rotated = Vec::new();
-        save_database_with_credentials(&mut rotated, &loaded, &old_key, &new_key).unwrap();
-        assert!(open_database(rotated.as_slice(), &old_key).is_err());
-        let reopened = open_database(rotated.as_slice(), &new_key).unwrap();
+        save_database(&mut rotated, &loaded, &new_key).unwrap();
+        assert!(open_database(rotated.as_slice(), &old_credentials).is_err());
+        let reopened = open_database(rotated.as_slice(), &new_credentials).unwrap();
         assert_eq!(
             reopened
+                .database
                 .with_entry_field(
                     &new_key,
                     &entry_id,

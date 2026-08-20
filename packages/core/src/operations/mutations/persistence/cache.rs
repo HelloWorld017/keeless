@@ -1,19 +1,27 @@
 use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce, aead::Aead};
+use keeless_kdbx::KdfParameters;
 use sha2::{Digest, Sha256};
 
 use super::MutationCoordinator;
 use crate::{CoreError, Result, random_array};
 
 const CACHE_MAGIC: &[u8; 8] = b"KLSCACHE";
-const CACHE_VERSION: u8 = 1;
+const CACHE_VERSION: u8 = 2;
 const CACHE_NONCE_LENGTH: usize = 24;
 const CACHE_TAG_LENGTH: usize = 16;
+const CACHE_KDF_LENGTH_SIZE: usize = 4;
 
 impl MutationCoordinator {
-    pub(crate) fn encode_cache(&self, database: &[u8]) -> Result<Vec<u8>> {
+    pub(crate) fn encode_cache(
+        &self,
+        database: &[u8],
+        kdf_parameters: &KdfParameters,
+    ) -> Result<Vec<u8>> {
         let sequence = self.next_sequence;
         let nonce = random_array::<CACHE_NONCE_LENGTH>()?;
         let aad = cache_aad(self.database_id.as_bytes(), sequence, database);
+        let kdf_parameters = kdf_parameters.serialize();
+        let kdf_len = u32::try_from(kdf_parameters.len()).map_err(|_| CoreError::InvalidCache)?;
         let tag = self
             .key
             .unlock(|key| {
@@ -27,10 +35,19 @@ impl MutationCoordinator {
             })?
             .map_err(|_| CoreError::Crypto)?;
         let mut cache = Vec::with_capacity(
-            CACHE_MAGIC.len() + 1 + 8 + CACHE_NONCE_LENGTH + CACHE_TAG_LENGTH + database.len(),
+            CACHE_MAGIC.len()
+                + 1
+                + CACHE_KDF_LENGTH_SIZE
+                + kdf_parameters.len()
+                + 8
+                + CACHE_NONCE_LENGTH
+                + CACHE_TAG_LENGTH
+                + database.len(),
         );
         cache.extend_from_slice(CACHE_MAGIC);
         cache.push(CACHE_VERSION);
+        cache.extend_from_slice(&kdf_len.to_le_bytes());
+        cache.extend_from_slice(&kdf_parameters);
         cache.extend_from_slice(&sequence.to_le_bytes());
         cache.extend_from_slice(&nonce);
         cache.extend_from_slice(&tag);
@@ -39,14 +56,11 @@ impl MutationCoordinator {
     }
 
     pub(crate) fn decode_cache(&self, cache: &[u8]) -> Result<(u64, Vec<u8>)> {
-        let header_len = CACHE_MAGIC.len() + 1 + 8 + CACHE_NONCE_LENGTH + CACHE_TAG_LENGTH;
-        if cache.len() <= header_len
-            || &cache[..CACHE_MAGIC.len()] != CACHE_MAGIC
-            || cache[CACHE_MAGIC.len()] != CACHE_VERSION
-        {
+        let sequence_start = cache_prefix_end(cache)?;
+        let header_len = sequence_start + 8 + CACHE_NONCE_LENGTH + CACHE_TAG_LENGTH;
+        if cache.len() <= header_len {
             return Err(CoreError::InvalidCache);
         }
-        let sequence_start = CACHE_MAGIC.len() + 1;
         let sequence = u64::from_le_bytes(
             cache[sequence_start..sequence_start + 8]
                 .try_into()
@@ -72,6 +86,44 @@ impl MutationCoordinator {
             .map_err(|_| CoreError::InvalidCache)?;
         Ok((sequence, database.to_vec()))
     }
+
+    pub(crate) fn cache_kdf_parameters(cache: &[u8]) -> Result<KdfParameters> {
+        if cache.len() < CACHE_MAGIC.len() + 1 + CACHE_KDF_LENGTH_SIZE
+            || &cache[..CACHE_MAGIC.len()] != CACHE_MAGIC
+            || cache[CACHE_MAGIC.len()] != CACHE_VERSION
+        {
+            return Err(CoreError::InvalidCache);
+        }
+        let length_start = CACHE_MAGIC.len() + 1;
+        let length_end = length_start + CACHE_KDF_LENGTH_SIZE;
+        let length = u32::from_le_bytes(
+            cache[length_start..length_end]
+                .try_into()
+                .map_err(|_| CoreError::InvalidCache)?,
+        ) as usize;
+        let parameters_end = length_end
+            .checked_add(length)
+            .ok_or(CoreError::InvalidCache)?;
+        let parameters = cache
+            .get(length_end..parameters_end)
+            .ok_or(CoreError::InvalidCache)?;
+        KdfParameters::deserialize(parameters).ok_or(CoreError::InvalidCache)
+    }
+}
+
+fn cache_prefix_end(cache: &[u8]) -> Result<usize> {
+    let length_start = CACHE_MAGIC.len() + 1;
+    let length_end = length_start + CACHE_KDF_LENGTH_SIZE;
+    let length = u32::from_le_bytes(
+        cache
+            .get(length_start..length_end)
+            .ok_or(CoreError::InvalidCache)?
+            .try_into()
+            .map_err(|_| CoreError::InvalidCache)?,
+    ) as usize;
+    length_end
+        .checked_add(length)
+        .ok_or(CoreError::InvalidCache)
 }
 
 fn cache_aad(database_id: &[u8], sequence: u64, database: &[u8]) -> Vec<u8> {
@@ -89,22 +141,27 @@ fn cache_aad(database_id: &[u8], sequence: u64, database: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::DatabaseId;
-    use keeless_kdbx::SecureArray;
+    use keeless_kdbx::{CompositeKey, SecureArray};
 
     #[test]
     fn database_id_bytes_preserve_cache_authentication() {
-        let raw = SecureArray::from_slice(&[9; 32]).unwrap();
+        let key =
+            CompositeKey::from_derived_key(SecureArray::from_slice(&[9; 32]).unwrap(), [0; 32]);
         let bytes = b"local-file\0vault.kdbx".to_vec();
         let coordinator =
-            MutationCoordinator::new(&raw, DatabaseId::new(bytes.clone()), 7).unwrap();
-        let same = MutationCoordinator::new(&raw, DatabaseId::new(bytes), 0).unwrap();
-        let cache = coordinator.encode_cache(b"encrypted-kdbx").unwrap();
+            MutationCoordinator::new(&key, DatabaseId::new(bytes.clone()), 7).unwrap();
+        let same = MutationCoordinator::new(&key, DatabaseId::new(bytes), 0).unwrap();
+        let mut parameters = KdfParameters::new(uuid::Uuid::nil());
+        parameters.set_uuid_param();
+        let cache = coordinator
+            .encode_cache(b"encrypted-kdbx", &parameters)
+            .unwrap();
         assert_eq!(
             same.decode_cache(&cache).unwrap(),
             (7, b"encrypted-kdbx".to_vec())
         );
 
-        let other = MutationCoordinator::new(&raw, DatabaseId::new(b"other".to_vec()), 0).unwrap();
+        let other = MutationCoordinator::new(&key, DatabaseId::new(b"other".to_vec()), 0).unwrap();
         assert!(matches!(
             other.decode_cache(&cache),
             Err(CoreError::InvalidCache)

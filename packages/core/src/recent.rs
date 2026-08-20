@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{CoreError, KeelessCore, Result};
 
-const RECENT_STATE_VERSION: u8 = 1;
+const RECENT_STATE_VERSION: u8 = 2;
 
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -24,12 +24,17 @@ pub(crate) async fn load(core: &KeelessCore) -> Result<RecentState> {
             databases: Vec::new(),
         });
     };
-    let state: RecentState = serde_json::from_slice(&bytes)
-        .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
+    let Ok(state) = serde_json::from_slice::<RecentState>(&bytes) else {
+        return Ok(RecentState {
+            version: RECENT_STATE_VERSION,
+            databases: Vec::new(),
+        });
+    };
     if state.version != RECENT_STATE_VERSION {
-        return Err(CoreError::InvalidConfig(
-            "invalid recent database state".into(),
-        ));
+        return Ok(RecentState {
+            version: RECENT_STATE_VERSION,
+            databases: Vec::new(),
+        });
     }
     Ok(state)
 }
@@ -64,18 +69,11 @@ pub(crate) async fn record_success(core: &KeelessCore) -> Result<()> {
         id: selection.database_id.recent_id(),
         name,
         storage_type: descriptor.provider.clone(),
+        descriptor: descriptor.clone(),
         last_opened_at_ms: core.clock.now_millis(),
     };
     let mut state = load(core).await?;
     state.databases.retain(|database| database.id != record.id);
     state.databases.insert(0, record);
     save(core, &state).await
-}
-
-pub(crate) async fn contains(core: &KeelessCore, id: &str) -> Result<bool> {
-    Ok(load(core)
-        .await?
-        .databases
-        .iter()
-        .any(|database| database.id == id))
 }

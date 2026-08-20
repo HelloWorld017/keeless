@@ -19,7 +19,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
 use uuid::Uuid;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::memory_protection::{MemoryField, MemoryProtectionContext, MemoryUnlockSession};
 use crate::model::exception::{DatabaseError, DatabaseResult};
@@ -493,6 +493,38 @@ impl Entry {
         }
         for history in &mut self.history {
             history.seal_protected_strings(context.clone(), root)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn reseal_protected_strings(
+        &mut self,
+        old_unlock: &mut MemoryUnlockSession<'_>,
+        context: std::sync::Arc<MemoryProtectionContext>,
+        root: &[u8; 32],
+    ) -> DatabaseResult<()> {
+        let entry_id = self.id;
+        for (id, field) in self.fields_mut() {
+            if !field.value.is_protected() {
+                continue;
+            }
+            let memory_field = memory_field(id, &field.name);
+            let plaintext =
+                field
+                    .value
+                    .with_plaintext(old_unlock, entry_id, &memory_field, |value| {
+                        Ok(Zeroizing::new(value.to_owned()))
+                    })?;
+            field.value.replace_sealed(
+                context.clone(),
+                root,
+                entry_id,
+                &memory_field,
+                plaintext.as_str(),
+            )?;
+        }
+        for history in &mut self.history {
+            history.reseal_protected_strings(old_unlock, context.clone(), root)?;
         }
         Ok(())
     }

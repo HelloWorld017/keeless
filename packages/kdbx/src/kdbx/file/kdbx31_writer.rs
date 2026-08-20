@@ -7,7 +7,7 @@ use base64::Engine;
 use std::io::Write;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use keeless_secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::SecureArray;
 use zeroize::Zeroizing;
 
 use crate::crypto::cipher_engine::create_cipher_engine;
@@ -18,9 +18,7 @@ use crate::kdbx::file::header::{
     header_field_31, CrsAlgorithm, KdbxHeader31, FILE_VERSION_31, KDBX_SIGNATURE_1,
     KDBX_SIGNATURE_2,
 };
-use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
-use crate::kdbx::kdf::kdf_engine::KdfEngine;
-use crate::kdbx::kdf::kdf_parameters::KdfParameters;
+use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
 use crate::kdbx::stream::hashed_block::HashedBlockWriter;
 use crate::kdbx::xml::KdbxXmlWriter;
 use crate::model::db::composite_key::CompositeKey;
@@ -33,29 +31,39 @@ pub fn write_kdbx31<W: Write>(
     database: &Database,
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
-    write_kdbx31_with_credentials(writer, database, composite_key, composite_key)
-}
-
-pub(crate) fn write_kdbx31_with_credentials<W: Write>(
-    writer: &mut W,
-    database: &Database,
-    memory_key: &CompositeKey,
-    file_key: &CompositeKey,
-) -> DatabaseResult<()> {
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(32)?;
-    let transform_seed = generate_random_bytes(32)?;
     let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
     let inner_stream_key = Zeroizing::new(generate_random_bytes(32)?);
     let stream_start_bytes = Zeroizing::new(generate_random_bytes(32)?);
-    let transform_rounds: u64 = 1_000;
+    let kdf_params = database
+        .kdf_parameters
+        .as_ref()
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    if kdf_params.kdf_uuid != AES_KDF_UUID {
+        return Err(DatabaseError::InvalidFormat(
+            "KDBX 3.1 requires AES-KDF parameters".into(),
+        ));
+    }
+    if !composite_key.matches(kdf_params) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
+    let transform_seed = kdf_params
+        .get_byte_array("S")
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    let transform_seed: [u8; 32] = transform_seed.try_into().map_err(|_| {
+        DatabaseError::InvalidFormat("KDBX 3.1 transform seed must be 32 bytes".into())
+    })?;
+    let transform_rounds = kdf_params
+        .get_uint64("R")
+        .ok_or(DatabaseError::MissingKdfParameters)?;
 
     let header = KdbxHeader31 {
         version: FILE_VERSION_31,
         encryption_algorithm: database.encryption_algorithm,
         compression: database.compression,
         master_seed: master_seed.clone(),
-        transform_seed: transform_seed.clone(),
+        transform_seed: transform_seed.to_vec(),
         transform_rounds,
         encryption_iv: encryption_iv.clone(),
         inner_random_stream_key: inner_stream_key.to_vec(),
@@ -70,11 +78,12 @@ pub(crate) fn write_kdbx31_with_credentials<W: Write>(
     let header_hash = HashEngine::sha256(&header_buf);
 
     // 3. Derive final key
-    let final_key = derive_key(file_key, &master_seed, &transform_seed, transform_rounds)?;
+    let final_key = derive_key(composite_key, &master_seed, kdf_params)?;
 
     // 4. Serialize database to XML with inner stream protection
     let mut inner_stream = create_inner_stream(CrsAlgorithm::Salsa20, &inner_stream_key)?;
-    let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
+    let xml =
+        KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), composite_key)?;
     let xml = insert_kdbx31_header_hash(xml, &header_hash)?;
 
     // 5. Compress
@@ -130,22 +139,13 @@ fn insert_kdbx31_header_hash(mut xml: String, header_hash: &[u8]) -> DatabaseRes
 fn derive_key(
     composite_key: &CompositeKey,
     master_seed: &[u8],
-    transform_seed: &[u8],
-    transform_rounds: u64,
+    kdf_params: &crate::kdbx::kdf::kdf_parameters::KdfParameters,
 ) -> DatabaseResult<SecureArray<32>> {
-    let raw_key = composite_key.build_raw_key()?;
-
-    let mut params = KdfParameters::new(AES_KDF_UUID);
-    params.set_byte_array("S", transform_seed);
-    params.set_uint64("R", transform_rounds);
-
-    let kdf = AesKdf;
-    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))??)?;
-
-    let mut combined = Zeroizing::new(Vec::with_capacity(master_seed.len() + transformed.len()));
-    combined.extend_from_slice(master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut final_key = HashEngine::sha256(&combined);
+    if !composite_key.matches(kdf_params) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
+    let mut final_key = composite_key
+        .with_key(|transformed| HashEngine::sha256_multi(&[master_seed, transformed]))?;
     Ok(SecureArray::from_array_mut(&mut final_key)?)
 }
 
@@ -224,7 +224,7 @@ mod tests {
     use crate::kdbx::file::kdbx31_reader::read_kdbx31;
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
-    use crate::model::db::composite_key::CompositeKey;
+    use crate::model::db::composite_key::CompositeCredentials;
     use crate::model::db::database::DatabaseVersion;
     use crate::model::entry::Entry;
     use crate::model::group::Group;
@@ -247,7 +247,10 @@ mod tests {
         db.groups.insert(root_id, root);
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new().with_password(b"test_password").unwrap();
+        let credentials = CompositeCredentials::new()
+            .with_password(b"test_password")
+            .unwrap();
+        let key = crate::initialize_database_key(&mut db, &credentials).unwrap();
 
         // Write
         let mut buf = Vec::new();

@@ -395,7 +395,7 @@ mod tests {
     use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
     use crate::kdbx::kdf::KdfParameters;
     use crate::model::core::security::ProtectedString;
-    use crate::model::db::DatabaseVersion;
+    use crate::model::db::{CompositeCredentials, DatabaseVersion};
 
     fn entry(id: i32, url: &str) -> Entry {
         let mut entry = Entry::new(NodeId::from_int(id));
@@ -550,7 +550,11 @@ mod tests {
         );
         database.entries.insert(sealed_id, sealed);
 
-        let key = CompositeKey::new().with_password(b"url password").unwrap();
+        let key = CompositeCredentials::new()
+            .with_password(b"url password")
+            .unwrap()
+            .derive_key(database.kdf_parameters.as_ref().unwrap())
+            .unwrap();
         database.protect_entry_strings(&key).unwrap();
 
         let unsealed_id = NodeId::new_uuid();
@@ -575,7 +579,11 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry_id, unsealed_id);
 
-        let wrong = CompositeKey::new().with_password(b"wrong").unwrap();
+        let wrong = CompositeCredentials::new()
+            .with_password(b"wrong")
+            .unwrap()
+            .derive_key(database.kdf_parameters.as_ref().unwrap())
+            .unwrap();
         assert!(UrlMatcher::match_database(&database, Some(&wrong), &params).is_err());
     }
 }

@@ -6,19 +6,18 @@ use std::sync::Arc;
 use chacha20poly1305::aead::{Aead, Payload};
 use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce};
 use hkdf::Hkdf;
-use keeless_secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::SecureArray;
 use sha2::Sha256;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::kdbx::kdf::{create_kdf, KdfParameters};
 use crate::model::core::node::NodeId;
 use crate::model::db::composite_key::CompositeKey;
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
-const ROOT_INFO: &[u8] = b"keeless/kdbx/memory/root/v1";
-const ENTRY_INFO: &[u8] = b"keeless/kdbx/memory/entry/v1";
-const VALUE_AAD: &[u8] = b"keeless/kdbx/memory/value/v1";
-const VERIFIER_AAD: &[u8] = b"keeless/kdbx/memory/verifier/v1";
+const ROOT_INFO: &[u8] = b"keeless/kdbx/memory/root/v2";
+const ENTRY_INFO: &[u8] = b"keeless/kdbx/memory/entry/v2";
+const VALUE_AAD: &[u8] = b"keeless/kdbx/memory/value/v2";
+const VERIFIER_AAD: &[u8] = b"keeless/kdbx/memory/verifier/v2";
 const VERIFIER_PLAINTEXT: &[u8] = b"keeless-memory-protection";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -51,7 +50,6 @@ impl MemoryField {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct MemoryProtectionContext {
     id: [u8; 16],
-    kdf_parameters: KdfParameters,
     salt: [u8; 32],
     verifier_nonce: [u8; 24],
     verifier: Vec<u8>,
@@ -61,7 +59,6 @@ impl std::fmt::Debug for MemoryProtectionContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemoryProtectionContext")
             .field("id", &self.id)
-            .field("kdf_uuid", &self.kdf_parameters.kdf_uuid)
             .finish_non_exhaustive()
     }
 }
@@ -69,25 +66,14 @@ impl std::fmt::Debug for MemoryProtectionContext {
 impl MemoryProtectionContext {
     pub(crate) fn create(
         composite_key: &CompositeKey,
-        mut kdf_parameters: KdfParameters,
     ) -> DatabaseResult<(Arc<Self>, SecureArray<32>)> {
-        let kdf = create_kdf(&kdf_parameters.kdf_uuid)
-            .ok_or_else(|| DatabaseError::InvalidFormat("Unknown memory-protection KDF".into()))?;
-        if kdf_parameters.get_byte_array("S").is_none() {
-            kdf.randomize(&mut kdf_parameters)?;
-        }
-
-        let raw_key = composite_key.build_raw_key()?;
-        let transformed =
-            SecureBytes::from_vec(raw_key.unlock(|value| kdf.transform(value, &kdf_parameters))??)?;
-
         let mut id = [0u8; 16];
         let mut salt = [0u8; 32];
         let mut verifier_nonce = [0u8; 24];
         fill_random(&mut id)?;
         fill_random(&mut salt)?;
         fill_random(&mut verifier_nonce)?;
-        let root = transformed.unlock_slice(|value| derive_root(value, &salt))??;
+        let root = composite_key.derive_key(Some(&salt), ROOT_INFO)?;
         let verifier = root.unlock(|value| {
             XChaCha20Poly1305::new(value.into())
                 .encrypt(
@@ -105,7 +91,6 @@ impl MemoryProtectionContext {
         Ok((
             Arc::new(Self {
                 id,
-                kdf_parameters,
                 salt,
                 verifier_nonce,
                 verifier,
@@ -115,13 +100,7 @@ impl MemoryProtectionContext {
     }
 
     fn unlock(&self, composite_key: &CompositeKey) -> DatabaseResult<SecureArray<32>> {
-        let raw_key = composite_key.build_raw_key()?;
-        let kdf = create_kdf(&self.kdf_parameters.kdf_uuid)
-            .ok_or_else(|| DatabaseError::InvalidFormat("Unknown memory-protection KDF".into()))?;
-        let transformed = SecureBytes::from_vec(
-            raw_key.unlock(|value| kdf.transform(value, &self.kdf_parameters))??,
-        )?;
-        let root = transformed.unlock_slice(|value| derive_root(value, &self.salt))??;
+        let root = composite_key.derive_key(Some(&self.salt), ROOT_INFO)?;
         root.unlock(|value| {
             XChaCha20Poly1305::new(value.into())
                 .decrypt(
@@ -244,16 +223,6 @@ impl<'a> MemoryUnlockSession<'a> {
     }
 }
 
-fn derive_root(transformed: &[u8], salt: &[u8; 32]) -> DatabaseResult<SecureArray<32>> {
-    let hkdf = Hkdf::<Sha256>::new(Some(salt), transformed);
-    let mut root = SecureArray::zeroed()?;
-    root.unlock_mut(|value| {
-        hkdf.expand(ROOT_INFO, value)
-            .map_err(|_| DatabaseError::EncryptionError("memory root derivation failed".into()))
-    })??;
-    Ok(root)
-}
-
 fn derive_entry_key(root: &[u8; 32], entry_id: NodeId) -> DatabaseResult<SecureArray<32>> {
     let hkdf = Hkdf::<Sha256>::new(None, root);
     let mut info = Vec::with_capacity(ENTRY_INFO.len() + 17);
@@ -298,18 +267,24 @@ fn fill_random(output: &mut [u8]) -> DatabaseResult<()> {
 mod tests {
     use super::*;
     use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
+    use crate::kdbx::kdf::KdfParameters;
+    use crate::model::db::composite_key::CompositeCredentials;
 
-    fn parameters() -> KdfParameters {
+    fn key(password: &[u8]) -> CompositeKey {
         let mut parameters = KdfParameters::new(AES_KDF_UUID);
         parameters.set_byte_array("S", &[0x42; 32]);
         parameters.set_uint64("R", 1);
-        parameters
+        CompositeCredentials::new()
+            .with_password(password)
+            .unwrap()
+            .derive_key(&parameters)
+            .unwrap()
     }
 
     #[test]
     fn protected_value_requires_matching_credentials_and_context() {
-        let key = CompositeKey::new().with_password(b"correct horse").unwrap();
-        let (context, root) = MemoryProtectionContext::create(&key, parameters()).unwrap();
+        let composite_key = key(b"correct horse");
+        let (context, root) = MemoryProtectionContext::create(&composite_key).unwrap();
         let entry_id = NodeId::new_uuid();
         let plaintext = b"a secret that must not remain in the model";
         let encrypted = root
@@ -330,7 +305,7 @@ mod tests {
             .windows(plaintext.len())
             .any(|window| window == plaintext));
 
-        let mut unlock = MemoryUnlockSession::new(&key);
+        let mut unlock = MemoryUnlockSession::new(&composite_key);
         unlock
             .with_root(&context, |root| {
                 assert_eq!(
@@ -350,7 +325,7 @@ mod tests {
             })
             .unwrap();
 
-        let wrong_key = CompositeKey::new().with_password(b"wrong horse").unwrap();
+        let wrong_key = key(b"wrong horse");
         assert!(MemoryUnlockSession::new(&wrong_key)
             .with_root(&context, |_| Ok(()))
             .is_err());
@@ -358,8 +333,8 @@ mod tests {
 
     #[test]
     fn repeated_encryption_uses_fresh_nonces() {
-        let key = CompositeKey::new().with_password(b"password").unwrap();
-        let (context, root) = MemoryProtectionContext::create(&key, parameters()).unwrap();
+        let key = key(b"password");
+        let (context, root) = MemoryProtectionContext::create(&key).unwrap();
         let entry_id = NodeId::new_uuid();
         let (first, second) = root
             .unlock(|root| {

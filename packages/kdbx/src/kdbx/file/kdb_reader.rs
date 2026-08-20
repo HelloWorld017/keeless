@@ -6,18 +6,17 @@ use std::collections::HashMap;
 use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use keeless_secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::SecureArray;
 use zeroize::Zeroizing;
 
 use crate::crypto::cipher_engine::create_cipher_engine;
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::crypto::HashEngine;
 use crate::kdbx::file::header::KdbHeader;
-use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
-use crate::kdbx::kdf::kdf_engine::KdfEngine;
+use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::model::core::node::NodeId;
-use crate::model::db::composite_key::CompositeKey;
+use crate::model::db::composite_key::{CompositeCredentials, CompositeKey};
 use crate::model::db::database::{Database, DatabaseVersion};
 use crate::model::entry::versioned::{kdb_field, EntryKDB};
 use crate::model::exception::{DatabaseError, DatabaseResult};
@@ -26,11 +25,34 @@ use crate::model::group::versioned::{kdb_group_field, GroupKDB};
 /// Read a KDB (v1) database from a reader.
 /// The caller should have already consumed the 12-byte signature/version.
 pub fn read_kdb<R: Read>(reader: &mut R, composite_key: &CompositeKey) -> DatabaseResult<Database> {
+    read_kdb_with_key_deriver(reader, |params| {
+        if composite_key.matches(params) {
+            composite_key.try_clone()
+        } else {
+            Err(DatabaseError::KdfParametersMismatch)
+        }
+    })
+    .map(|(database, _)| database)
+}
+
+pub(crate) fn read_kdb_with_credentials<R: Read>(
+    reader: &mut R,
+    credentials: &CompositeCredentials,
+) -> DatabaseResult<(Database, CompositeKey)> {
+    read_kdb_with_key_deriver(reader, |params| credentials.derive_key(params))
+}
+
+fn read_kdb_with_key_deriver<R: Read>(
+    reader: &mut R,
+    derive_composite_key: impl FnOnce(&KdfParameters) -> DatabaseResult<CompositeKey>,
+) -> DatabaseResult<(Database, CompositeKey)> {
     // 1. Read header
     let header = read_kdb_header(reader)?;
 
     // 2. Derive master key
-    let master_key = derive_kdb_master_key(composite_key, &header)?;
+    let params = kdf_parameters(&header);
+    let composite_key = derive_composite_key(&params)?;
+    let master_key = derive_kdb_master_key(&composite_key, &header, &params)?;
 
     // 3. Read encrypted content
     let encrypted_size = reader.read_u32::<LittleEndian>()? as usize;
@@ -121,7 +143,8 @@ pub fn read_kdb<R: Read>(reader: &mut R, composite_key: &CompositeKey) -> Databa
         db.entries.insert(entry_id, entry);
     }
 
-    Ok(db)
+    db.kdf_parameters = Some(params);
+    Ok((db, composite_key))
 }
 
 /// Read KDB header (after signature bytes).
@@ -163,26 +186,22 @@ fn read_kdb_header<R: Read>(reader: &mut R) -> DatabaseResult<KdbHeader> {
 fn derive_kdb_master_key(
     composite_key: &CompositeKey,
     header: &KdbHeader,
+    params: &KdfParameters,
 ) -> DatabaseResult<SecureArray<32>> {
-    let raw_key = composite_key.build_raw_key()?;
-
-    // KDB uses AES-KDF with the transform seed
-    let mut params = KdfParameters::new(AES_KDF_UUID);
-    params.set_byte_array("S", &header.transform_seed);
-    params.set_uint64("R", header.transform_rounds as u64);
-
-    let kdf = AesKdf;
-    let transformed =
-        SecureBytes::from_vec(raw_key.unlock(|key| KdfEngine::transform(&kdf, key, &params))??)?;
-
-    // Combine with master seed
-    let mut combined = Zeroizing::new(Vec::with_capacity(
-        header.master_seed.len() + transformed.len(),
-    ));
-    combined.extend_from_slice(&header.master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut master_key = HashEngine::sha256(&combined);
+    if !composite_key.matches(params) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
+    let mut master_key = composite_key
+        .with_key(|transformed| HashEngine::sha256_multi(&[&header.master_seed, transformed]))?;
     Ok(SecureArray::from_array_mut(&mut master_key)?)
+}
+
+fn kdf_parameters(header: &KdbHeader) -> KdfParameters {
+    let mut params = KdfParameters::new(AES_KDF_UUID);
+    params.set_uuid_param();
+    params.set_byte_array("S", &header.transform_seed);
+    params.set_uint64("R", u64::from(header.transform_rounds));
+    params
 }
 
 type KdbGroupList = Vec<(HashMap<u16, Vec<u8>>, usize)>;

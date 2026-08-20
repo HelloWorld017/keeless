@@ -8,7 +8,7 @@ use zeroize::Zeroizing;
 
 use crate::{CoreError, Result, random_array};
 
-const CREDENTIAL_AAD: &[u8] = b"keeless-credential-v1";
+const CREDENTIAL_AAD: &[u8] = b"keeless-credential-v2";
 
 pub(crate) struct CredentialVault {
     wrapping_key: SecureArray<32>,
@@ -17,17 +17,20 @@ pub(crate) struct CredentialVault {
 }
 
 impl CredentialVault {
-    pub fn wrap(raw_key: &SecureArray<32>) -> Result<Self> {
+    pub fn wrap(key: &CompositeKey) -> Result<Self> {
         let mut wrapping = random_array::<32>()?;
         let wrapping_key = SecureArray::from_array_mut(&mut wrapping)?;
         let nonce = random_array::<24>()?;
         let ciphertext = wrapping_key
-            .unlock(|key| {
-                raw_key.unlock(|raw| {
-                    XChaCha20Poly1305::new(key.into()).encrypt(
+            .unlock(|wrapping| {
+                key.with_key(|transformed| {
+                    let mut payload = [0u8; 64];
+                    payload[..32].copy_from_slice(transformed);
+                    payload[32..].copy_from_slice(&key.kdf_fingerprint());
+                    XChaCha20Poly1305::new(wrapping.into()).encrypt(
                         XNonce::from_slice(&nonce),
                         Payload {
-                            msg: raw,
+                            msg: &payload,
                             aad: CREDENTIAL_AAD,
                         },
                     )
@@ -57,15 +60,21 @@ impl CredentialVault {
             })??
             .map_err(|_| CoreError::Crypto)?;
         let plaintext = Zeroizing::new(plaintext);
-        let secure = SecureArray::from_slice(&plaintext)?;
-        Ok(CompositeKey::from_raw_key(secure))
+        if plaintext.len() != 64 {
+            return Err(CoreError::Crypto);
+        }
+        let key: [u8; 32] = plaintext[..32].try_into().map_err(|_| CoreError::Crypto)?;
+        let fingerprint: [u8; 32] = plaintext[32..].try_into().map_err(|_| CoreError::Crypto)?;
+        Ok(CompositeKey::from_derived_key(
+            SecureArray::from_slice(&key)?,
+            fingerprint,
+        ))
     }
 
     #[cfg(test)]
-    pub fn raw_key_matches(&self, expected: &[u8; 32]) -> Result<bool> {
+    pub fn key_matches(&self, expected: &[u8; 32]) -> Result<bool> {
         self.restore_key()?
-            .build_raw_key()?
-            .unlock(|value| value == expected)
+            .with_key(|value| value == expected)
             .map_err(Into::into)
     }
 }

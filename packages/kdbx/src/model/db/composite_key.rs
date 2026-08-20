@@ -1,4 +1,4 @@
-//! Composite key - combination of password, keyfile, and hardware key
+//! Database credentials and transformed composite keys.
 //!
 
 use base64::Engine;
@@ -7,49 +7,31 @@ use quick_xml::events::Event;
 use zeroize::Zeroizing;
 
 use crate::crypto::HashEngine;
-use crate::kdbx::kdf::{KdfEngine, KdfParameters};
+use crate::kdbx::kdf::{create_kdf, KdfParameters};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
-/// A composite key combining multiple credential sources.
-pub struct CompositeKey {
+/// Credential material used only while deriving a database key.
+pub struct CompositeCredentials {
     password_data: Option<SecureBytes>,
     key_file_data: Option<SecureBytes>,
     hardware_key: Option<SecureBytes>,
-    raw_key: Option<SecureArray<32>>,
 }
 
-impl CompositeKey {
+impl CompositeCredentials {
     pub fn new() -> Self {
         Self {
             password_data: None,
             key_file_data: None,
             hardware_key: None,
-            raw_key: None,
-        }
-    }
-
-    /// Restore a composite key from its already-derived raw value.
-    pub fn from_raw_key(raw_key: SecureArray<32>) -> Self {
-        Self {
-            password_data: None,
-            key_file_data: None,
-            hardware_key: None,
-            raw_key: Some(raw_key),
         }
     }
 
     pub fn with_password(mut self, password: &[u8]) -> DatabaseResult<Self> {
-        if self.raw_key.is_some() {
-            return Err(DatabaseError::InvalidKey);
-        }
         self.password_data = Some(SecureBytes::from_slice(password)?);
         Ok(self)
     }
 
     pub fn with_key_file(mut self, key_file_data: &[u8]) -> DatabaseResult<Self> {
-        if self.raw_key.is_some() {
-            return Err(DatabaseError::InvalidKey);
-        }
         self.key_file_data = Some(SecureBytes::from_slice(key_file_data)?);
         Ok(self)
     }
@@ -81,9 +63,6 @@ impl CompositeKey {
     }
 
     pub fn with_hardware_key(mut self, key: &[u8]) -> DatabaseResult<Self> {
-        if self.raw_key.is_some() {
-            return Err(DatabaseError::InvalidKey);
-        }
         self.hardware_key = Some(SecureBytes::from_slice(key)?);
         Ok(self)
     }
@@ -97,12 +76,10 @@ impl CompositeKey {
     }
 
     /// Build the raw composite key by hashing each component and combining.
-    /// Returns the combined key bytes before KDF transformation.
-    pub fn build_raw_key(&self) -> DatabaseResult<SecureArray<32>> {
-        if let Some(raw_key) = &self.raw_key {
-            return Ok(raw_key.try_clone()?);
-        }
-
+    ///
+    /// This remains crate-visible so only format readers and key derivation can
+    /// access raw credential material.
+    pub(crate) fn build_raw_key(&self) -> DatabaseResult<SecureArray<32>> {
         let mut combined = Zeroizing::new(Vec::with_capacity(96));
 
         // Password component: SHA-256 hash
@@ -135,6 +112,96 @@ impl CompositeKey {
         let mut raw_key = HashEngine::sha256(&combined);
         Ok(SecureArray::from_array_mut(&mut raw_key)?)
     }
+
+    /// Derive the transformed key tied to a database's KDF parameters.
+    pub fn derive_key(&self, parameters: &KdfParameters) -> DatabaseResult<CompositeKey> {
+        let raw_key = self.build_raw_key()?;
+        let kdf = create_kdf(&parameters.kdf_uuid)
+            .ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
+        let mut transformed = raw_key.unlock(|key| kdf.transform(key, parameters))??;
+        let transformed: &mut [u8; 32] = transformed
+            .as_mut_slice()
+            .try_into()
+            .map_err(|_| DatabaseError::InvalidFormat("KDF output must be 32 bytes".into()))?;
+        let key = SecureArray::from_array_mut(transformed)?;
+        Ok(CompositeKey::new(key, parameters))
+    }
+}
+
+/// A transformed composite key tied to one set of database KDF parameters.
+pub struct CompositeKey {
+    key: SecureArray<32>,
+    kdf_fingerprint: [u8; 32],
+}
+
+impl CompositeKey {
+    pub(crate) fn new(key: SecureArray<32>, parameters: &KdfParameters) -> Self {
+        Self {
+            key,
+            kdf_fingerprint: kdf_fingerprint(parameters),
+        }
+    }
+
+    /// Restore a transformed key from secure storage.
+    pub fn from_derived_key(key: SecureArray<32>, kdf_fingerprint: [u8; 32]) -> Self {
+        Self {
+            key,
+            kdf_fingerprint,
+        }
+    }
+
+    pub fn matches(&self, parameters: &KdfParameters) -> bool {
+        self.kdf_fingerprint == kdf_fingerprint(parameters)
+    }
+
+    pub fn kdf_fingerprint(&self) -> [u8; 32] {
+        self.kdf_fingerprint
+    }
+
+    pub fn try_clone(&self) -> DatabaseResult<Self> {
+        Ok(Self {
+            key: self.key.try_clone()?,
+            kdf_fingerprint: self.kdf_fingerprint,
+        })
+    }
+
+    pub fn with_key<T>(&self, use_key: impl FnOnce(&[u8; 32]) -> T) -> DatabaseResult<T> {
+        Ok(self.key.unlock(use_key)?)
+    }
+
+    /// Derive a domain-separated runtime key without repeating the database KDF.
+    pub fn derive_key<const N: usize>(
+        &self,
+        salt: Option<&[u8]>,
+        info: &[u8],
+    ) -> DatabaseResult<SecureArray<N>> {
+        use hkdf::Hkdf;
+        use sha2::Sha256;
+
+        let mut derived = SecureArray::zeroed()?;
+        let result = self.key.unlock(|key| {
+            derived.unlock_mut(|value| Hkdf::<Sha256>::new(salt, key).expand(info, value))
+        })??;
+        result.map_err(|_| DatabaseError::EncryptionError("key derivation failed".into()))?;
+        Ok(derived)
+    }
+}
+
+impl std::fmt::Debug for CompositeKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompositeKey")
+            .field("kdf_fingerprint", &self.kdf_fingerprint)
+            .finish_non_exhaustive()
+    }
+}
+
+fn kdf_fingerprint(parameters: &KdfParameters) -> [u8; 32] {
+    let mut dict = parameters.dict.clone();
+    // KDBX 3.1 stores its KDF UUID outside the variant dictionary. Normalize
+    // the optional KDBX4 $UUID entry so both representations fingerprint alike.
+    dict.remove("$UUID");
+    let serialized = dict.serialize();
+    HashEngine::sha256_multi(&[parameters.kdf_uuid.as_bytes(), &serialized])
 }
 
 fn decode_xml_key_file(contents: &[u8]) -> DatabaseResult<Vec<u8>> {
@@ -274,9 +341,9 @@ fn decode_hex(value: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-impl std::fmt::Debug for CompositeKey {
+impl std::fmt::Debug for CompositeCredentials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompositeKey")
+        f.debug_struct("CompositeCredentials")
             .field("has_password", &self.password_data.is_some())
             .field("has_key_file", &self.key_file_data.is_some())
             .field("has_hardware_key", &self.hardware_key.is_some())
@@ -284,7 +351,7 @@ impl std::fmt::Debug for CompositeKey {
     }
 }
 
-impl Default for CompositeKey {
+impl Default for CompositeCredentials {
     fn default() -> Self {
         Self::new()
     }
@@ -293,80 +360,76 @@ impl Default for CompositeKey {
 /// Master credential wrapper.
 #[derive(Debug)]
 pub struct MasterCredential {
-    pub composite_key: CompositeKey,
+    pub credentials: CompositeCredentials,
 }
 
 impl MasterCredential {
-    pub fn new(composite_key: CompositeKey) -> Self {
-        Self { composite_key }
+    pub fn new(credentials: CompositeCredentials) -> Self {
+        Self { credentials }
     }
 
     pub fn from_password(password: &[u8]) -> DatabaseResult<Self> {
         Ok(Self {
-            composite_key: CompositeKey::new().with_password(password)?,
+            credentials: CompositeCredentials::new().with_password(password)?,
         })
     }
 
-    pub fn build_raw_key(&self) -> DatabaseResult<SecureArray<32>> {
-        self.composite_key.build_raw_key()
+    pub fn derive_key(&self, parameters: &KdfParameters) -> DatabaseResult<CompositeKey> {
+        self.credentials.derive_key(parameters)
     }
-}
-
-/// MakeFinalKey - derive the final encryption key from composite key + database headers.
-/// This is the key derivation pipeline: rawKey → KDF transform → hash with masterSeed
-pub fn make_final_key(
-    composite_key: &CompositeKey,
-    master_seed: &[u8],
-    kdf_engine: &dyn KdfEngine,
-    kdf_params: &KdfParameters,
-) -> DatabaseResult<SecureArray<32>> {
-    let raw_key = composite_key.build_raw_key()?;
-
-    // KDF transform
-    let transformed_key =
-        SecureBytes::from_vec(raw_key.unlock(|value| kdf_engine.transform(value, kdf_params))??)?;
-
-    // Final key = SHA-256(masterSeed || transformedKey)
-    let mut combined = Zeroizing::new(Vec::with_capacity(
-        master_seed.len() + transformed_key.len(),
-    ));
-    combined.extend_from_slice(master_seed);
-    transformed_key.unlock_slice(|value| combined.extend_from_slice(value))?;
-
-    let mut final_key = HashEngine::sha256(&combined);
-    Ok(SecureArray::from_array_mut(&mut final_key)?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{open_database, save_database, Database, DatabaseVersion, Group, NodeId};
+    use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
 
-    #[test]
-    fn test_composite_key_password_only() {
-        let key = CompositeKey::new().with_password(b"test123").unwrap();
-        let raw = key.build_raw_key().unwrap();
-        assert!(raw.unlock(|value| value.len() == 32).unwrap());
+    fn parameters(seed: u8) -> KdfParameters {
+        let mut parameters = KdfParameters::new(AES_KDF_UUID);
+        parameters.set_byte_array("S", &[seed; 32]);
+        parameters.set_uint64("R", 1);
+        parameters
     }
 
     #[test]
-    fn test_composite_key_multiple_components() {
-        let key = CompositeKey::new()
+    fn same_credentials_and_parameters_derive_the_same_key() {
+        let credentials = CompositeCredentials::new()
             .with_password(b"test123")
+            .unwrap();
+        let first = credentials.derive_key(&parameters(1)).unwrap();
+        let second = credentials.derive_key(&parameters(1)).unwrap();
+        assert_eq!(first.kdf_fingerprint(), second.kdf_fingerprint());
+        assert!(first
+            .with_key(|first| second.with_key(|second| first == second))
             .unwrap()
-            .with_key_file(b"keyfile_data");
-        let raw = key.unwrap().build_raw_key().unwrap();
-        assert!(raw.unlock(|value| value.len() == 32).unwrap());
+            .unwrap());
     }
 
     #[test]
-    fn test_composite_key_deterministic() {
-        let key1 = CompositeKey::new().with_password(b"test").unwrap();
-        let key2 = CompositeKey::new().with_password(b"test").unwrap();
-        let raw1 = key1.build_raw_key().unwrap();
-        let raw2 = key2.build_raw_key().unwrap();
-        assert!(raw1
-            .unlock(|left| raw2.unlock(|right| left == right))
+    fn changed_kdf_parameters_change_the_key_and_fingerprint() {
+        let credentials = CompositeCredentials::new()
+            .with_password(b"test123")
+            .unwrap();
+        let first = credentials.derive_key(&parameters(1)).unwrap();
+        let second = credentials.derive_key(&parameters(2)).unwrap();
+        assert_ne!(first.kdf_fingerprint(), second.kdf_fingerprint());
+        assert!(!first.matches(&parameters(2)));
+    }
+
+    #[test]
+    fn different_credentials_derive_different_keys() {
+        let first = CompositeCredentials::new()
+            .with_password(b"first")
+            .unwrap()
+            .derive_key(&parameters(1))
+            .unwrap();
+        let second = CompositeCredentials::new()
+            .with_password(b"second")
+            .unwrap()
+            .derive_key(&parameters(1))
+            .unwrap();
+        assert!(first
+            .with_key(|first| second.with_key(|second| first != second))
             .unwrap()
             .unwrap());
     }
@@ -385,19 +448,19 @@ mod tests {
             "<KeyFile><Meta><Version>2.0</Version></Meta><Key><Data Hash=\"{hash_prefix}\">{hex}</Data></Key></KeyFile>"
         );
 
-        let expected = CompositeKey::new()
+        let expected = CompositeCredentials::new()
             .with_key_file(&key_bytes)
             .unwrap()
-            .build_raw_key()
+            .derive_key(&parameters(1))
             .unwrap();
         for contents in [hex.as_bytes(), xml_v1.as_bytes(), xml_v2.as_bytes()] {
-            let actual = CompositeKey::new()
+            let actual = CompositeCredentials::new()
                 .with_key_file_contents(contents)
                 .unwrap()
-                .build_raw_key()
+                .derive_key(&parameters(1))
                 .unwrap();
             assert!(expected
-                .unlock(|left| actual.unlock(|right| left == right))
+                .with_key(|left| actual.with_key(|right| left == right))
                 .unwrap()
                 .unwrap());
         }
@@ -410,55 +473,23 @@ mod tests {
             "42".repeat(32)
         );
         assert!(matches!(
-            CompositeKey::new().with_key_file_contents(xml.as_bytes()),
+            CompositeCredentials::new().with_key_file_contents(xml.as_bytes()),
             Err(DatabaseError::IntegrityError(_))
         ));
     }
 
     #[test]
-    fn test_composite_key_restores_independent_raw_key_clones() {
-        let expected = [7; 32];
-        let mut value = expected;
-        let key = CompositeKey::from_raw_key(SecureArray::from_array_mut(&mut value).unwrap());
-
-        let mut first = key.build_raw_key().unwrap();
-        first.unlock_mut(|value| value.fill(0)).unwrap();
-        let second = key.build_raw_key().unwrap();
-
-        assert!(second.unlock(|value| value == &expected).unwrap());
-    }
-
-    #[test]
-    fn test_raw_composite_key_rejects_components() {
-        fn raw_key() -> SecureArray<32> {
-            SecureArray::from_slice(&[7; 32]).unwrap()
-        }
-
-        assert!(matches!(
-            CompositeKey::from_raw_key(raw_key()).with_password(b"password"),
-            Err(DatabaseError::InvalidKey)
-        ));
-        assert!(matches!(
-            CompositeKey::from_raw_key(raw_key()).with_key_file(b"key file"),
-            Err(DatabaseError::InvalidKey)
-        ));
-        assert!(matches!(
-            CompositeKey::from_raw_key(raw_key()).with_hardware_key(b"hardware key"),
-            Err(DatabaseError::InvalidKey)
-        ));
-    }
-
-    #[test]
-    fn test_raw_composite_key_opens_password_database_without_rehashing() {
-        let password_key = CompositeKey::new().with_password(b"password").unwrap();
-        let restored_key = CompositeKey::from_raw_key(password_key.build_raw_key().unwrap());
-        let mut database = Database::new(DatabaseVersion::KDBX4);
-        let root_id = NodeId::new_uuid();
-        database.groups.insert(root_id, Group::new(root_id));
-        database.root_group_id = Some(root_id);
-        let mut bytes = Vec::new();
-
-        save_database(&mut bytes, &database, &password_key).unwrap();
-        open_database(bytes.as_slice(), &restored_key).unwrap();
+    fn derived_runtime_keys_are_domain_separated() {
+        let key = CompositeCredentials::new()
+            .with_password(b"password")
+            .unwrap()
+            .derive_key(&parameters(1))
+            .unwrap();
+        let first = key.derive_key::<32>(None, b"first").unwrap();
+        let second = key.derive_key::<32>(None, b"second").unwrap();
+        assert!(first
+            .unlock(|first| second.unlock(|second| first != second))
+            .unwrap()
+            .unwrap());
     }
 }

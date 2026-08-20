@@ -680,7 +680,10 @@ async fn recent_database_restores_encrypted_storage_descriptor() {
     )
     .await
     .unwrap();
-    assert_eq!(operations::get_storage_provider::run(&mut core), None);
+    assert_eq!(
+        operations::get_storage_provider::run(&mut core),
+        Some("memory".into())
+    );
     let status = match operations::execute(
         &mut core,
         Operation::GetDatabaseStatus(GetDatabaseStatusArgs {}),

@@ -1,7 +1,7 @@
 use keeless_kdbx::{
-    CompositeKey, Database, DatabaseError, DateInstant, EntryBinary, EntryFieldId,
-    EntryFieldUpdate, EntryPropertiesUpdate as KdbxPropertiesUpdate, EntryUpdate, IconUpdate,
-    NodeId, PreparedEntryUpdate,
+    CompositeCredentials, CompositeKey, Database, DatabaseError, DateInstant, EntryBinary,
+    EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate as KdbxPropertiesUpdate, EntryUpdate,
+    IconUpdate, NodeId, PreparedEntryUpdate,
 };
 use keeless_schema::{
     EmptyResult, EntryAttachmentUpdate, EntryPropertiesUpdate, OperationSuccess, UpdateEntryArgs,
@@ -230,24 +230,22 @@ pub(crate) async fn run(
         })
         .transpose()?;
     let key = if let Some(password) = password {
-        let key = CompositeKey::new().with_password(password)?;
+        let credentials = CompositeCredentials::new().with_password(password)?;
         core.handle
             .as_ref()
             .ok_or(CoreError::DatabaseLocked)?
-            .verify_credentials(&key)?;
-        key
+            .derive_key(&credentials)?
     } else if let Some(credential) = &core.credential {
         credential.restore_key()?
     } else {
         let password = core
             .request_password(crate::PasswordInputMode::Save)
             .await?;
-        let key = CompositeKey::new().with_password(&password)?;
+        let credentials = CompositeCredentials::new().with_password(&password)?;
         core.handle
             .as_ref()
             .ok_or(CoreError::DatabaseLocked)?
-            .verify_credentials(&key)?;
-        key
+            .derive_key(&credentials)?
     };
     let timestamp_ms = core.clock.now_millis();
     let mut attachments = Vec::with_capacity(attachment_updates.len());

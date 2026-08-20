@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use keeless_kdbx::{
-    diagnose_database, CompositeKey, DatabaseError, DiagnosticFailure, DiagnosticOptions,
+    diagnose_database, CompositeCredentials, DatabaseError, DiagnosticFailure, DiagnosticOptions,
     DiagnosticReport, DiagnosticStage, DiagnosticStageStatus,
 };
 use serde::Serialize;
@@ -87,7 +87,7 @@ fn run(args: Args) -> Result<bool, ()> {
         size_bytes,
     };
 
-    let mut key = CompositeKey::new();
+    let mut key = CompositeCredentials::new();
     if !args.no_password {
         let password = match rpassword::prompt_password("Password: ") {
             Ok(password) => Zeroizing::new(password),
@@ -311,7 +311,9 @@ fn error_class(error: &DatabaseError) -> &'static str {
         DatabaseError::Io(_) | DatabaseError::FileNotFound(_) => "io",
         DatabaseError::InvalidSignature(_) => "invalid_signature",
         DatabaseError::InvalidVersion(_) => "invalid_version",
-        DatabaseError::InvalidCredentials | DatabaseError::InvalidKey => "invalid_credentials",
+        DatabaseError::InvalidCredentials
+        | DatabaseError::InvalidKey
+        | DatabaseError::KdfParametersMismatch => "invalid_credentials",
         DatabaseError::IntegrityError(_) => "integrity",
         DatabaseError::DecryptionError(_) => "decryption",
         DatabaseError::CompressionError(_) => "compression",
@@ -323,6 +325,7 @@ fn error_class(error: &DatabaseError) -> &'static str {
         DatabaseError::EncryptionError(_) => "encryption",
         DatabaseError::NotLoaded
         | DatabaseError::AlreadyLoaded
+        | DatabaseError::MissingKdfParameters
         | DatabaseError::MergeError(_)
         | DatabaseError::SearchError(_) => "database",
     }

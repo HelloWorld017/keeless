@@ -66,17 +66,19 @@ impl KeelessCore {
             }
         };
         self.extensions.unlock(handle.database(), &key)?;
-        let database = self
-            .handle
-            .as_ref()
-            .ok_or(CoreError::DatabaseLocked)?
-            .checkpoint_bytes()
-            .to_vec();
+        let database = handle.checkpoint_bytes().to_vec();
         let cache = self
             .journal
             .as_ref()
             .ok_or(CoreError::DatabaseLocked)?
-            .encode_cache(&database)?;
+            .encode_cache(
+                &database,
+                handle
+                    .database()
+                    .kdf_parameters
+                    .as_ref()
+                    .ok_or(CoreError::Crypto)?,
+            )?;
         if let Err(error) = self.persistence.write_cache(&cache).await {
             self.sync_extension.status = SyncStatus::Error;
             self.sync_extension.error = Some((&error).into());

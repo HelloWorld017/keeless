@@ -5,8 +5,8 @@ use std::sync::{
 
 use keeless_kdbx::kdbx::template;
 use keeless_kdbx::{
-    Database, DatabaseVersion, Entry, EntryBinary, EntryFieldSelector, Group, IconImageCustom,
-    IconImageStandard, NodeId, ProtectedString, save_database,
+    CompositeCredentials, Database, DatabaseVersion, Entry, EntryBinary, EntryFieldSelector, Group,
+    IconImageCustom, IconImageStandard, NodeId, ProtectedString, save_database,
 };
 use keeless_schema::{
     AddEntryArgs, AddEntryFromTemplateArgs, AddGroupArgs, DatabaseNodeId, DeleteEntryArgs,
@@ -415,7 +415,8 @@ pub(super) fn database_bytes(password: &[u8]) -> Vec<u8> {
     root.title = "Root".into();
     database.groups.insert(root_id, root);
     database.root_group_id = Some(root_id);
-    let key = CompositeKey::new().with_password(password).unwrap();
+    let credentials = CompositeCredentials::new().with_password(password).unwrap();
+    let key = keeless_kdbx::initialize_database_key(&mut database, &credentials).unwrap();
     let mut bytes = Vec::new();
     save_database(&mut bytes, &database, &key).unwrap();
     bytes
@@ -510,7 +511,8 @@ pub(super) fn query_database_bytes(password: &[u8]) -> (Vec<u8>, QueryIds) {
     database.entries.insert(child_entry_id, child_entry);
     database.entries.insert(nested_entry_id, nested_entry);
 
-    let key = CompositeKey::new().with_password(password).unwrap();
+    let credentials = CompositeCredentials::new().with_password(password).unwrap();
+    let key = keeless_kdbx::initialize_database_key(&mut database, &credentials).unwrap();
     let mut bytes = Vec::new();
     save_database(&mut bytes, &database, &key).unwrap();
     (bytes, ids)

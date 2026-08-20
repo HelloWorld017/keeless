@@ -16,8 +16,6 @@ use crate::crypto::HashEngine;
 use crate::kdbx::file::header::{
     header_field_4, inner_header_field_4, CrsAlgorithm, KDBX_SIGNATURE_1, KDBX_SIGNATURE_2,
 };
-use crate::kdbx::kdf::argon2_kdf::ARGON2ID_UUID;
-use crate::kdbx::kdf::create_kdf;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::stream::hmac_block_stream::{compute_header_hmac, write_hmac_block_stream};
 use crate::kdbx::xml::KdbxXmlWriter;
@@ -33,42 +31,27 @@ pub fn write_kdbx4<W: Write>(
     database: &Database,
     composite_key: &CompositeKey,
 ) -> DatabaseResult<()> {
-    write_kdbx4_with_credentials(writer, database, composite_key, composite_key)
-}
-
-pub(crate) fn write_kdbx4_with_credentials<W: Write>(
-    writer: &mut W,
-    database: &Database,
-    memory_key: &CompositeKey,
-    file_key: &CompositeKey,
-) -> DatabaseResult<()> {
     // 1. Generate header parameters
     let master_seed = generate_random_bytes(32)?;
     let encryption_iv = generate_random_bytes(database.encryption_algorithm.iv_length())?;
     let inner_stream_key = SecureBytes::from_vec(generate_random_bytes(64)?)?;
 
-    // Get KDF parameters (use existing or default)
-    let kdf_uuid = database
+    // Normal saves retain their KDF parameters and never repeat the DB KDF.
+    let kdf_params = database
         .kdf_parameters
         .as_ref()
-        .map(|p| p.kdf_uuid)
-        .unwrap_or(ARGON2ID_UUID);
-    let kdf =
-        create_kdf(&kdf_uuid).ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
-    let mut kdf_params = database
-        .kdf_parameters
-        .clone()
-        .unwrap_or_else(|| kdf.default_parameters());
-    kdf.randomize(&mut kdf_params)?;
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    if !composite_key.matches(kdf_params) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
 
     // 2. Derive master key
-    let raw_key = file_key.build_raw_key()?;
-    let transformed =
-        SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &kdf_params))??)?;
-    let mut master_key_bytes =
-        transformed.unlock_slice(|value| HashEngine::sha256_multi(&[&master_seed, value]))?;
-    let mut hmac_key_bytes = transformed
-        .unlock_slice(|value| HashEngine::sha512_multi(&[&master_seed, value, &[0x01]]))?;
+    let (mut master_key_bytes, mut hmac_key_bytes) = composite_key.with_key(|transformed| {
+        (
+            HashEngine::sha256_multi(&[&master_seed, transformed]),
+            HashEngine::sha512_multi(&[&master_seed, transformed, &[0x01]]),
+        )
+    })?;
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
     let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
 
@@ -81,7 +64,8 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
             inner_stream.process(data)?;
         }
     }
-    let xml = KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), memory_key)?;
+    let xml =
+        KdbxXmlWriter::write_with_credentials(database, inner_stream.as_mut(), composite_key)?;
     let xml_bytes = Zeroizing::new(xml.into_bytes());
 
     // 4. Build and then compress the complete inner payload.
@@ -109,7 +93,7 @@ pub(crate) fn write_kdbx4_with_credentials<W: Write>(
         database,
         &master_seed,
         &encryption_iv,
-        &kdf_params,
+        kdf_params,
     )?;
 
     // 8. Compute the unkeyed header hash and keyed header HMAC.
@@ -260,7 +244,7 @@ mod tests {
     use crate::kdbx::file::kdbx4_reader::read_kdbx4;
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
-    use crate::model::db::composite_key::CompositeKey;
+    use crate::model::db::composite_key::CompositeCredentials;
     use crate::model::db::database::DatabaseVersion;
     use crate::model::entry::{Entry, EntryBinary};
     use crate::model::group::Group;
@@ -288,7 +272,10 @@ mod tests {
         db.groups.insert(root_id, root);
         db.root_group_id = Some(root_id);
 
-        let key = CompositeKey::new().with_password(b"test_pass").unwrap();
+        let credentials = CompositeCredentials::new()
+            .with_password(b"test_pass")
+            .unwrap();
+        let key = crate::initialize_database_key(&mut db, &credentials).unwrap();
 
         // Write
         let mut buf = Vec::new();

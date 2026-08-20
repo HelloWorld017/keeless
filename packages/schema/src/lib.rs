@@ -18,6 +18,7 @@ pub struct RecentDatabase {
     pub id: String,
     pub name: String,
     pub storage_type: String,
+    pub descriptor: StorageDescriptor,
     pub last_opened_at_ms: i64,
 }
 

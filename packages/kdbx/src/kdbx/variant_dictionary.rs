@@ -131,6 +131,10 @@ impl VariantDictionary {
             .insert(name.to_string(), VdValue::ByteArray(value.to_vec()));
     }
 
+    pub fn remove(&mut self, name: &str) {
+        self.dict.remove(name);
+    }
+
     pub fn len(&self) -> usize {
         self.dict.len()
     }
@@ -255,7 +259,9 @@ impl VariantDictionary {
     pub fn write_to<W: Write>(&self, writer: &mut W) -> DatabaseResult<()> {
         writer.write_u16::<LittleEndian>(VD_VERSION)?;
 
-        for (name, vd) in &self.dict {
+        let mut entries = self.dict.iter().collect::<Vec<_>>();
+        entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+        for (name, vd) in entries {
             let name_bytes = name.as_bytes();
             writer.write_u8(match vd {
                 VdValue::UInt32(_) => vd_type::UINT32,

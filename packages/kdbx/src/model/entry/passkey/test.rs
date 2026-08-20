@@ -126,7 +126,14 @@ fn database_with_entries(entries: Vec<Entry>) -> (Database, CompositeKey) {
     database.root_group_id = Some(root_id);
     database.groups.insert(root_id, root);
 
-    let composite_key = CompositeKey::new().with_password(b"test-password").unwrap();
+    let mut parameters = crate::KdfParameters::new(crate::kdbx::kdf::aes_kdf::AES_KDF_UUID);
+    parameters.set_byte_array("S", &[0x66; 32]);
+    parameters.set_uint64("R", 1);
+    let composite_key = crate::CompositeCredentials::new()
+        .with_password(b"test-password")
+        .unwrap()
+        .derive_key(&parameters)
+        .unwrap();
     database
         .protect_entry_strings(&composite_key)
         .expect("protecting entry strings should succeed");

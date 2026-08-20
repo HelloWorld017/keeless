@@ -3,8 +3,8 @@ use crate::{
     extensions::password_session::PasswordSessionExtension,
 };
 use keeless_kdbx::{
-    CompositeKey, Database, DatabaseVersion, Group, IconImage, IconImageStandard, NodeId,
-    get_builtin_templates,
+    CompositeCredentials, Database, DatabaseVersion, Group, IconImage, IconImageStandard, NodeId,
+    get_builtin_templates, initialize_database_key,
 };
 use keeless_schema::{CreateArgs, EmptyResult, OperationSuccess};
 use keeless_sync::{FileHandle, StorageErrorKind, SyncError, SyncOptions};
@@ -32,15 +32,12 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
         return Err(CoreError::DatabaseAlreadyExists);
     }
 
-    let key = CompositeKey::new().with_password(password)?;
-    let raw_key = key.build_raw_key()?;
     core.persistence
         .quarantine_journal("journal predates newly created database")
         .await?;
     core.persistence
         .quarantine_cache("cache predates newly created database")
         .await?;
-    let journal = super::mutations::MutationCoordinator::new(&raw_key, database_id, 0)?;
     let mut database = Database::new(DatabaseVersion::KDBX4);
     let root_id = NodeId::new_uuid();
     let mut root = Group::new(root_id);
@@ -61,6 +58,9 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             &templates_id,
         );
     }
+    let credentials = CompositeCredentials::new().with_password(password)?;
+    let key = initialize_database_key(&mut database, &credentials)?;
+    let journal = super::mutations::MutationCoordinator::new(&key, database_id, 0)?;
 
     let handle =
         match FileHandle::create(provider, path, database, &key, SyncOptions::default()).await {
@@ -71,10 +71,17 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             }
             Err(error) => return Err(error.into()),
         };
-    let cache = journal.encode_cache(handle.checkpoint_bytes())?;
+    let cache = journal.encode_cache(
+        handle.checkpoint_bytes(),
+        handle
+            .database()
+            .kdf_parameters
+            .as_ref()
+            .ok_or(CoreError::Crypto)?,
+    )?;
     core.persistence.write_cache(&cache).await?;
     core.persistence.clear_journal().await?;
-    if let Err(error) = core.activate_database_state(&raw_key).await {
+    if let Err(error) = core.activate_database_state(&key).await {
         core.drop_core_server();
         core.encrypted_state = None;
         return Err(error);
@@ -90,7 +97,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     let credential = if core.settings.paranoia_mode {
         None
     } else {
-        Some(CredentialVault::wrap(&raw_key)?)
+        Some(CredentialVault::wrap(&key)?)
     };
     core.extensions.unlock(handle.database(), &key)?;
     core.credential = credential;

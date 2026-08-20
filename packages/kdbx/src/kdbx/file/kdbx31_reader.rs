@@ -4,7 +4,7 @@
 //!           → hashed block stream → decompress → inner stream decrypt → XML → Database
 
 use base64::Engine;
-use keeless_secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::SecureArray;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::io::{BufRead, Read};
@@ -17,12 +17,11 @@ use crate::crypto::HashEngine;
 use crate::kdbx::diagnostics::{DiagnosticContext, DiagnosticStage};
 use crate::kdbx::file::header::KdbxHeader31;
 use crate::kdbx::file::reader::{DatabaseReader, TeeReader};
-use crate::kdbx::kdf::aes_kdf::{AesKdf, AES_KDF_UUID};
-use crate::kdbx::kdf::kdf_engine::KdfEngine;
+use crate::kdbx::kdf::aes_kdf::AES_KDF_UUID;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::stream::hashed_block::HashedBlockReader;
 use crate::kdbx::xml::KdbxXmlReader;
-use crate::model::db::composite_key::CompositeKey;
+use crate::model::db::composite_key::{CompositeCredentials, CompositeKey};
 use crate::model::db::database::{Database, DatabaseVersion};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
@@ -35,11 +34,38 @@ pub fn read_kdbx31<R: Read>(
     read_kdbx31_diagnostic(reader, composite_key, &mut diagnostics)
 }
 
+pub(crate) fn read_kdbx31_with_credentials_diagnostic<R: Read>(
+    reader: &mut R,
+    credentials: &CompositeCredentials,
+    diagnostics: &mut DiagnosticContext<'_>,
+) -> DatabaseResult<(Database, CompositeKey)> {
+    read_kdbx31_with_key_deriver(reader, |params| credentials.derive_key(params), diagnostics)
+}
+
 pub(crate) fn read_kdbx31_diagnostic<R: Read>(
     reader: &mut R,
     composite_key: &CompositeKey,
     diagnostics: &mut DiagnosticContext<'_>,
 ) -> DatabaseResult<Database> {
+    read_kdbx31_with_key_deriver(
+        reader,
+        |params| {
+            if composite_key.matches(params) {
+                composite_key.try_clone()
+            } else {
+                Err(DatabaseError::KdfParametersMismatch)
+            }
+        },
+        diagnostics,
+    )
+    .map(|(database, _)| database)
+}
+
+fn read_kdbx31_with_key_deriver<R: Read>(
+    reader: &mut R,
+    derive_composite_key: impl FnOnce(&KdfParameters) -> DatabaseResult<CompositeKey>,
+    diagnostics: &mut DiagnosticContext<'_>,
+) -> DatabaseResult<(Database, CompositeKey)> {
     // 1. Read and verify signature while retaining the exact header bytes.
     let mut header_buf = Vec::new();
     let version = {
@@ -63,10 +89,16 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
     )?;
     diagnostics.set_kdbx31_header(&header);
 
-    // 3. Derive final key
+    // 3. Normalize KDF parameters, then derive the transformed key once.
+    let params = kdf_parameters(&header);
+    let composite_key = diagnostics.run(
+        DiagnosticStage::KeyDerivation,
+        || derive_composite_key(&params),
+        |_| None,
+    )?;
     let final_key = diagnostics.run(
         DiagnosticStage::KeyDerivation,
-        || derive_kdbx31_key(composite_key, &header),
+        || derive_kdbx31_key(&composite_key, &header, &params),
         |_| None,
     )?;
 
@@ -190,9 +222,11 @@ pub(crate) fn read_kdbx31_diagnostic<R: Read>(
     database.version = DatabaseVersion::KDBX31;
     database.encryption_algorithm = header.encryption_algorithm;
     database.compression = header.compression;
+    database.file_version = header.version;
+    database.kdf_parameters = Some(params);
     database.loaded = true;
 
-    Ok(database)
+    Ok((database, composite_key))
 }
 
 fn verify_kdbx31_header_hash(xml_data: &[u8], header: &[u8]) -> DatabaseResult<()> {
@@ -313,32 +347,29 @@ fn decode_kdbx31_header_hash(value: &str) -> DatabaseResult<[u8; 32]> {
 fn derive_kdbx31_key(
     composite_key: &CompositeKey,
     header: &KdbxHeader31,
+    params: &KdfParameters,
 ) -> DatabaseResult<SecureArray<32>> {
-    let raw_key = composite_key.build_raw_key()?;
+    if !composite_key.matches(params) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
+    let mut final_key = composite_key
+        .with_key(|transformed| HashEngine::sha256_multi(&[&header.master_seed, transformed]))?;
+    Ok(SecureArray::from_array_mut(&mut final_key)?)
+}
 
-    // Build KDF parameters from header
+fn kdf_parameters(header: &KdbxHeader31) -> KdfParameters {
     let mut params = KdfParameters::new(AES_KDF_UUID);
+    params.set_uuid_param();
     params.set_byte_array("S", &header.transform_seed);
     params.set_uint64("R", header.transform_rounds);
-
-    // Transform key with AES-KDF
-    let kdf = AesKdf;
-    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, &params))??)?;
-
-    // Final key = SHA-256(masterSeed || transformedKey)
-    let mut combined = Zeroizing::new(Vec::with_capacity(
-        header.master_seed.len() + transformed.len(),
-    ));
-    combined.extend_from_slice(&header.master_seed);
-    transformed.unlock_slice(|value| combined.extend_from_slice(value))?;
-    let mut final_key = HashEngine::sha256(combined.as_slice());
-    Ok(SecureArray::from_array_mut(&mut final_key)?)
+    params
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::db::composite_key::CompositeKey;
+    use crate::SecureArray;
 
     #[test]
     fn test_invalid_signature_rejected() {
@@ -347,7 +378,8 @@ mod tests {
         data.extend_from_slice(&0xDEADBEEFu32.to_le_bytes());
         data.extend_from_slice(&0x00030001u32.to_le_bytes());
 
-        let key = CompositeKey::new().with_password(b"test").unwrap();
+        let key =
+            CompositeKey::from_derived_key(SecureArray::from_slice(&[0; 32]).unwrap(), [0; 32]);
         let mut cursor = std::io::Cursor::new(data);
         let result = read_kdbx31(&mut cursor, &key);
         assert!(result.is_err());

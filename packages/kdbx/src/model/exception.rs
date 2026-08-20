@@ -24,6 +24,12 @@ pub enum DatabaseError {
     #[error("Invalid credentials")]
     InvalidCredentials,
 
+    #[error("Database has no KDF parameters")]
+    MissingKdfParameters,
+
+    #[error("Database KDF parameters do not match the active key")]
+    KdfParametersMismatch,
+
     #[error("Encryption error: {0}")]
     EncryptionError(String),
 

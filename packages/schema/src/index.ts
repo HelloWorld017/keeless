@@ -9,6 +9,7 @@ export type RecentDatabase = {
   id: string;
   name: string;
   storageType: string;
+  descriptor: StorageDescriptor;
   lastOpenedAtMs: number;
 };
 

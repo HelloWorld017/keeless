@@ -477,7 +477,7 @@ mod tests {
     use crate::kdbx::kdf::KdfParameters;
     use crate::model::core::node::NodeId;
     use crate::model::core::security::ProtectedString;
-    use crate::model::db::DatabaseVersion;
+    use crate::model::db::{CompositeCredentials, DatabaseVersion};
 
     fn make_entry(id: u8, title: &str, username: &str) -> Entry {
         let mut e = Entry::new(NodeId::from_int(id as i32));
@@ -593,8 +593,10 @@ mod tests {
         let mut entry = Entry::new(entry_id);
         entry.set_password(ProtectedString::new_protected("needle-secret"));
         database.entries.insert(entry_id, entry);
-        let key = CompositeKey::new()
+        let key = CompositeCredentials::new()
             .with_password(b"search password")
+            .unwrap()
+            .derive_key(database.kdf_parameters.as_ref().unwrap())
             .unwrap();
         database.protect_entry_strings(&key).unwrap();
 
@@ -609,7 +611,11 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry_id, entry_id);
 
-        let wrong = CompositeKey::new().with_password(b"wrong").unwrap();
+        let wrong = CompositeCredentials::new()
+            .with_password(b"wrong")
+            .unwrap()
+            .derive_key(database.kdf_parameters.as_ref().unwrap())
+            .unwrap();
         assert!(SearchHelper::search_database(&database, Some(&wrong), &params).is_err());
     }
 
@@ -631,8 +637,10 @@ mod tests {
         sealed.add_custom_field("Secret", ProtectedString::new_protected("needle custom"));
         database.entries.insert(sealed_id, sealed);
 
-        let key = CompositeKey::new()
+        let key = CompositeCredentials::new()
             .with_password(b"search password")
+            .unwrap()
+            .derive_key(database.kdf_parameters.as_ref().unwrap())
             .unwrap();
         database.protect_entry_strings(&key).unwrap();
 

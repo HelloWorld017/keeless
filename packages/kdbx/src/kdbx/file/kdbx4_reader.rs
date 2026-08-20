@@ -6,7 +6,7 @@
 use std::io::Read;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use keeless_secure_types::{SecureArray, SecureBytes};
+use keeless_secure_types::SecureArray;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::crypto::cipher_engine::create_cipher_engine;
@@ -20,7 +20,6 @@ use crate::kdbx::file::header::{
     FILE_VERSION_4, KDBX_SIGNATURE_1, KDBX_SIGNATURE_2,
 };
 use crate::kdbx::file::reader::TeeReader;
-use crate::kdbx::kdf::create_kdf;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::kdbx::limits::{
     MAX_INNER_HEADER_FIELD_SIZE, MAX_INNER_HEADER_SIZE, MAX_OUTER_HEADER_FIELD_SIZE,
@@ -28,7 +27,7 @@ use crate::kdbx::limits::{
 };
 use crate::kdbx::stream::hmac_block_stream::{compute_header_hmac, read_hmac_block_stream};
 use crate::kdbx::xml::KdbxXmlReader;
-use crate::model::db::composite_key::CompositeKey;
+use crate::model::db::composite_key::{CompositeCredentials, CompositeKey};
 use crate::model::db::database::{Database, DatabaseVersion};
 use crate::model::exception::{DatabaseError, DatabaseResult};
 
@@ -41,11 +40,38 @@ pub fn read_kdbx4<R: Read>(
     read_kdbx4_diagnostic(reader, composite_key, &mut diagnostics)
 }
 
+pub(crate) fn read_kdbx4_with_credentials_diagnostic<R: Read>(
+    reader: &mut R,
+    credentials: &CompositeCredentials,
+    diagnostics: &mut DiagnosticContext<'_>,
+) -> DatabaseResult<(Database, CompositeKey)> {
+    read_kdbx4_with_key_deriver(reader, |params| credentials.derive_key(params), diagnostics)
+}
+
 pub(crate) fn read_kdbx4_diagnostic<R: Read>(
     reader: &mut R,
     composite_key: &CompositeKey,
     diagnostics: &mut DiagnosticContext<'_>,
 ) -> DatabaseResult<Database> {
+    read_kdbx4_with_key_deriver(
+        reader,
+        |params| {
+            if composite_key.matches(params) {
+                composite_key.try_clone()
+            } else {
+                Err(DatabaseError::KdfParametersMismatch)
+            }
+        },
+        diagnostics,
+    )
+    .map(|(database, _)| database)
+}
+
+fn read_kdbx4_with_key_deriver<R: Read>(
+    reader: &mut R,
+    derive_composite_key: impl FnOnce(&KdfParameters) -> DatabaseResult<CompositeKey>,
+    diagnostics: &mut DiagnosticContext<'_>,
+) -> DatabaseResult<(Database, CompositeKey)> {
     // 1. Read and retain the exact version header. The minor version is part
     // of the authenticated header and cannot be reconstructed as 4.0.
     let signature1 = reader.read_u32::<LittleEndian>()?;
@@ -95,10 +121,19 @@ pub(crate) fn read_kdbx4_diagnostic<R: Read>(
         |_| None,
     )?;
 
-    // 4. Derive the separate cipher and HMAC keys.
+    // 4. Derive the transformed key once, then derive file keys from it.
+    let parameters = header
+        .kdf_parameters
+        .as_ref()
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    let composite_key = diagnostics.run(
+        DiagnosticStage::KeyDerivation,
+        || derive_composite_key(parameters),
+        |_| None,
+    )?;
     let (master_key, hmac_key) = diagnostics.run(
         DiagnosticStage::KeyDerivation,
-        || derive_keys(composite_key, &header),
+        || derive_keys(&composite_key, &header),
         |_| None,
     )?;
 
@@ -199,33 +234,26 @@ pub(crate) fn read_kdbx4_diagnostic<R: Read>(
     db.public_custom_data = header.public_custom_data;
     db.header_comment = header.comment;
 
-    Ok(db)
+    Ok((db, composite_key))
 }
 
 /// Derive the encryption key and HMAC base key defined by KDBX4.
 type DerivedKeys = (SecureArray<32>, SecureArray<64>);
 
 fn derive_keys(composite_key: &CompositeKey, header: &KdbxHeader4) -> DatabaseResult<DerivedKeys> {
-    let raw_key = composite_key.build_raw_key()?;
-
-    let kdf_uuid = header
-        .kdf_parameters
-        .as_ref()
-        .map(|p| p.kdf_uuid)
-        .ok_or_else(|| DatabaseError::InvalidFormat("No KDF parameters".into()))?;
-
-    let kdf =
-        create_kdf(&kdf_uuid).ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
     let params = header
         .kdf_parameters
         .as_ref()
-        .ok_or_else(|| DatabaseError::InvalidFormat("No KDF parameters".into()))?;
-
-    let transformed = SecureBytes::from_vec(raw_key.unlock(|key| kdf.transform(key, params))??)?;
-    let mut master_key_bytes = transformed
-        .unlock_slice(|value| HashEngine::sha256_multi(&[&header.master_seed, value]))?;
-    let mut hmac_key_bytes = transformed
-        .unlock_slice(|value| HashEngine::sha512_multi(&[&header.master_seed, value, &[0x01]]))?;
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    if !composite_key.matches(params) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
+    let (mut master_key_bytes, mut hmac_key_bytes) = composite_key.with_key(|transformed| {
+        (
+            HashEngine::sha256_multi(&[&header.master_seed, transformed]),
+            HashEngine::sha512_multi(&[&header.master_seed, transformed, &[0x01]]),
+        )
+    })?;
     let master_key = SecureArray::from_array_mut(&mut master_key_bytes)?;
     let hmac_key = SecureArray::from_array_mut(&mut hmac_key_bytes)?;
     Ok((master_key, hmac_key))
@@ -485,6 +513,7 @@ mod tests {
     use super::*;
     use crate::kdbx::file::header::{KDBX_SIGNATURE_1, KDBX_SIGNATURE_2};
     use crate::model::db::composite_key::CompositeKey;
+    use crate::SecureArray;
 
     #[test]
     fn test_invalid_version_rejected() {
@@ -495,7 +524,8 @@ mod tests {
         data.extend_from_slice(&0x00030001u32.to_le_bytes()); // v3.1
 
         let mut cursor = std::io::Cursor::new(data);
-        let key = CompositeKey::new().with_password(b"test").unwrap();
+        let key =
+            CompositeKey::from_derived_key(SecureArray::from_slice(&[0; 32]).unwrap(), [0; 32]);
         assert!(read_kdbx4(&mut cursor, &key).is_err());
     }
 

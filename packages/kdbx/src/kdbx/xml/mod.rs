@@ -258,7 +258,14 @@ mod tests {
             is_protected: false,
         })
         .collect::<Vec<_>>();
-        let key = crate::CompositeKey::new().with_password(b"test").unwrap();
+        let mut params = crate::KdfParameters::new(crate::kdbx::kdf::aes_kdf::AES_KDF_UUID);
+        params.set_byte_array("S", &[0x11; 32]);
+        params.set_uint64("R", 1);
+        let key = crate::CompositeCredentials::new()
+            .with_password(b"test")
+            .unwrap()
+            .derive_key(&params)
+            .unwrap();
 
         assert!(db
             .update_entry(

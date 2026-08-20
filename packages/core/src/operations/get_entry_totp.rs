@@ -1,7 +1,7 @@
 use keeless_kdbx::{
-    CompositeKey, EntryFieldId, EntryFieldSelector, KEEPASS_TIMEOTP_FIELD_NAMES, OtpParameters,
-    OtpType, TokenCalculator, is_keepass_timeotp_secret_field, parse_keepass_timeotp_fields,
-    parse_otpauth_uri,
+    CompositeCredentials, EntryFieldId, EntryFieldSelector, KEEPASS_TIMEOTP_FIELD_NAMES,
+    OtpParameters, OtpType, TokenCalculator, is_keepass_timeotp_secret_field,
+    parse_keepass_timeotp_fields, parse_otpauth_uri,
 };
 use keeless_schema::{GetEntryTotpArgs, GetEntryTotpResult, OperationSuccess};
 use zeroize::{Zeroize, Zeroizing};
@@ -62,24 +62,22 @@ pub(crate) async fn run(
     };
 
     let key = if let Some(password) = password {
-        let key = CompositeKey::new().with_password(password)?;
+        let credentials = CompositeCredentials::new().with_password(password)?;
         core.handle
             .as_ref()
             .ok_or(CoreError::DatabaseLocked)?
-            .verify_credentials(&key)?;
-        key
+            .derive_key(&credentials)?
     } else if let Some(credential) = &core.credential {
         credential.restore_key()?
     } else {
         let password = core
             .request_password(crate::PasswordInputMode::Reveal)
             .await?;
-        let key = CompositeKey::new().with_password(&password)?;
+        let credentials = CompositeCredentials::new().with_password(&password)?;
         core.handle
             .as_ref()
             .ok_or(CoreError::DatabaseLocked)?
-            .verify_credentials(&key)?;
-        key
+            .derive_key(&credentials)?
     };
 
     let now_ms = core.clock.now_millis();

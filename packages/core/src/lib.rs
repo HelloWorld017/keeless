@@ -17,9 +17,7 @@ use std::{collections::HashMap, sync::Arc};
 use config::{CONFIG_VERSION, PersistedConfig};
 use credential::CredentialVault;
 use database_state::{CONFIG_RECORD, EncryptedDatabaseStateStore};
-use keeless_kdbx::CompositeKey;
-#[cfg(test)]
-use keeless_kdbx::SecureArray;
+use keeless_kdbx::{CompositeCredentials, CompositeKey};
 use keeless_sync::FileHandle;
 use zeroize::Zeroizing;
 
@@ -157,22 +155,22 @@ impl KeelessCore {
             return Err(CoreError::DatabaseLocked);
         }
         if let Some(password) = password {
-            let key = CompositeKey::new().with_password(password)?;
-            self.handle
+            let credentials = CompositeCredentials::new().with_password(password)?;
+            Ok(self
+                .handle
                 .as_ref()
                 .ok_or(CoreError::DatabaseLocked)?
-                .verify_credentials(&key)?;
-            Ok(key)
+                .derive_key(&credentials)?)
         } else if let Some(credential) = &self.credential {
             credential.restore_key()
         } else {
             let password = self.request_password(PasswordInputMode::Save).await?;
-            let key = CompositeKey::new().with_password(&password)?;
-            self.handle
+            let credentials = CompositeCredentials::new().with_password(&password)?;
+            Ok(self
+                .handle
                 .as_ref()
                 .ok_or(CoreError::DatabaseLocked)?
-                .verify_credentials(&key)?;
-            Ok(key)
+                .derive_key(&credentials)?)
         }
     }
 
@@ -249,10 +247,7 @@ impl KeelessCore {
         state.save_record(CONFIG_RECORD, &bytes).await
     }
 
-    pub(crate) async fn activate_database_state(
-        &mut self,
-        raw_key: &keeless_kdbx::SecureArray<32>,
-    ) -> Result<()> {
+    pub(crate) async fn activate_database_state(&mut self, key: &CompositeKey) -> Result<()> {
         let persistence = self.persistence.clone();
         let database_id = self
             .selection
@@ -260,7 +255,7 @@ impl KeelessCore {
             .ok_or(CoreError::NoDatabaseSelected)?
             .database_id
             .clone();
-        let state = EncryptedDatabaseStateStore::new(raw_key, persistence, database_id)?;
+        let state = EncryptedDatabaseStateStore::new(key, persistence, database_id)?;
         let persisted = match state.load_record(CONFIG_RECORD).await? {
             Some(bytes) => {
                 let persisted: PersistedConfig = serde_json::from_slice(&bytes)
@@ -286,54 +281,6 @@ impl KeelessCore {
         self.settings = persisted.settings;
         self.network.activate_core_server(&state).await?;
         self.encrypted_state = Some(state);
-        Ok(())
-    }
-
-    pub(crate) async fn restore_recent_selection(
-        &mut self,
-        raw_key: &keeless_kdbx::SecureArray<32>,
-    ) -> Result<()> {
-        let database_id = self
-            .selection
-            .as_ref()
-            .ok_or(CoreError::NoDatabaseSelected)?
-            .database_id
-            .clone();
-        if self
-            .selection
-            .as_ref()
-            .is_some_and(|selection| selection.descriptor.is_some())
-        {
-            return Ok(());
-        }
-        let state = EncryptedDatabaseStateStore::new(
-            raw_key,
-            self.persistence.clone(),
-            database_id.clone(),
-        )?;
-        let bytes = state
-            .load_record(CONFIG_RECORD)
-            .await?
-            .ok_or(CoreError::RecentDatabaseUnavailable)?;
-        let persisted: PersistedConfig = serde_json::from_slice(&bytes)
-            .map_err(|error| CoreError::InvalidConfig(error.to_string()))?;
-        persisted.validate()?;
-        let descriptor = persisted
-            .storage
-            .ok_or(CoreError::RecentDatabaseUnavailable)?;
-        let storage = self
-            .storage_providers
-            .get(&descriptor.provider)
-            .cloned()
-            .ok_or_else(|| CoreError::UnknownStorageProvider(descriptor.provider.clone()))?;
-        let normalized_path = storage.get_normalized_path(&descriptor.path)?;
-        let resolved_id = DatabaseId::from_storage(&descriptor.provider, &normalized_path)?;
-        if resolved_id != database_id {
-            return Err(CoreError::RecentDatabaseMismatch);
-        }
-        let selection = self.selection.as_mut().expect("selection was checked");
-        selection.descriptor = Some(descriptor);
-        selection.storage = Some(storage);
         Ok(())
     }
 }

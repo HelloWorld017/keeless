@@ -26,9 +26,9 @@ pub use core::{
     SortNodeEnum, TraversalOrder,
 };
 pub use db::{
-    ChangeRecord, ChangeTracker, ChangeType, CompositeKey, Database, DatabaseVersion, DiffResult,
-    EntryFieldSelector, EntryFieldUpdate, EntryPropertiesUpdate, EntryUpdate, IconUpdate,
-    MasterCredential, PreparedEntryUpdate,
+    ChangeRecord, ChangeTracker, ChangeType, CompositeCredentials, CompositeKey, Database,
+    DatabaseVersion, DiffResult, EntryFieldSelector, EntryFieldUpdate, EntryPropertiesUpdate,
+    EntryUpdate, IconUpdate, MasterCredential, PreparedEntryUpdate,
 };
 pub use entry::auto_type::{AutoType, AutoTypeAssociation};
 pub use entry::field_references::{FieldReference, RefTarget};

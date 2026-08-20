@@ -26,8 +26,6 @@ use crate::crypto::compression::CompressionAlgorithm;
 use crate::crypto::encryption_algorithm::EncryptionAlgorithm;
 use crate::crypto::memory_protection::{MemoryProtectionContext, MemoryUnlockSession};
 use crate::kdbx::file::header::{FILE_VERSION_31, FILE_VERSION_4};
-use crate::kdbx::kdf::argon2_kdf::Argon2Kdf;
-use crate::kdbx::kdf::kdf_engine::KdfEngine;
 use crate::kdbx::kdf::kdf_parameters::KdfParameters;
 use crate::model::core::node::NodeId;
 use crate::model::core::security::MemoryProtectionConfig;
@@ -198,15 +196,28 @@ impl Database {
         MemoryUnlockSession::new(composite_key)
     }
 
+    pub(crate) fn rekey_memory_protection(
+        &mut self,
+        old_key: &CompositeKey,
+        new_key: &CompositeKey,
+    ) -> DatabaseResult<()> {
+        let (context, root) = self.create_memory_context(new_key)?;
+        let mut old_unlock = MemoryUnlockSession::new(old_key);
+        root.unlock(|root| {
+            for entry in self.entries.values_mut() {
+                entry.reseal_protected_strings(&mut old_unlock, context.clone(), root)?;
+            }
+            Ok::<_, DatabaseError>(())
+        })??;
+        self.memory_protection_context = Some(context);
+        Ok(())
+    }
+
     fn create_memory_context(
         &self,
         composite_key: &CompositeKey,
     ) -> DatabaseResult<(Arc<MemoryProtectionContext>, SecureArray<32>)> {
-        let parameters = self.kdf_parameters.clone().unwrap_or_else(|| {
-            let kdf = Argon2Kdf::argon2id();
-            kdf.default_parameters()
-        });
-        MemoryProtectionContext::create(composite_key, parameters)
+        MemoryProtectionContext::create(composite_key)
     }
 
     /// Mark the database as modified.

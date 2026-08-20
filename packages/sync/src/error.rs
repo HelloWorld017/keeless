@@ -53,6 +53,9 @@ pub enum SyncError {
     #[error("remote file does not exist")]
     RemoteNotFound,
 
+    #[error("credentials are required because the database KDF changed")]
+    CredentialsRequired,
+
     #[error("storage does not provide an atomic revision")]
     AtomicUpdateUnsupported,
 

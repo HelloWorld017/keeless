@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keeless_kdbx::{
-    open_database, save_database, CompositeKey, Database, DatabaseMerger, MergeResult,
-    MergeStrategy,
+    open_database, open_database_with_key, save_database, CompositeCredentials, CompositeKey,
+    Database, DatabaseMerger, MergeResult, MergeStrategy,
 };
 
 use crate::{
@@ -85,6 +85,29 @@ impl FileHandle {
     pub async fn open(
         provider: Arc<dyn StorageProvider>,
         path: impl Into<String>,
+        credentials: &CompositeCredentials,
+        options: SyncOptions,
+    ) -> Result<(Self, CompositeKey), SyncError> {
+        let path = path.into();
+        let remote = match provider.read(&path, None).await {
+            Ok(remote) => remote,
+            Err(error) if error.kind() == StorageErrorKind::NotFound => {
+                return Err(SyncError::RemoteNotFound);
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let opened = open_database(remote.bytes.as_slice(), credentials)?;
+        let key = opened.key;
+        Ok((
+            Self::from_remote(provider, path, opened.database, remote, options),
+            key,
+        ))
+    }
+
+    /// Opens an existing remote file using a transformed key without a KDF.
+    pub async fn open_with_key(
+        provider: Arc<dyn StorageProvider>,
+        path: impl Into<String>,
         key: &CompositeKey,
         options: SyncOptions,
     ) -> Result<Self, SyncError> {
@@ -96,11 +119,38 @@ impl FileHandle {
             }
             Err(error) => return Err(error.into()),
         };
-        let database = open_database(remote.bytes.as_slice(), key)?;
+        let database = open_with_key(remote.bytes.as_slice(), key)?;
         Ok(Self::from_remote(provider, path, database, remote, options))
     }
 
     /// Opens a locally cached remote representation without contacting storage.
+    pub fn open_cached_with_credentials(
+        provider: Arc<dyn StorageProvider>,
+        path: impl Into<String>,
+        bytes: Vec<u8>,
+        credentials: &CompositeCredentials,
+        options: SyncOptions,
+    ) -> Result<(Self, CompositeKey), SyncError> {
+        let path = path.into();
+        let opened = open_database(bytes.as_slice(), credentials)?;
+        let key = opened.key;
+        Ok((
+            Self {
+                provider,
+                path,
+                database: opened.database,
+                checkpoint: Checkpoint {
+                    bytes,
+                    revision: None,
+                },
+                options,
+                dirty: false,
+            },
+            key,
+        ))
+    }
+
+    /// Opens a cached representation with an already-derived key.
     pub fn open_cached(
         provider: Arc<dyn StorageProvider>,
         path: impl Into<String>,
@@ -109,7 +159,7 @@ impl FileHandle {
         options: SyncOptions,
     ) -> Result<Self, SyncError> {
         let path = path.into();
-        let database = open_database(bytes.as_slice(), key)?;
+        let database = open_with_key(bytes.as_slice(), key)?;
         Ok(Self {
             provider,
             path,
@@ -146,7 +196,7 @@ impl FileHandle {
                 .into());
             }
         };
-        let database = open_database(bytes.as_slice(), key)?;
+        let database = open_with_key(bytes.as_slice(), key)?;
         Ok(Self {
             provider,
             path,
@@ -228,10 +278,12 @@ impl FileHandle {
         &self.checkpoint.bytes
     }
 
-    /// Verifies credentials against the exact remote representation used as this handle's base.
-    pub fn verify_credentials(&self, key: &CompositeKey) -> Result<(), SyncError> {
-        open_database(self.checkpoint.bytes.as_slice(), key).map(|_| ())?;
-        Ok(())
+    /// Derive a transformed key against this handle's exact base checkpoint.
+    pub fn derive_key(
+        &self,
+        credentials: &CompositeCredentials,
+    ) -> Result<CompositeKey, SyncError> {
+        Ok(open_database(self.checkpoint.bytes.as_slice(), credentials)?.key)
     }
 
     /// Pulls remote changes, merges concurrent edits, and conditionally writes local changes.
@@ -264,7 +316,7 @@ impl FileHandle {
                     });
                 }
 
-                let database = open_database(remote.bytes.as_slice(), key)?;
+                let database = open_with_key(remote.bytes.as_slice(), key)?;
                 if database.root_group_id != self.database.root_group_id {
                     return Err(SyncError::RootGroupMismatch);
                 }
@@ -286,11 +338,11 @@ impl FileHandle {
             let downloaded = remote.bytes != self.checkpoint.bytes;
 
             if downloaded {
-                let source = open_database(remote.bytes.as_slice(), key)?;
+                let source = open_with_key(remote.bytes.as_slice(), key)?;
                 if source.root_group_id != self.database.root_group_id {
                     return Err(SyncError::RootGroupMismatch);
                 }
-                let base = open_database(self.checkpoint.bytes.as_slice(), key)?;
+                let base = open_with_key(self.checkpoint.bytes.as_slice(), key)?;
                 merge_result = DatabaseMerger::with_credentials(self.options.merge_strategy, key)
                     .merge_three_way(&mut target, &source, &base);
             }
@@ -307,7 +359,7 @@ impl FileHandle {
                 .await?
             {
                 WriteOutcome::Applied { revision } => {
-                    self.database = open_database(merged_bytes.as_slice(), key)?;
+                    self.database = open_with_key(merged_bytes.as_slice(), key)?;
                     self.checkpoint = Checkpoint {
                         bytes: merged_bytes,
                         revision,
@@ -339,6 +391,16 @@ fn serialize_database(database: &Database, key: &CompositeKey) -> Result<Vec<u8>
     let mut bytes = Vec::new();
     save_database(&mut bytes, database, key)?;
     Ok(bytes)
+}
+
+fn open_with_key(bytes: &[u8], key: &CompositeKey) -> Result<Database, SyncError> {
+    match open_database_with_key(bytes, key) {
+        Err(keeless_kdbx::DatabaseError::KdfParametersMismatch) => {
+            Err(SyncError::CredentialsRequired)
+        }
+        Err(error) => Err(error.into()),
+        Ok(database) => Ok(database),
+    }
 }
 
 fn require_revision(remote: &RemoteFile) -> Result<Revision, SyncError> {

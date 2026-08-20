@@ -37,7 +37,7 @@ async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
         assert!(!encoded.contains(&id_text(&first.id)));
         assert!(!encoded.contains(&id_text(&second.id)));
         let envelope: serde_json::Value = serde_json::from_slice(line).unwrap();
-        assert_eq!(envelope["version"], 1);
+        assert_eq!(envelope["version"], 2);
         assert_eq!(envelope["sequence"], sequence as u64);
         assert!(
             envelope["nonce"]
@@ -96,7 +96,16 @@ async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
         core.journal
             .as_ref()
             .unwrap()
-            .encode_cache(&cached_database)
+            .encode_cache(
+                &cached_database,
+                core.handle
+                    .as_ref()
+                    .unwrap()
+                    .database()
+                    .kdf_parameters
+                    .as_ref()
+                    .unwrap(),
+            )
             .unwrap(),
     );
     *storage.0.lock().unwrap() = None;

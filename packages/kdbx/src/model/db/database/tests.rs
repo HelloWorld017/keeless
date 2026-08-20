@@ -444,7 +444,14 @@ fn duplicate_entry_rebinds_or_redacts_protected_content() {
     source.is_template = true;
     db.add_entry(source, &root_id);
 
-    let key = CompositeKey::new().with_password(b"password").unwrap();
+    let mut parameters = crate::KdfParameters::new(crate::kdbx::kdf::aes_kdf::AES_KDF_UUID);
+    parameters.set_byte_array("S", &[0x55; 32]);
+    parameters.set_uint64("R", 1);
+    let key = crate::CompositeCredentials::new()
+        .with_password(b"password")
+        .unwrap()
+        .derive_key(&parameters)
+        .unwrap();
     db.protect_entry_strings(&key).unwrap();
 
     let copied_id = db

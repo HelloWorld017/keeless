@@ -1,10 +1,9 @@
 use keeless_kdbx::{
-    CompositeKey, DatabaseMerger, MergeStrategy, open_database, save_database_with_credentials,
+    CompositeCredentials, DatabaseMerger, MergeStrategy, open_database, reencrypt_memory_protection,
 };
 use keeless_schema::{
     MergeTransferredDatabaseArgs, MergeTransferredDatabaseResult, OperationSuccess,
 };
-use zeroize::Zeroizing;
 
 use crate::{
     CoreError, KeelessCore, Result, extensions::password_session::PasswordSessionExtension,
@@ -14,7 +13,8 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: MergeTransferredDatabaseArgs,
 ) -> Result<OperationSuccess> {
-    let source_password = Zeroizing::new(std::mem::take(&mut args.source_password).into_bytes());
+    let source_password =
+        zeroize::Zeroizing::new(std::mem::take(&mut args.source_password).into_bytes());
     let target_password = {
         let now_millis = core.clock.monotonic_millis();
         core.extensions
@@ -29,19 +29,17 @@ pub(super) async fn execute(
         .current_key(target_password.as_ref().map(|password| password.as_slice()))
         .await?;
     let bytes = core.consume_upload_transfer(&args.transfer_id)?;
-    let source_key = CompositeKey::new().with_password(&source_password)?;
-    let source = open_database(bytes.as_slice(), &source_key).map_err(|error| match error {
-        keeless_kdbx::DatabaseError::InvalidCredentials => CoreError::InvalidSourceCredentials,
-        error => error.into(),
-    })?;
+    let source_credentials = CompositeCredentials::new().with_password(&source_password)?;
+    let opened =
+        open_database(bytes.as_slice(), &source_credentials).map_err(|error| match error {
+            keeless_kdbx::DatabaseError::InvalidCredentials => CoreError::InvalidSourceCredentials,
+            error => error.into(),
+        })?;
 
     // Protected values are memory-encrypted with the source key. Re-encrypt the parsed
     // source under the target key before the credential-aware merger compares either side.
-    let source = {
-        let mut rekeyed = Zeroizing::new(Vec::new());
-        save_database_with_credentials(&mut *rekeyed, &source, &source_key, &target_key)?;
-        open_database(rekeyed.as_slice(), &target_key)?
-    };
+    let mut source = opened.database;
+    reencrypt_memory_protection(&mut source, &opened.key, &target_key)?;
     let result = {
         let target = core
             .handle

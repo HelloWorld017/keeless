@@ -1,4 +1,4 @@
-use keeless_kdbx::{CompositeKey, EntryFieldId};
+use keeless_kdbx::{CompositeCredentials, EntryFieldId};
 use keeless_schema::{OperationSuccess, RevealEntryFieldsArgs, RevealEntryFieldsResult};
 
 use crate::model::parse_node_id;
@@ -35,24 +35,22 @@ pub(crate) async fn run(
         })
         .collect::<Result<Vec<_>>>()?;
     let key = if let Some(password) = password {
-        let key = CompositeKey::new().with_password(password)?;
+        let credentials = CompositeCredentials::new().with_password(password)?;
         core.handle
             .as_ref()
             .ok_or(CoreError::DatabaseLocked)?
-            .verify_credentials(&key)?;
-        key
+            .derive_key(&credentials)?
     } else if let Some(credential) = &core.credential {
         credential.restore_key()?
     } else {
         let password = core
             .request_password(crate::PasswordInputMode::Reveal)
             .await?;
-        let key = CompositeKey::new().with_password(&password)?;
+        let credentials = CompositeCredentials::new().with_password(&password)?;
         core.handle
             .as_ref()
             .ok_or(CoreError::DatabaseLocked)?
-            .verify_credentials(&key)?;
-        key
+            .derive_key(&credentials)?
     };
     let handle = core.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
     let values = field_ids

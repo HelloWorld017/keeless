@@ -6,7 +6,7 @@ use chacha20poly1305::{
     aead::{Aead, Payload},
 };
 use hkdf::Hkdf;
-use keeless_kdbx::SecureArray;
+use keeless_kdbx::{CompositeKey, SecureArray};
 use keeless_lesswire::{Error as WireError, Result as WireResult, StateStore, WireFuture};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -16,10 +16,10 @@ use crate::{CoreError, DatabaseId, DatabasePersistence, Result, random_array};
 
 pub(crate) const CONFIG_RECORD: &str = "config";
 pub(crate) const CORE_WIRE_RECORD: &str = "core-wire-state";
-const STATE_VERSION: u8 = 1;
-const ROOT_HKDF_INFO: &[u8] = b"keeless database state root v1";
-const CONFIG_HKDF_INFO: &[u8] = b"keeless database state config v1";
-const CORE_WIRE_HKDF_INFO: &[u8] = b"keeless database state core wire v1";
+const STATE_VERSION: u8 = 2;
+const ROOT_HKDF_INFO: &[u8] = b"keeless/core/state/root/v2";
+const CONFIG_HKDF_INFO: &[u8] = b"keeless/core/state/config/v2";
+const CORE_WIRE_HKDF_INFO: &[u8] = b"keeless/core/state/wire/v2";
 const MAX_STATE_RECORD_SIZE: usize = 128 * 1024;
 
 #[derive(Serialize, Deserialize)]
@@ -39,20 +39,15 @@ pub(crate) struct EncryptedDatabaseStateStore {
 
 impl EncryptedDatabaseStateStore {
     pub(crate) fn new(
-        raw_key: &SecureArray<32>,
+        key: &CompositeKey,
         persistence: Arc<dyn DatabasePersistence>,
         database_id: DatabaseId,
     ) -> Result<Self> {
-        let mut root = [0; 32];
-        raw_key.unlock(|raw| {
-            Hkdf::<Sha256>::new(Some(database_id.as_bytes()), raw)
-                .expand(ROOT_HKDF_INFO, &mut root)
-                .map_err(|_| CoreError::Crypto)
-        })??;
+        let root_key = key.derive_key(Some(database_id.as_bytes()), ROOT_HKDF_INFO)?;
         Ok(Self {
             persistence,
             database_id,
-            root_key: Arc::new(SecureArray::from_array_mut(&mut root)?),
+            root_key: Arc::new(root_key),
         })
     }
 
@@ -62,38 +57,33 @@ impl EncryptedDatabaseStateStore {
             return Ok(None);
         };
         if encoded.len() > MAX_STATE_RECORD_SIZE {
-            return Err(CoreError::InvalidConfig(
-                "encrypted state record is too large".into(),
-            ));
+            return Ok(None);
         }
-        let record: EncryptedRecord = serde_json::from_slice(&encoded)
-            .map_err(|_| CoreError::InvalidConfig("invalid encrypted state record".into()))?;
+        let Ok(record) = serde_json::from_slice::<EncryptedRecord>(&encoded) else {
+            return Ok(None);
+        };
         if record.version != STATE_VERSION {
-            return Err(CoreError::InvalidConfig(
-                "unsupported encrypted state version".into(),
-            ));
+            return Ok(None);
         }
-        let nonce = URL_SAFE_NO_PAD
-            .decode(record.nonce)
-            .map_err(|_| CoreError::InvalidConfig("invalid encrypted state nonce".into()))?;
-        let nonce: [u8; 24] = nonce
-            .try_into()
-            .map_err(|_| CoreError::InvalidConfig("invalid encrypted state nonce".into()))?;
-        let ciphertext = URL_SAFE_NO_PAD
-            .decode(record.ciphertext)
-            .map_err(|_| CoreError::InvalidConfig("invalid encrypted state ciphertext".into()))?;
+        let Ok(nonce) = URL_SAFE_NO_PAD.decode(record.nonce) else {
+            return Ok(None);
+        };
+        let Ok(nonce) = <[u8; 24]>::try_from(nonce.as_slice()) else {
+            return Ok(None);
+        };
+        let Ok(ciphertext) = URL_SAFE_NO_PAD.decode(record.ciphertext) else {
+            return Ok(None);
+        };
         let key = self.record_key(name)?;
-        let plaintext = XChaCha20Poly1305::new((&*key).into())
-            .decrypt(
-                XNonce::from_slice(&nonce),
-                Payload {
-                    msg: &ciphertext,
-                    aad: &self.aad(name),
-                },
-            )
-            .map_err(|_| {
-                CoreError::InvalidConfig("encrypted state authentication failed".into())
-            })?;
+        let Ok(plaintext) = XChaCha20Poly1305::new((&*key).into()).decrypt(
+            XNonce::from_slice(&nonce),
+            Payload {
+                msg: &ciphertext,
+                aad: &self.aad(name),
+            },
+        ) else {
+            return Ok(None);
+        };
         Ok(Some(Zeroizing::new(plaintext)))
     }
 

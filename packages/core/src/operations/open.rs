@@ -18,10 +18,23 @@ pub(crate) async fn run(core: &mut KeelessCore, target: OpenTarget) -> Result<()
         }
         OpenTarget::Database { database_id: id } => {
             let database_id = DatabaseId::from_recent_id(&id)?;
-            if !crate::recent::contains(core, &id).await? {
+            let record = crate::recent::load(core)
+                .await?
+                .databases
+                .into_iter()
+                .find(|database| database.id == id)
+                .ok_or(CoreError::InvalidRecentDatabase)?;
+            let descriptor = record.descriptor;
+            let storage = core
+                .storage_providers
+                .get(&descriptor.provider)
+                .cloned()
+                .ok_or_else(|| CoreError::UnknownStorageProvider(descriptor.provider.clone()))?;
+            let normalized_path = storage.get_normalized_path(&descriptor.path)?;
+            if DatabaseId::from_storage(&descriptor.provider, &normalized_path)? != database_id {
                 return Err(CoreError::InvalidRecentDatabase);
             }
-            (None, None, database_id)
+            (Some(descriptor), Some(storage), database_id)
         }
     };
     // Persistence selection is process-global in desktop hosts. Drop the old handle and
