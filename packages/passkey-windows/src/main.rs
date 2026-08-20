@@ -1,3 +1,4 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
 #[cfg(windows)]
 fn main() {
     if let Err(error) = keeless_passkey_windows::main(std::env::args_os().skip(1)) {
