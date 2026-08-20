@@ -92,6 +92,7 @@ fn run_dialog(
             .with_max_inner_size(size)
             .with_resizable(false)
             .with_maximize_button(false)
+            .with_always_on_top()
             .with_visible(anchor.is_none()),
         ..Default::default()
     };

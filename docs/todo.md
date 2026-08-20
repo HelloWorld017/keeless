@@ -23,11 +23,15 @@
 - [x] native-ui 현재 윈도우와 비슷한 위치에 뜨기
 - [x] 마지막으로 사용한 스토리지 저장
 - [x] WebDAV 싱크 테스트 하기
+- [x] Windows WebAuthn plugin authenticator 구현
+- [x] native-ui는 always on top 적용하기
 - [ ] extension + native messaging host 구현
 - [ ] [windows process hardening](./draft/20260731-windows-hardening.md)
 - [ ] config에 systemd 서비스 등록화면
-- [ ] Windows WebAuthn plugin authenticator 구현
 - [ ] kdbx에 operations에서 쓰는 주요 작업 수행 시 zeroize로 기밀 유지되는 것 테스트코드화 하기
+- [ ] com.rs의 Provider provider.rs로 빼기
+- [ ] passkey-windows 실행 시 화면에 콘솔창 뜨는 거 수정하기
+- [ ] desktop 뜰 때 가장 마지막으로 사용한 database open하게 변경하기
 
 ### Good to have
 - [ ] History 보여주기
