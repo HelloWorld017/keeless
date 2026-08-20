@@ -155,6 +155,31 @@ impl Provider {
         result
     }
 
+    pub(crate) fn sync_on_activation(&self) {
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: activation credential sync started"
+        );
+
+        let result = self.runtime.block_on(async {
+            let mut session = self.session.lock().await;
+            session.sync_credentials(&self.api).await
+        });
+
+        match result {
+            Ok(()) => {
+                crate::diagnostics::diagnostic!(
+                    "keeless-passkey-windows: activation credential sync completed"
+                );
+            }
+            Err(error) => {
+                crate::diagnostics::diagnostic!(
+                    "keeless-passkey-windows: activation credential sync skipped/failed ({})",
+                    error
+                );
+            }
+        }
+    }
+
     pub(crate) fn lock_status(&self) -> Long {
         if self.active.is_active() {
             crate::diagnostics::diagnostic!(
@@ -461,6 +486,9 @@ fn serve(provider: Arc<Provider>) -> Result<(), String> {
             return Err(format!("CoRegisterClassObject failed with {registered:#x}"));
         }
         crate::diagnostics::diagnostic!("keeless-passkey-windows: COM class factory registered");
+
+        provider.sync_on_activation();
+
         let resumed = unsafe { CoResumeClassObjects() };
         if resumed < S_OK {
             unsafe {

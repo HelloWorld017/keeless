@@ -99,7 +99,6 @@ impl Session {
                     return Err(error);
                 }
             }
-            self.needs_sync = false;
         }
         self.request_connected(operation).await
     }
@@ -180,7 +179,7 @@ impl Session {
     ) -> Result<(), SessionRequestError> {
         let password_session = self.password_session.clone();
         let result = match self
-            .request_connected(Operation::GetPasskeys(GetPasskeysArgs {
+            .request(Operation::GetPasskeys(GetPasskeysArgs {
                 password: None,
                 password_session,
             }))
@@ -229,11 +228,26 @@ impl Session {
                 })
             })
             .collect::<Result<Vec<_>, ClientError>>()?;
-        if let Err(error) = crate::credential_cache::sync(api, &desired) {
-            crate::diagnostics::diagnostic!(
-                "keeless-passkey-windows: credential cache synchronization degraded ({error})"
-            );
+
+        crate::diagnostics::diagnostic!(
+            "keeless-passkey-windows: credential sync found {} credential",
+            desired.len()
+        );
+
+        match crate::credential_cache::sync(api, &desired) {
+            Ok(()) => {
+                crate::diagnostics::diagnostic!(
+                    "keeless-passkey-windows: credential cache synchronization completed",
+                );
+                self.needs_sync = false;
+            }
+            Err(error) => {
+                crate::diagnostics::diagnostic!(
+                    "keeless-passkey-windows: credential cache synchronization degraded ({error})"
+                );
+            }
         }
+
         Ok(())
     }
 
