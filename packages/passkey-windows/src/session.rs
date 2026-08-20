@@ -178,13 +178,14 @@ impl Session {
         &mut self,
         api: &crate::api::Api,
     ) -> Result<(), SessionRequestError> {
-        let operation = || {
-            Operation::GetPasskeys(GetPasskeysArgs {
+        let password_session = self.password_session.clone();
+        let result = match self
+            .request_connected(Operation::GetPasskeys(GetPasskeysArgs {
                 password: None,
-                password_session: self.password_session.clone(),
-            })
-        };
-        let result = match self.request_connected(operation()).await {
+                password_session,
+            }))
+            .await
+        {
             Ok(OperationSuccess::GetPasskeys(result)) => result,
             Ok(_) => return Err(ClientError::Rejected.into()),
             Err(SessionRequestError::Client(ClientError::Operation { code, .. }))
@@ -196,7 +197,14 @@ impl Session {
                     self.password_session = None;
                 }
                 self.ensure_password_session().await?;
-                match self.request_connected(operation()).await? {
+                let password_session = self.password_session.clone();
+                match self
+                    .request_connected(Operation::GetPasskeys(GetPasskeysArgs {
+                        password: None,
+                        password_session,
+                    }))
+                    .await?
+                {
                     OperationSuccess::GetPasskeys(result) => result,
                     _ => return Err(ClientError::Rejected.into()),
                 }
