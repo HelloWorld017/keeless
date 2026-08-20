@@ -24,6 +24,8 @@ pub mod authenticator;
 #[cfg(windows)]
 pub mod com;
 #[cfg(windows)]
+pub(crate) mod provider;
+#[cfg(windows)]
 pub mod registration;
 #[cfg(windows)]
 pub mod sdk_bindings;

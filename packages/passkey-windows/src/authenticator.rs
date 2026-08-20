@@ -15,11 +15,12 @@ use crate::{
         AssertionOperation, GetAssertionRequest, MakeCredentialRequest, get_assertion_operation,
         make_credential_operation,
     },
-    com::{ComAuthenticator, Provider},
+    com::ComAuthenticator,
     error::{
         E_FAIL, E_POINTER, ERROR_BUSY, HResult, NTE_BAD_SIGNATURE, NTE_INVALID_PARAMETER,
         NTE_NOT_SUPPORTED, NTE_USER_CANCELLED, request_error,
     },
+    provider::Provider,
     sdk_bindings::*,
     verify,
 };
