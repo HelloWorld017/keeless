@@ -35,6 +35,7 @@ pub enum DatabaseStatus {
 pub enum SyncStatus {
     Idle,
     Syncing,
+    CredentialsRequired,
     Error,
 }
 

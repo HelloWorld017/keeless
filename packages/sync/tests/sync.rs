@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use keeless_kdbx::{
-    open_database, save_database, CompositeKey, Database, DatabaseVersion, DateInstant, Entry,
-    Group, IconImageCustom, NodeId,
+    initialize_database_key, open_database_with_key, rekey_database, save_database,
+    CompositeCredentials, CompositeKey, Database, DatabaseVersion, DateInstant, Entry, Group,
+    IconImageCustom, NodeId, RekeyOptions,
 };
 use keeless_sync::{
     ByteRange, FileHandle, FileMetadata, RemoteFile, RetryPolicy, Revision, StorageError,
@@ -177,15 +178,25 @@ fn encode(database: &Database, key: &CompositeKey) -> Vec<u8> {
     bytes
 }
 
+fn fixture(
+    storage: &MemoryStorage,
+    database: &mut Database,
+    credentials: &CompositeCredentials,
+) -> CompositeKey {
+    let key = initialize_database_key(database, credentials).unwrap();
+    storage.put("vault.kdbx", encode(database, &key));
+    key
+}
+
 #[tokio::test]
 async fn open_syncs_local_changes_with_cas() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("base");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
 
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(2))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(2))
         .await
         .unwrap();
     handle
@@ -201,13 +212,13 @@ async fn open_syncs_local_changes_with_cas() {
     assert!(!report.downloaded);
     assert_eq!(report.attempts, 1);
 
-    let saved = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    let saved = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     assert_eq!(saved.entries[&entry_id].title().as_str(), "local");
 }
 
 #[tokio::test]
 async fn sync_three_way_merges_independent_local_and_remote_changes() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (mut database, first_id) = database_with_entry("first");
     let root_id = database.root_group_id.unwrap();
@@ -216,10 +227,10 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
     second.set_title("second");
     second.last_modification_time = DateInstant::EpochMillis(1);
     assert!(database.add_entry(second, &root_id));
-    storage.put("vault.kdbx", encode(&database, &key));
+    let key = fixture(&storage, &mut database, &credentials);
 
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(2))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(2))
         .await
         .unwrap();
     let local = handle.database_mut().entries.get_mut(&first_id).unwrap();
@@ -227,7 +238,7 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
     local.last_modification_time = DateInstant::EpochMillis(10);
 
     let remote_bytes = storage.bytes("vault.kdbx");
-    let mut remote = open_database(remote_bytes.as_slice(), &key).unwrap();
+    let mut remote = open_database_with_key(remote_bytes.as_slice(), &key).unwrap();
     let remote_entry = remote.entries.get_mut(&second_id).unwrap();
     remote_entry.set_title("remote second");
     remote_entry.last_modification_time = DateInstant::EpochMillis(20);
@@ -248,12 +259,12 @@ async fn sync_three_way_merges_independent_local_and_remote_changes() {
 
 #[tokio::test]
 async fn sync_retries_from_the_original_local_snapshot() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("base");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(2))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(2))
         .await
         .unwrap();
     handle
@@ -275,16 +286,16 @@ async fn sync_retries_from_the_original_local_snapshot() {
 
 #[tokio::test]
 async fn sync_pulls_remote_changes_without_rewriting_an_unmodified_local_file() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("base");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(2))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(2))
         .await
         .unwrap();
 
-    let mut remote = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    let mut remote = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     remote
         .entries
         .get_mut(&entry_id)
@@ -304,18 +315,19 @@ async fn sync_pulls_remote_changes_without_rewriting_an_unmodified_local_file() 
 
 #[tokio::test]
 async fn sync_rejects_a_different_root_group_without_replacing_clean_state() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("local");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("local");
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(0))
         .await
         .unwrap();
     let checkpoint = handle.checkpoint_bytes().to_vec();
     let revision = handle.checkpoint_revision().cloned();
 
-    let (remote, remote_entry_id) = database_with_entry("remote");
+    let (mut remote, remote_entry_id) = database_with_entry("remote");
+    remote.kdf_parameters = database.kdf_parameters.clone();
     storage.put("vault.kdbx", encode(&remote, &key));
 
     let error = handle.sync(&key).await.unwrap_err();
@@ -334,12 +346,12 @@ async fn sync_rejects_a_different_root_group_without_replacing_clean_state() {
 
 #[tokio::test]
 async fn sync_rejects_a_different_root_group_without_merging_dirty_state() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("base");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(0))
         .await
         .unwrap();
     let checkpoint = handle.checkpoint_bytes().to_vec();
@@ -351,7 +363,8 @@ async fn sync_rejects_a_different_root_group_without_merging_dirty_state() {
         .unwrap()
         .set_title("local");
 
-    let (remote, remote_entry_id) = database_with_entry("remote");
+    let (mut remote, remote_entry_id) = database_with_entry("remote");
+    remote.kdf_parameters = database.kdf_parameters.clone();
     storage.put("vault.kdbx", encode(&remote, &key));
 
     let error = handle.sync(&key).await.unwrap_err();
@@ -370,7 +383,7 @@ async fn sync_rejects_a_different_root_group_without_merging_dirty_state() {
 
 #[tokio::test]
 async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (mut database, entry_id) = database_with_entry("base");
     database.name = "base name".to_string();
@@ -380,9 +393,9 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
         icon_id,
         IconImageCustom::new(icon_id, b"base icon".to_vec()),
     );
-    storage.put("vault.kdbx", encode(&database, &key));
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(2))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(2))
         .await
         .unwrap();
 
@@ -393,15 +406,10 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
         .unwrap()
         .set_title("local entry");
     handle.database_mut().custom_data.set("local", "value");
-    let mut remote = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    let mut remote = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     remote.name = "remote name".to_string();
     remote.custom_data.set("remote", "value");
     remote.custom_icons.get_mut(&icon_id).unwrap().data = b"remote icon".to_vec();
-    remote
-        .kdf_parameters
-        .as_mut()
-        .unwrap()
-        .set_uint32("X-Sync-Test", 7);
     storage.put("vault.kdbx", encode(&remote, &key));
     handle.sync(&key).await.unwrap();
     assert_eq!(handle.database().name, "remote name");
@@ -411,7 +419,7 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
         handle.database().custom_icons[&icon_id].data,
         b"remote icon"
     );
-    let persisted = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    let persisted = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     assert_eq!(
         handle.database().kdf_parameters,
         persisted.kdf_parameters,
@@ -420,7 +428,7 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
 
     handle.database_mut().name = "local conflict".to_string();
     handle.database_mut().custom_icons.remove(&icon_id);
-    let mut remote = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    let mut remote = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     remote.name = "remote conflict".to_string();
     remote.custom_icons.get_mut(&icon_id).unwrap().data = b"remote conflict icon".to_vec();
     storage.put("vault.kdbx", encode(&remote, &key));
@@ -431,12 +439,12 @@ async fn metadata_merging_pulls_one_sided_changes_and_keeps_local_conflicts() {
 
 #[tokio::test]
 async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("base");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(1))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(1))
         .await
         .unwrap();
     let original_revision = handle.checkpoint_revision().cloned();
@@ -460,12 +468,12 @@ async fn retry_exhaustion_preserves_the_local_database_and_checkpoint() {
 
 #[tokio::test]
 async fn unsupported_write_preserves_the_local_database_and_checkpoint() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("base");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(0))
         .await
         .unwrap();
     let original_revision = handle.checkpoint_revision().cloned();
@@ -492,12 +500,12 @@ async fn unsupported_write_preserves_the_local_database_and_checkpoint() {
 
 #[tokio::test]
 async fn atomic_change_marks_dirty_only_when_changed() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (database, entry_id) = database_with_entry("base");
-    storage.put("vault.kdbx", encode(&database, &key));
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage;
-    let mut handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(0))
         .await
         .unwrap();
 
@@ -534,30 +542,32 @@ async fn atomic_change_marks_dirty_only_when_changed() {
 
 #[tokio::test]
 async fn create_writes_a_new_remote_file() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (local, local_id) = database_with_entry("local");
+    let (mut local, local_id) = database_with_entry("local");
+    let key = initialize_database_key(&mut local, &credentials).unwrap();
     let provider: Arc<dyn StorageProvider> = storage.clone();
     let handle = FileHandle::create(provider, "vault.kdbx", local, &key, options(2))
         .await
         .unwrap();
 
     assert!(handle.database().entries.contains_key(&local_id));
-    let persisted = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    let persisted = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     assert!(persisted.entries.contains_key(&local_id));
     assert_eq!(storage.writes(), 1);
 }
 
 #[tokio::test]
 async fn create_does_not_overwrite_an_existing_remote_file() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
-    let (remote, remote_id) = database_with_entry("remote");
-    storage.put("vault.kdbx", encode(&remote, &key));
+    let (mut remote, remote_id) = database_with_entry("remote");
+    let key = fixture(&storage, &mut remote, &credentials);
 
-    let (local, _) = database_with_entry("local");
+    let (mut local, _) = database_with_entry("local");
+    let local_key = initialize_database_key(&mut local, &credentials).unwrap();
     let provider: Arc<dyn StorageProvider> = storage.clone();
-    let error = FileHandle::create(provider, "vault.kdbx", local, &key, options(2))
+    let error = FileHandle::create(provider, "vault.kdbx", local, &local_key, options(2))
         .await
         .unwrap_err();
 
@@ -565,24 +575,128 @@ async fn create_does_not_overwrite_an_existing_remote_file() {
         error,
         SyncError::Storage(error) if error.kind() == StorageErrorKind::AlreadyExists
     ));
-    let persisted = open_database(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
+    let persisted = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &key).unwrap();
     assert!(persisted.entries.contains_key(&remote_id));
     assert_eq!(storage.writes(), 1);
 }
 
 #[tokio::test]
 async fn file_handle_debug_does_not_expose_database_contents() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());
     let (mut database, _) = database_with_entry("sensitive title");
     database.name = "sensitive database name".to_string();
-    storage.put("vault.kdbx", encode(&database, &key));
+    let key = fixture(&storage, &mut database, &credentials);
     let provider: Arc<dyn StorageProvider> = storage;
-    let handle = FileHandle::open(provider, "vault.kdbx", &key, options(0))
+    let handle = FileHandle::open_with_key(provider, "vault.kdbx", &key, options(0))
         .await
         .unwrap();
 
     let debug = format!("{handle:?}");
     assert!(!debug.contains("sensitive title"));
     assert!(!debug.contains("sensitive database name"));
+}
+
+#[tokio::test]
+async fn sync_kdf_rotation_requires_credentials_then_downloads_clean_remote() {
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (mut database, _) = database_with_entry("base");
+    let old_key = fixture(&storage, &mut database, &credentials);
+    let provider: Arc<dyn StorageProvider> = storage.clone();
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &old_key, options(0))
+        .await
+        .unwrap();
+
+    let mut remote =
+        open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &old_key).unwrap();
+    let remote_key =
+        rekey_database(&mut remote, &old_key, &credentials, RekeyOptions::default()).unwrap();
+    storage.put("vault.kdbx", encode(&remote, &remote_key));
+
+    assert!(matches!(
+        handle.sync(&old_key).await,
+        Err(SyncError::CredentialsRequired)
+    ));
+    let (report, new_key) = handle
+        .sync_kdf_rotated(&old_key, &credentials)
+        .await
+        .unwrap();
+
+    assert!(report.downloaded);
+    assert!(!report.uploaded);
+    assert_ne!(old_key.kdf_fingerprint(), new_key.kdf_fingerprint());
+    let persisted = storage.bytes("vault.kdbx");
+    assert!(matches!(
+        open_database_with_key(persisted.as_slice(), &old_key),
+        Err(keeless_kdbx::DatabaseError::KdfParametersMismatch)
+    ));
+    open_database_with_key(persisted.as_slice(), &new_key).unwrap();
+}
+
+#[tokio::test]
+async fn sync_kdf_rotation_merges_dirty_local_and_rekeyed_remote_changes() {
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (mut database, local_id) = database_with_entry("local base");
+    let root_id = database.root_group_id.unwrap();
+    let remote_id = NodeId::new_uuid();
+    let mut remote_entry = Entry::new(remote_id);
+    remote_entry.set_title("remote base");
+    remote_entry.last_modification_time = DateInstant::EpochMillis(1);
+    assert!(database.add_entry(remote_entry, &root_id));
+    let old_key = fixture(&storage, &mut database, &credentials);
+    let provider: Arc<dyn StorageProvider> = storage.clone();
+    let mut handle = FileHandle::open_with_key(provider, "vault.kdbx", &old_key, options(0))
+        .await
+        .unwrap();
+    handle
+        .database_mut()
+        .entries
+        .get_mut(&local_id)
+        .unwrap()
+        .set_title("local changed");
+
+    let mut remote =
+        open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &old_key).unwrap();
+    remote
+        .entries
+        .get_mut(&remote_id)
+        .unwrap()
+        .set_title("remote changed");
+    let remote_key =
+        rekey_database(&mut remote, &old_key, &credentials, RekeyOptions::default()).unwrap();
+    storage.put("vault.kdbx", encode(&remote, &remote_key));
+
+    let (report, new_key) = handle
+        .sync_kdf_rotated(&old_key, &credentials)
+        .await
+        .unwrap();
+
+    assert!(report.downloaded);
+    assert!(report.uploaded);
+    assert!(!handle.is_dirty());
+    assert_ne!(old_key.kdf_fingerprint(), new_key.kdf_fingerprint());
+    assert_eq!(
+        handle.database().entries[&local_id].title().as_str(),
+        "local changed"
+    );
+    assert_eq!(
+        handle.database().entries[&remote_id].title().as_str(),
+        "remote changed"
+    );
+    let persisted = storage.bytes("vault.kdbx");
+    assert!(matches!(
+        open_database_with_key(persisted.as_slice(), &old_key),
+        Err(keeless_kdbx::DatabaseError::KdfParametersMismatch)
+    ));
+    let persisted = open_database_with_key(persisted.as_slice(), &new_key).unwrap();
+    assert_eq!(
+        persisted.entries[&local_id].title().as_str(),
+        "local changed"
+    );
+    assert_eq!(
+        persisted.entries[&remote_id].title().as_str(),
+        "remote changed"
+    );
 }

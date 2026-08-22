@@ -2,8 +2,8 @@ use std::path::Path;
 
 use keeless_kdbx::crypto::compression::CompressionAlgorithm;
 use keeless_kdbx::{
-    open_database, save_database, CompositeKey, Database, DatabaseError, DatabaseVersion,
-    EntryFieldSelector,
+    open_database, save_database, CompositeCredentials, CompositeKey, Database, DatabaseError,
+    DatabaseVersion, EntryFieldSelector,
 };
 use sha2::{Digest, Sha256};
 
@@ -41,23 +41,32 @@ fn fixture_bytes(source: &str, name: &str, expected_sha256: &str) -> Vec<u8> {
     bytes
 }
 
-fn key(password: &str) -> CompositeKey {
-    CompositeKey::new()
+fn credentials(password: &str) -> CompositeCredentials {
+    CompositeCredentials::new()
         .with_password(password.as_bytes())
+        .unwrap()
+}
+
+fn key(database: &Database, password: &str) -> CompositeKey {
+    credentials(password)
+        .derive_key(database.kdf_parameters.as_ref().unwrap())
         .unwrap()
 }
 
 fn open_fixture(source: &str, name: &str, expected_sha256: &str, password: &str) -> Database {
     let bytes = fixture_bytes(source, name, expected_sha256);
-    open_database(bytes.as_slice(), &key(password))
+    open_database(bytes.as_slice(), &credentials(password))
         .unwrap_or_else(|error| panic!("failed to open {source}/{name}: {error}"))
+        .database
 }
 
 fn round_trip(database: &Database, password: &str) -> Database {
-    let key = key(password);
+    let key = key(database, password);
     let mut encoded = Vec::new();
     save_database(&mut encoded, database, &key).expect("external database should save");
-    open_database(encoded.as_slice(), &key).expect("saved external database should reopen")
+    open_database(encoded.as_slice(), &credentials(password))
+        .expect("saved external database should reopen")
+        .database
 }
 
 #[test]
@@ -129,7 +138,7 @@ fn opens_and_preserves_kdbxweb_cyrillic_fixture() {
     assert_eq!(
         database
             .with_entry_field(
-                &key(password),
+                &key(&database, password),
                 &entry.id,
                 &EntryFieldSelector::Password,
                 str::to_owned,
@@ -140,7 +149,7 @@ fn opens_and_preserves_kdbxweb_cyrillic_fixture() {
     assert_eq!(
         database
             .with_entry_field(
-                &key(password),
+                &key(&database, password),
                 &entry.id,
                 &EntryFieldSelector::Custom("поле2".into()),
                 str::to_owned,
@@ -158,7 +167,7 @@ fn opens_and_preserves_kdbxweb_cyrillic_fixture() {
     }));
 
     let mut encoded = Vec::new();
-    save_database(&mut encoded, &database, &key(password)).unwrap();
+    save_database(&mut encoded, &database, &key(&database, password)).unwrap();
     let independent = keepass::Database::open(
         &mut encoded.as_slice(),
         keepass::DatabaseKey::new().with_password(password),
@@ -170,14 +179,16 @@ fn opens_and_preserves_kdbxweb_cyrillic_fixture() {
 #[test]
 fn distinguishes_an_explicit_empty_password() {
     let bytes = fixture_bytes("kdbxweb", "EmptyPass.kdbx", KDBXWEB_EMPTY_PASS_SHA256);
-    let database = open_database(bytes.as_slice(), &key("")).expect("empty password should open");
+    let database = open_database(bytes.as_slice(), &credentials(""))
+        .expect("empty password should open")
+        .database;
     assert_eq!(database.version, DatabaseVersion::KDBX31);
 
     assert!(matches!(
-        open_database(bytes.as_slice(), &CompositeKey::new()),
+        open_database(bytes.as_slice(), &CompositeCredentials::new()),
         Err(DatabaseError::InvalidKey)
     ));
-    assert!(open_database(bytes.as_slice(), &key("not-empty")).is_err());
+    assert!(open_database(bytes.as_slice(), &credentials("not-empty")).is_err());
 
     let reopened = round_trip(&database, "");
     assert_eq!(reopened.group_count(), database.group_count());
@@ -206,7 +217,7 @@ fn opens_and_preserves_keepassxc_format400_content() {
     assert_eq!(
         database
             .with_entry_field(
-                &key("t"),
+                &key(&database, "t"),
                 &entry.id,
                 &EntryFieldSelector::Custom("Format400".into()),
                 str::to_owned,
@@ -225,7 +236,7 @@ fn opens_and_preserves_keepassxc_format400_content() {
 
     let bytes = fixture_bytes("keepassxc", "Format400.kdbx", KEEPASSXC_FORMAT400_SHA256);
     assert!(matches!(
-        open_database(bytes.as_slice(), &key("wrong")),
+        open_database(bytes.as_slice(), &credentials("wrong")),
         Err(DatabaseError::InvalidCredentials)
     ));
 }
@@ -275,7 +286,7 @@ fn opens_and_preserves_keepassxc_protected_strings() {
     assert_eq!(
         database
             .with_entry_field(
-                &key(password),
+                &key(&database, password),
                 &entry.id,
                 &EntryFieldSelector::UserName,
                 str::to_owned,
@@ -286,7 +297,7 @@ fn opens_and_preserves_keepassxc_protected_strings() {
     assert_eq!(
         database
             .with_entry_field(
-                &key(password),
+                &key(&database, password),
                 &entry.id,
                 &EntryFieldSelector::Password,
                 str::to_owned,
@@ -305,7 +316,7 @@ fn opens_and_preserves_keepassxc_protected_strings() {
     assert_eq!(
         database
             .with_entry_field(
-                &key(password),
+                &key(&database, password),
                 &entry.id,
                 &EntryFieldSelector::Custom("TestProtected".into()),
                 str::to_owned,
@@ -319,7 +330,7 @@ fn opens_and_preserves_keepassxc_protected_strings() {
     assert_eq!(
         reopened
             .with_entry_field(
-                &key(password),
+                &key(&reopened, password),
                 &reopened_entry.id,
                 &EntryFieldSelector::Custom("TestProtected".into()),
                 str::to_owned,
@@ -336,5 +347,5 @@ fn rejects_keepassxc_fixture_with_broken_header_hash() {
         "BrokenHeaderHash.kdbx",
         KEEPASSXC_BROKEN_HEADER_SHA256,
     );
-    assert!(open_database(bytes.as_slice(), &key("")).is_err());
+    assert!(open_database(bytes.as_slice(), &credentials("")).is_err());
 }

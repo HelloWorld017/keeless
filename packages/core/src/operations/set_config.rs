@@ -3,6 +3,9 @@ use keeless_schema::{EmptyResult, OperationSuccess, SetConfigArgs};
 use crate::{KeelessConfigPatch, KeelessCore, Result};
 
 pub(crate) async fn run(core: &mut KeelessCore, patch: KeelessConfigPatch) -> Result<()> {
+    if core.sync_key_migration_pending() {
+        return Err(crate::CoreError::SyncRecoveryRequired);
+    }
     let previous = core.settings.clone();
     if let Some(timeout) = patch.auto_lock_timeout_ms {
         core.settings.auto_lock_timeout_ms = timeout;

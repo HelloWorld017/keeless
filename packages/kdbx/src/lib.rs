@@ -374,8 +374,9 @@ pub fn rekey_database(
     if !old_key.matches(current) {
         return Err(DatabaseError::KdfParametersMismatch);
     }
+    let has_replacement_parameters = options.kdf_parameters.is_some();
     let mut parameters = options.kdf_parameters.unwrap_or_else(|| current.clone());
-    if options.regenerate_kdf_salt {
+    if options.regenerate_kdf_salt && !has_replacement_parameters {
         let kdf = kdbx::kdf::create_kdf(&parameters.kdf_uuid)
             .ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
         kdf.randomize(&mut parameters)?;
@@ -585,5 +586,29 @@ mod tests {
                 .unwrap(),
             "updated secret"
         );
+    }
+
+    #[test]
+    fn rekey_preserves_explicit_kdf_parameters() {
+        let credentials = CompositeCredentials::new()
+            .with_password(b"password")
+            .unwrap();
+        let mut database = Database::new(DatabaseVersion::KDBX4);
+        let old_key = initialize_database_key(&mut database, &credentials).unwrap();
+        let replacement = database.kdf_parameters.clone().unwrap();
+
+        let new_key = rekey_database(
+            &mut database,
+            &old_key,
+            &credentials,
+            RekeyOptions {
+                kdf_parameters: Some(replacement.clone()),
+                ..RekeyOptions::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(database.kdf_parameters, Some(replacement));
+        assert_eq!(old_key.kdf_fingerprint(), new_key.kdf_fingerprint());
     }
 }

@@ -16,7 +16,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use config::{CONFIG_VERSION, PersistedConfig};
 use credential::CredentialVault;
-use database_state::{CONFIG_RECORD, EncryptedDatabaseStateStore};
+use database_state::{CONFIG_RECORD, CORE_WIRE_RECORD, EncryptedDatabaseStateStore};
 use keeless_kdbx::{CompositeCredentials, CompositeKey};
 use keeless_sync::FileHandle;
 use zeroize::Zeroizing;
@@ -279,6 +279,32 @@ impl KeelessCore {
             }
         };
         self.settings = persisted.settings;
+        self.network.activate_core_server(&state).await?;
+        self.encrypted_state = Some(state);
+        Ok(())
+    }
+
+    pub(crate) async fn rotate_database_state(&mut self, key: &CompositeKey) -> Result<()> {
+        let previous = self
+            .encrypted_state
+            .as_ref()
+            .ok_or(CoreError::DatabaseLocked)?
+            .clone();
+        let config = previous.load_record(CONFIG_RECORD).await?;
+        let core_wire = previous.load_record(CORE_WIRE_RECORD).await?;
+        let database_id = self
+            .selection
+            .as_ref()
+            .ok_or(CoreError::NoDatabaseSelected)?
+            .database_id
+            .clone();
+        let state = EncryptedDatabaseStateStore::new(key, self.persistence.clone(), database_id)?;
+        if let Some(config) = config {
+            state.save_record(CONFIG_RECORD, &config).await?;
+        }
+        if let Some(core_wire) = core_wire {
+            state.save_record(CORE_WIRE_RECORD, &core_wire).await?;
+        }
         self.network.activate_core_server(&state).await?;
         self.encrypted_state = Some(state);
         Ok(())

@@ -32,7 +32,7 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     let path = path.ok_or(CoreError::RecentDatabaseUnavailable)?;
     let persistence = core.persistence.clone();
     let cached = persistence.read_cache().await?;
-    let (mut handle, key, mut journal, mut opened_from_cache, mut recovered_error) =
+    let (mut handle, mut key, mut journal, mut opened_from_cache, mut recovered_error) =
         if let Some(cache) = cached {
             match super::mutations::MutationCoordinator::cache_kdf_parameters(&cache)
                 .and_then(|parameters| credentials.derive_key(&parameters).map_err(Into::into))
@@ -79,20 +79,24 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
             if let Err(error) =
                 super::mutations::replay_lines(&mut journal, handle.replay_database(), &key, &lines)
             {
-                let (remote, _) =
-                    open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
+                let (remote, remote_key) =
+                    open_remote_selected(core, Arc::clone(&provider), path.clone(), &credentials)
+                        .await?;
                 persistence.quarantine_journal(&error.to_string()).await?;
                 handle = remote;
+                key = remote_key;
                 opened_from_cache = false;
                 recovered_error = Some(error);
                 journal = super::mutations::MutationCoordinator::new(&key, database_id.clone(), 0)?;
             }
         }
         Err(error) => {
-            let (remote, _) =
-                open_remote_selected(core, Arc::clone(&provider), path.clone(), &key).await?;
+            let (remote, remote_key) =
+                open_remote_selected(core, Arc::clone(&provider), path.clone(), &credentials)
+                    .await?;
             persistence.quarantine_journal(&error.to_string()).await?;
             handle = remote;
+            key = remote_key;
             opened_from_cache = false;
             recovered_error = Some(error);
             journal = super::mutations::MutationCoordinator::new(&key, database_id.clone(), 0)?;

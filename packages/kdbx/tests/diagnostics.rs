@@ -2,7 +2,8 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use keeless_kdbx::{
-    diagnose_database, CompositeKey, DiagnosticOptions, DiagnosticStage, DiagnosticStageStatus,
+    diagnose_database, CompositeCredentials, DiagnosticOptions, DiagnosticStage,
+    DiagnosticStageStatus,
 };
 
 fn resource(path: &str) -> PathBuf {
@@ -11,8 +12,10 @@ fn resource(path: &str) -> PathBuf {
         .join(path)
 }
 
-fn password(value: &str) -> CompositeKey {
-    CompositeKey::new().with_password(value.as_bytes()).unwrap()
+fn password(value: &str) -> CompositeCredentials {
+    CompositeCredentials::new()
+        .with_password(value.as_bytes())
+        .unwrap()
 }
 
 #[test]

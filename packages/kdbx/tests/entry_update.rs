@@ -1,12 +1,14 @@
 use keeless_kdbx::{
-    open_database, save_database, ChangeTracker, CompositeKey, Database, DatabaseError,
-    DatabaseVersion, DateInstant, Entry, EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate,
-    EntryUpdate, Group, IconImage, IconImageStandard, IconUpdate, NodeId, ProtectedString,
+    initialize_database_key, open_database, open_database_with_key, save_database, ChangeTracker,
+    CompositeCredentials, CompositeKey, Database, DatabaseError, DatabaseVersion, DateInstant,
+    Entry, EntryFieldId, EntryFieldUpdate, EntryPropertiesUpdate, EntryUpdate, Group, IconImage,
+    IconImageStandard, IconUpdate, NodeId, ProtectedString,
 };
 
 fn loaded_database() -> (Database, CompositeKey, NodeId) {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
     let mut database = Database::new(DatabaseVersion::KDBX4);
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
+    let key = initialize_database_key(&mut database, &credentials).unwrap();
     let root_id = NodeId::new_uuid();
     database.groups.insert(root_id, Group::new(root_id));
     database.root_group_id = Some(root_id);
@@ -24,11 +26,8 @@ fn loaded_database() -> (Database, CompositeKey, NodeId) {
     database.add_entry(entry, &root_id);
     let mut bytes = Vec::new();
     save_database(&mut bytes, &database, &key).unwrap();
-    (
-        open_database(bytes.as_slice(), &key).unwrap(),
-        key,
-        entry_id,
-    )
+    let opened = open_database(bytes.as_slice(), &credentials).unwrap();
+    (opened.database, opened.key, entry_id)
 }
 
 fn source_field_id(entry: &Entry, name: &str, occurrence: usize) -> EntryFieldId {
@@ -102,7 +101,6 @@ fn entry_update(
 
 #[test]
 fn custom_field_ids_survive_serde_and_kdbx_round_trips() {
-    let key = CompositeKey::new().with_password(b"test").unwrap();
     let entry_id = NodeId::new_uuid();
     let mut entry = Entry::new(entry_id);
     entry.add_custom_field("Shared", ProtectedString::new_plain("first"));
@@ -123,13 +121,15 @@ fn custom_field_ids_survive_serde_and_kdbx_round_trips() {
     assert_ne!(expected_ids[0], expected_ids[2]);
 
     let mut database = Database::new(DatabaseVersion::KDBX4);
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
+    let key = initialize_database_key(&mut database, &credentials).unwrap();
     let root_id = NodeId::new_uuid();
     database.groups.insert(root_id, Group::new(root_id));
     database.root_group_id = Some(root_id);
     database.add_entry(entry, &root_id);
     let mut bytes = Vec::new();
     save_database(&mut bytes, &database, &key).unwrap();
-    let reopened = open_database(bytes.as_slice(), &key).unwrap();
+    let reopened = open_database(bytes.as_slice(), &credentials).unwrap();
     assert_eq!(
         reopened
             .get_entry(&entry_id)
@@ -206,7 +206,7 @@ fn update_reorders_renames_adds_and_deletes_without_confusing_duplicate_names() 
 
     let mut bytes = Vec::new();
     save_database(&mut bytes, &database, &key).unwrap();
-    let reopened = open_database(bytes.as_slice(), &key).unwrap();
+    let reopened = open_database_with_key(bytes.as_slice(), &key).unwrap();
     let reopened_ids = reopened
         .get_entry(&entry_id)
         .unwrap()

@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keeless_kdbx::{
-    open_database, open_database_with_key, save_database, CompositeCredentials, CompositeKey,
-    Database, DatabaseMerger, MergeResult, MergeStrategy,
+    open_database, open_database_with_key, reencrypt_memory_protection, save_database,
+    CompositeCredentials, CompositeKey, Database, DatabaseMerger, MergeResult, MergeStrategy,
 };
 
 use crate::{
@@ -371,6 +371,100 @@ impl FileHandle {
                         downloaded,
                         merge_result,
                     });
+                }
+                WriteOutcome::Conflict if attempt + 1 < max_attempts => {
+                    delay(&self.options.retry_policy, attempt).await;
+                }
+                WriteOutcome::Conflict => {
+                    return Err(SyncError::RetryExhausted {
+                        attempts: max_attempts,
+                    });
+                }
+            }
+        }
+
+        unreachable!("sync retry loop always returns")
+    }
+
+    /// Synchronizes after the remote database rotated its KDF parameters.
+    ///
+    /// The local database and checkpoint remain protected by `old_key`, while
+    /// the remote is opened with `credentials` to derive its replacement key.
+    pub async fn sync_kdf_rotated(
+        &mut self,
+        old_key: &CompositeKey,
+        credentials: &CompositeCredentials,
+    ) -> Result<(SyncReport, CompositeKey), SyncError> {
+        let max_attempts = self.options.retry_policy.max_retries.saturating_add(1);
+
+        for attempt in 0..max_attempts {
+            let remote = self.provider.read(&self.path, None).await?;
+            let opened = open_database(remote.bytes.as_slice(), credentials)?;
+            let mut source = opened.database;
+            let new_key = opened.key;
+            if source.root_group_id != self.database.root_group_id {
+                return Err(SyncError::RootGroupMismatch);
+            }
+
+            let downloaded = remote.bytes != self.checkpoint.bytes;
+            if !self.dirty {
+                self.database = source;
+                self.checkpoint = Checkpoint {
+                    bytes: remote.bytes,
+                    revision: remote.metadata.revision,
+                };
+                return Ok((
+                    SyncReport {
+                        attempts: attempt + 1,
+                        downloaded,
+                        ..SyncReport::default()
+                    },
+                    new_key,
+                ));
+            }
+
+            // The merger needs all protected fields under one runtime key. The
+            // staged result is moved back to the remote key before serialization.
+            let remote_parameters = source
+                .kdf_parameters
+                .clone()
+                .ok_or(keeless_kdbx::DatabaseError::MissingKdfParameters)?;
+            reencrypt_memory_protection(&mut source, &new_key, old_key)?;
+            let base = open_with_key(self.checkpoint.bytes.as_slice(), old_key)?;
+            let mut target = self.database.clone();
+            let merge_result =
+                DatabaseMerger::with_credentials(self.options.merge_strategy, old_key)
+                    .merge_three_way(&mut target, &source, &base);
+            target.kdf_parameters = Some(remote_parameters);
+            reencrypt_memory_protection(&mut target, old_key, &new_key)?;
+
+            let revision = require_revision(&remote)?;
+            let merged_bytes = serialize_database(&target, &new_key)?;
+            match self
+                .provider
+                .write(
+                    &self.path,
+                    merged_bytes.clone(),
+                    WriteCondition::MustMatch(revision),
+                )
+                .await?
+            {
+                WriteOutcome::Applied { revision } => {
+                    self.database = open_with_key(merged_bytes.as_slice(), &new_key)?;
+                    self.checkpoint = Checkpoint {
+                        bytes: merged_bytes,
+                        revision,
+                    };
+                    self.dirty = false;
+                    return Ok((
+                        SyncReport {
+                            attempts: attempt + 1,
+                            uploaded: true,
+                            downloaded,
+                            merge_result,
+                        },
+                        new_key,
+                    ));
                 }
                 WriteOutcome::Conflict if attempt + 1 < max_attempts => {
                     delay(&self.options.retry_policy, attempt).await;

@@ -101,6 +101,9 @@ pub(in crate::operations::mutations) async fn mutate(
     mutation: &Mutation,
     commit: impl FnOnce(&mut Database),
 ) -> Result<()> {
+    if core.sync_key_migration_pending() {
+        return Err(CoreError::SyncRecoveryRequired);
+    }
     let line = core
         .journal
         .as_ref()

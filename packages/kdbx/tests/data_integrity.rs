@@ -5,7 +5,7 @@ use std::io::Cursor;
 use keeless_kdbx::kdbx::kdf::argon2_kdf::ARGON2ID_UUID;
 use keeless_kdbx::kdbx::kdf::create_kdf;
 use keeless_kdbx::{
-    open_database, save_database, CompositeKey, Database, DatabaseMerger, DatabaseVersion,
+    open_database, save_database, CompositeCredentials, Database, DatabaseMerger, DatabaseVersion,
     DateInstant, Entry, EntryBinary, Group, IconImageCustom, MergeStrategy, NodeId,
 };
 use uuid::Uuid;
@@ -22,16 +22,24 @@ fn database_with_root(root_id: NodeId) -> Database {
 }
 
 fn round_trip(mut database: Database) -> Database {
-    let kdf = create_kdf(&ARGON2ID_UUID).expect("Argon2id KDF should be available");
-    let mut parameters = kdf.default_parameters();
-    parameters.set_uint64("M", 64 * 1024);
-    parameters.set_uint64("I", 1);
-    database.kdf_parameters = Some(parameters);
+    if database.kdf_parameters.is_none() {
+        let kdf = create_kdf(&ARGON2ID_UUID).expect("Argon2id KDF should be available");
+        let mut parameters = kdf.default_parameters();
+        parameters.set_uint64("M", 64 * 1024);
+        parameters.set_uint64("I", 1);
+        kdf.randomize(&mut parameters).unwrap();
+        database.kdf_parameters = Some(parameters);
+    }
 
-    let key = CompositeKey::new().with_password(PASSWORD).unwrap();
+    let credentials = CompositeCredentials::new().with_password(PASSWORD).unwrap();
+    let key = credentials
+        .derive_key(database.kdf_parameters.as_ref().unwrap())
+        .unwrap();
     let mut bytes = Vec::new();
     save_database(&mut bytes, &database, &key).expect("database should be saved");
-    open_database(Cursor::new(bytes), &key).expect("database should be reopened")
+    open_database(Cursor::new(bytes), &credentials)
+        .expect("database should be reopened")
+        .database
 }
 
 fn entry_with_binary(id: NodeId, title: &str, data: &[u8], modified: i64) -> Entry {

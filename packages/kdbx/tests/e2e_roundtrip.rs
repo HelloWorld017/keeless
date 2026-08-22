@@ -10,11 +10,11 @@ use keeless_kdbx::kdbx::kdf::argon2_kdf::ARGON2ID_UUID;
 use keeless_kdbx::kdbx::kdf::create_kdf;
 use keeless_kdbx::model::core::node::NodeId;
 use keeless_kdbx::model::core::security::ProtectedString;
-use keeless_kdbx::model::db::composite_key::CompositeKey;
+use keeless_kdbx::model::db::composite_key::{CompositeCredentials, CompositeKey};
 use keeless_kdbx::model::db::database::{Database, DatabaseVersion};
 use keeless_kdbx::model::entry::Entry;
 use keeless_kdbx::model::group::Group;
-use keeless_kdbx::{diagnose_database, DatabaseError, DiagnosticOptions};
+use keeless_kdbx::{diagnose_database, initialize_database_key, DatabaseError, DiagnosticOptions};
 use sha2::{Digest, Sha256};
 
 /// Build a realistic test database with multiple groups and entries.
@@ -104,10 +104,14 @@ fn build_realistic_database() -> Database {
     db
 }
 
-fn make_key() -> CompositeKey {
-    CompositeKey::new()
+fn make_key(database: &mut Database) -> CompositeKey {
+    let credentials = CompositeCredentials::new()
         .with_password(b"integration_test_password_2024")
-        .unwrap()
+        .unwrap();
+    match database.kdf_parameters.as_ref() {
+        Some(parameters) => credentials.derive_key(parameters).unwrap(),
+        None => initialize_database_key(database, &credentials).unwrap(),
+    }
 }
 
 fn kdbx31_header_end(bytes: &[u8]) -> usize {
@@ -170,7 +174,7 @@ fn test_e2e_kdbx31_roundtrip() {
         keeless_kdbx::crypto::encryption_algorithm::EncryptionAlgorithm::AesRijndael;
     db.compression = keeless_kdbx::crypto::compression::CompressionAlgorithm::Gzip;
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     // Write
     let mut buffer = Vec::new();
@@ -191,7 +195,7 @@ fn test_e2e_kdbx31_roundtrip() {
 fn test_e2e_kdbx31_header_hash_matches_outer_header() {
     let mut db = build_realistic_database();
     db.version = DatabaseVersion::KDBX31;
-    let key = make_key();
+    let key = make_key(&mut db);
 
     let mut encoded = Vec::new();
     keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut encoded, &db, &key)
@@ -203,7 +207,9 @@ fn test_e2e_kdbx31_header_hash_matches_outer_header() {
     let mut xml = Vec::new();
     diagnose_database(
         Cursor::new(&encoded),
-        &key,
+        &CompositeCredentials::new()
+            .with_password(b"integration_test_password_2024")
+            .unwrap(),
         DiagnosticOptions::new().with_xml_output(&mut xml),
     )
     .expect("KDBX 3.1 output should pass header hash verification");
@@ -216,7 +222,7 @@ fn test_e2e_kdbx31_header_hash_matches_outer_header() {
 fn test_e2e_kdbx31_rejects_outer_header_hash_mismatch() {
     let mut db = build_realistic_database();
     db.version = DatabaseVersion::KDBX31;
-    let key = make_key();
+    let key = make_key(&mut db);
 
     let mut encoded = Vec::new();
     keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut encoded, &db, &key)
@@ -245,15 +251,17 @@ fn test_e2e_kdbx31_wrong_password() {
     let mut db = build_realistic_database();
     db.version = DatabaseVersion::KDBX31;
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     let mut buffer = Vec::new();
     keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
         .expect("Write should succeed");
 
     // Read with wrong password
-    let wrong_key = CompositeKey::new()
+    let wrong_key = CompositeCredentials::new()
         .with_password(b"wrong_password")
+        .unwrap()
+        .derive_key(db.kdf_parameters.as_ref().unwrap())
         .unwrap();
     let mut cursor = Cursor::new(buffer);
     let result = keeless_kdbx::kdbx::file::kdbx31_reader::read_kdbx31(&mut cursor, &wrong_key);
@@ -270,7 +278,7 @@ fn test_e2e_kdbx31_chacha20() {
     db.encryption_algorithm =
         keeless_kdbx::crypto::encryption_algorithm::EncryptionAlgorithm::ChaCha20;
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     let mut buffer = Vec::new();
     keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
@@ -297,9 +305,10 @@ fn test_e2e_kdbx4_roundtrip() {
     let mut params = kdf.default_parameters();
     params.set_uint64("M", 64 * 1024); // 64 KB instead of 16 MB
     params.set_uint64("I", 1); // 1 iteration
+    kdf.randomize(&mut params).expect("Argon2 salt");
     db.kdf_parameters = Some(params);
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     // Write
     let mut buffer = Vec::new();
@@ -324,7 +333,7 @@ fn test_e2e_kdb_roundtrip() {
     let mut db = build_realistic_database();
     db.version = DatabaseVersion::KDB;
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     // Write
     let mut buffer = Vec::new();
@@ -358,7 +367,7 @@ fn test_e2e_kdbx31_empty_database() {
     db.groups.insert(root_id, root);
     db.root_group_id = Some(root_id);
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     let mut buffer = Vec::new();
     keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
@@ -394,7 +403,7 @@ fn test_e2e_kdbx31_unicode_content() {
     db.entries.insert(entry_id, entry);
     db.root_group_id = Some(root_id);
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     let mut buffer = Vec::new();
     keeless_kdbx::kdbx::file::kdbx31_writer::write_kdbx31(&mut buffer, &db, &key)
@@ -444,7 +453,7 @@ fn test_e2e_kdbx4_empty_subgroup_survives_roundtrip() {
     db.groups.insert(root_id, root);
     db.root_group_id = Some(root_id);
 
-    let key = make_key();
+    let key = make_key(&mut db);
 
     let mut buffer = Vec::new();
     keeless_kdbx::kdbx::file::kdbx4_writer::write_kdbx4(&mut buffer, &db, &key)

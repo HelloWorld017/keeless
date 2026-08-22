@@ -15,7 +15,7 @@ export type RecentDatabase = {
 
 export type DatabaseStatus = 'not_exist' | 'locked' | 'unlocked';
 
-export type SyncStatus = 'idle' | 'syncing' | 'error';
+export type SyncStatus = 'idle' | 'syncing' | 'credentials_required' | 'error';
 
 export type KeyScope = 'core_untrusted' | 'core' | 'app' | 'passkey' | 'native_ui';
 

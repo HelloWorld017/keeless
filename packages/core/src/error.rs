@@ -29,6 +29,10 @@ pub enum CoreError {
     DatabaseLocked,
     #[error("invalid database credentials")]
     InvalidCredentials,
+    #[error("database credentials are required because the remote KDF changed")]
+    CredentialsRequired,
+    #[error("database sync key migration must complete before changes can be saved")]
+    SyncRecoveryRequired,
     #[error("invalid source database credentials")]
     InvalidSourceCredentials,
     #[error("password is required")]
@@ -141,6 +145,7 @@ impl From<keeless_sync::SyncError> for CoreError {
             }
             keeless_sync::SyncError::RemoteNotFound => Self::DatabaseNotFound,
             keeless_sync::SyncError::RootGroupMismatch => Self::RootGroupMismatch,
+            keeless_sync::SyncError::CredentialsRequired => Self::CredentialsRequired,
             error => Self::Sync(error),
         }
     }
@@ -181,6 +186,14 @@ impl From<&CoreError> for OperationError {
             CoreError::InvalidCredentials => {
                 ("invalid_credentials", "Database credentials are invalid")
             }
+            CoreError::CredentialsRequired => (
+                "database_credentials_required",
+                "Database credentials are required to synchronize the remote KDF change",
+            ),
+            CoreError::SyncRecoveryRequired => (
+                "database_sync_recovery_required",
+                "Database sync recovery must complete before changes can be saved",
+            ),
             CoreError::InvalidSourceCredentials => (
                 "source_invalid_credentials",
                 "Source database credentials are invalid",

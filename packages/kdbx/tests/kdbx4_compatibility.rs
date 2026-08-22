@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::Cursor;
 
 use keeless_kdbx::{
-    open_database, save_database, CompositeKey, Database, DatabaseVersion, Entry, EntryBinary,
-    Group, NodeId, ProtectedString,
+    initialize_database_key, open_database, save_database, CompositeCredentials, Database,
+    DatabaseVersion, Entry, EntryBinary, Group, NodeId, ProtectedString,
 };
 
 #[test]
@@ -14,9 +14,12 @@ fn opens_keepass_rs_kdbx41_aes_fixture() {
     );
     let database = open_database(
         File::open(path).expect("fixture should exist"),
-        &CompositeKey::new().with_password(b"demopass").unwrap(),
+        &CompositeCredentials::new()
+            .with_password(b"demopass")
+            .unwrap(),
     )
-    .expect("external KDBX4.1 fixture should open");
+    .expect("external KDBX4.1 fixture should open")
+    .database;
 
     assert_eq!(database.version, DatabaseVersion::KDBX4);
     assert_eq!(database.file_version, 0x0004_0001);
@@ -50,9 +53,12 @@ fn opens_complex_kdbx_fixture() {
     );
     let database = open_database(
         File::open(path).expect("fixture should exist"),
-        &CompositeKey::new().with_password(b"asdfasdf").unwrap(),
+        &CompositeCredentials::new()
+            .with_password(b"asdfasdf")
+            .unwrap(),
     )
-    .expect("complex KDBX4 fixture should open");
+    .expect("complex KDBX4 fixture should open")
+    .database;
 
     assert_eq!(database.version, DatabaseVersion::KDBX4);
     assert_eq!(database.file_version, 0x0004_0000);
@@ -69,9 +75,12 @@ fn assert_external_fixture_opens(name: &str, expected_entries: usize) {
         .join(name);
     let database = open_database(
         File::open(path).expect("fixture should exist"),
-        &CompositeKey::new().with_password(b"demopass").unwrap(),
+        &CompositeCredentials::new()
+            .with_password(b"demopass")
+            .unwrap(),
     )
-    .expect("external KDBX4 fixture should open");
+    .expect("external KDBX4 fixture should open")
+    .database;
 
     assert_eq!(database.version, DatabaseVersion::KDBX4);
     assert_eq!(database.entry_count(), expected_entries);
@@ -100,14 +109,11 @@ fn output_opens_with_independent_keepass_parser() {
 
     let password = "demopass";
     let mut encoded = Vec::new();
-    save_database(
-        &mut encoded,
-        &database,
-        &CompositeKey::new()
-            .with_password(password.as_bytes())
-            .unwrap(),
-    )
-    .expect("database should save");
+    let credentials = CompositeCredentials::new()
+        .with_password(password.as_bytes())
+        .unwrap();
+    let key = initialize_database_key(&mut database, &credentials).unwrap();
+    save_database(&mut encoded, &database, &key).expect("database should save");
 
     let opened = keepass::Database::open(
         &mut Cursor::new(encoded),

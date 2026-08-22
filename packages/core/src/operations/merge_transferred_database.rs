@@ -13,6 +13,9 @@ pub(super) async fn execute(
     core: &mut KeelessCore,
     mut args: MergeTransferredDatabaseArgs,
 ) -> Result<OperationSuccess> {
+    if core.sync_key_migration_pending() {
+        return Err(CoreError::SyncRecoveryRequired);
+    }
     let source_password =
         zeroize::Zeroizing::new(std::mem::take(&mut args.source_password).into_bytes());
     let target_password = {
@@ -50,7 +53,7 @@ pub(super) async fn execute(
             .merge(target, &source)
     };
     let sync_error = core
-        .sync_with_key(target_key, None)
+        .sync_with_key(&target_key, None)
         .await
         .err()
         .map(|error| (&error).into());

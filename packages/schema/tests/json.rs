@@ -1075,6 +1075,14 @@ fn success_response_is_flat_and_operation_specific() {
 }
 
 #[test]
+fn credentials_required_sync_status_is_serialized() {
+    assert_roundtrip(
+        SyncStatus::CredentialsRequired,
+        json!("credentials_required"),
+    );
+}
+
+#[test]
 fn merge_response_preserves_sync_error() {
     assert_roundtrip(
         OperationResponse {

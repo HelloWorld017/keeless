@@ -620,7 +620,7 @@ async fn failed_reunlock_preserves_an_existing_unlocked_handle() {
 }
 
 #[tokio::test]
-async fn recent_database_restores_encrypted_storage_descriptor() {
+async fn recent_database_restores_plaintext_storage_descriptor() {
     let clock = Arc::new(FakeClock::new(100));
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(database_bytes(b"correct")))));
     let descriptor = StorageDescriptor {

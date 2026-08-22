@@ -2,8 +2,8 @@ use keeless_kdbx::kdbx::template::{
     instantiate_at, TemplateCopyMode, TemplateInstantiationOptions,
 };
 use keeless_kdbx::{
-    CompositeKey, CustomData, Database, DatabaseVersion, DateInstant, Entry, EntryFieldUpdate,
-    EntryUpdate, Group, NodeId, ProtectedString,
+    initialize_database_key, CompositeCredentials, CustomData, Database, DatabaseVersion,
+    DateInstant, Entry, EntryFieldUpdate, EntryUpdate, Group, NodeId, ProtectedString,
 };
 use uuid::Uuid;
 
@@ -86,7 +86,8 @@ fn prepared_entry_update_is_pure_and_commits_supplied_id_and_time() {
         is_protected: false,
     });
     let modified = DateInstant::EpochMillis(99);
-    let key = CompositeKey::new().with_password(b"test").unwrap();
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
+    let key = initialize_database_key(&mut database, &credentials).unwrap();
 
     let prepared = database
         .prepare_entry_update(
