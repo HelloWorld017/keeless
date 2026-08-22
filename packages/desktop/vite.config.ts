@@ -58,6 +58,9 @@ const binary = (): Plugin => {
       if (platform !== 'win32' && name.startsWith('keeless-passkey-windows')) {
         return 'export default undefined;';
       }
+      if (platform !== 'linux' && name.startsWith('keeless-passkey-linux')) {
+        return 'export default undefined;';
+      }
 
       const executableSuffix = platform === 'win32' && !name.includes('.') ? '.exe' : '';
       const assetName = `${name}${executableSuffix}`;

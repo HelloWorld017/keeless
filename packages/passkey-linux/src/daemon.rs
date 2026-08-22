@@ -10,10 +10,7 @@ use crate::authenticator::{Authenticator, Progress};
 use crate::ctaphid::{
     self, Accepted, Assembler, Command, MAX_PAYLOAD_SIZE, Message, TransportError,
 };
-use crate::uhid::UhidDevice;
-
-/// Name the device reports, which is what browsers show in their key picker.
-const DEVICE_NAME: &str = "Keeless";
+use crate::uhid::{DEVICE_NAME, UhidDevice};
 
 /// How often to tell the host a running command is still alive.
 ///

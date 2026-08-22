@@ -1,7 +1,7 @@
 //! Exercises the daemon against a real virtual HID device.
 //!
 //! Ignored by default: it needs a kernel with `CONFIG_UHID` and write access to
-//! `/dev/uhid`, which `keeless-passkey-linux setup` explains how to arrange. Run it with
+//! `/dev/uhid`. The installed passkey service supplies this through systemd; run it with
 //! `cargo test -p keeless_passkey_linux -- --ignored` on a Linux desktop.
 
 #![cfg(target_os = "linux")]

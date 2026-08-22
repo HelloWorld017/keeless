@@ -72,8 +72,9 @@ const FIDO_REPORT_DESCRIPTOR: &[u8] = &[
 /// Deliberately not a real vendor's: browsers special-case some vendors into
 /// legacy U2F behaviour, which would hide the CTAP2 features this authenticator
 /// depends on.
-const VENDOR_ID: u32 = 0x1209; // pid.codes, the community vendor ID space
-const PRODUCT_ID: u32 = 0x5031;
+pub const DEVICE_NAME: &str = "Keeless";
+pub const VENDOR_ID: u32 = 0x1209; // pid.codes, the community vendor ID space
+pub const PRODUCT_ID: u32 = 0x5031;
 const VERSION: u32 = 0x0001;
 
 /// A virtual HID device that stays alive as long as this value does.
@@ -185,9 +186,7 @@ fn open_uhid() -> io::Result<File> {
         .map_err(|error| {
             io::Error::new(
                 error.kind(),
-                format!(
-                    "cannot open {UHID_PATH} ({error}); run `keeless-passkey-linux setup` to grant access"
-                ),
+                format!("cannot open {UHID_PATH} ({error}); enable the Keeless passkey service"),
             )
         })
 }

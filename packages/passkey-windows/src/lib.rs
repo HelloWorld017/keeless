@@ -24,6 +24,8 @@ pub mod authenticator;
 #[cfg(windows)]
 pub mod com;
 #[cfg(windows)]
+pub mod package_identity;
+#[cfg(windows)]
 pub(crate) mod provider;
 #[cfg(windows)]
 pub mod registration;

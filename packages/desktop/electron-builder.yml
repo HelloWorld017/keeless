@@ -12,6 +12,9 @@ extraResources:
     to: icons
 linux:
   icon: src/assets/icons/icon.png
+  extraResources:
+    - from: dist/main/assets/keeless-passkey-linux
+      to: bin/keeless-passkey-linux
   target:
     - AppImage
 win:

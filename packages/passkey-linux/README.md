@@ -7,33 +7,35 @@ Keeless as an ordinary security key with no extension or patched build.
 ## Requirements
 
 - Linux with the `uhid` driver (`CONFIG_UHID`), which mainstream distributions ship
-- Either membership of a group with write access to `/dev/uhid`, which `setup`
-  explains, or a systemd service that passes the device as a named descriptor
+- systemd 253 or later, which passes `/dev/uhid` to the service as a named descriptor
 - The Keeless desktop app running, since it owns the database, or its absolute
   executable path supplied with `--desktop`
 
-## Setup
+## Enable the service
 
-For direct interactive use, `/dev/uhid` needs a udev rule before a desktop
-session can open it. Print the commands with:
+Enable the system service with:
 
 ```sh
-keeless-passkey-linux setup
+keeless-passkey-linux --enable
 ```
 
-Read them before running them. Write access to `/dev/uhid` is the ability to
-create virtual input devices of any kind — a keyboard among them — so whoever
-holds it can type into your session. The printed rule therefore grants it to a
-`keeless-uhid` group you join, rather than to every user who logs in at the
-console. Run the commands as root, then log out and back in. Check the result
-any time with:
+This opens a polkit authentication prompt. The privileged phase loads `uhid`,
+installs a module-load configuration and systemd unit, then starts the daemon as
+your desktop user. systemd opens `/dev/uhid` and passes only that descriptor to
+the daemon, so your user is never granted general access to create virtual input
+devices. Check the result any time with:
 
 ```sh
 keeless-passkey-linux doctor
 ```
 
-which reports whether the device is usable, whether the daemon has been approved
-by the app, and whether the app is reachable.
+which reports whether the service is enabled and running and whether the Keeless
+virtual FIDO device exists. Use `doctor --json` for structured output. Disable
+the service without removing its installed files with:
+
+```sh
+keeless-passkey-linux --disable
+```
 
 ## Running
 
@@ -59,7 +61,7 @@ requests until it is stopped; only one instance runs at a time.
 
 ### systemd descriptor passing
 
-When systemd passes a descriptor named `uhid` through `LISTEN_FDS` and
+The installed systemd service passes a descriptor named `uhid` through `LISTEN_FDS` and
 `LISTEN_FDNAMES`, the daemon uses it instead of opening `/dev/uhid` itself. It
 accepts the descriptor only when it is read/write and identifies the same
 character device as `/dev/uhid`; an invalid or duplicate `uhid` descriptor is

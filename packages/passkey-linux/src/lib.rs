@@ -14,9 +14,11 @@ pub mod session;
 #[cfg(target_os = "linux")]
 pub mod daemon;
 #[cfg(target_os = "linux")]
+pub mod doctor;
+#[cfg(target_os = "linux")]
 pub mod instance;
 #[cfg(target_os = "linux")]
-pub mod setup;
+pub mod service;
 #[cfg(target_os = "linux")]
 pub mod uhid;
 
@@ -34,6 +36,8 @@ pub enum VhidError {
     Device(std::io::Error),
     #[error(transparent)]
     Desktop(#[from] keeless_host_desktop_shared::LauncherError),
+    #[error("passkey service failed: {0}")]
+    Service(String),
     #[error("this platform has no virtual HID support")]
     Unsupported,
 }
@@ -52,59 +56,168 @@ pub type Result<T> = std::result::Result<T, VhidError>;
 
 const USAGE: &str = "\
 usage: keeless-passkey-linux [run] [--desktop <path>]
-       keeless-passkey-linux setup
-       keeless-passkey-linux doctor
+       keeless-passkey-linux --enable [--desktop <path>]
+       keeless-passkey-linux --disable
+       keeless-passkey-linux doctor [--json]
        keeless-passkey-linux reset-pairing
 
   run            serve passkeys over a virtual HID device (default)
   --desktop      absolute Keeless desktop executable to start when needed
-  setup          print the commands that grant access to /dev/uhid
-  doctor         report whether the device and the desktop app are reachable
+  --enable       install and start the system passkey service
+  --disable      stop and disable the system passkey service
+  doctor         report service and virtual FIDO device status
   reset-pairing  forget the desktop app, so the next run asks for approval again";
 
 pub fn main(args: impl IntoIterator<Item = OsString>) -> Result<()> {
-    let mut args = args.into_iter().peekable();
-    let command = match args.peek().and_then(|value| value.to_str()) {
-        Some("setup" | "doctor" | "reset-pairing" | "run") => args
-            .next()
-            .expect("peeked a command")
-            .into_string()
-            .expect("checked as UTF-8"),
-        Some("--help" | "-h") => {
-            println!("{USAGE}");
-            return Ok(());
-        }
-        _ => "run".to_string(),
+    let Some(command) = Command::parse(args)? else {
+        println!("{USAGE}");
+        return Ok(());
     };
-    let options = Options::parse(args)?;
 
-    match command.as_str() {
-        "setup" => setup_command(),
-        "doctor" => doctor_command(),
-        "reset-pairing" => block_on(reset_pairing()),
-        _ => run_command(options),
+    match command {
+        Command::Run(options) => run_command(options),
+        Command::Enable(options) => enable_command(options),
+        Command::Disable => disable_command(),
+        Command::Doctor(options) => doctor_command(options),
+        Command::ResetPairing => block_on(reset_pairing()),
+        Command::InternalInstallService { user_id, desktop } => {
+            internal_install_service(user_id, desktop)
+        }
+        Command::InternalDisableService { user_id } => internal_disable_service(user_id),
     }
 }
 
-struct Options {
+enum Command {
+    Run(RunOptions),
+    Enable(EnableOptions),
+    Disable,
+    Doctor(DoctorOptions),
+    ResetPairing,
+    /// Only `pkexec` should invoke these commands. They keep the public command
+    /// line limited to enable/disable while making the privileged phase explicit.
+    InternalInstallService {
+        user_id: u32,
+        desktop: Option<std::path::PathBuf>,
+    },
+    InternalDisableService {
+        user_id: u32,
+    },
+}
+
+impl Command {
+    fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Option<Self>> {
+        let mut args = args.into_iter();
+        let Some(first) = args.next() else {
+            return Ok(Some(Self::Run(RunOptions { desktop: None })));
+        };
+        match first.to_str() {
+            Some("--help" | "-h") => Ok(None),
+            Some("run") => Ok(Some(Self::Run(RunOptions::parse(args)?))),
+            Some("--enable") => Ok(Some(Self::Enable(EnableOptions::parse(args)?))),
+            Some("--disable") => {
+                reject_remaining(args)?;
+                Ok(Some(Self::Disable))
+            }
+            Some("doctor") => Ok(Some(Self::Doctor(DoctorOptions::parse(args)?))),
+            Some("reset-pairing") => {
+                reject_remaining(args)?;
+                Ok(Some(Self::ResetPairing))
+            }
+            Some("--internal-install-service") => {
+                let (user_id, desktop) = InternalOptions::parse(args, true)?;
+                Ok(Some(Self::InternalInstallService { user_id, desktop }))
+            }
+            Some("--internal-disable-service") => {
+                let (user_id, desktop) = InternalOptions::parse(args, false)?;
+                if desktop.is_some() {
+                    return Err(VhidError::Usage(
+                        "--internal-disable-service does not accept --desktop".into(),
+                    ));
+                }
+                Ok(Some(Self::InternalDisableService { user_id }))
+            }
+            _ => {
+                let mut run_args = vec![first];
+                run_args.extend(args);
+                Ok(Some(Self::Run(RunOptions::parse(run_args)?)))
+            }
+        }
+    }
+}
+
+struct RunOptions {
     /// Optional because direct users may prefer requests to fail while the app
     /// is closed rather than permit this daemon to launch it.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     desktop: Option<DesktopLauncher>,
 }
 
-impl Options {
+impl RunOptions {
     fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self> {
+        let desktop = parse_desktop(args)?.map(DesktopLauncher::new).transpose()?;
+        Ok(Self { desktop })
+    }
+}
+
+struct EnableOptions {
+    desktop: Option<std::path::PathBuf>,
+}
+
+impl EnableOptions {
+    fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self> {
+        Ok(Self {
+            desktop: parse_desktop(args)?,
+        })
+    }
+}
+
+struct DoctorOptions {
+    json: bool,
+}
+
+impl DoctorOptions {
+    fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self> {
+        let mut json = false;
+        for argument in args {
+            match argument.to_str() {
+                Some("--json") if !json => json = true,
+                _ => {
+                    return Err(VhidError::Usage(format!(
+                        "unexpected argument: {}\n\n{USAGE}",
+                        argument.to_string_lossy()
+                    )));
+                }
+            }
+        }
+        Ok(Self { json })
+    }
+}
+
+struct InternalOptions;
+
+impl InternalOptions {
+    fn parse(
+        args: impl IntoIterator<Item = OsString>,
+        allow_desktop: bool,
+    ) -> Result<(u32, Option<std::path::PathBuf>)> {
+        let mut user_id = None;
         let mut desktop = None;
         let mut args = args.into_iter();
         while let Some(argument) = args.next() {
             match argument.to_str() {
-                Some("--desktop") => {
-                    let path = std::path::PathBuf::from(
-                        args.next()
-                            .ok_or_else(|| VhidError::Usage("--desktop requires a path".into()))?,
-                    );
-                    desktop = Some(DesktopLauncher::new(path)?);
+                Some("--uid") if user_id.is_none() => {
+                    let value = args.next().ok_or_else(|| {
+                        VhidError::Usage("--uid requires a numeric user ID".into())
+                    })?;
+                    user_id = Some(value.to_string_lossy().parse::<u32>().map_err(|_| {
+                        VhidError::Usage("--uid requires a numeric user ID".into())
+                    })?);
+                }
+                Some("--desktop") if allow_desktop && desktop.is_none() => {
+                    let path = args
+                        .next()
+                        .ok_or_else(|| VhidError::Usage("--desktop requires a path".into()))?;
+                    desktop = Some(validate_desktop_path(std::path::PathBuf::from(path))?);
                 }
                 _ => {
                     return Err(VhidError::Usage(format!(
@@ -114,8 +227,48 @@ impl Options {
                 }
             }
         }
-        Ok(Self { desktop })
+        Ok((
+            user_id.ok_or_else(|| VhidError::Usage("--uid is required".into()))?,
+            desktop,
+        ))
     }
+}
+
+fn parse_desktop(args: impl IntoIterator<Item = OsString>) -> Result<Option<std::path::PathBuf>> {
+    let mut desktop = None;
+    let mut args = args.into_iter();
+    while let Some(argument) = args.next() {
+        match argument.to_str() {
+            Some("--desktop") if desktop.is_none() => {
+                let path = args
+                    .next()
+                    .ok_or_else(|| VhidError::Usage("--desktop requires a path".into()))?;
+                desktop = Some(validate_desktop_path(std::path::PathBuf::from(path))?);
+            }
+            _ => {
+                return Err(VhidError::Usage(format!(
+                    "unexpected argument: {}\n\n{USAGE}",
+                    argument.to_string_lossy()
+                )));
+            }
+        }
+    }
+    Ok(desktop)
+}
+
+fn validate_desktop_path(path: std::path::PathBuf) -> Result<std::path::PathBuf> {
+    DesktopLauncher::new(path.clone())?;
+    Ok(path)
+}
+
+fn reject_remaining(args: impl IntoIterator<Item = OsString>) -> Result<()> {
+    if let Some(argument) = args.into_iter().next() {
+        return Err(VhidError::Usage(format!(
+            "unexpected argument: {}\n\n{USAGE}",
+            argument.to_string_lossy()
+        )));
+    }
+    Ok(())
 }
 
 fn block_on<T>(future: impl Future<Output = Result<T>>) -> Result<T> {
@@ -134,45 +287,43 @@ async fn reset_pairing() -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn setup_command() -> Result<()> {
-    if setup::readiness() == setup::Readiness::Ready {
-        println!("/dev/uhid is already accessible; no setup needed.");
-        return Ok(());
-    }
-    setup::print_instructions();
-    Ok(())
+fn enable_command(options: EnableOptions) -> Result<()> {
+    service::enable(options.desktop).map_err(VhidError::Service)
 }
 
 #[cfg(target_os = "linux")]
-fn doctor_command() -> Result<()> {
-    let readiness = setup::readiness();
-    println!("device:  {}", readiness.describe());
+fn disable_command() -> Result<()> {
+    service::disable().map_err(VhidError::Service)
+}
 
-    block_on(async {
-        let session = session::Session::load().await?;
+#[cfg(target_os = "linux")]
+fn internal_install_service(user_id: u32, desktop: Option<std::path::PathBuf>) -> Result<()> {
+    service::install_for_user(user_id, desktop).map_err(VhidError::Service)
+}
+
+#[cfg(target_os = "linux")]
+fn internal_disable_service(user_id: u32) -> Result<()> {
+    service::disable_for_user(user_id).map_err(VhidError::Service)
+}
+
+#[cfg(target_os = "linux")]
+fn doctor_command(options: DoctorOptions) -> Result<()> {
+    let state = doctor::diagnose(service::current_user_id());
+    if options.json {
         println!(
-            "pairing: {}",
-            if session.is_paired() {
-                "paired with the desktop app"
-            } else {
-                "not paired yet; the first request will ask for approval"
-            }
+            "{}",
+            serde_json::to_string(&state).map_err(|error| VhidError::Service(format!(
+                "cannot encode doctor output: {error}"
+            )))?
         );
-        match keeless_host_desktop_shared::CoreClient::ping().await {
-            Ok(()) => println!("app:     reachable"),
-            Err(error) => println!("app:     unreachable ({error})"),
-        }
-        Ok(())
-    })?;
-
-    if readiness != setup::Readiness::Ready {
-        println!("\nRun `keeless-passkey-linux setup` for the commands that fix the device.");
+    } else {
+        doctor::print_human(&state);
     }
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
-fn run_command(options: Options) -> Result<()> {
+fn run_command(options: RunOptions) -> Result<()> {
     let Some(_lock) = instance::InstanceLock::acquire().map_err(VhidError::Device)? else {
         eprintln!("keeless-passkey-linux: another instance is already running");
         return Ok(());
@@ -210,17 +361,32 @@ async fn shutdown_signal() {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn setup_command() -> Result<()> {
+fn enable_command(_options: EnableOptions) -> Result<()> {
     Err(VhidError::Unsupported)
 }
 
 #[cfg(not(target_os = "linux"))]
-fn doctor_command() -> Result<()> {
+fn disable_command() -> Result<()> {
     Err(VhidError::Unsupported)
 }
 
 #[cfg(not(target_os = "linux"))]
-fn run_command(_options: Options) -> Result<()> {
+fn internal_install_service(_user_id: u32, _desktop: Option<std::path::PathBuf>) -> Result<()> {
+    Err(VhidError::Unsupported)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn internal_disable_service(_user_id: u32) -> Result<()> {
+    Err(VhidError::Unsupported)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn doctor_command(_options: DoctorOptions) -> Result<()> {
+    Err(VhidError::Unsupported)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_command(_options: RunOptions) -> Result<()> {
     Err(VhidError::Unsupported)
 }
 
@@ -228,8 +394,8 @@ fn run_command(_options: Options) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn options(args: &[&str]) -> Result<Options> {
-        Options::parse(args.iter().map(OsString::from))
+    fn options(args: &[&str]) -> Result<RunOptions> {
+        RunOptions::parse(args.iter().map(OsString::from))
     }
 
     #[test]
@@ -254,6 +420,26 @@ mod tests {
         assert!(matches!(options(&["--desktop"]), Err(VhidError::Usage(_))));
         assert!(matches!(options(&["--nope"]), Err(VhidError::Usage(_))));
         assert!(matches!(options(&["stray"]), Err(VhidError::Usage(_))));
+    }
+
+    #[test]
+    fn parses_service_commands_without_the_removed_setup_command() {
+        assert!(matches!(
+            Command::parse(["--enable"].map(OsString::from)),
+            Ok(Some(Command::Enable(_)))
+        ));
+        assert!(matches!(
+            Command::parse(["--disable"].map(OsString::from)),
+            Ok(Some(Command::Disable))
+        ));
+        assert!(matches!(
+            Command::parse(["doctor", "--json"].map(OsString::from)),
+            Ok(Some(Command::Doctor(DoctorOptions { json: true })))
+        ));
+        assert!(matches!(
+            Command::parse(["setup"].map(OsString::from)),
+            Err(VhidError::Usage(_))
+        ));
     }
 
     #[test]

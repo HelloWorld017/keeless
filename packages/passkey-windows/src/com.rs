@@ -19,11 +19,13 @@ use crate::{
     api::Api,
     authenticator,
     error::{CLASS_E_NOAGGREGATION, E_FAIL, E_NOINTERFACE, E_POINTER, HResult},
+    package_identity::{self, PackageIdentity},
     provider::Provider,
     registration,
     sdk_bindings::*,
     session::Session,
 };
+use serde::Serialize;
 
 const COINIT_MULTITHREADED: u32 = 0;
 const CLSCTX_LOCAL_SERVER: u32 = 0x4;
@@ -95,6 +97,7 @@ pub fn main(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(
     let mut activated = false;
     let mut command = None;
     let mut desktop = None;
+    let mut json = false;
     while let Some(argument) = arguments.next() {
         match argument.to_string_lossy().as_ref() {
             "-PluginActivated" | "-Embedding" => activated = true,
@@ -103,6 +106,7 @@ pub fn main(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(
                     return Err("only one command may be supplied".into());
                 }
             }
+            "--json" => json = true,
             "--desktop" => {
                 let path = arguments
                     .next()
@@ -121,10 +125,13 @@ pub fn main(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(
     }
 
     if let Some(command) = command {
-        if activated || desktop.is_some() {
+        if activated || desktop.is_some() || (json && command.to_string_lossy() != "doctor") {
             return Err("the selected command cannot be combined with activation options".into());
         }
-        return run_command(command.to_string_lossy().as_ref());
+        return run_command(command.to_string_lossy().as_ref(), json);
+    }
+    if json {
+        return Err("--json is only available with doctor".into());
     }
     if !activated {
         return Err(
@@ -144,26 +151,13 @@ pub fn main(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> Result<(
     serve(provider)
 }
 
-fn run_command(command: &str) -> Result<(), String> {
+fn run_command(command: &str, json: bool) -> Result<(), String> {
     match command {
         "--enable" => registration::enable(&Api::load().map_err(|error| error.to_string())?)
             .map_err(|error| error.to_string()),
         "--disable" => registration::disable(&Api::load().map_err(|error| error.to_string())?)
             .map_err(|error| error.to_string()),
-        "doctor" => {
-            let api = Api::load().map_err(|error| error.to_string())?;
-            let enabled = registration::is_enabled(&api).map_err(|error| error.to_string())?;
-            let mut output = std::io::stdout().lock();
-            writeln!(output, "Windows WebAuthn plugin APIs: available")
-                .map_err(|error| error.to_string())?;
-            writeln!(
-                output,
-                "Keeless provider: {}",
-                if enabled { "enabled" } else { "disabled" }
-            )
-            .map_err(|error| error.to_string())?;
-            Ok(())
-        }
+        "doctor" => doctor_command(json),
         "reset-pairing" => {
             let runtime = Builder::new_current_thread()
                 .enable_all()
@@ -177,6 +171,120 @@ fn run_command(command: &str) -> Result<(), String> {
                 .map_err(|error: crate::session::SessionError| error.to_string())
         }
         _ => Err("unsupported command".into()),
+    }
+}
+
+#[derive(Serialize)]
+struct DoctorState {
+    platform: &'static str,
+    state: &'static str,
+    enabled: bool,
+    checks: Vec<DoctorCheck>,
+}
+
+#[derive(Serialize)]
+struct DoctorCheck {
+    id: &'static str,
+    label: &'static str,
+    status: &'static str,
+    detail: String,
+}
+
+fn doctor_command(json: bool) -> Result<(), String> {
+    let package = package_check();
+    let state = match Api::load() {
+        Err(error) => DoctorState {
+            platform: "windows",
+            state: "unsupported",
+            enabled: false,
+            checks: vec![
+                doctor_check(
+                    "webauthn",
+                    "Windows WebAuthn plugin APIs",
+                    "error",
+                    error.to_string(),
+                ),
+                doctor_check("provider", "Keeless provider", "warning", "unavailable"),
+                package,
+            ],
+        },
+        Ok(api) => match registration::is_enabled(&api) {
+            Ok(enabled) => DoctorState {
+                platform: "windows",
+                state: if enabled { "enabled" } else { "disabled" },
+                enabled,
+                checks: vec![
+                    doctor_check(
+                        "webauthn",
+                        "Windows WebAuthn plugin APIs",
+                        "ok",
+                        "available",
+                    ),
+                    doctor_check(
+                        "provider",
+                        "Keeless provider",
+                        "ok",
+                        if enabled { "enabled" } else { "disabled" },
+                    ),
+                    package,
+                ],
+            },
+            Err(error) => DoctorState {
+                platform: "windows",
+                state: "degraded",
+                enabled: false,
+                checks: vec![
+                    doctor_check(
+                        "webauthn",
+                        "Windows WebAuthn plugin APIs",
+                        "ok",
+                        "available",
+                    ),
+                    doctor_check("provider", "Keeless provider", "error", error.to_string()),
+                    package,
+                ],
+            },
+        },
+    };
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string(&state).map_err(|error| error.to_string())?
+        );
+    } else {
+        let mut output = std::io::stdout().lock();
+        for check in state.checks {
+            writeln!(output, "{}: {}", check.label, check.detail)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn package_check() -> DoctorCheck {
+    match package_identity::current_package_full_name() {
+        Ok(PackageIdentity::Packaged(name)) => {
+            doctor_check("package", "App package", "ok", format!("packaged ({name})"))
+        }
+        Ok(PackageIdentity::Unpackaged) => {
+            doctor_check("package", "App package", "warning", "unpackaged")
+        }
+        Err(error) => doctor_check("package", "App package", "error", error),
+    }
+}
+
+fn doctor_check(
+    id: &'static str,
+    label: &'static str,
+    status: &'static str,
+    detail: impl Into<String>,
+) -> DoctorCheck {
+    DoctorCheck {
+        id,
+        label,
+        status,
+        detail: detail.into(),
     }
 }
 

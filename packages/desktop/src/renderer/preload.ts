@@ -9,6 +9,8 @@ const bridge: DesktopBridge = {
     ipcRenderer.invoke('desktop:relay-frame', frame) as Promise<MessageFrame | null>,
   pickLocalFile: mode => ipcRenderer.invoke('desktop:pick-local-file', mode),
   windowControl: action => ipcRenderer.invoke('desktop:window-control', action),
+  getPasskeyState: () => ipcRenderer.invoke('desktop:get-passkey-state'),
+  setPasskeyEnabled: enabled => ipcRenderer.invoke('desktop:set-passkey-enabled', enabled),
   onEntryFocus: listener => {
     const handler = (_event: Electron.IpcRendererEvent, entryId: unknown) => {
       if (typeof entryId === 'string') {

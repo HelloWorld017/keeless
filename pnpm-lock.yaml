@@ -219,6 +219,9 @@ importers:
       '@keeless/native-ui':
         specifier: workspace:*
         version: link:../native-ui
+      '@keeless/passkey-linux':
+        specifier: workspace:*
+        version: link:../passkey-linux
       '@keeless/passkey-windows':
         specifier: workspace:*
         version: link:../passkey-windows

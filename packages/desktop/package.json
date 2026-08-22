@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@keeless/native-ui": "workspace:*",
+    "@keeless/passkey-linux": "workspace:*",
     "@keeless/passkey-windows": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",

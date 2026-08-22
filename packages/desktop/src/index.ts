@@ -15,6 +15,7 @@ import {
   shell,
   Tray,
 } from 'electron';
+import { getPasskeyState, setPasskeyEnabled } from './features/passkey';
 import type { DesktopHost as DesktopHostType } from '@keeless/host-desktop';
 import type { MessageFrame } from '@keeless/lesswire';
 
@@ -168,6 +169,19 @@ const installIpc = () => {
         throw new Error('Invalid window control action');
     }
   });
+
+  ipcMain.handle('desktop:get-passkey-state', event => {
+    assertSender(event);
+    return getPasskeyState();
+  });
+
+  ipcMain.handle('desktop:set-passkey-enabled', (event, enabled: unknown) => {
+    assertSender(event);
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Invalid passkey enabled state');
+    }
+    return setPasskeyEnabled(enabled);
+  });
 };
 
 const createWindow = async () => {
@@ -246,6 +260,8 @@ const shutdown = async () => {
   ipcMain.removeHandler('desktop:relay-frame');
   ipcMain.removeHandler('desktop:pick-local-file');
   ipcMain.removeHandler('desktop:window-control');
+  ipcMain.removeHandler('desktop:get-passkey-state');
+  ipcMain.removeHandler('desktop:set-passkey-enabled');
   await host?.shutdown();
   host = undefined;
   tray?.destroy();
@@ -288,7 +304,6 @@ if (!hasLock) {
   });
 }
 
-if (__PLATFORM__ === "win32") {
-  await import("binary:keeless-passkey-windows");
-  await import("binary:keeless-passkey-windows.msix");
+if (__PLATFORM__ === 'win32') {
+  await import('binary:keeless-passkey-windows.msix');
 }

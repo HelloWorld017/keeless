@@ -12,6 +12,8 @@ keeless_passkey_ctap = { path = "../passkey-ctap" }
 keeless_host_desktop_shared = { path = "../host-desktop-shared" }
 keeless_schema = { path = "../schema" }
 keeless_lesswire = { path = "../lesswire" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 
