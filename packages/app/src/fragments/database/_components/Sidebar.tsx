@@ -19,6 +19,7 @@ import {
 } from '@/components/dropdown-menu';
 import {
   Sidebar,
+  SidebarCollapseTrigger,
   SidebarContent,
   SidebarEmpty,
   SidebarFooter,
@@ -141,8 +142,8 @@ const TrashMenuItem = ({
         render={<Link href={buildRoute('trash')} replace />}
         isActive={location === buildRoute('trash') || isEntryOver}
         className={cx(
-          'border-2 border-transparent -mx-[2px]',
-          isEntryOver && 'border-destructive/50 bg-destructive/25!',
+          'outline-2 outline-transparent',
+          isEntryOver && 'outline-destructive/50 bg-destructive/25!',
         )}
         onClick={onNavigate}
       >
@@ -308,64 +309,67 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const databaseActionPending = syncDatabase.isPending || lockDatabase.isPending;
 
   return (
-    <Sidebar className={cx('p-2 transition-[padding] duration-200 xl:p-4', isCollapsed && 'p-1!')}>
+    <Sidebar className={cx('p-2 transition-[padding] duration-200 xl:p-4', isCollapsed && 'p-0!')}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuButton
-                    size="lg"
-                    disabled={!databaseName}
-                    className={isCollapsed ? 'pl-2!' : undefined}
-                  />
-                }
-              >
-                <div className="flex w-full items-center gap-3">
-                  <div className="relative aspect-square size-8 shrink-0">
-                    <img src={Logo} alt="" />
-                    {databaseStatus.data?.dirty && (
-                      <output
-                        className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-amber-500 ring-2 ring-sidebar"
-                        aria-label="Database has unsynchronized changes"
-                      />
-                    )}
+            <div className="flex items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <SidebarMenuButton
+                      size="lg"
+                      disabled={!databaseName}
+                      className="min-w-0 flex-1"
+                    />
+                  }
+                >
+                  <div className="flex w-full items-center gap-3">
+                    <div className="relative aspect-square size-8 shrink-0">
+                      <img src={Logo} alt="" />
+                      {databaseStatus.data?.dirty && (
+                        <output
+                          className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-amber-500 ring-2 ring-sidebar"
+                          aria-label="Database has unsynchronized changes"
+                        />
+                      )}
+                    </div>
+                    <div
+                      className={cx(
+                        'flex min-w-0 flex-[1_1_0] flex-col transition-opacity duration-200',
+                        isCollapsed && 'opacity-0',
+                      )}
+                    >
+                      <span className="font-semibold truncate">
+                        {databaseName ?? 'Loading database'}
+                      </span>
+                      <span>{storageName}</span>
+                    </div>
                   </div>
-                  <div
-                    className={cx(
-                      'flex min-w-0 flex-[1_1_0] flex-col transition-opacity duration-200',
-                      isCollapsed && 'opacity-0',
-                    )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="max-w-40">
+                  <DropdownMenuItem
+                    disabled={databaseActionPending}
+                    onClick={() => void runDatabaseAction('sync')}
                   >
-                    <span className="font-semibold truncate">
-                      {databaseName ?? 'Loading database'}
-                    </span>
-                    <span>{storageName}</span>
-                  </div>
-                </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="max-w-40">
-                <DropdownMenuItem
-                  disabled={databaseActionPending}
-                  onClick={() => void runDatabaseAction('sync')}
-                >
-                  {syncDatabase.isPending ? (
-                    <IconLoaderCircle className="animate-spin" />
-                  ) : (
-                    <IconRefreshCw />
-                  )}
-                  Sync
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={databaseActionPending}
-                  onClick={() => void runDatabaseAction('lock')}
-                >
-                  <IconLockKeyhole />
-                  Lock
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    {syncDatabase.isPending ? (
+                      <IconLoaderCircle className="animate-spin" />
+                    ) : (
+                      <IconRefreshCw />
+                    )}
+                    Sync
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={databaseActionPending}
+                    onClick={() => void runDatabaseAction('lock')}
+                  >
+                    <IconLockKeyhole />
+                    Lock
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <SidebarCollapseTrigger />
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -474,7 +478,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                           tagStyle={tag.style}
                           className={cx(
                             'max-w-36 transition-[width,padding] duration-200',
-                            isCollapsed && '-ml-1.5 [&>span]:opacity-0',
+                            isCollapsed && 'size-4 shrink-0 justify-center p-0 [&>span]:opacity-0',
                           )}
                         />
                       </SidebarMenuButton>

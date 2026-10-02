@@ -362,9 +362,9 @@ const SortableGroup = ({
           }
           isActive={active}
           className={cx(
-            'border-2 border-transparent group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground select-none',
+            'outline-2 outline-transparent group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground select-none',
             active ? 'pr-20' : 'pr-14',
-            isEntryOver && 'border-sidebar-ring',
+            isEntryOver && 'outline-sidebar-ring',
             isDragging && 'opacity-0',
           )}
           onClick={onNavigate}

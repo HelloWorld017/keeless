@@ -9,7 +9,7 @@ import {
   AlertDialogTitle,
 } from '@/components/alert-dialog';
 import { Button } from '@/components/button';
-import { SidebarTrigger } from '@/components/sidebar';
+import { SidebarExpandTrigger } from '@/components/sidebar';
 import { IconChevronDown, IconLoaderCircle, IconPlus, IconSearch, IconTrash } from '@/icons';
 import { Menu } from '@base-ui/react/menu';
 import { useState } from 'react';
@@ -49,19 +49,19 @@ export const EntryListHeader = ({
   const entryCount = result?.entries.length ?? 0;
 
   return (
-    <header className="flex min-h-16 items-center justify-between gap-3 px-4 py-3 xl:py-6 xl:pb-4">
-      <div className="flex min-w-0 items-center gap-2">
-        <SidebarTrigger className="xl:hidden" />
+    <header className="flex min-h-14 items-center justify-between gap-4 px-2 py-2.5 xl:px-3 xl:py-4 xl:pb-3">
+      <div className="flex min-w-0 items-center gap-4">
+        <SidebarExpandTrigger />
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold">{title}</h1>
+          <h1 className="truncate text-lg leading-tight font-semibold">{title}</h1>
           {result && (
-            <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+            <span className="mt-0.5 block shrink-0 text-xs leading-tight font-semibold tabular-nums text-muted-foreground">
               {entryCount} {entryCount === 1 ? 'Entry' : 'Entries'}
             </span>
           )}
         </div>
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex shrink-0 gap-3">
         {searchQuery && onOpenSearch && (
           <Button
             type="button"
