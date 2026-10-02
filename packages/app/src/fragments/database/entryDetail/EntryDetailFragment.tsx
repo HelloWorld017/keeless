@@ -357,7 +357,7 @@ const EntryDetailQuery = ({
         >
           <IconChevronLeft />
         </Button>
-        <div className="w-full order-2 xl:pt-4 xl:order-none">
+        <div className="order-2 xl:pt-4 xl:order-none">
           <div className="flex gap-1 justify-end">
             {editing && (
               <>
@@ -377,7 +377,7 @@ const EntryDetailQuery = ({
             )}
             {!editing && detail.data && (
               <>
-                <Button variant="ghost" size="lg" onClick={startEditing}>
+                <Button variant="ghost" size="lg" className="hidden xl:flex" onClick={startEditing}>
                   <IconPencil />
                   Edit
                 </Button>
@@ -388,6 +388,10 @@ const EntryDetailQuery = ({
                     <IconEllipsisVertical />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-44">
+                    <DropdownMenuItem className="xl:hidden" onClick={startEditing}>
+                      <IconPencil />
+                      Edit
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       disabled={
                         protectedFieldIds.length === 0 ||
