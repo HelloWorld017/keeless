@@ -18,9 +18,12 @@
   outputs = { nixpkgs, crane, fenix, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs { inherit system; };
-      rustToolchain = fenix.packages.${system}.combine [
-        fenix.packages.${system}.stable.toolchain
-        fenix.packages.${system}.stable.rust-src
+      rustToolchain = let
+        inherit (fenix.packages.${system}) combine stable targets;
+      in combine [
+        stable.toolchain
+        stable.rust-src
+        targets.wasm32-unknown-unknown.stable.rust-std
       ];
 
       craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
