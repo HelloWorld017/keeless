@@ -108,7 +108,7 @@ const AllEntriesMenuItem = ({
         onClick={onNavigate}
       >
         <IconList />
-        <span>All Entries</span>
+        <span data-sidebar-label>All Entries</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -147,7 +147,9 @@ const TrashMenuItem = ({
         onClick={onNavigate}
       >
         <IconTrash className={cx(isEntryOver && 'text-destructive')} />
-        <span className={cx(isEntryOver && 'text-destructive')}>Trash</span>
+        <span data-sidebar-label className={cx(isEntryOver && 'text-destructive')}>
+          Trash
+        </span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -169,7 +171,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const hasNativePasswordInput = useHasNativePasswordInput();
   const showToast = useShowToast();
   const [passwordRequest, setPasswordRequest] = useState<PasswordRequest>();
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { isCollapsed, isMobile, setOpenMobile } = useSidebar();
   const closeMobile = () => {
     if (isMobile) {
       setOpenMobile(false);
@@ -306,16 +308,22 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const databaseActionPending = syncDatabase.isPending || lockDatabase.isPending;
 
   return (
-    <Sidebar className="p-2 xl:p-4">
+    <Sidebar className={cx('p-2 transition-[padding] duration-200 xl:p-4', isCollapsed && 'p-1!')}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<SidebarMenuButton size="lg" disabled={!databaseName} />}
+                render={
+                  <SidebarMenuButton
+                    size="lg"
+                    disabled={!databaseName}
+                    className={isCollapsed ? 'pl-2!' : undefined}
+                  />
+                }
               >
-                <div className="flex gap-3 items-center w-full">
-                  <div className="relative aspect-square size-8">
+                <div className="flex w-full items-center gap-3">
+                  <div className="relative aspect-square size-8 shrink-0">
                     <img src={Logo} alt="" />
                     {databaseStatus.data?.dirty && (
                       <output
@@ -324,7 +332,12 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                       />
                     )}
                   </div>
-                  <div className="flex flex-[1_1_0] min-w-0 flex-col">
+                  <div
+                    className={cx(
+                      'flex min-w-0 flex-[1_1_0] flex-col transition-opacity duration-200',
+                      isCollapsed && 'opacity-0',
+                    )}
+                  >
                     <span className="font-semibold truncate">
                       {databaseName ?? 'Loading database'}
                     </span>
@@ -373,7 +386,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                   }}
                 >
                   <IconSearch />
-                  <span>Search</span>
+                  <span data-sidebar-label>Search</span>
                   <kbd className="ml-auto text-[10px] text-sidebar-foreground/60">^P</kbd>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -441,7 +454,9 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
           <SidebarGroupContent>
             {tags.isPending && <SidebarMenuSkeleton />}
             {tags.isError && <SidebarEmpty>Tags could not be loaded.</SidebarEmpty>}
-            {tags.data && tags.data.tags.length === 0 && <SidebarEmpty>No tags</SidebarEmpty>}
+            {tags.data && tags.data.tags.length === 0 && (
+              <SidebarEmpty hideWhenCollapsed>No tags</SidebarEmpty>
+            )}
             {tags.data && tags.data.tags.length > 0 && (
               <SidebarMenu>
                 {tags.data.tags.map(tag => {
@@ -454,7 +469,14 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                         className="pr-16"
                         onClick={closeMobile}
                       >
-                        <Tag name={tag.name} tagStyle={tag.style} className="max-w-36" />
+                        <Tag
+                          name={tag.name}
+                          tagStyle={tag.style}
+                          className={cx(
+                            'max-w-36 transition-[width,padding] duration-200',
+                            isCollapsed && '-ml-1.5 [&>span]:opacity-0',
+                          )}
+                        />
                       </SidebarMenuButton>
                       <TagStyleEditor
                         tag={tag}
@@ -524,7 +546,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
           <SidebarMenuItem>
             <SidebarMenuButton onClick={onConfigOpen}>
               <IconSettings />
-              Settings
+              <span data-sidebar-label>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

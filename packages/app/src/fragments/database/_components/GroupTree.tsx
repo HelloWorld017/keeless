@@ -16,6 +16,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/sidebar';
 import { IconGripVertical, IconPencil, IconTrash } from '@/icons';
 import { cx } from '@/utils/css';
@@ -207,6 +208,7 @@ const SortableGroup = ({
   onUpdate: (args: UpdateGroupArgs) => Promise<void>;
   onDelete: () => void;
 }) => {
+  const { isCollapsed } = useSidebar();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.group.name);
   const [draftIcon, setDraftIcon] = useState<IconReference>(item.group.icon);
@@ -278,7 +280,11 @@ const SortableGroup = ({
   return (
     <SidebarMenuItem
       ref={setNodeRef}
-      className={cx('group', isDragging && 'z-10')}
+      className={cx(
+        'group transition-[padding] duration-200',
+        isCollapsed && 'pl-0!',
+        isDragging && 'z-10',
+      )}
       style={{
         paddingLeft: depth * INDENTATION_WIDTH,
         transform: CSS.Transform.toString(transform),
@@ -364,7 +370,7 @@ const SortableGroup = ({
           onClick={onNavigate}
         >
           <ItemIcon icon={item.group.icon} fallback="group" />
-          <span>{item.group.name || 'Untitled group'}</span>
+          <span data-sidebar-label>{item.group.name || 'Untitled group'}</span>
         </SidebarMenuButton>
       )}
 

@@ -2,7 +2,7 @@ import { Button } from '@/components/button';
 import { Separator } from '@/components/separator';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/sheet';
 import { Skeleton } from '@/components/skeleton';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { useIsDesktop, useIsMobile } from '@/hooks/useIsMobile';
 import { IconPanelLeft } from '@/icons';
 import { cn } from '@/utils/css';
 import { mergeProps } from '@base-ui/react/merge-props';
@@ -23,6 +23,11 @@ type SidebarContextValue = {
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
+  isDesktop: boolean;
+  compactOpen: boolean;
+  setCompactOpen: (open: boolean) => void;
+  isCollapsed: boolean;
+  setCompactHovered: (hovered: boolean) => void;
   toggleSidebar: () => void;
 };
 
@@ -50,9 +55,13 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
+  const isDesktop = useIsDesktop();
   const [openMobile, setOpenMobile] = useState(false);
+  const [compactOpen, setCompactOpen] = useState(false);
+  const [compactHovered, setCompactHovered] = useState(false);
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const open = openProp ?? internalOpen;
+  const isCollapsed = !isMobile && !(isDesktop ? open : compactOpen || compactHovered);
   const setOpen = useCallback(
     (value: boolean) => {
       onOpenChange?.(value);
@@ -66,10 +75,12 @@ function SidebarProvider({
   const toggleSidebar = useCallback(() => {
     if (isMobile) {
       setOpenMobile(value => !value);
+    } else if (!isDesktop) {
+      setCompactOpen(value => !value);
     } else {
       setOpen(!open);
     }
-  }, [isMobile, open, setOpen]);
+  }, [isDesktop, isMobile, open, setOpen]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -83,8 +94,20 @@ function SidebarProvider({
   }, [toggleSidebar]);
 
   const value = useMemo(
-    () => ({ open, setOpen, openMobile, setOpenMobile, isMobile, toggleSidebar }),
-    [isMobile, open, openMobile, setOpen, toggleSidebar],
+    () => ({
+      open,
+      setOpen,
+      openMobile,
+      setOpenMobile,
+      isMobile,
+      isDesktop,
+      compactOpen,
+      setCompactOpen,
+      isCollapsed,
+      setCompactHovered,
+      toggleSidebar,
+    }),
+    [compactOpen, isCollapsed, isDesktop, isMobile, open, openMobile, setOpen, toggleSidebar],
   );
 
   return (
@@ -101,8 +124,15 @@ function SidebarProvider({
   );
 }
 
-function Sidebar({ className, children, ...props }: ComponentProps<'div'>) {
-  const { isMobile, open, openMobile, setOpenMobile } = useSidebar();
+function Sidebar({
+  className,
+  children,
+  onMouseEnter,
+  onMouseLeave,
+  ...props
+}: ComponentProps<'div'>) {
+  const { isMobile, isDesktop, isCollapsed, openMobile, setCompactHovered, setOpenMobile } =
+    useSidebar();
   if (isMobile) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile}>
@@ -127,13 +157,23 @@ function Sidebar({ className, children, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="sidebar"
-      data-state={open ? 'expanded' : 'collapsed'}
-      aria-hidden={!open}
-      inert={!open}
+      data-sidebar="sidebar"
+      data-state={isCollapsed ? 'collapsed' : 'expanded'}
+      data-mode={isDesktop ? 'desktop' : 'compact'}
       className={cn(
         'relative hidden h-full shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex',
-        open ? 'w-(--sidebar-width)' : 'w-0 border-r-0',
+        isCollapsed ? 'w-16' : 'w-(--sidebar-width)',
       )}
+      onMouseEnter={event => {
+        onMouseEnter?.(event);
+        if (!isDesktop) {
+          setCompactHovered(true);
+        }
+      }}
+      onMouseLeave={event => {
+        onMouseLeave?.(event);
+        setCompactHovered(false);
+      }}
       {...props}
     >
       <div className={cn('flex h-full w-(--sidebar-width) shrink-0 flex-col', className)}>
@@ -174,20 +214,30 @@ function SidebarInset({ className, ...props }: ComponentProps<'main'>) {
 }
 
 function SidebarHeader({ className, ...props }: ComponentProps<'div'>) {
+  const { isCollapsed } = useSidebar();
   return (
     <div
       data-slot="sidebar-header"
-      className={cn('flex flex-col gap-2 p-2', className)}
+      className={cn(
+        'flex flex-col gap-2 p-2 transition-[padding] duration-200',
+        isCollapsed && 'p-1!',
+        className,
+      )}
       {...props}
     />
   );
 }
 
 function SidebarFooter({ className, ...props }: ComponentProps<'div'>) {
+  const { isCollapsed } = useSidebar();
   return (
     <div
       data-slot="sidebar-footer"
-      className={cn('flex flex-col gap-2 p-2', className)}
+      className={cn(
+        'flex flex-col gap-2 p-2 transition-[padding] duration-200',
+        isCollapsed && 'p-1!',
+        className,
+      )}
       {...props}
     />
   );
@@ -214,21 +264,28 @@ function SidebarSeparator({ className, ...props }: ComponentProps<typeof Separat
 }
 
 function SidebarGroup({ className, ...props }: ComponentProps<'div'>) {
+  const { isCollapsed } = useSidebar();
   return (
     <div
       data-slot="sidebar-group"
-      className={cn('relative flex w-full min-w-0 flex-col p-2', className)}
+      className={cn(
+        'relative flex w-full min-w-0 flex-col p-2 transition-[padding] duration-200',
+        isCollapsed && 'p-0! px-1!',
+        className,
+      )}
       {...props}
     />
   );
 }
 
 function SidebarGroupLabel({ className, ...props }: ComponentProps<'div'>) {
+  const { isCollapsed } = useSidebar();
   return (
     <div
       data-slot="sidebar-group-label"
       className={cn(
-        'flex h-8 shrink-0 items-center px-2 text-xs font-medium text-sidebar-foreground/70',
+        'flex h-8 shrink-0 items-center overflow-hidden px-2 text-xs font-medium text-sidebar-foreground/70 transition-[height,opacity] duration-200',
+        isCollapsed && 'h-0 opacity-0',
         className,
       )}
       {...props}
@@ -263,7 +320,7 @@ function SidebarMenuItem({ className, ...props }: ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50 data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate',
+  'peer/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden transition-[background-color,color,padding] duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50 data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&_[data-sidebar-label]]:transition-opacity [&_[data-sidebar-label]]:duration-200 [&>span:last-child]:truncate',
   {
     variants: {
       size: { default: 'h-8', sm: 'h-7 text-xs', lg: 'h-12' },
@@ -282,10 +339,17 @@ function SidebarMenuButton({
   ComponentProps<'button'> & { isActive?: boolean } & VariantProps<
     typeof sidebarMenuButtonVariants
   >) {
+  const { isCollapsed } = useSidebar();
   return useRender({
     defaultTagName: 'button',
     props: mergeProps<'button'>(
-      { className: cn(sidebarMenuButtonVariants({ size }), className) },
+      {
+        className: cn(
+          sidebarMenuButtonVariants({ size }),
+          isCollapsed && '[&>[data-sidebar-label]]:opacity-0 [&>kbd]:opacity-0',
+          className,
+        ),
+      },
       props,
     ),
     render,
@@ -294,11 +358,13 @@ function SidebarMenuButton({
 }
 
 function SidebarMenuBadge({ className, ...props }: ComponentProps<'div'>) {
+  const { isCollapsed } = useSidebar();
   return (
     <div
       data-slot="sidebar-menu-badge"
       className={cn(
-        'pointer-events-none absolute top-1.5 right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs tabular-nums',
+        'pointer-events-none absolute top-1.5 right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs tabular-nums transition-opacity duration-200',
+        isCollapsed && 'opacity-0',
         className,
       )}
       {...props}
@@ -319,8 +385,24 @@ function SidebarMenuSkeleton({ className, ...props }: ComponentProps<'div'>) {
   );
 }
 
-function SidebarEmpty({ children }: { children: ReactNode }) {
-  return <p className="px-2 py-1.5 text-xs text-sidebar-foreground/60">{children}</p>;
+function SidebarEmpty({
+  children,
+  hideWhenCollapsed = false,
+}: {
+  children: ReactNode;
+  hideWhenCollapsed?: boolean;
+}) {
+  const { isCollapsed } = useSidebar();
+  return (
+    <p
+      className={cn(
+        'max-h-20 overflow-hidden px-2 py-1.5 text-xs text-sidebar-foreground/60 transition-[max-height,opacity,padding] duration-200',
+        hideWhenCollapsed && isCollapsed && 'max-h-0 py-0 opacity-0',
+      )}
+    >
+      {children}
+    </p>
+  );
 }
 
 export {
