@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
+    "build:dev": "pnpm -r build:dev",
     "check": "pnpm -r check",
     "format": "pnpm -r format",
     "lint": "pnpm -r lint",
