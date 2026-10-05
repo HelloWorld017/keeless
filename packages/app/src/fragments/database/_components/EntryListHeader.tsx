@@ -49,7 +49,7 @@ export const EntryListHeader = ({
   const entryCount = result?.entries.length ?? 0;
 
   return (
-    <header className="flex min-h-14 items-center justify-between gap-4 px-2 py-2.5 xl:px-3 xl:py-4 xl:pb-3">
+    <header className="flex min-h-14 items-center justify-between gap-4 px-2 py-4 pb-3 xl:px-3">
       <div className="flex min-w-0 items-center gap-4">
         <SidebarExpandTrigger />
         <div className="min-w-0">

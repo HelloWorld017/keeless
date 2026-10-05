@@ -283,7 +283,7 @@ function SidebarFooter({ className, ...props }: ComponentProps<'div'>) {
       data-slot="sidebar-footer"
       className={cn(
         'flex flex-col gap-2 p-2 transition-[padding] duration-200',
-        isCollapsed && 'p-0!',
+        isCollapsed && 'px-0 py-2',
         className,
       )}
       {...props}
@@ -318,7 +318,7 @@ function SidebarGroup({ className, ...props }: ComponentProps<'div'>) {
       data-slot="sidebar-group"
       className={cn(
         'relative flex w-full min-w-0 flex-col p-2 transition-[padding] duration-200',
-        isCollapsed && 'p-0!',
+        isCollapsed && 'px-0 py-0.5',
         className,
       )}
       {...props}
@@ -348,10 +348,11 @@ function SidebarGroupContent({ className, ...props }: ComponentProps<'div'>) {
 }
 
 function SidebarMenu({ className, ...props }: ComponentProps<'ul'>) {
+  const { isCollapsed } = useSidebar();
   return (
     <ul
       data-slot="sidebar-menu"
-      className={cn('flex w-full min-w-0 flex-col', className)}
+      className={cn('flex w-full min-w-0 flex-col', isCollapsed && 'gap-1', className)}
       {...props}
     />
   );
