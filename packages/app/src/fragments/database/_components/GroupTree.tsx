@@ -241,6 +241,11 @@ const SortableGroup = ({
       inputRef.current?.select();
     }
   }, [editing]);
+  useEffect(() => {
+    if (isCollapsed) {
+      setEditing(false);
+    }
+  }, [isCollapsed]);
   const commitRename = async (icon = draftIcon) => {
     if (renamePending) {
       return;
@@ -301,7 +306,7 @@ const SortableGroup = ({
         ></div>
       )}
 
-      {editing ? (
+      {editing && !isCollapsed ? (
         <div className="flex h-8 items-center gap-2 px-2 pr-8">
           <IconPicker
             value={draftIcon}
@@ -363,7 +368,7 @@ const SortableGroup = ({
           isActive={active}
           className={cx(
             'outline-2 outline-transparent group-hover:bg-sidebar-accent group-hover:text-sidebar-accent-foreground select-none',
-            active ? 'pr-20' : 'pr-14',
+            !isCollapsed && (active ? 'pr-20' : 'pr-14'),
             isEntryOver && 'outline-sidebar-ring',
             isDragging && 'opacity-0',
           )}
@@ -374,7 +379,7 @@ const SortableGroup = ({
         </SidebarMenuButton>
       )}
 
-      {!editing && (
+      {!editing && !isCollapsed && (
         <>
           {active && (
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -429,22 +434,24 @@ const SortableGroup = ({
           </Button>
         </>
       )}
-      <Button
-        ref={setActivatorNodeRef}
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        className={cx(
-          'opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 right-1 cursor-grab touch-none text-sidebar-foreground/60 hover:bg-sidebar-accent active:translate-y-0',
-          editing && 'hidden',
-          isDragging && 'cursor-grabbing opacity-0!',
-        )}
-        aria-label={`Move ${item.group.name || 'untitled group'}`}
-        {...attributes}
-        {...listeners}
-      >
-        <IconGripVertical />
-      </Button>
+      {!isCollapsed && (
+        <Button
+          ref={setActivatorNodeRef}
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className={cx(
+            'opacity-0 group-hover:opacity-100 transition-opacity absolute top-1 right-1 cursor-grab touch-none text-sidebar-foreground/60 hover:bg-sidebar-accent active:translate-y-0',
+            editing && 'hidden',
+            isDragging && 'cursor-grabbing opacity-0!',
+          )}
+          aria-label={`Move ${item.group.name || 'untitled group'}`}
+          {...attributes}
+          {...listeners}
+        >
+          <IconGripVertical />
+        </Button>
+      )}
     </SidebarMenuItem>
   );
 };

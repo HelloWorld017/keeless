@@ -105,7 +105,7 @@ const AllEntriesMenuItem = ({
       <SidebarMenuButton
         render={<Link href={buildRoute('database')} />}
         isActive={location === buildRoute('database') || isEntryOver}
-        className={cx('border-2 border-transparent', isEntryOver && 'border-sidebar-ring')}
+        className={cx('outline-2 outline-transparent', isEntryOver && 'outline-sidebar-ring')}
         onClick={onNavigate}
       >
         <IconList />
@@ -320,7 +320,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                     <SidebarMenuButton
                       size="lg"
                       disabled={!databaseName}
-                      className="min-w-0 flex-1"
+                      className={cx('min-w-0 flex-1', isCollapsed && 'flex-none')}
                     />
                   }
                 >
@@ -382,7 +382,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                 location={location}
                 onNavigate={closeMobile}
               />
-              <SidebarMenuItem className="border-2 border-transparent">
+              <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => {
                     closeMobile();
@@ -470,7 +470,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                       <SidebarMenuButton
                         render={<Link href={href} replace />}
                         isActive={location === href}
-                        className="pr-16"
+                        className={cx(!isCollapsed && 'pr-16')}
                         onClick={closeMobile}
                       >
                         <Tag

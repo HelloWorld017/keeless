@@ -368,7 +368,7 @@ function SidebarMenuItem({ className, ...props }: ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden transition-[background-color,color,padding] duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50 data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&_[data-sidebar-label]]:transition-opacity [&_[data-sidebar-label]]:duration-200 [&>span:last-child]:truncate',
+  'peer/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden transition-[background-color,color,width,margin,padding] duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50 data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&_[data-sidebar-label]]:transition-opacity [&_[data-sidebar-label]]:duration-200 [&>span:last-child]:truncate',
   {
     variants: {
       size: { default: 'h-8', sm: 'h-7 text-xs', lg: 'h-12' },
@@ -396,8 +396,8 @@ function SidebarMenuButton({
           sidebarMenuButtonVariants({ size }),
           isCollapsed && [
             size === 'lg'
-              ? 'px-[calc((var(--sidebar-width-icon)_-_2rem)_/_2)]'
-              : 'px-[calc((var(--sidebar-width-icon)_-_1rem)_/_2)]',
+              ? 'mx-[calc((var(--sidebar-width-icon)_-_3rem)_/_2)] w-12 p-2'
+              : 'mx-[calc((var(--sidebar-width-icon)_-_2rem)_/_2)] w-8 p-2',
             '[&>[data-sidebar-label]]:opacity-0 [&>kbd]:opacity-0',
           ],
           className,
