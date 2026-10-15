@@ -45,11 +45,11 @@ impl CredentialVault {
         if !key.matches(parameters) {
             return Err(keeless_kdbx::DatabaseError::KdfParametersMismatch.into());
         }
-        let mut parameters = parameters.clone();
-        let kdf =
-            keeless_kdbx::kdbx::kdf::create_kdf(&parameters.kdf_uuid).ok_or(CoreError::Crypto)?;
-        kdf.randomize(&mut parameters)?;
-        let next_key = credentials.derive_key(&parameters)?;
+        let (parameters, next_key) = keeless_kdbx::prepare_database_key(
+            parameters,
+            credentials,
+            keeless_kdbx::RekeyOptions::default(),
+        )?;
         Ok(Self {
             current: WrappedKey::wrap(key)?,
             next: Some(PreparedNextKey {
@@ -78,6 +78,10 @@ impl CredentialVault {
             return Err(CoreError::Crypto);
         }
         Ok(Some((next.parameters.clone(), key)))
+    }
+
+    pub(crate) fn has_prepared_next(&self) -> bool {
+        self.next.is_some()
     }
 
     #[cfg(test)]

@@ -8,12 +8,22 @@ use crate::{CoreError, KeelessCore, Result, credential::CredentialVault};
 
 type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>;
 
+struct PendingKeyMigration {
+    key: CompositeKey,
+    credential: Option<CredentialVault>,
+}
+
+struct PendingRotation {
+    parameters: keeless_kdbx::KdfParameters,
+    key: CompositeKey,
+}
+
 pub(crate) struct SyncExtension {
     status: SyncStatus,
     error: Option<OperationError>,
     pending_key: Option<CompositeKey>,
-    pending_rotation_key: Option<CompositeKey>,
-    pending_rotation_credential: Option<CredentialVault>,
+    pending_key_migration: Option<PendingKeyMigration>,
+    pending_rotation: Option<PendingRotation>,
     background_fetch: Option<BackgroundFetch>,
     background_started_ms: Option<u64>,
     dirty: bool,
@@ -25,8 +35,8 @@ impl SyncExtension {
             status: SyncStatus::Idle,
             error: None,
             pending_key: None,
-            pending_rotation_key: None,
-            pending_rotation_credential: None,
+            pending_key_migration: None,
+            pending_rotation: None,
             background_fetch: None,
             background_started_ms: None,
             dirty: false,
@@ -47,17 +57,15 @@ impl KeelessCore {
         if self.handle.is_none() {
             return Err(CoreError::DatabaseLocked);
         }
-        if let Some(key) = self.sync_extension.pending_rotation_key.take() {
-            let mut credential = self.sync_extension.pending_rotation_credential.take();
+        if let Some(mut migration) = self.sync_extension.pending_key_migration.take() {
             self.sync_extension.status = SyncStatus::Syncing;
             self.sync_extension.error = None;
-            if let Err(error) = self.persist_rotated_kdf_sync(&key, &mut credential).await {
-                self.sync_extension.pending_rotation_key = Some(key);
-                self.sync_extension.pending_rotation_credential = credential;
+            if let Err(error) = self.complete_key_migration(&mut migration).await {
+                self.sync_extension.pending_key_migration = Some(migration);
                 self.set_sync_failure(&error);
                 return Err(error);
             }
-            return self.sync_with_key(&key, None).await;
+            return self.sync_with_key(&migration.key, None).await;
         }
         let credentials = match password {
             Some(password) => Some(CompositeCredentials::new().with_password(password)?),
@@ -138,14 +146,17 @@ impl KeelessCore {
         if self.sync_key_migration_pending() {
             return self.sync(password).await;
         }
-        let prepared = self
-            .credential
-            .as_ref()
-            .map(|vault| vault.restore_next())
-            .transpose()?
-            .flatten();
+        let prepared = if let Some(rotation) = &self.sync_extension.pending_rotation {
+            Some((rotation.parameters.clone(), rotation.key.try_clone()?))
+        } else {
+            self.credential
+                .as_ref()
+                .map(|vault| vault.restore_next())
+                .transpose()?
+                .flatten()
+        };
         let (old_key, parameters, next_key) = match (password, prepared) {
-            (None, Some((parameters, next_key))) => (
+            (None, Some((parameters, next_key))) if self.credential.is_some() => (
                 self.credential
                     .as_ref()
                     .expect("prepared slot has a vault")
@@ -184,6 +195,10 @@ impl KeelessCore {
         };
         self.sync_extension.status = SyncStatus::Syncing;
         self.sync_extension.error = None;
+        self.sync_extension.pending_rotation = Some(PendingRotation {
+            parameters: parameters.clone(),
+            key: next_key.try_clone()?,
+        });
         let result = self
             .handle
             .as_mut()
@@ -198,6 +213,7 @@ impl KeelessCore {
                 return Err(error);
             }
         };
+        self.sync_extension.pending_rotation = None;
         self.commit_rotated_sync(report, next_key, None).await
     }
 
@@ -227,10 +243,7 @@ impl KeelessCore {
         if self
             .credential
             .as_ref()
-            .map(|vault| vault.restore_next())
-            .transpose()?
-            .flatten()
-            .is_none()
+            .is_none_or(|vault| !vault.has_prepared_next())
         {
             self.credential = Some(self.prepare_credential(key, credentials)?);
         }
@@ -299,6 +312,7 @@ impl KeelessCore {
         key: CompositeKey,
         credentials: Option<&CompositeCredentials>,
     ) -> Result<SyncReport> {
+        self.sync_extension.pending_rotation = None;
         let result = if self.settings.paranoia_mode {
             Ok(None)
         } else {
@@ -308,19 +322,22 @@ impl KeelessCore {
             }
             .map(Some)
         };
-        let mut credential = match result {
+        let credential = match result {
             Ok(credential) => credential,
             Err(error) => {
                 // The remote already changed keys. Even a preparation failure
                 // must leave enough state to complete local migration on retry.
-                self.sync_extension.pending_rotation_key = Some(key);
+                self.sync_extension.pending_key_migration = Some(PendingKeyMigration {
+                    key,
+                    credential: None,
+                });
                 self.set_sync_failure(&error);
                 return Err(error);
             }
         };
-        if let Err(error) = self.persist_rotated_kdf_sync(&key, &mut credential).await {
-            self.sync_extension.pending_rotation_key = Some(key);
-            self.sync_extension.pending_rotation_credential = credential;
+        let mut migration = PendingKeyMigration { key, credential };
+        if let Err(error) = self.complete_key_migration(&mut migration).await {
+            self.sync_extension.pending_key_migration = Some(migration);
             self.set_sync_failure(&error);
             return Err(error);
         }
@@ -362,11 +379,8 @@ impl KeelessCore {
         Ok(())
     }
 
-    async fn persist_rotated_kdf_sync(
-        &mut self,
-        key: &CompositeKey,
-        credential: &mut Option<CredentialVault>,
-    ) -> Result<()> {
+    async fn complete_key_migration(&mut self, migration: &mut PendingKeyMigration) -> Result<()> {
+        let key = &migration.key;
         let database_id = self
             .selection
             .as_ref()
@@ -375,8 +389,8 @@ impl KeelessCore {
             .clone();
         let journal =
             super::super::operations::mutations::MutationCoordinator::new(key, database_id, 0)?;
-        if !self.settings.paranoia_mode && credential.is_none() {
-            *credential = Some(CredentialVault::wrap(key)?);
+        if !self.settings.paranoia_mode && migration.credential.is_none() {
+            migration.credential = Some(CredentialVault::wrap(key)?);
         }
         let cache = {
             let handle = self.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
@@ -394,7 +408,7 @@ impl KeelessCore {
         self.persistence.clear_journal().await?;
         self.rotate_database_state(key).await?;
         self.journal = Some(journal);
-        self.credential = credential.take();
+        self.credential = migration.credential.take();
         Ok(())
     }
 
@@ -408,7 +422,7 @@ impl KeelessCore {
     }
 
     pub(crate) fn sync_key_migration_pending(&self) -> bool {
-        self.sync_extension.pending_rotation_key.is_some()
+        self.sync_extension.pending_key_migration.is_some()
     }
 
     pub(crate) async fn tick_sync(&mut self) {
@@ -419,7 +433,7 @@ impl KeelessCore {
         if self.sync_extension.status == SyncStatus::CredentialsRequired {
             return;
         }
-        if self.sync_extension.pending_rotation_key.is_some() {
+        if self.sync_extension.pending_key_migration.is_some() {
             return;
         }
 
@@ -507,8 +521,8 @@ impl KeelessCore {
 
     pub(crate) fn reset_sync_state(&mut self) {
         self.sync_extension.clear_background();
-        self.sync_extension.pending_rotation_key = None;
-        self.sync_extension.pending_rotation_credential = None;
+        self.sync_extension.pending_key_migration = None;
+        self.sync_extension.pending_rotation = None;
         if self.sync_extension.status == SyncStatus::Syncing {
             self.sync_extension.status = SyncStatus::Idle;
         }

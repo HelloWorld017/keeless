@@ -3,6 +3,7 @@ import { useRequestMutation } from '@/fragments/_providers/QueryProvider';
 import { CoreRequestError } from '@/utils/request';
 import { useEffect, useRef, useState } from 'react';
 import { PasswordPrompt } from '../_components/PasswordPrompt';
+import { usePasswordRequest } from './usePasswordRequest';
 
 type SyncOptions = { password?: string };
 type SyncOutcome = { status: 'completed' | 'cancelled' };
@@ -18,16 +19,14 @@ export const useDatabaseSync = () => {
   const saveDatabase = useRequestMutation('saveDatabase');
   const lockDatabase = useRequestMutation('lock');
   const activeOperation = useRef<symbol | undefined>(undefined);
-  const resolvePassword = useRef<((password: string | null) => void) | undefined>(undefined);
   const [isPending, setIsPending] = useState(false);
-  const [passwordRequest, setPasswordRequest] = useState<PasswordRequest>();
+  const passwordInput = usePasswordRequest<PasswordRequest>();
+  const passwordRequest = passwordInput.request;
   const requestPending = saveDatabase.isPending || lockDatabase.isPending;
 
   useEffect(
     () => () => {
       activeOperation.current = undefined;
-      resolvePassword.current?.(null);
-      resolvePassword.current = undefined;
     },
     [],
   );
@@ -76,16 +75,13 @@ export const useDatabaseSync = () => {
           }
 
           remoteKdfChanged ||= error.code === 'database_credentials_required';
-          const nextPassword = await new Promise<string | null>(resolve => {
-            resolvePassword.current = resolve;
-            setPasswordRequest({
-              action,
-              remoteKdfChanged,
-              error:
-                error.code === 'invalid_credentials'
-                  ? 'The master password is incorrect.'
-                  : undefined,
-            });
+          const nextPassword = await passwordInput.ask({
+            action,
+            remoteKdfChanged,
+            error:
+              error.code === 'invalid_credentials'
+                ? 'The master password is incorrect.'
+                : undefined,
           });
           if (nextPassword === null || !isCurrent()) {
             return { status: 'cancelled' };
@@ -97,8 +93,6 @@ export const useDatabaseSync = () => {
     } finally {
       if (isCurrent()) {
         activeOperation.current = undefined;
-        resolvePassword.current = undefined;
-        setPasswordRequest(undefined);
         setIsPending(false);
       }
     }
@@ -135,14 +129,11 @@ export const useDatabaseSync = () => {
         }
         onOpenChange={open => {
           if (!open && !requestPending) {
-            resolvePassword.current?.(null);
-            resolvePassword.current = undefined;
+            passwordInput.cancel();
           }
         }}
         onSubmit={password => {
-          resolvePassword.current?.(password);
-          resolvePassword.current = undefined;
-          setPasswordRequest(current => (current ? { ...current, error: undefined } : current));
+          passwordInput.submit(password);
         }}
       />
     ),

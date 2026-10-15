@@ -6,6 +6,55 @@ use keeless_kdbx::{
 // Unlike MemoryStorage, this fixture supports revision-checked dirty uploads.
 struct RevisionStorage(Arc<MemoryStorage>, AtomicBool);
 
+struct LostWriteResponseStorage {
+    inner: RevisionStorage,
+    lose_response: AtomicBool,
+}
+
+impl StorageProvider for LostWriteResponseStorage {
+    fn read<'a>(
+        &'a self,
+        path: &'a str,
+        range: Option<ByteRange>,
+    ) -> StorageFuture<'a, std::result::Result<RemoteFile, StorageError>> {
+        self.inner.read(path, range)
+    }
+
+    fn stat<'a>(
+        &'a self,
+        path: &'a str,
+    ) -> StorageFuture<'a, std::result::Result<Option<FileMetadata>, StorageError>> {
+        self.inner.stat(path)
+    }
+
+    fn write<'a>(
+        &'a self,
+        path: &'a str,
+        bytes: Vec<u8>,
+        condition: WriteCondition,
+    ) -> StorageFuture<'a, std::result::Result<WriteOutcome, StorageError>> {
+        Box::pin(async move {
+            let outcome = self.inner.write(path, bytes, condition).await?;
+            if matches!(outcome, WriteOutcome::Applied { .. })
+                && self.lose_response.swap(false, Ordering::Relaxed)
+            {
+                return Err(StorageError::new(
+                    StorageErrorKind::Other,
+                    "lost write response",
+                ));
+            }
+            Ok(outcome)
+        })
+    }
+
+    fn delete<'a>(
+        &'a self,
+        path: &'a str,
+    ) -> StorageFuture<'a, std::result::Result<(), StorageError>> {
+        self.inner.delete(path)
+    }
+}
+
 fn revision(bytes: &[u8]) -> keeless_sync::Revision {
     use sha2::{Digest, Sha256};
     keeless_sync::Revision::StrongEtag(format!("\"{:x}\"", Sha256::digest(bytes)))
@@ -71,6 +120,68 @@ impl StorageProvider for RevisionStorage {
     ) -> StorageFuture<'a, std::result::Result<(), StorageError>> {
         self.0.delete(path)
     }
+}
+
+#[tokio::test]
+async fn paranoid_rotation_retries_the_exact_key_after_a_lost_write_response() {
+    let (bytes, _) = query_database_bytes(b"correct");
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
+    let provider = Arc::new(LostWriteResponseStorage {
+        inner: RevisionStorage(storage.clone(), AtomicBool::new(false)),
+        lose_response: AtomicBool::new(false),
+    });
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let (mut core, ids) = query_core_with_persistence(provider.clone(), persistence.clone()).await;
+    operations::set_config::run(
+        &mut core,
+        KeelessConfigPatch {
+            paranoia_mode: Some(true),
+            auto_lock_timeout_ms: None,
+        },
+    )
+    .await
+    .unwrap();
+    let added = operations::mutations::add_entry::run(
+        &mut core,
+        AddEntryArgs {
+            parent_group_id: schema_id(ids.root_group),
+        },
+    )
+    .await
+    .unwrap();
+    let checkpoint = core.handle.as_ref().unwrap().checkpoint_bytes().to_vec();
+    let journal = persistence.journal.lock().unwrap().clone();
+    provider.lose_response.store(true, Ordering::Relaxed);
+    assert!(core.rotate_kdf(Some(b"correct")).await.is_err());
+    assert!(core.credential.is_none());
+    assert_eq!(core.handle.as_ref().unwrap().checkpoint_bytes(), checkpoint);
+    assert_eq!(*persistence.journal.lock().unwrap(), journal);
+    let credentials = CompositeCredentials::new()
+        .with_password(b"correct")
+        .unwrap();
+    let written = storage.0.lock().unwrap().clone().unwrap();
+    let applied = keeless_kdbx::open_database(written.as_slice(), &credentials).unwrap();
+    assert!(applied.database.get_entry(&model_id(added.id)).is_some());
+
+    // Retaining a pending replacement must not bypass paranoid authentication.
+    assert!(matches!(
+        core.rotate_kdf(None).await,
+        Err(CoreError::PasswordRequired)
+    ));
+    assert!(matches!(
+        core.rotate_kdf(Some(b"wrong")).await,
+        Err(CoreError::InvalidCredentials)
+    ));
+    core.rotate_kdf(Some(b"correct")).await.unwrap();
+    assert!(core.credential.is_none());
+    assert!(persistence.journal.lock().unwrap().is_empty());
+    let written = storage.0.lock().unwrap().clone().unwrap();
+    let retried = keeless_kdbx::open_database(written.as_slice(), &credentials).unwrap();
+    assert_eq!(retried.key.kdf_fingerprint(), applied.key.kdf_fingerprint());
+    operations::lock::run(&mut core);
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

@@ -360,6 +360,23 @@ impl Default for RekeyOptions {
     }
 }
 
+/// Prepare replacement KDF parameters and a derived key without changing a database.
+pub fn prepare_database_key(
+    current: &KdfParameters,
+    credentials: &CompositeCredentials,
+    options: RekeyOptions,
+) -> DatabaseResult<(KdfParameters, CompositeKey)> {
+    let has_replacement_parameters = options.kdf_parameters.is_some();
+    let mut parameters = options.kdf_parameters.unwrap_or_else(|| current.clone());
+    if options.regenerate_kdf_salt && !has_replacement_parameters {
+        let kdf = kdbx::kdf::create_kdf(&parameters.kdf_uuid)
+            .ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
+        kdf.randomize(&mut parameters)?;
+    }
+    let key = credentials.derive_key(&parameters)?;
+    Ok((parameters, key))
+}
+
 /// Rotate credentials and reseal runtime-protected strings under the new key.
 pub fn rekey_database(
     database: &mut Database,
@@ -374,14 +391,7 @@ pub fn rekey_database(
     if !old_key.matches(current) {
         return Err(DatabaseError::KdfParametersMismatch);
     }
-    let has_replacement_parameters = options.kdf_parameters.is_some();
-    let mut parameters = options.kdf_parameters.unwrap_or_else(|| current.clone());
-    if options.regenerate_kdf_salt && !has_replacement_parameters {
-        let kdf = kdbx::kdf::create_kdf(&parameters.kdf_uuid)
-            .ok_or_else(|| DatabaseError::InvalidFormat("Unknown KDF".into()))?;
-        kdf.randomize(&mut parameters)?;
-    }
-    let new_key = credentials.derive_key(&parameters)?;
+    let (parameters, new_key) = prepare_database_key(current, credentials, options)?;
     rekey_database_with_key(database, old_key, &new_key, parameters)?;
     Ok(new_key)
 }

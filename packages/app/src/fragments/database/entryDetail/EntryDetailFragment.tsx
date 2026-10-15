@@ -44,6 +44,7 @@ import { IconPicker } from '../_components/IconPicker';
 import { ItemIcon } from '../_components/ItemIcon';
 import { PasswordPrompt } from '../_components/PasswordPrompt';
 import { useDatabaseSync } from '../_hooks/useDatabaseSync';
+import { usePasswordRequest } from '../_hooks/usePasswordRequest';
 import { EditContent } from './_components/EditContent';
 import { ViewContent } from './_components/ViewContent';
 import { useEntryEditor } from './_hooks/useEntryEditor';
@@ -53,7 +54,6 @@ import type { EntryAttachmentUpdate, EntrySummary } from '@keeless/schema';
 
 type PasswordRequest = {
   error?: string;
-  resolve: (password: string | null) => void;
 };
 
 const operationError = (error: unknown, fallback: string) =>
@@ -90,15 +90,16 @@ const EntryDetailQuery = ({
   entry,
   inTrash,
   onClose,
+  databaseSync,
 }: {
   entry: EntrySummary;
   inTrash: boolean;
   onClose: () => void;
+  databaseSync: ReturnType<typeof useDatabaseSync>;
 }) => {
   const detail = useRequest('getEntryDetail', { entryId: entry.id });
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
-  const databaseSync = useDatabaseSync();
   const updateEntry = useRequestMutation('updateEntry');
   const deleteEntryMutation = useRequestMutation('deleteEntry', {
     onSuccess: (_result, { entryId }) =>
@@ -108,7 +109,6 @@ const EntryDetailQuery = ({
   const showToast = useShowToast();
   const mountedRef = useRef(true);
   const operationRef = useRef(0);
-  const passwordRequestRef = useRef<PasswordRequest | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [removedAttachmentIndices, setRemovedAttachmentIndices] = useState<number[]>([]);
@@ -118,7 +118,8 @@ const EntryDetailQuery = ({
   const [error, setError] = useState<string>();
   const [pending, setPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [passwordRequest, setPasswordRequest] = useState<PasswordRequest>();
+  const passwordInput = usePasswordRequest<PasswordRequest>();
+  const passwordRequest = passwordInput.request;
   const protectedFieldIds =
     detail.data?.fields.flatMap(field =>
       field.type === 'field' && field.fieldId !== null && field.isProtected ? [field.fieldId] : [],
@@ -129,8 +130,6 @@ const EntryDetailQuery = ({
     return () => {
       mountedRef.current = false;
       operationRef.current += 1;
-      passwordRequestRef.current?.resolve(null);
-      passwordRequestRef.current = undefined;
     };
   }, []);
 
@@ -142,19 +141,8 @@ const EntryDetailQuery = ({
       return null;
     }
 
-    return new Promise<string | null>(resolve => {
-      if (!isCurrentOperation(operation)) {
-        resolve(null);
-        return;
-      }
-
-      const request = {
-        error: invalid ? 'The master password is incorrect.' : undefined,
-        resolve,
-      };
-
-      passwordRequestRef.current = request;
-      setPasswordRequest(request);
+    return passwordInput.ask({
+      error: invalid ? 'The master password is incorrect.' : undefined,
     });
   };
 
@@ -194,30 +182,23 @@ const EntryDetailQuery = ({
     }
   };
 
-  const saveAfterMutation = async (message: string, operation: number, password?: string) => {
-    if (!isCurrentOperation(operation)) {
-      return;
-    }
+  const saveAfterMutation = async (message: string, password?: string) => {
     try {
       const saved = await databaseSync.sync({ password });
 
       if (saved.status === 'cancelled') {
-        if (isCurrentOperation(operation)) {
-          showToast({
-            kind: 'destructive',
-            message:
-              'Changes are saved locally, but synchronization was cancelled. Use Sync to try again.',
-          });
-        }
+        showToast({
+          kind: 'destructive',
+          message:
+            'Changes are saved locally, but synchronization was cancelled. Use Sync to try again.',
+        });
         return;
       }
     } catch {
-      if (isCurrentOperation(operation)) {
-        showToast({
-          kind: 'destructive',
-          message,
-        });
-      }
+      showToast({
+        kind: 'destructive',
+        message,
+      });
     }
   };
 
@@ -300,7 +281,6 @@ const EntryDetailQuery = ({
 
       await saveAfterMutation(
         'Changes are saved locally, but could not be synchronized. Use Sync to try again.',
-        operation,
         updated.password,
       );
     } catch (nextError) {
@@ -323,7 +303,6 @@ const EntryDetailQuery = ({
       await deleteEntryMutation.mutateAsync({ entryId: entry.id, permanent: inTrash });
       await saveAfterMutation(
         'The deletion is saved locally, but could not be synchronized. Use Sync to try again.',
-        operation,
       );
 
       if (isCurrentOperation(operation)) {
@@ -542,22 +521,13 @@ const EntryDetailQuery = ({
         action="Continue"
         onOpenChange={open => {
           if (!open && passwordRequest) {
-            passwordRequest.resolve(null);
-            if (passwordRequestRef.current === passwordRequest) {
-              passwordRequestRef.current = undefined;
-            }
-            setPasswordRequest(undefined);
+            passwordInput.cancel();
           }
         }}
         onSubmit={password => {
-          passwordRequest?.resolve(password);
-          if (passwordRequestRef.current === passwordRequest) {
-            passwordRequestRef.current = undefined;
-          }
-          setPasswordRequest(undefined);
+          passwordInput.submit(password);
         }}
       />
-      {databaseSync.prompt}
       {fieldValues.prompt}
       <div className="sr-only" aria-live="polite">
         {pending ? 'Entry operation in progress' : ''}
@@ -578,31 +548,37 @@ export const EntryDetailFragment = ({
   listPending: boolean;
   inTrash: boolean;
   onClose: () => void;
-}) => (
-  <section
-    className={cx(
-      'min-h-0 min-w-0 flex-3 flex-col px-2 py-4 md:pt-2 xl:pt-2 xl:pb-8',
-      selected ? 'flex' : 'hidden md:flex',
-    )}
-    aria-labelledby={selected ? 'entry-detail-title' : undefined}
-  >
-    {selected ? (
-      entry ? (
-        <EntryDetailQuery
-          key={String(entry.id)}
-          entry={entry}
-          inTrash={inTrash}
-          onClose={onClose}
-        />
-      ) : listPending ? (
-        <EntryDetailSkeleton pending />
+}) => {
+  // Keep synchronization and its prompt alive when a mutation removes the detail from the list.
+  const databaseSync = useDatabaseSync();
+  return (
+    <section
+      className={cx(
+        'min-h-0 min-w-0 flex-3 flex-col px-2 py-4 md:pt-2 xl:pt-2 xl:pb-8',
+        selected ? 'flex' : 'hidden md:flex',
+      )}
+      aria-labelledby={selected ? 'entry-detail-title' : undefined}
+    >
+      {selected ? (
+        entry ? (
+          <EntryDetailQuery
+            key={String(entry.id)}
+            entry={entry}
+            inTrash={inTrash}
+            onClose={onClose}
+            databaseSync={databaseSync}
+          />
+        ) : listPending ? (
+          <EntryDetailSkeleton pending />
+        ) : (
+          <p className="p-6 text-center text-sm text-muted-foreground">Entry does not exist</p>
+        )
       ) : (
-        <p className="p-6 text-center text-sm text-muted-foreground">Entry does not exist</p>
-      )
-    ) : (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">Select an entry to view its details</p>
-      </div>
-    )}
-  </section>
-);
+        <div className="flex flex-1 items-center justify-center p-6">
+          <p className="text-sm text-muted-foreground">Select an entry to view its details</p>
+        </div>
+      )}
+      {databaseSync.prompt}
+    </section>
+  );
+};
