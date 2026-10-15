@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keeless_kdbx::{
-    open_database, open_database_with_key, reencrypt_memory_protection, save_database,
-    CompositeCredentials, CompositeKey, Database, DatabaseMerger, MergeResult, MergeStrategy,
+    open_database, open_database_with_key, reencrypt_memory_protection, rekey_database_with_key,
+    save_database, CompositeCredentials, CompositeKey, Database, DatabaseMerger, KdfParameters,
+    MergeResult, MergeStrategy,
 };
 
 use crate::{
@@ -384,6 +385,77 @@ impl FileHandle {
         }
 
         unreachable!("sync retry loop always returns")
+    }
+
+    /// Merge and rotate to a prepared key without retaining credentials or running a KDF.
+    /// Local state stays unchanged until the conditional remote write succeeds.
+    pub async fn rotate_kdf(
+        &mut self,
+        old_key: &CompositeKey,
+        next_key: &CompositeKey,
+        parameters: &KdfParameters,
+    ) -> Result<SyncReport, SyncError> {
+        let max_attempts = self.options.retry_policy.max_retries.saturating_add(1);
+        for attempt in 0..max_attempts {
+            let remote = self.provider.read(&self.path, None).await?;
+            let downloaded = remote.bytes != self.checkpoint.bytes;
+            let mut target = self.database.clone();
+            let mut merge_result = MergeResult::default();
+            if downloaded {
+                let source = match open_with_key(remote.bytes.as_slice(), old_key) {
+                    // A previous write may have succeeded while its response was lost.
+                    // Only the exact prepared key is accepted as an alternative.
+                    Err(SyncError::CredentialsRequired) => {
+                        let mut source = open_with_key(remote.bytes.as_slice(), next_key)?;
+                        reencrypt_memory_protection(&mut source, next_key, old_key)?;
+                        source.kdf_parameters = self.database.kdf_parameters.clone();
+                        source
+                    }
+                    result => result?,
+                };
+                if source.root_group_id != self.database.root_group_id {
+                    return Err(SyncError::RootGroupMismatch);
+                }
+                let base = open_with_key(self.checkpoint.bytes.as_slice(), old_key)?;
+                merge_result =
+                    DatabaseMerger::with_credentials(self.options.merge_strategy, old_key)
+                        .merge_three_way(&mut target, &source, &base);
+            }
+            rekey_database_with_key(&mut target, old_key, next_key, parameters.clone())?;
+            let bytes = serialize_database(&target, next_key)?;
+            // Validate before publishing so no fallible reopen remains after a successful write.
+            let database = open_with_key(bytes.as_slice(), next_key)?;
+            match self
+                .provider
+                .write(
+                    &self.path,
+                    bytes.clone(),
+                    WriteCondition::MustMatch(require_revision(&remote)?),
+                )
+                .await?
+            {
+                WriteOutcome::Applied { revision } => {
+                    self.database = database;
+                    self.checkpoint = Checkpoint { bytes, revision };
+                    self.dirty = false;
+                    return Ok(SyncReport {
+                        attempts: attempt + 1,
+                        uploaded: true,
+                        downloaded,
+                        merge_result,
+                    });
+                }
+                WriteOutcome::Conflict if attempt + 1 < max_attempts => {
+                    delay(&self.options.retry_policy, attempt).await;
+                }
+                WriteOutcome::Conflict => {
+                    return Err(SyncError::RetryExhausted {
+                        attempts: max_attempts,
+                    });
+                }
+            }
+        }
+        unreachable!("rotation retry loop always returns")
     }
 
     /// Synchronizes after the remote database rotated its KDF parameters.

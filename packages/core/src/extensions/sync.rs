@@ -4,7 +4,7 @@ use keeless_kdbx::{CompositeCredentials, CompositeKey};
 use keeless_schema::{OperationError, SyncStatus};
 use keeless_sync::{RemoteFile, StorageError, SyncReport};
 
-use crate::{CoreError, KeelessCore, Result};
+use crate::{CoreError, KeelessCore, Result, credential::CredentialVault};
 
 type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>;
 
@@ -13,6 +13,7 @@ pub(crate) struct SyncExtension {
     error: Option<OperationError>,
     pending_key: Option<CompositeKey>,
     pending_rotation_key: Option<CompositeKey>,
+    pending_rotation_credential: Option<CredentialVault>,
     background_fetch: Option<BackgroundFetch>,
     background_started_ms: Option<u64>,
     dirty: bool,
@@ -25,6 +26,7 @@ impl SyncExtension {
             error: None,
             pending_key: None,
             pending_rotation_key: None,
+            pending_rotation_credential: None,
             background_fetch: None,
             background_started_ms: None,
             dirty: false,
@@ -46,10 +48,12 @@ impl KeelessCore {
             return Err(CoreError::DatabaseLocked);
         }
         if let Some(key) = self.sync_extension.pending_rotation_key.take() {
+            let mut credential = self.sync_extension.pending_rotation_credential.take();
             self.sync_extension.status = SyncStatus::Syncing;
             self.sync_extension.error = None;
-            if let Err(error) = self.persist_rotated_kdf_sync(&key).await {
+            if let Err(error) = self.persist_rotated_kdf_sync(&key, &mut credential).await {
                 self.sync_extension.pending_rotation_key = Some(key);
+                self.sync_extension.pending_rotation_credential = credential;
                 self.set_sync_failure(&error);
                 return Err(error);
             }
@@ -108,8 +112,129 @@ impl KeelessCore {
                 };
                 self.sync_with_rotated_kdf(&key, &credentials).await
             }
-            result => result,
+            Ok(report) => {
+                if !self.settings.paranoia_mode
+                    && let Some(credentials) = &credentials
+                {
+                    if let Err(error) = self.prepare_next_if_missing(&key, credentials) {
+                        self.set_sync_failure(&error);
+                        return Err(error);
+                    }
+                }
+                Ok(report)
+            }
+            Err(error) => Err(error),
         }
+    }
+
+    /// Explicitly rotate the database salt using a pre-derived key. Ordinary
+    /// saves never consume the prepared slot. An empty slot requires credentials.
+    pub async fn rotate_kdf(&mut self, password: Option<&[u8]>) -> Result<SyncReport> {
+        self.enforce_auto_lock();
+        self.sync_extension.clear_background();
+        if self.handle.is_none() {
+            return Err(CoreError::DatabaseLocked);
+        }
+        if self.sync_key_migration_pending() {
+            return self.sync(password).await;
+        }
+        let prepared = self
+            .credential
+            .as_ref()
+            .map(|vault| vault.restore_next())
+            .transpose()?
+            .flatten();
+        let (old_key, parameters, next_key) = match (password, prepared) {
+            (None, Some((parameters, next_key))) => (
+                self.credential
+                    .as_ref()
+                    .expect("prepared slot has a vault")
+                    .restore_key()?,
+                parameters,
+                next_key,
+            ),
+            (password, prepared) => {
+                let password = match password {
+                    Some(password) => zeroize::Zeroizing::new(password.to_vec()),
+                    None => {
+                        self.request_password(crate::PasswordInputMode::Save)
+                            .await?
+                    }
+                };
+                let credentials = CompositeCredentials::new().with_password(&password)?;
+                let key = self
+                    .handle
+                    .as_ref()
+                    .ok_or(CoreError::DatabaseLocked)?
+                    .derive_key(&credentials)?;
+                let (parameters, next_key) = match prepared {
+                    Some(prepared) => prepared,
+                    None => {
+                        let vault = self.prepare_credential(&key, &credentials)?;
+                        let prepared = vault.restore_next()?.ok_or(CoreError::Crypto)?;
+                        if !self.settings.paranoia_mode {
+                            // Retain the exact prepared pair across conflicts and failed writes.
+                            self.credential = Some(vault);
+                        }
+                        prepared
+                    }
+                };
+                (key, parameters, next_key)
+            }
+        };
+        self.sync_extension.status = SyncStatus::Syncing;
+        self.sync_extension.error = None;
+        let result = self
+            .handle
+            .as_mut()
+            .ok_or(CoreError::DatabaseLocked)?
+            .rotate_kdf(&old_key, &next_key, &parameters)
+            .await;
+        let report = match result {
+            Ok(report) => report,
+            Err(error) => {
+                let error = CoreError::from(error);
+                self.set_sync_failure(&error);
+                return Err(error);
+            }
+        };
+        self.commit_rotated_sync(report, next_key, None).await
+    }
+
+    fn prepare_credential(
+        &self,
+        key: &CompositeKey,
+        credentials: &CompositeCredentials,
+    ) -> Result<CredentialVault> {
+        CredentialVault::prepare(
+            key,
+            credentials,
+            self.handle
+                .as_ref()
+                .ok_or(CoreError::DatabaseLocked)?
+                .database()
+                .kdf_parameters
+                .as_ref()
+                .ok_or(CoreError::Crypto)?,
+        )
+    }
+
+    fn prepare_next_if_missing(
+        &mut self,
+        key: &CompositeKey,
+        credentials: &CompositeCredentials,
+    ) -> Result<()> {
+        if self
+            .credential
+            .as_ref()
+            .map(|vault| vault.restore_next())
+            .transpose()?
+            .flatten()
+            .is_none()
+        {
+            self.credential = Some(self.prepare_credential(key, credentials)?);
+        }
+        Ok(())
     }
 
     pub(crate) async fn sync_with_key(
@@ -164,8 +289,38 @@ impl KeelessCore {
                 return Err(error);
             }
         };
-        if let Err(error) = self.persist_rotated_kdf_sync(&key).await {
+        self.commit_rotated_sync(report, key, Some(credentials))
+            .await
+    }
+
+    async fn commit_rotated_sync(
+        &mut self,
+        report: SyncReport,
+        key: CompositeKey,
+        credentials: Option<&CompositeCredentials>,
+    ) -> Result<SyncReport> {
+        let result = if self.settings.paranoia_mode {
+            Ok(None)
+        } else {
+            match credentials {
+                Some(credentials) => self.prepare_credential(&key, credentials),
+                None => CredentialVault::wrap(&key),
+            }
+            .map(Some)
+        };
+        let mut credential = match result {
+            Ok(credential) => credential,
+            Err(error) => {
+                // The remote already changed keys. Even a preparation failure
+                // must leave enough state to complete local migration on retry.
+                self.sync_extension.pending_rotation_key = Some(key);
+                self.set_sync_failure(&error);
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.persist_rotated_kdf_sync(&key, &mut credential).await {
             self.sync_extension.pending_rotation_key = Some(key);
+            self.sync_extension.pending_rotation_credential = credential;
             self.set_sync_failure(&error);
             return Err(error);
         }
@@ -207,7 +362,11 @@ impl KeelessCore {
         Ok(())
     }
 
-    async fn persist_rotated_kdf_sync(&mut self, key: &CompositeKey) -> Result<()> {
+    async fn persist_rotated_kdf_sync(
+        &mut self,
+        key: &CompositeKey,
+        credential: &mut Option<CredentialVault>,
+    ) -> Result<()> {
         let database_id = self
             .selection
             .as_ref()
@@ -216,11 +375,9 @@ impl KeelessCore {
             .clone();
         let journal =
             super::super::operations::mutations::MutationCoordinator::new(key, database_id, 0)?;
-        let credential = if self.settings.paranoia_mode {
-            None
-        } else {
-            Some(crate::credential::CredentialVault::wrap(key)?)
-        };
+        if !self.settings.paranoia_mode && credential.is_none() {
+            *credential = Some(CredentialVault::wrap(key)?);
+        }
         let cache = {
             let handle = self.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
             self.extensions.unlock(handle.database(), key)?;
@@ -237,7 +394,7 @@ impl KeelessCore {
         self.persistence.clear_journal().await?;
         self.rotate_database_state(key).await?;
         self.journal = Some(journal);
-        self.credential = credential;
+        self.credential = credential.take();
         Ok(())
     }
 
@@ -351,6 +508,7 @@ impl KeelessCore {
     pub(crate) fn reset_sync_state(&mut self) {
         self.sync_extension.clear_background();
         self.sync_extension.pending_rotation_key = None;
+        self.sync_extension.pending_rotation_credential = None;
         if self.sync_extension.status == SyncStatus::Syncing {
             self.sync_extension.status = SyncStatus::Idle;
         }

@@ -382,11 +382,30 @@ pub fn rekey_database(
         kdf.randomize(&mut parameters)?;
     }
     let new_key = credentials.derive_key(&parameters)?;
+    rekey_database_with_key(database, old_key, &new_key, parameters)?;
+    Ok(new_key)
+}
+
+/// Apply an already-derived replacement key without invoking the database KDF.
+/// Both key/parameter bindings are checked before changing any protected data.
+pub fn rekey_database_with_key(
+    database: &mut Database,
+    old_key: &CompositeKey,
+    new_key: &CompositeKey,
+    parameters: KdfParameters,
+) -> DatabaseResult<()> {
+    let current = database
+        .kdf_parameters
+        .as_ref()
+        .ok_or(DatabaseError::MissingKdfParameters)?;
+    if !old_key.matches(current) || !new_key.matches(&parameters) {
+        return Err(DatabaseError::KdfParametersMismatch);
+    }
     let mut rekeyed = database.clone();
-    rekeyed.rekey_memory_protection(old_key, &new_key)?;
+    rekeyed.rekey_memory_protection(old_key, new_key)?;
     rekeyed.kdf_parameters = Some(parameters);
     *database = rekeyed;
-    Ok(new_key)
+    Ok(())
 }
 
 /// Re-encrypt runtime memory protection without changing on-disk KDF parameters.
@@ -586,6 +605,47 @@ mod tests {
                 .unwrap(),
             "updated secret"
         );
+    }
+
+    #[test]
+    fn prepared_rekey_rejects_mismatched_parameters_without_mutating_database() {
+        let credentials = CompositeCredentials::new()
+            .with_password(b"password")
+            .unwrap();
+        let mut database = Database::new(DatabaseVersion::KDBX4);
+        let old_key = initialize_database_key(&mut database, &credentials).unwrap();
+        let original_parameters = database.kdf_parameters.clone().unwrap();
+        let mut next_database = database.clone();
+        let next_key = rekey_database(
+            &mut next_database,
+            &old_key,
+            &credentials,
+            RekeyOptions::default(),
+        )
+        .unwrap();
+        let next_parameters = next_database.kdf_parameters.clone().unwrap();
+        assert!(matches!(
+            rekey_database_with_key(
+                &mut database,
+                &old_key,
+                &next_key,
+                original_parameters.clone()
+            ),
+            Err(DatabaseError::KdfParametersMismatch)
+        ));
+        assert!(matches!(
+            rekey_database_with_key(
+                &mut database,
+                &next_key,
+                &old_key,
+                original_parameters.clone()
+            ),
+            Err(DatabaseError::KdfParametersMismatch)
+        ));
+        assert_eq!(database.kdf_parameters, Some(original_parameters));
+        rekey_database_with_key(&mut database, &old_key, &next_key, next_parameters.clone())
+            .unwrap();
+        assert_eq!(database.kdf_parameters, Some(next_parameters));
     }
 
     #[test]

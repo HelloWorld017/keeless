@@ -4,7 +4,7 @@ use keeless_kdbx::{
 };
 
 // Unlike MemoryStorage, this fixture supports revision-checked dirty uploads.
-struct RevisionStorage(Arc<MemoryStorage>);
+struct RevisionStorage(Arc<MemoryStorage>, AtomicBool);
 
 fn revision(bytes: &[u8]) -> keeless_sync::Revision {
     use sha2::{Digest, Sha256};
@@ -42,6 +42,12 @@ impl StorageProvider for RevisionStorage {
         condition: WriteCondition,
     ) -> StorageFuture<'a, std::result::Result<WriteOutcome, StorageError>> {
         Box::pin(async move {
+            if self.1.load(Ordering::Relaxed) {
+                return Err(StorageError::new(
+                    StorageErrorKind::Other,
+                    "injected write failure",
+                ));
+            }
             let mut current = self.0.0.lock().unwrap();
             let matches = match condition {
                 WriteCondition::MustMatch(expected) => current
@@ -65,6 +71,199 @@ impl StorageProvider for RevisionStorage {
     ) -> StorageFuture<'a, std::result::Result<(), StorageError>> {
         self.0.delete(path)
     }
+}
+
+#[tokio::test]
+async fn prepared_rotation_retains_keys_on_write_failure_and_commits_only_after_migration() {
+    let (bytes, _) = query_database_bytes(b"correct");
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
+    let provider = Arc::new(RevisionStorage(storage.clone(), AtomicBool::new(false)));
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let (mut core, ids) = query_core_with_persistence(provider.clone(), persistence.clone()).await;
+    let old_key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let (parameters, next_key) = core
+        .credential
+        .as_ref()
+        .unwrap()
+        .restore_next()
+        .unwrap()
+        .unwrap();
+    core.sync(None).await.unwrap();
+    assert_eq!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_next()
+            .unwrap()
+            .unwrap()
+            .0,
+        parameters
+    );
+
+    let added = operations::mutations::add_entry::run(
+        &mut core,
+        AddEntryArgs {
+            parent_group_id: schema_id(ids.root_group),
+        },
+    )
+    .await
+    .unwrap();
+    let added_id = model_id(added.id);
+    let mut remote = open_database_with_key(
+        storage.0.lock().unwrap().as_ref().unwrap().as_slice(),
+        &old_key,
+    )
+    .unwrap();
+    remote.name = "Concurrent remote edit".into();
+    let mut remote_bytes = Vec::new();
+    save_database(&mut remote_bytes, &remote, &old_key).unwrap();
+    *storage.0.lock().unwrap() = Some(remote_bytes.clone());
+    let checkpoint = core.handle.as_ref().unwrap().checkpoint_bytes().to_vec();
+    let journal = persistence.journal.lock().unwrap().clone();
+
+    provider.1.store(true, Ordering::Relaxed);
+    assert!(core.rotate_kdf(None).await.is_err());
+    assert!(core.rotate_kdf(Some(b"correct")).await.is_err());
+    assert!(matches!(
+        core.rotate_kdf(Some(b"wrong")).await,
+        Err(CoreError::InvalidCredentials)
+    ));
+    assert_eq!(*storage.0.lock().unwrap(), Some(remote_bytes));
+    assert_eq!(core.handle.as_ref().unwrap().checkpoint_bytes(), checkpoint);
+    assert_eq!(*persistence.journal.lock().unwrap(), journal);
+    assert_eq!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_key()
+            .unwrap()
+            .kdf_fingerprint(),
+        old_key.kdf_fingerprint()
+    );
+    assert_eq!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_next()
+            .unwrap()
+            .unwrap()
+            .0,
+        parameters
+    );
+
+    provider.1.store(false, Ordering::Relaxed);
+    persistence.fail_state_write.store(true, Ordering::Relaxed);
+    assert!(matches!(
+        core.rotate_kdf(None).await,
+        Err(CoreError::Host(_))
+    ));
+    assert!(core.sync_key_migration_pending());
+    let written = storage.0.lock().unwrap().clone().unwrap();
+    let opened = open_database_with_key(written.as_slice(), &next_key).unwrap();
+    assert!(opened.get_entry(&added_id).is_some());
+    assert_eq!(opened.name, "Concurrent remote edit");
+    assert_eq!(opened.kdf_parameters, Some(parameters.clone()));
+    assert!(open_database_with_key(written.as_slice(), &old_key).is_err());
+
+    persistence.fail_state_write.store(false, Ordering::Relaxed);
+    // Retry only completes the in-flight migration; it must not rotate a second time.
+    core.rotate_kdf(None).await.unwrap();
+    assert!(!core.sync_key_migration_pending());
+    assert_eq!(*storage.0.lock().unwrap(), Some(written));
+    let vault = core.credential.as_ref().unwrap();
+    assert_eq!(
+        vault.restore_key().unwrap().kdf_fingerprint(),
+        next_key.kdf_fingerprint()
+    );
+    assert!(vault.restore_next().unwrap().is_none());
+    assert!(persistence.journal.lock().unwrap().is_empty());
+    assert!(matches!(
+        core.rotate_kdf(None).await,
+        Err(CoreError::PasswordRequired)
+    ));
+    core.sync(None).await.unwrap();
+    assert!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_next()
+            .unwrap()
+            .is_none()
+    );
+
+    // Reauthentication replenishes the slot; password-free rotation is available again.
+    core.sync(Some(b"correct")).await.unwrap();
+    assert!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_next()
+            .unwrap()
+            .is_some()
+    );
+    operations::lock::run(&mut core);
+    assert!(core.credential.is_none());
+    operations::unlock::run(&mut core, b"correct")
+        .await
+        .unwrap();
+    assert_eq!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_key()
+            .unwrap()
+            .kdf_fingerprint(),
+        next_key.kdf_fingerprint()
+    );
+    assert!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_next()
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn paranoid_rotation_derives_transient_keys_and_never_retains_a_vault() {
+    let (bytes, _) = query_database_bytes(b"correct");
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
+    let provider = Arc::new(RevisionStorage(storage.clone(), AtomicBool::new(false)));
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let (mut core, _) = query_core_with_persistence(provider, persistence).await;
+    let old_fingerprint = core
+        .credential
+        .as_ref()
+        .unwrap()
+        .restore_key()
+        .unwrap()
+        .kdf_fingerprint();
+    operations::set_config::run(
+        &mut core,
+        KeelessConfigPatch {
+            paranoia_mode: Some(true),
+            auto_lock_timeout_ms: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(core.credential.is_none());
+    assert!(matches!(
+        core.rotate_kdf(None).await,
+        Err(CoreError::PasswordRequired)
+    ));
+    core.rotate_kdf(Some(b"correct")).await.unwrap();
+    assert!(core.credential.is_none());
+    let credentials = CompositeCredentials::new()
+        .with_password(b"correct")
+        .unwrap();
+    let opened = keeless_kdbx::open_database(
+        storage.0.lock().unwrap().as_ref().unwrap().as_slice(),
+        &credentials,
+    )
+    .unwrap();
+    assert_ne!(opened.key.kdf_fingerprint(), old_fingerprint);
 }
 
 #[tokio::test]
@@ -268,7 +467,7 @@ async fn native_kdf_reauthentication_preserves_dirty_changes_on_failure_and_canc
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
     let persistence = Arc::new(MemoryDatabasePersistence::default());
     let (mut core, _) = query_core_with_persistence(
-        Arc::new(RevisionStorage(storage.clone())),
+        Arc::new(RevisionStorage(storage.clone(), AtomicBool::new(false))),
         persistence.clone(),
     )
     .await;
@@ -371,6 +570,15 @@ async fn explicit_remote_password_can_differ_from_the_cached_local_password() {
     let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
     let persistence = Arc::new(MemoryDatabasePersistence::default());
     let (mut core, _) = query_core_with_persistence(storage.clone(), persistence).await;
+    let previous_next = core
+        .credential
+        .as_ref()
+        .unwrap()
+        .restore_next()
+        .unwrap()
+        .unwrap()
+        .1
+        .kdf_fingerprint();
     let old_key = core.credential.as_ref().unwrap().restore_key().unwrap();
     let credentials = CompositeCredentials::new()
         .with_password(b"new-password")
@@ -393,6 +601,21 @@ async fn explicit_remote_password_can_differ_from_the_cached_local_password() {
         Err(CoreError::InvalidCredentials)
     ));
     core.sync(Some(b"new-password")).await.unwrap();
+    let (parameters, next) = core
+        .credential
+        .as_ref()
+        .unwrap()
+        .restore_next()
+        .unwrap()
+        .unwrap();
+    assert_ne!(next.kdf_fingerprint(), previous_next);
+    let expected = credentials.derive_key(&parameters).unwrap();
+    assert!(
+        expected
+            .with_key(|expected| next.with_key(|next| next == expected))
+            .unwrap()
+            .unwrap()
+    );
     assert_eq!(core.sync_status(), SyncStatus::Idle);
     assert_eq!(
         core.credential
@@ -447,6 +670,14 @@ async fn kdf_rotation_retries_local_key_migration_after_persistence_failure() {
 
     core.sync(None).await.unwrap();
     assert_eq!(core.sync_status(), SyncStatus::Idle);
+    assert!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_next()
+            .unwrap()
+            .is_some()
+    );
     assert_eq!(
         core.credential
             .as_ref()

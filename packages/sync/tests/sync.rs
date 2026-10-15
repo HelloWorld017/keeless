@@ -189,6 +189,76 @@ fn fixture(
 }
 
 #[tokio::test]
+async fn prepared_rotation_retries_conflicts_and_recovers_a_write_with_a_lost_response() {
+    let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
+    let storage = Arc::new(MemoryStorage::default());
+    let (mut database, entry_id) = database_with_entry("base");
+    let key = fixture(&storage, &mut database, &credentials);
+    let mut handle = FileHandle::open_with_key(storage.clone(), "vault.kdbx", &key, options(1))
+        .await
+        .unwrap();
+    handle
+        .database_mut()
+        .set_entry_field(
+            &key,
+            &entry_id,
+            &keeless_kdbx::EntryFieldSelector::Password,
+            "local secret",
+            true,
+        )
+        .unwrap();
+    let checkpoint = handle.checkpoint_bytes().to_vec();
+    let mut rotated_remote = database.clone();
+    let next_key = rekey_database(
+        &mut rotated_remote,
+        &key,
+        &credentials,
+        RekeyOptions::default(),
+    )
+    .unwrap();
+    let parameters = rotated_remote.kdf_parameters.clone().unwrap();
+
+    storage.force_conflicts(2);
+    assert!(matches!(
+        handle.rotate_kdf(&key, &next_key, &parameters).await,
+        Err(SyncError::RetryExhausted { attempts: 2 })
+    ));
+    assert_eq!(handle.checkpoint_bytes(), checkpoint);
+    assert!(handle.is_dirty());
+    assert!(handle
+        .database()
+        .kdf_parameters
+        .as_ref()
+        .is_some_and(|parameters| key.matches(parameters)));
+
+    // Simulate a previous prepared-key write whose acknowledgement was lost.
+    // Its independent remote edit must still be merged with protected local data.
+    rotated_remote.name = "remote edit".into();
+    storage.put("vault.kdbx", encode(&rotated_remote, &next_key));
+    storage.force_conflicts(1);
+    let report = handle
+        .rotate_kdf(&key, &next_key, &parameters)
+        .await
+        .unwrap();
+    assert_eq!(report.attempts, 2);
+    assert!(report.uploaded && report.downloaded);
+    assert!(!handle.is_dirty());
+    let saved = open_database_with_key(storage.bytes("vault.kdbx").as_slice(), &next_key).unwrap();
+    assert_eq!(saved.name, "remote edit");
+    assert_eq!(
+        saved
+            .with_entry_field(
+                &next_key,
+                &entry_id,
+                &keeless_kdbx::EntryFieldSelector::Password,
+                str::to_string
+            )
+            .unwrap(),
+        "local secret"
+    );
+}
+
+#[tokio::test]
 async fn open_syncs_local_changes_with_cas() {
     let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());

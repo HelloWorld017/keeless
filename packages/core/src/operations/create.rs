@@ -97,7 +97,15 @@ pub(crate) async fn run(core: &mut KeelessCore, password: &[u8]) -> Result<()> {
     let credential = if core.settings.paranoia_mode {
         None
     } else {
-        Some(CredentialVault::wrap(&key)?)
+        Some(CredentialVault::prepare(
+            &key,
+            &credentials,
+            handle
+                .database()
+                .kdf_parameters
+                .as_ref()
+                .ok_or(CoreError::Crypto)?,
+        )?)
     };
     core.extensions.unlock(handle.database(), &key)?;
     core.credential = credential;
