@@ -33,12 +33,12 @@ export const PasswordPrompt = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) {
+    if (!open || pending) {
       return undefined;
     }
     const frame = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [open]);
+  }, [open, pending]);
 
   return (
     <AdaptiveSheet open={open} onOpenChange={onOpenChange}>

@@ -66,12 +66,28 @@ impl KeelessCore {
             None => None,
         };
         let key = match &credentials {
-            Some(credentials) => self
-                .handle
-                .as_ref()
-                .ok_or(CoreError::DatabaseLocked)?
-                .derive_key(credentials)
-                .map_err(CoreError::from)?,
+            Some(credentials) => {
+                match self
+                    .handle
+                    .as_ref()
+                    .ok_or(CoreError::DatabaseLocked)?
+                    .derive_key(credentials)
+                    .map_err(CoreError::from)
+                {
+                    Ok(key) => key,
+                    // The remote may have changed its password as well as its KDF.
+                    // Keep the local key separate from the remote credentials.
+                    Err(CoreError::InvalidCredentials) if self.credential.is_some() => {
+                        let key = self
+                            .credential
+                            .as_ref()
+                            .expect("checked above")
+                            .restore_key()?;
+                        return self.sync_with_rotated_kdf(&key, credentials).await;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
             None => self
                 .credential
                 .as_ref()
@@ -79,9 +95,18 @@ impl KeelessCore {
                 .restore_key()?,
         };
         match self.sync_with_key(&key, None).await {
-            Err(CoreError::CredentialsRequired) if credentials.is_some() => {
-                self.sync_with_rotated_kdf(&key, credentials.as_ref().expect("checked above"))
-                    .await
+            Err(CoreError::CredentialsRequired) => {
+                let credentials = match credentials {
+                    Some(credentials) => credentials,
+                    None if self.password_input.is_some() => {
+                        let password = self
+                            .request_password(crate::PasswordInputMode::Save)
+                            .await?;
+                        CompositeCredentials::new().with_password(&password)?
+                    }
+                    None => return Err(CoreError::CredentialsRequired),
+                };
+                self.sync_with_rotated_kdf(&key, &credentials).await
             }
             result => result,
         }

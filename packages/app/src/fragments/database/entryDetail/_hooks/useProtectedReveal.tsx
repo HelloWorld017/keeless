@@ -2,7 +2,7 @@ import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { CoreRequestError } from '@/utils/request';
 import { useEffect, useRef, useState } from 'react';
-import { PasswordPrompt } from '../_components/PasswordPrompt';
+import { PasswordPrompt } from '../../_components/PasswordPrompt';
 import type { DatabaseNodeId } from '@keeless/schema';
 
 type UseProtectedRevealOptions = {

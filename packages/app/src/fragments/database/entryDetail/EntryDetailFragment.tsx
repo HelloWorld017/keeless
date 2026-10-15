@@ -42,8 +42,9 @@ import { useEffect, useRef, useState } from 'react';
 import { getEntryTitle } from '../_components/EntryItem';
 import { IconPicker } from '../_components/IconPicker';
 import { ItemIcon } from '../_components/ItemIcon';
+import { PasswordPrompt } from '../_components/PasswordPrompt';
+import { useDatabaseSync } from '../_hooks/useDatabaseSync';
 import { EditContent } from './_components/EditContent';
-import { PasswordPrompt } from './_components/PasswordPrompt';
 import { ViewContent } from './_components/ViewContent';
 import { useEntryEditor } from './_hooks/useEntryEditor';
 import { EntryFieldValuesProvider, useEntryFieldValues } from './_hooks/useEntryFieldValues';
@@ -57,10 +58,6 @@ type PasswordRequest = {
 
 const operationError = (error: unknown, fallback: string) =>
   error instanceof CoreRequestError && error.message ? error.message : fallback;
-
-const needsPassword = (error: unknown) =>
-  error instanceof CoreRequestError &&
-  (error.code === 'password_required' || error.code === 'invalid_credentials');
 
 const EntryDetailSkeleton = ({ pending }: { pending: boolean }) => {
   const visible = useDebouncedValue(pending, 150, false);
@@ -101,7 +98,7 @@ const EntryDetailQuery = ({
   const detail = useRequest('getEntryDetail', { entryId: entry.id });
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
-  const saveDatabase = useRequestMutation('saveDatabase');
+  const databaseSync = useDatabaseSync();
   const updateEntry = useRequestMutation('updateEntry');
   const deleteEntryMutation = useRequestMutation('deleteEntry', {
     onSuccess: (_result, { entryId }) =>
@@ -164,24 +161,27 @@ const EntryDetailQuery = ({
   const requestWithPassword = async <T,>(
     operation: (password?: string) => Promise<T>,
     operationToken: number,
-    initialPassword?: string,
   ) => {
-    let password = initialPassword;
-    let attempted = initialPassword !== undefined;
+    let password: string | undefined;
     while (true) {
       try {
         return { result: await operation(password), password };
       } catch (nextError) {
-        if (!needsPassword(nextError)) {
+        if (
+          !(nextError instanceof CoreRequestError) ||
+          (nextError.code !== 'password_required' && nextError.code !== 'invalid_credentials')
+        ) {
           throw nextError;
         }
         if (hasNativePasswordInput) {
-          return null;
+          if (nextError.code === 'password_required') {
+            return null;
+          }
+          throw nextError;
         }
 
         const nextPassword = await askPassword(
-          attempted ||
-            (nextError instanceof CoreRequestError && nextError.code === 'invalid_credentials'),
+          nextError.code === 'invalid_credentials',
           operationToken,
         );
 
@@ -190,33 +190,34 @@ const EntryDetailQuery = ({
         }
 
         password = nextPassword;
-        attempted = true;
       }
     }
   };
 
   const saveAfterMutation = async (message: string, operation: number, password?: string) => {
+    if (!isCurrentOperation(operation)) {
+      return;
+    }
     try {
-      const saved = await requestWithPassword(
-        nextPassword =>
-          hasNativePasswordInput
-            ? saveDatabase.mutateAsync({})
-            : saveDatabase.mutateAsync({ password: nextPassword }),
-        operation,
-        password,
-      );
+      const saved = await databaseSync.sync({ password });
 
-      if (!saved) {
-        if (hasNativePasswordInput) {
-          return;
+      if (saved.status === 'cancelled') {
+        if (isCurrentOperation(operation)) {
+          showToast({
+            kind: 'destructive',
+            message:
+              'Changes are saved locally, but synchronization was cancelled. Use Sync to try again.',
+          });
         }
-        throw new Error('Password entry was cancelled.');
+        return;
       }
     } catch {
-      showToast({
-        kind: 'destructive',
-        message,
-      });
+      if (isCurrentOperation(operation)) {
+        showToast({
+          kind: 'destructive',
+          message,
+        });
+      }
     }
   };
 
@@ -298,7 +299,7 @@ const EntryDetailQuery = ({
       }
 
       await saveAfterMutation(
-        'The changes could not be saved to storage. Changes remain in memory.',
+        'Changes are saved locally, but could not be synchronized. Use Sync to try again.',
         operation,
         updated.password,
       );
@@ -321,7 +322,7 @@ const EntryDetailQuery = ({
     try {
       await deleteEntryMutation.mutateAsync({ entryId: entry.id, permanent: inTrash });
       await saveAfterMutation(
-        'The deletion could not be saved to storage. The deletion remains in memory.',
+        'The deletion is saved locally, but could not be synchronized. Use Sync to try again.',
         operation,
       );
 
@@ -556,6 +557,7 @@ const EntryDetailQuery = ({
           setPasswordRequest(undefined);
         }}
       />
+      {databaseSync.prompt}
       {fieldValues.prompt}
       <div className="sr-only" aria-live="polite">
         {pending ? 'Entry operation in progress' : ''}

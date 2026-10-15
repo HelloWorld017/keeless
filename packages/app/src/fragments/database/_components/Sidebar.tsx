@@ -35,14 +35,12 @@ import {
   SidebarSeparator,
   useSidebar,
 } from '@/components/sidebar';
-import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import {
   useRequest,
   useRequestClient,
   useRequestMutation,
 } from '@/fragments/_providers/QueryProvider';
 import { useShowToast } from '@/fragments/_providers/ToastProvider';
-import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
 import {
   IconList,
   IconLoaderCircle,
@@ -54,12 +52,13 @@ import {
   IconTrash,
 } from '@/icons';
 import { cx } from '@/utils/css';
-import { CoreRequestError, queryKey } from '@/utils/request';
+import { queryKey } from '@/utils/request';
 import { buildRoute, getRoute } from '@/utils/route';
 import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
+import { useDatabaseSync } from '../_hooks/useDatabaseSync';
 import { databaseNodeKey, type RootDropData, type TrashDropData } from '../_utils/dragAndDrop';
 import { GroupTree, moveGroupInHierarchy } from './GroupTree';
 import { Tag } from './Tag';
@@ -67,15 +66,6 @@ import { TagStyleEditor } from './TagStyleEditor';
 import type { DatabaseNodeId, GroupHierarchyResult } from '@keeless/schema';
 
 const hierarchyQueryKey = queryKey('getGroupHierarchy', {});
-
-type PasswordRequest = {
-  action: 'lock' | 'sync';
-  invalid: boolean;
-};
-
-const needsPassword = (error: unknown) =>
-  error instanceof CoreRequestError &&
-  (error.code === 'password_required' || error.code === 'invalid_credentials');
 
 const operationError = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -169,9 +159,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const databaseStatus = useRequest('getDatabaseStatus', {});
   const requestClient = useRequestClient();
   const queryClient = useQueryClient();
-  const hasNativePasswordInput = useHasNativePasswordInput();
   const showToast = useShowToast();
-  const [passwordRequest, setPasswordRequest] = useState<PasswordRequest>();
   const { isCollapsed, isMobile, setOpenMobile } = useSidebar();
   const closeMobile = () => {
     if (isMobile) {
@@ -269,29 +257,15 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
       closeMobile();
     },
   });
-  const syncDatabase = useRequestMutation('saveDatabase');
-  const lockDatabase = useRequestMutation('lock', {
-    onSuccess: () => {
-      setLocation(buildRoute('open'), { replace: true });
-      closeMobile();
-    },
-  });
-  const runDatabaseAction = async (action: PasswordRequest['action'], password?: string) => {
+  const databaseSync = useDatabaseSync();
+  const runDatabaseAction = async (action: 'sync' | 'lock') => {
     try {
-      if (action === 'sync') {
-        await syncDatabase.mutateAsync(password === undefined ? {} : { password });
-      } else {
-        await lockDatabase.mutateAsync(password === undefined ? {} : { password });
+      const result = await databaseSync[action]();
+      if (result.status === 'completed' && action === 'lock') {
+        setLocation(buildRoute('open'), { replace: true });
+        closeMobile();
       }
-      setPasswordRequest(undefined);
     } catch (error) {
-      if (!hasNativePasswordInput && needsPassword(error)) {
-        setPasswordRequest({
-          action,
-          invalid: error instanceof CoreRequestError && error.code === 'invalid_credentials',
-        });
-        return;
-      }
       showToast({
         kind: 'destructive',
         message: operationError(
@@ -306,7 +280,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
   const groupParentId = activeGroup?.id ?? hierarchy.data?.rootGroupId;
   const groupsPending =
     moveGroup.isPending || addGroup.isPending || updateGroup.isPending || deleteGroup.isPending;
-  const databaseActionPending = syncDatabase.isPending || lockDatabase.isPending;
+  const databaseActionPending = databaseSync.isPending;
 
   return (
     <Sidebar className={cx('p-2 transition-[padding] duration-200 xl:p-4', isCollapsed && 'p-0!')}>
@@ -352,7 +326,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
                     disabled={databaseActionPending}
                     onClick={() => void runDatabaseAction('sync')}
                   >
-                    {syncDatabase.isPending ? (
+                    {databaseSync.isPending ? (
                       <IconLoaderCircle className="animate-spin" />
                     ) : (
                       <IconRefreshCw />
@@ -555,24 +529,7 @@ const DatabaseSidebar = ({ onSearch, onConfigOpen }: DatabaseSidebarProps) => {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <PasswordPrompt
-        open={passwordRequest !== undefined}
-        pending={databaseActionPending}
-        error={passwordRequest?.invalid ? 'Incorrect master password.' : undefined}
-        title={passwordRequest?.action === 'sync' ? 'Sync database' : 'Lock database'}
-        description="Enter the master password to synchronize the database before continuing."
-        action={passwordRequest?.action === 'sync' ? 'Sync' : 'Lock'}
-        onOpenChange={open => {
-          if (!open && !databaseActionPending) {
-            setPasswordRequest(undefined);
-          }
-        }}
-        onSubmit={password => {
-          if (passwordRequest) {
-            void runDatabaseAction(passwordRequest.action, password);
-          }
-        }}
-      />
+      {databaseSync.prompt}
     </Sidebar>
   );
 };

@@ -551,7 +551,7 @@ pub(super) async fn query_core() -> (KeelessCore, QueryIds) {
 }
 
 pub(super) async fn query_core_with_persistence(
-    storage: Arc<MemoryStorage>,
+    storage: Arc<dyn StorageProvider>,
     persistence: Arc<MemoryDatabasePersistence>,
 ) -> (KeelessCore, QueryIds) {
     let (_, ids) = query_database_bytes(b"correct");

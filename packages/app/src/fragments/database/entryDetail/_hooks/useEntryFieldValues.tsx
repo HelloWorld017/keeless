@@ -4,7 +4,7 @@ import { useShowToast } from '@/fragments/_providers/ToastProvider';
 import { useLatestRef } from '@/hooks/useLatestRef';
 import { CoreRequestError } from '@/utils/request';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { PasswordPrompt } from '../_components/PasswordPrompt';
+import { PasswordPrompt } from '../../_components/PasswordPrompt';
 import type { DatabaseNodeId } from '@keeless/schema';
 
 type RevealAction = {

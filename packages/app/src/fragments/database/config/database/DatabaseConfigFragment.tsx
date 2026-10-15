@@ -11,7 +11,7 @@ import { Button } from '@/components/button';
 import { FileUpload, FileUploadDropzone } from '@/components/file-upload';
 import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient, useRequestMutation } from '@/fragments/_providers/QueryProvider';
-import { PasswordPrompt } from '@/fragments/database/entryDetail/_components/PasswordPrompt';
+import { PasswordPrompt } from '@/fragments/database/_components/PasswordPrompt';
 import { IconFile, IconLoaderCircle, IconX } from '@/icons';
 import { formatBytes } from '@/utils/format';
 import { CoreRequestError } from '@/utils/request';

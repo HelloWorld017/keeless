@@ -3,6 +3,70 @@ use keeless_kdbx::{
     CompositeCredentials, RekeyOptions, open_database_with_key, rekey_database, save_database,
 };
 
+// Unlike MemoryStorage, this fixture supports revision-checked dirty uploads.
+struct RevisionStorage(Arc<MemoryStorage>);
+
+fn revision(bytes: &[u8]) -> keeless_sync::Revision {
+    use sha2::{Digest, Sha256};
+    keeless_sync::Revision::StrongEtag(format!("\"{:x}\"", Sha256::digest(bytes)))
+}
+
+impl StorageProvider for RevisionStorage {
+    fn read<'a>(
+        &'a self,
+        path: &'a str,
+        range: Option<ByteRange>,
+    ) -> StorageFuture<'a, std::result::Result<RemoteFile, StorageError>> {
+        Box::pin(async move {
+            let mut remote = self.0.read(path, range).await?;
+            remote.metadata.revision = Some(revision(&remote.bytes));
+            Ok(remote)
+        })
+    }
+
+    fn stat<'a>(
+        &'a self,
+        path: &'a str,
+    ) -> StorageFuture<'a, std::result::Result<Option<FileMetadata>, StorageError>> {
+        Box::pin(async move {
+            self.read(path, None)
+                .await
+                .map(|remote| Some(remote.metadata))
+        })
+    }
+
+    fn write<'a>(
+        &'a self,
+        _: &'a str,
+        bytes: Vec<u8>,
+        condition: WriteCondition,
+    ) -> StorageFuture<'a, std::result::Result<WriteOutcome, StorageError>> {
+        Box::pin(async move {
+            let mut current = self.0.0.lock().unwrap();
+            let matches = match condition {
+                WriteCondition::MustMatch(expected) => current
+                    .as_ref()
+                    .is_some_and(|bytes| revision(bytes) == expected),
+                WriteCondition::MustNotExist => current.is_none(),
+                _ => true,
+            };
+            if !matches {
+                return Ok(WriteOutcome::Conflict);
+            }
+            let revision = Some(revision(&bytes));
+            *current = Some(bytes);
+            Ok(WriteOutcome::Applied { revision })
+        })
+    }
+
+    fn delete<'a>(
+        &'a self,
+        path: &'a str,
+    ) -> StorageFuture<'a, std::result::Result<(), StorageError>> {
+        self.0.delete(path)
+    }
+}
+
 #[tokio::test]
 async fn mutation_journal_is_encrypted_atomic_replayable_and_sequenced() {
     let (bytes, _) = query_database_bytes(b"correct");
@@ -195,6 +259,149 @@ async fn sync_recovers_from_remote_kdf_rotation_and_replaces_key_bound_state() {
             .unwrap()
             .kdf_fingerprint(),
         remote_key.kdf_fingerprint()
+    );
+}
+
+#[tokio::test]
+async fn native_kdf_reauthentication_preserves_dirty_changes_on_failure_and_cancellation() {
+    let (bytes, _) = query_database_bytes(b"correct");
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let (mut core, _) = query_core_with_persistence(
+        Arc::new(RevisionStorage(storage.clone())),
+        persistence.clone(),
+    )
+    .await;
+    let parent_group_id = core
+        .handle
+        .as_ref()
+        .unwrap()
+        .database()
+        .root_group_id
+        .unwrap();
+    let parent_group_id = match parent_group_id {
+        NodeId::Uuid(id) => schema_id(id),
+        NodeId::Int(id) => DatabaseNodeId::Int(id),
+    };
+    let added = operations::mutations::add_entry::run(&mut core, AddEntryArgs { parent_group_id })
+        .await
+        .unwrap();
+    let added_id = model_id(added.id);
+    let old_key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let credentials = CompositeCredentials::new()
+        .with_password(b"new-password")
+        .unwrap();
+    let mut remote = open_database_with_key(
+        storage.0.lock().unwrap().as_ref().unwrap().as_slice(),
+        &old_key,
+    )
+    .unwrap();
+    remote.name = "Remote change".into();
+    let remote_key =
+        rekey_database(&mut remote, &old_key, &credentials, RekeyOptions::default()).unwrap();
+    let mut remote_bytes = Vec::new();
+    save_database(&mut remote_bytes, &remote, &remote_key).unwrap();
+    *storage.0.lock().unwrap() = Some(remote_bytes.clone());
+    let journal = persistence.journal.lock().unwrap().clone();
+    let cache = persistence.cache.lock().unwrap().clone();
+
+    let input = Arc::new(PasswordInput::new(b"new-password"));
+    core.password_input = Some(input.clone());
+    core.tick().await;
+    core.tick().await;
+    assert_eq!(core.sync_status(), SyncStatus::CredentialsRequired);
+    assert!(input.modes.lock().unwrap().is_empty());
+
+    let cancelled = Arc::new(PasswordInput::cancelled());
+    core.password_input = Some(cancelled.clone());
+    assert!(matches!(
+        core.sync(None).await,
+        Err(CoreError::PasswordRequired)
+    ));
+    assert_eq!(core.sync_status(), SyncStatus::CredentialsRequired);
+    assert_eq!(
+        *cancelled.modes.lock().unwrap(),
+        vec![PasswordInputMode::Save]
+    );
+
+    let wrong = Arc::new(PasswordInput::new(b"wrong"));
+    core.password_input = Some(wrong.clone());
+    assert!(matches!(
+        core.sync(None).await,
+        Err(CoreError::InvalidCredentials)
+    ));
+    assert_eq!(*wrong.modes.lock().unwrap(), vec![PasswordInputMode::Save]);
+    assert_eq!(*storage.0.lock().unwrap(), Some(remote_bytes));
+    assert_eq!(*persistence.journal.lock().unwrap(), journal);
+    assert_eq!(*persistence.cache.lock().unwrap(), cache);
+    assert!(core.handle.as_ref().unwrap().is_dirty());
+    assert!(
+        core.handle
+            .as_ref()
+            .unwrap()
+            .database()
+            .get_entry(&added_id)
+            .is_some()
+    );
+
+    core.password_input = Some(input.clone());
+    let report = core.sync(None).await.unwrap();
+    assert!(report.uploaded && report.downloaded);
+    assert_eq!(*input.modes.lock().unwrap(), vec![PasswordInputMode::Save]);
+    assert_eq!(core.sync_status(), SyncStatus::Idle);
+    assert!(persistence.journal.lock().unwrap().is_empty());
+    let bytes = storage.0.lock().unwrap().clone().unwrap();
+    let opened = keeless_kdbx::open_database(bytes.as_slice(), &credentials).unwrap();
+    assert_eq!(opened.database.name, "Remote change");
+    assert!(opened.database.get_entry(&added_id).is_some());
+    assert_eq!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_key()
+            .unwrap()
+            .kdf_fingerprint(),
+        remote_key.kdf_fingerprint()
+    );
+}
+
+#[tokio::test]
+async fn explicit_remote_password_can_differ_from_the_cached_local_password() {
+    let (bytes, _) = query_database_bytes(b"correct");
+    let storage = Arc::new(MemoryStorage(Mutex::new(Some(bytes))));
+    let persistence = Arc::new(MemoryDatabasePersistence::default());
+    let (mut core, _) = query_core_with_persistence(storage.clone(), persistence).await;
+    let old_key = core.credential.as_ref().unwrap().restore_key().unwrap();
+    let credentials = CompositeCredentials::new()
+        .with_password(b"new-password")
+        .unwrap();
+    let mut remote = open_database_with_key(
+        storage.0.lock().unwrap().as_ref().unwrap().as_slice(),
+        &old_key,
+    )
+    .unwrap();
+    let key = rekey_database(&mut remote, &old_key, &credentials, RekeyOptions::default()).unwrap();
+    let mut bytes = Vec::new();
+    save_database(&mut bytes, &remote, &key).unwrap();
+    *storage.0.lock().unwrap() = Some(bytes);
+    assert!(matches!(
+        core.sync(None).await,
+        Err(CoreError::CredentialsRequired)
+    ));
+    assert!(matches!(
+        core.sync(Some(b"wrong")).await,
+        Err(CoreError::InvalidCredentials)
+    ));
+    core.sync(Some(b"new-password")).await.unwrap();
+    assert_eq!(core.sync_status(), SyncStatus::Idle);
+    assert_eq!(
+        core.credential
+            .as_ref()
+            .unwrap()
+            .restore_key()
+            .unwrap()
+            .kdf_fingerprint(),
+        key.kdf_fingerprint()
     );
 }
 

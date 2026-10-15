@@ -2,8 +2,8 @@ import { useHasNativePasswordInput } from '@/fragments/_providers/HostProvider';
 import { useRequestClient } from '@/fragments/_providers/QueryProvider';
 import { CoreRequestError } from '@/utils/request';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { PasswordPrompt } from '../../_components/PasswordPrompt';
 import { FieldCopyButton } from './FieldCopyButton';
-import { PasswordPrompt } from './PasswordPrompt';
 import type { DatabaseNodeId, GetEntryTotpResult } from '@keeless/schema';
 
 export const FieldTotp = ({
