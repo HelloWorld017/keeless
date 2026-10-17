@@ -21,7 +21,8 @@ struct PreparedNextKey {
     source_fingerprint: [u8; 32],
 }
 
-struct WrappedKey {
+/// A key retained between operations; restore a CompositeKey only while using it.
+pub(crate) struct WrappedKey {
     wrapping_key: SecureArray<32>,
     nonce: [u8; 24],
     ciphertext: SecureBytes,
@@ -93,7 +94,7 @@ impl CredentialVault {
 }
 
 impl WrappedKey {
-    fn wrap(key: &CompositeKey) -> Result<Self> {
+    pub(crate) fn wrap(key: &CompositeKey) -> Result<Self> {
         let mut wrapping = random_array::<32>()?;
         let wrapping_key = SecureArray::from_array_mut(&mut wrapping)?;
         let nonce = random_array::<24>()?;
@@ -120,7 +121,7 @@ impl WrappedKey {
         })
     }
 
-    fn restore_key(&self) -> Result<CompositeKey> {
+    pub(crate) fn restore_key(&self) -> Result<CompositeKey> {
         let plaintext = self
             .wrapping_key
             .unlock(|key| {

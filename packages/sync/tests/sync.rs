@@ -189,6 +189,55 @@ fn fixture(
 }
 
 #[tokio::test]
+async fn rotated_key_state_is_prepared_before_local_or_remote_commit() {
+    for dirty in [false, true] {
+        let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
+        let storage = Arc::new(MemoryStorage::default());
+        let (mut database, _) = database_with_entry("base");
+        let key = fixture(&storage, &mut database, &credentials);
+        let mut handle = FileHandle::open_with_key(storage.clone(), "vault.kdbx", &key, options(0))
+            .await
+            .unwrap();
+        if dirty {
+            handle.database_mut().name = "local edit".into();
+        }
+        let checkpoint = handle.checkpoint_bytes().to_vec();
+        let local_name = handle.database().name.clone();
+        let next_key =
+            rekey_database(&mut database, &key, &credentials, RekeyOptions::default()).unwrap();
+        storage.put("vault.kdbx", encode(&database, &next_key));
+        let remote_bytes = storage.bytes("vault.kdbx");
+        let writes = storage.writes();
+
+        let result = handle
+            .sync_kdf_rotated_with_key_state(&key, &credentials, |_| {
+                Err::<(), _>(SyncError::Storage(StorageError::new(
+                    StorageErrorKind::Other,
+                    "key state preparation failed",
+                )))
+            })
+            .await;
+        assert!(matches!(result, Err(SyncError::Storage(_))));
+        assert_eq!(handle.checkpoint_bytes(), checkpoint);
+        assert_eq!(handle.database().name, local_name);
+        assert_eq!(handle.is_dirty(), dirty);
+        assert_eq!(storage.bytes("vault.kdbx"), remote_bytes);
+        assert_eq!(storage.writes(), writes);
+
+        let (report, fingerprint) = handle
+            .sync_kdf_rotated_with_key_state(&key, &credentials, |key| {
+                Ok::<_, SyncError>(key.kdf_fingerprint())
+            })
+            .await
+            .unwrap();
+        assert_eq!(fingerprint, next_key.kdf_fingerprint());
+        assert!(report.downloaded);
+        assert_eq!(report.uploaded, dirty);
+        assert!(!handle.is_dirty());
+    }
+}
+
+#[tokio::test]
 async fn prepared_rotation_retries_conflicts_and_recovers_a_write_with_a_lost_response() {
     let credentials = CompositeCredentials::new().with_password(b"test").unwrap();
     let storage = Arc::new(MemoryStorage::default());

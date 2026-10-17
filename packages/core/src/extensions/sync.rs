@@ -4,24 +4,28 @@ use keeless_kdbx::{CompositeCredentials, CompositeKey};
 use keeless_schema::{OperationError, SyncStatus};
 use keeless_sync::{RemoteFile, StorageError, SyncReport};
 
-use crate::{CoreError, KeelessCore, Result, credential::CredentialVault};
+use crate::{
+    CoreError, KeelessCore, Result,
+    credential::{CredentialVault, WrappedKey},
+};
 
 type BackgroundFetch = Arc<Mutex<Option<std::result::Result<RemoteFile, StorageError>>>>;
 
 struct PendingKeyMigration {
-    key: CompositeKey,
+    key: WrappedKey,
     credential: Option<CredentialVault>,
 }
 
 struct PendingRotation {
     parameters: keeless_kdbx::KdfParameters,
-    key: CompositeKey,
+    // Recovery-only state; in paranoia mode this does not authorize password-free use.
+    key: WrappedKey,
 }
 
 pub(crate) struct SyncExtension {
     status: SyncStatus,
     error: Option<OperationError>,
-    pending_key: Option<CompositeKey>,
+    pending_key: Option<WrappedKey>,
     pending_key_migration: Option<PendingKeyMigration>,
     pending_rotation: Option<PendingRotation>,
     background_fetch: Option<BackgroundFetch>,
@@ -60,12 +64,15 @@ impl KeelessCore {
         if let Some(mut migration) = self.sync_extension.pending_key_migration.take() {
             self.sync_extension.status = SyncStatus::Syncing;
             self.sync_extension.error = None;
-            if let Err(error) = self.complete_key_migration(&mut migration).await {
-                self.sync_extension.pending_key_migration = Some(migration);
-                self.set_sync_failure(&error);
-                return Err(error);
-            }
-            return self.sync_with_key(&migration.key, None).await;
+            let key = match self.complete_key_migration(&mut migration).await {
+                Ok(key) => key,
+                Err(error) => {
+                    self.sync_extension.pending_key_migration = Some(migration);
+                    self.set_sync_failure(&error);
+                    return Err(error);
+                }
+            };
+            return self.sync_with_key(&key, None).await;
         }
         let credentials = match password {
             Some(password) => Some(CompositeCredentials::new().with_password(password)?),
@@ -147,7 +154,7 @@ impl KeelessCore {
             return self.sync(password).await;
         }
         let prepared = if let Some(rotation) = &self.sync_extension.pending_rotation {
-            Some((rotation.parameters.clone(), rotation.key.try_clone()?))
+            Some((rotation.parameters.clone(), rotation.key.restore_key()?))
         } else {
             self.credential
                 .as_ref()
@@ -193,12 +200,12 @@ impl KeelessCore {
                 (key, parameters, next_key)
             }
         };
-        self.sync_extension.status = SyncStatus::Syncing;
-        self.sync_extension.error = None;
         self.sync_extension.pending_rotation = Some(PendingRotation {
             parameters: parameters.clone(),
-            key: next_key.try_clone()?,
+            key: WrappedKey::wrap(&next_key)?,
         });
+        self.sync_extension.status = SyncStatus::Syncing;
+        self.sync_extension.error = None;
         let result = self
             .handle
             .as_mut()
@@ -213,8 +220,12 @@ impl KeelessCore {
                 return Err(error);
             }
         };
-        self.sync_extension.pending_rotation = None;
-        self.commit_rotated_sync(report, next_key, None).await
+        let rotation = self
+            .sync_extension
+            .pending_rotation
+            .take()
+            .expect("rotation prepared before writing");
+        self.commit_rotated_sync(report, rotation.key, None).await
     }
 
     fn prepare_credential(
@@ -292,12 +303,13 @@ impl KeelessCore {
         self.sync_extension.error = None;
         let result = {
             let handle = self.handle.as_mut().ok_or(CoreError::DatabaseLocked)?;
-            handle.sync_kdf_rotated(old_key, credentials).await
+            handle
+                .sync_kdf_rotated_with_key_state(old_key, credentials, WrappedKey::wrap)
+                .await
         };
         let (report, key) = match result {
             Ok(result) => result,
             Err(error) => {
-                let error = CoreError::from(error);
                 self.set_sync_failure(&error);
                 return Err(error);
             }
@@ -309,33 +321,37 @@ impl KeelessCore {
     async fn commit_rotated_sync(
         &mut self,
         report: SyncReport,
-        key: CompositeKey,
+        wrapped_key: WrappedKey,
         credentials: Option<&CompositeCredentials>,
     ) -> Result<SyncReport> {
         self.sync_extension.pending_rotation = None;
-        let result = if self.settings.paranoia_mode {
-            Ok(None)
-        } else {
-            match credentials {
-                Some(credentials) => self.prepare_credential(&key, credentials),
-                None => CredentialVault::wrap(&key),
-            }
-            .map(Some)
+        let mut migration = PendingKeyMigration {
+            key: wrapped_key,
+            credential: None,
         };
+        let result = (|| {
+            let key = migration.key.restore_key()?;
+            if self.settings.paranoia_mode {
+                Ok(None)
+            } else {
+                match credentials {
+                    Some(credentials) => self.prepare_credential(&key, credentials),
+                    None => CredentialVault::wrap(&key),
+                }
+                .map(Some)
+            }
+        })();
         let credential = match result {
             Ok(credential) => credential,
             Err(error) => {
                 // The remote already changed keys. Even a preparation failure
                 // must leave enough state to complete local migration on retry.
-                self.sync_extension.pending_key_migration = Some(PendingKeyMigration {
-                    key,
-                    credential: None,
-                });
+                self.sync_extension.pending_key_migration = Some(migration);
                 self.set_sync_failure(&error);
                 return Err(error);
             }
         };
-        let mut migration = PendingKeyMigration { key, credential };
+        migration.credential = credential;
         if let Err(error) = self.complete_key_migration(&mut migration).await {
             self.sync_extension.pending_key_migration = Some(migration);
             self.set_sync_failure(&error);
@@ -379,8 +395,11 @@ impl KeelessCore {
         Ok(())
     }
 
-    async fn complete_key_migration(&mut self, migration: &mut PendingKeyMigration) -> Result<()> {
-        let key = &migration.key;
+    async fn complete_key_migration(
+        &mut self,
+        migration: &mut PendingKeyMigration,
+    ) -> Result<CompositeKey> {
+        let key = migration.key.restore_key()?;
         let database_id = self
             .selection
             .as_ref()
@@ -388,13 +407,13 @@ impl KeelessCore {
             .database_id
             .clone();
         let journal =
-            super::super::operations::mutations::MutationCoordinator::new(key, database_id, 0)?;
+            super::super::operations::mutations::MutationCoordinator::new(&key, database_id, 0)?;
         if !self.settings.paranoia_mode && migration.credential.is_none() {
-            migration.credential = Some(CredentialVault::wrap(key)?);
+            migration.credential = Some(CredentialVault::wrap(&key)?);
         }
         let cache = {
             let handle = self.handle.as_ref().ok_or(CoreError::DatabaseLocked)?;
-            self.extensions.unlock(handle.database(), key)?;
+            self.extensions.unlock(handle.database(), &key)?;
             journal.encode_cache(
                 handle.checkpoint_bytes(),
                 handle
@@ -406,10 +425,10 @@ impl KeelessCore {
         };
         self.persistence.write_cache(&cache).await?;
         self.persistence.clear_journal().await?;
-        self.rotate_database_state(key).await?;
+        self.rotate_database_state(&key).await?;
         self.journal = Some(journal);
         self.credential = migration.credential.take();
-        Ok(())
+        Ok(key)
     }
 
     fn set_sync_failure(&mut self, error: &CoreError) {
@@ -459,9 +478,12 @@ impl KeelessCore {
                     return;
                 };
                 match completed {
-                    Ok(remote) => {
-                        let _ = self.sync_with_key(&key, Some(remote)).await;
-                    }
+                    Ok(remote) => match key.restore_key() {
+                        Ok(key) => {
+                            let _ = self.sync_with_key(&key, Some(remote)).await;
+                        }
+                        Err(error) => self.set_sync_failure(&error),
+                    },
                     Err(error) => {
                         let error = CoreError::from(error);
                         self.sync_extension.status = SyncStatus::Error;
@@ -473,7 +495,12 @@ impl KeelessCore {
         }
 
         if let Some(key) = self.sync_extension.pending_key.take() {
-            let _ = self.sync_with_key(&key, None).await;
+            match key.restore_key() {
+                Ok(key) => {
+                    let _ = self.sync_with_key(&key, None).await;
+                }
+                Err(error) => self.set_sync_failure(&error),
+            }
             return;
         }
 
@@ -487,6 +514,13 @@ impl KeelessCore {
     }
 
     pub(crate) fn start_background_sync(&mut self, key: CompositeKey) {
+        let key = match WrappedKey::wrap(&key) {
+            Ok(key) => key,
+            Err(error) => {
+                self.set_sync_failure(&error);
+                return;
+            }
+        };
         let Some(spawner) = &self.task_spawner else {
             self.sync_extension.pending_key = Some(key);
             return;

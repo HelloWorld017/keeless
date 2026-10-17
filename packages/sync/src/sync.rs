@@ -467,16 +467,40 @@ impl FileHandle {
         old_key: &CompositeKey,
         credentials: &CompositeCredentials,
     ) -> Result<(SyncReport, CompositeKey), SyncError> {
+        self.sync_kdf_rotated_with_key_state(old_key, credentials, |key| {
+            key.try_clone().map_err(SyncError::from)
+        })
+        .await
+    }
+
+    /// Prepare caller-owned key state before adopting or publishing the remote key.
+    /// A preparation failure leaves the local handle and remote file unchanged.
+    pub async fn sync_kdf_rotated_with_key_state<T, E>(
+        &mut self,
+        old_key: &CompositeKey,
+        credentials: &CompositeCredentials,
+        mut prepare_key: impl FnMut(&CompositeKey) -> Result<T, E>,
+    ) -> Result<(SyncReport, T), E>
+    where
+        E: From<SyncError>,
+    {
         let max_attempts = self.options.retry_policy.max_retries.saturating_add(1);
 
         for attempt in 0..max_attempts {
-            let remote = self.provider.read(&self.path, None).await?;
-            let opened = open_database(remote.bytes.as_slice(), credentials)?;
+            let remote = self
+                .provider
+                .read(&self.path, None)
+                .await
+                .map_err(SyncError::from)?;
+            let opened =
+                open_database(remote.bytes.as_slice(), credentials).map_err(SyncError::from)?;
             let mut source = opened.database;
             let new_key = opened.key;
             if source.root_group_id != self.database.root_group_id {
-                return Err(SyncError::RootGroupMismatch);
+                return Err(SyncError::RootGroupMismatch.into());
             }
+
+            let prepared_key = prepare_key(&new_key)?;
 
             let downloaded = remote.bytes != self.checkpoint.bytes;
             if !self.dirty {
@@ -491,7 +515,7 @@ impl FileHandle {
                         downloaded,
                         ..SyncReport::default()
                     },
-                    new_key,
+                    prepared_key,
                 ));
             }
 
@@ -500,18 +524,20 @@ impl FileHandle {
             let remote_parameters = source
                 .kdf_parameters
                 .clone()
-                .ok_or(keeless_kdbx::DatabaseError::MissingKdfParameters)?;
-            reencrypt_memory_protection(&mut source, &new_key, old_key)?;
+                .ok_or(keeless_kdbx::DatabaseError::MissingKdfParameters)
+                .map_err(SyncError::from)?;
+            reencrypt_memory_protection(&mut source, &new_key, old_key).map_err(SyncError::from)?;
             let base = open_with_key(self.checkpoint.bytes.as_slice(), old_key)?;
             let mut target = self.database.clone();
             let merge_result =
                 DatabaseMerger::with_credentials(self.options.merge_strategy, old_key)
                     .merge_three_way(&mut target, &source, &base);
             target.kdf_parameters = Some(remote_parameters);
-            reencrypt_memory_protection(&mut target, old_key, &new_key)?;
+            reencrypt_memory_protection(&mut target, old_key, &new_key).map_err(SyncError::from)?;
 
             let revision = require_revision(&remote)?;
             let merged_bytes = serialize_database(&target, &new_key)?;
+            let database = open_with_key(merged_bytes.as_slice(), &new_key)?;
             match self
                 .provider
                 .write(
@@ -519,10 +545,11 @@ impl FileHandle {
                     merged_bytes.clone(),
                     WriteCondition::MustMatch(revision),
                 )
-                .await?
+                .await
+                .map_err(SyncError::from)?
             {
                 WriteOutcome::Applied { revision } => {
-                    self.database = open_with_key(merged_bytes.as_slice(), &new_key)?;
+                    self.database = database;
                     self.checkpoint = Checkpoint {
                         bytes: merged_bytes,
                         revision,
@@ -535,7 +562,7 @@ impl FileHandle {
                             downloaded,
                             merge_result,
                         },
-                        new_key,
+                        prepared_key,
                     ));
                 }
                 WriteOutcome::Conflict if attempt + 1 < max_attempts => {
@@ -544,7 +571,8 @@ impl FileHandle {
                 WriteOutcome::Conflict => {
                     return Err(SyncError::RetryExhausted {
                         attempts: max_attempts,
-                    });
+                    }
+                    .into());
                 }
             }
         }
