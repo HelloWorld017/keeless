@@ -1,0 +1,90 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: version declared in package.json
+        required: true
+        type: string
+
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+      version: ${{ steps.release.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - id: release
+        env:
+          VERSION: ${{ inputs.version || '' }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            version=$VERSION
+          else
+            version=${GITHUB_REF_NAME#v}
+          fi
+
+          # Verify version
+          source_version=$(jq -r .version package.json)
+          test "$version" = "$source_version"
+
+          # Verify sha
+          sha=$(git rev-parse HEAD)
+          if git show-ref --verify --quiet "refs/tags/v$version"; then
+            test "$(git rev-parse "v$version^{commit}")" = "$sha"
+          fi
+
+          printf 'version=%s\nsha=%s\n' "$version" "$sha" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/build.yaml
+    with:
+      sha: ${{ needs.prepare.outputs.sha }}
+    secrets:
+      NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-x86_64'
+          path: artifacts
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          flags=()
+          if [[ "$VERSION" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+
+          gh release create "v$VERSION" --target "$SHA" --draft --generate-notes "${flags[@]}" \
+            artifacts/linux-x86_64/* artifacts/nix-x86_64/*
+
+          gh release edit "v$VERSION" --draft=false

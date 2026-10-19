@@ -1,0 +1,33 @@
+name: Build
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to build
+        type: string
+
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+
+    secrets:
+      NIX_CACHE_PRIVATE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    uses: ./.github/workflows/build-linux.yaml
+    with:
+      sha: ${{ inputs.sha || github.sha }}
+
+  nix:
+    uses: ./.github/workflows/build-nix.yaml
+    with:
+      sha: ${{ inputs.sha || github.sha }}
+    secrets:
+      NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}

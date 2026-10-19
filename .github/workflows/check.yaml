@@ -1,0 +1,33 @@
+name: Check
+on:
+  push:
+    branches:
+      - master
+
+  pull_request:
+    branches:
+      - master
+
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to build
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      - uses: ./.github/actions/setup-linux
+      - run: nix develop -c pnpm install --frozen-lockfile
+
+      - parallel:
+        - run: nix develop -c pnpm run check
+        - run: nix develop -c pnpm run test

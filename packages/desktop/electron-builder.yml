@@ -2,21 +2,45 @@ appId: dev.nenw.keeless
 productName: keeless
 directories:
   output: release
+
 files:
   - dist/**
   - package.json
+
 asarUnpack:
   - dist/main/assets/*.node
+  - dist/main/assets/keeless-native-ui*
+  - dist/main/assets/keeless-passkey*
+
 extraResources:
   - from: src/assets/icons
     to: icons
+
 linux:
   icon: src/assets/icons/icon.png
-  extraResources:
-    - from: dist/main/assets/keeless-passkey-linux
-      to: bin/keeless-passkey-linux
+  category: 'Utility;Security;'
+  maintainer: 'nenw* <khi@nenw.dev>'
+  afterRemove: build/linux/post_remove.sh
   target:
     - AppImage
+    - deb
+    - pacman
+
+pacman:
+  compression: zstd
+  artifactName: '${name}-${version}-${arch}.pkg.tar.zst'
+  depends:
+    - alsa-lib
+    - gtk3
+    - nss
+    - libxss
+    - libxtst
+    - libnotify
+    - libappindicator-gtk3
+    - mesa
+    - libxkbcommon
+    - systemd
+
 win:
   icon: src/assets/icons/icon.ico
   extraResources:
@@ -26,6 +50,7 @@ win:
       to: passkey-windows/keeless-passkey-windows.msix
   target:
     - nsis
+
 nsis:
   include: build/windows/installer.nsh
   oneClick: false

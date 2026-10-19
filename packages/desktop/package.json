@@ -20,6 +20,8 @@
     "check:lint": "pnpm run lint",
     "check:type": "pnpm run typecheck",
     "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux --x64 --publish never",
+    "dist:nix": "electron-builder --dir --linux --x64 --publish never",
     "typecheck": "tsc --project tsconfig.json",
     "format": "oxfmt",
     "lint": "oxlint",

@@ -4,19 +4,22 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     crane.url = "github:ipetkov/crane";
+
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
     flake-utils = {
       url = "github:numtide/flake-utils";
       inputs.systems.follows = "systems";
     };
+
     systems.url = "github:nix-systems/default-linux";
   };
 
-  outputs = { nixpkgs, crane, fenix, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system: let
+  outputs = { self, nixpkgs, crane, fenix, flake-utils, ... }: let
+    default = flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs { inherit system; };
       rustToolchain = let
         inherit (fenix.packages.${system}) combine stable targets;
@@ -31,23 +34,23 @@
         libayatana-appindicator
         libGL
         libxkbcommon
+        libX11
+        libXcursor
+        libXi
+        libXrandr
+        libxcb
         wayland
       ];
+
       desktopBuildInputs = with pkgs; (libBuildInputs ++ [
         electron
       ]);
-      packageFor = cargoPackage:
-        craneLib.buildPackage {
-          pname = cargoPackage;
-          version = "0.0.0";
-          src = craneLib.cleanCargoSource ./.;
-          strictDeps = true;
-          cargoExtraArgs = "--package ${cargoPackage}";
-          meta.mainProgram = cargoPackage;
-        };
     in {
-      packages = {
-        default = packageFor "keeless_desktop";
+      packages = rec {
+        keeless = import ./nix/package.nix {
+          inherit craneLib libBuildInputs pkgs;
+        };
+        default = keeless;
       };
 
       devShells.default = craneLib.devShell {
@@ -58,4 +61,8 @@
         ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
       };
     });
+  in {
+    inherit (default) packages devShells;
+    nixosModules.default = import ./nix/module.nix { inherit self; };
+  };
 }

@@ -1,0 +1,11 @@
+name: Set up Linux workspace
+description: Install build tools and setup workspace
+runs:
+  using: composite
+  steps:
+    - uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6
+      with:
+        extra-conf: |
+          experimental-features = nix-command flakes
+    - shell: bash
+      run: nix develop -c pnpm install --frozen-lockfile
