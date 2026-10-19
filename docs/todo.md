@@ -27,14 +27,16 @@
 - [x] native-ui는 always on top 적용하기
 - [x] com.rs의 Provider provider.rs로 빼기
 - [x] passkey-windows 실행 시 화면에 콘솔창 뜨는 거 수정하기
+- [x] non-paranoid 에서도 KDF Rotation관련 크레덴셜 오류가 나는 것 확인
+- [x] Windows 에서 키 사용하는 부분 성능 개선
 - [ ] extension + native messaging host 구현
 - [ ] [windows process hardening](./draft/20260731-windows-hardening.md)
 - [ ] config에 systemd 서비스 등록화면
 - [ ] kdbx에 operations에서 쓰는 주요 작업 수행 시 zeroize로 기밀 유지되는 것 테스트코드화 하기
 - [ ] desktop 뜰 때 가장 마지막으로 사용한 database open하게 변경하기
-- [ ] Windows 에서 키 사용하는 부분 성능 개선
 
 ### Good to have
+- [ ] Ctrl + P 에서 Shift + Enter로 비밀번호 바로 복사
 - [ ] History 보여주기
 - [ ] operation별 rate limiting 추가
 - [ ] Google Authenticator Import
