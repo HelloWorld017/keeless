@@ -3,7 +3,7 @@
 
 !define KEELESS_PASSKEY_WINDOWS_CLSID "{13ABEFF0-71C5-49E3-9F2F-C207A28CDB9D}"
 !define KEELESS_PASSKEY_WINDOWS_SERVER "$INSTDIR\resources\bin\keeless-passkey-windows.exe"
-!define KEELESS_PASSKEY_WINDOWS_PACKAGE "$INSTDIR\resources\passkey-windows\keeless-passkey-windows.msix"
+!define KEELESS_PASSKEY_WINDOWS_PACKAGE "$INSTDIR\resources\bin\keeless-passkey-windows.msix"
 !define KEELESS_PASSKEY_WINDOWS_PACKAGE_NAME "dev.nenw.keeless.passkey"
 !define KEELESS_PASSKEY_WINDOWS_KEY "Software\Classes\CLSID\${KEELESS_PASSKEY_WINDOWS_CLSID}"
 !define POWERSHELL "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
