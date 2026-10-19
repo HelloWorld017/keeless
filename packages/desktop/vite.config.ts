@@ -55,10 +55,11 @@ const binary = (): Plugin => {
 
       const name = id.slice(binaryPrefix.length + 1);
       const profile = env === 'production' ? 'release' : 'debug';
-      if (platform !== 'win32' && name.startsWith('keeless-passkey-windows')) {
+      if (platform !== 'win32' && name.includes('-windows')) {
         return 'export default undefined;';
       }
-      if (platform !== 'linux' && name.startsWith('keeless-passkey-linux')) {
+
+      if (platform !== 'linux' && name.includes('-linux')) {
         return 'export default undefined;';
       }
 
@@ -74,9 +75,20 @@ const binary = (): Plugin => {
 
       emittedBinaries.set(referenceId, assetName);
 
+      if (name.endsWith('.msix')) {
+        return ts`
+          import { fileURLToPath } from 'node:url';
+          export default fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
+        `;
+      }
+
       return ts`
+        import { join } from 'node:path';
         import { fileURLToPath } from 'node:url';
-        export default fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
+        import { app } from 'electron';
+        export default app.isPackaged
+          ? join(process.resourcesPath, 'bin', ${JSON.stringify(assetName)})
+          : fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
       `;
     },
     async writeBundle(options) {

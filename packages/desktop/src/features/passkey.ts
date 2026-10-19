@@ -1,10 +1,8 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { promisify } from 'node:util';
 import passkeyLinuxBinary from 'binary:keeless-passkey-linux';
 import passkeyWindowsBinary from 'binary:keeless-passkey-windows';
-import { app } from 'electron';
 import type { PasskeyCheck, PasskeyState } from '@/types/DesktopBridge';
 
 const execFileAsync = promisify(execFile);
@@ -22,14 +20,6 @@ const platform = (): PasskeyState['platform'] => {
 
 const binaryPath = () => {
   const currentPlatform = platform();
-  if (app.isPackaged) {
-    return join(
-      process.resourcesPath,
-      'bin',
-      currentPlatform === 'linux' ? 'keeless-passkey-linux' : 'keeless-passkey-windows.exe',
-    );
-  }
-
   const binary = currentPlatform === 'linux' ? passkeyLinuxBinary : passkeyWindowsBinary;
   if (!binary) {
     throw new Error(`Passkey binary is unavailable for ${currentPlatform}.`);

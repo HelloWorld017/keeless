@@ -5,12 +5,12 @@ directories:
 
 files:
   - dist/**
+  - '!dist/main/assets/keeless-native-ui*'
+  - '!dist/main/assets/keeless-passkey*'
   - package.json
 
 asarUnpack:
   - dist/main/assets/*.node
-  - dist/main/assets/keeless-native-ui*
-  - dist/main/assets/keeless-passkey*
 
 extraResources:
   - from: src/assets/icons
@@ -18,6 +18,11 @@ extraResources:
 
 linux:
   icon: src/assets/icons/icon.png
+  extraResources:
+    - from: dist/main/assets/keeless-native-ui
+      to: bin/keeless-native-ui
+    - from: dist/main/assets/keeless-passkey-linux
+      to: bin/keeless-passkey-linux
   category: 'Utility;Security;'
   maintainer: 'nenw* <khi@nenw.dev>'
   afterRemove: build/linux/post_remove.sh
@@ -44,6 +49,8 @@ pacman:
 win:
   icon: src/assets/icons/icon.ico
   extraResources:
+    - from: dist/main/assets/keeless-native-ui.exe
+      to: bin/keeless-native-ui.exe
     - from: dist/main/assets/keeless-passkey-windows.exe
       to: bin/keeless-passkey-windows.exe
     - from: dist/main/assets/keeless-passkey-windows.msix

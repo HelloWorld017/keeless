@@ -20,7 +20,7 @@ let
     serviceConfig = {
       Type = "simple";
       User = name;
-      ExecStart = "${cfg.package}/share/keeless/dist/main/assets/keeless-passkey-linux run --desktop ${cfg.package}/bin/keeless";
+      ExecStart = "${cfg.package}/lib/keeless/resources/bin/keeless-passkey-linux run --desktop ${cfg.package}/bin/keeless";
       OpenFile = "/dev/uhid:uhid";
       Restart = "on-failure";
       RestartSec = 1;
