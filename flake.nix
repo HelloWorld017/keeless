@@ -47,8 +47,6 @@
         libxcb
         wayland
       ];
-
-      desktopBuildInputs = (libBuildInputs ++ (builtins.attrValues pkgsVersioned));
     in {
       packages = rec {
         keeless = import ./nix/package.nix {
@@ -58,11 +56,15 @@
       };
 
       devShells.default = craneLib.devShell {
-        packages = [
-          pkgs.lld
-          pkgs.wasm-pack
-          pkgs.wasm-bindgen-cli_0_2_126
-        ] ++ desktopBuildInputs;
+        packages = []
+          ++ [
+            pkgs.libarchive
+            pkgs.lld
+            pkgs.wasm-pack
+            pkgs.wasm-bindgen-cli_0_2_126
+          ]
+          ++ libBuildInputs
+          ++ (builtins.attrValues pkgsVersioned);
 
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libBuildInputs;
         ELECTRON_OVERRIDE_DIST_PATH = "${pkgs.electron_42}/bin";

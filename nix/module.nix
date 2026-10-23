@@ -1,7 +1,13 @@
 { self }:
 { config, lib, pkgs, ... }:
 let
-  cfg = config.services.keeless-passkey;
+  opts = config.programs.keeless;
+  passkeyOpts = config.services.keeless-passkey;
+
+  defaultUsers = builtins.filter
+    (name: validUser name && config.users.users.${name}.isNormalUser)
+    (builtins.attrNames config.users.users);
+
   validUser = name:
     builtins.hasAttr name config.users.users &&
     config.users.users.${name}.uid != null &&
@@ -20,40 +26,55 @@ let
     serviceConfig = {
       Type = "simple";
       User = name;
-      ExecStart = "${cfg.package}/lib/keeless/resources/bin/keeless-passkey-linux run --desktop ${cfg.package}/bin/keeless";
+      ExecStart = "${passkeyOpts.package}/lib/keeless/resources/bin/keeless-passkey-linux run --desktop ${passkeyOpts.package}/bin/keeless";
       OpenFile = "/dev/uhid:uhid";
       Restart = "on-failure";
       RestartSec = 1;
     };
   };
 in {
+  options.programs.keeless = {
+    enable = lib.mkEnableOption "keeless";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.keeless;
+      description = "Desktop application package for keeless.";
+    };
+  };
+
   options.services.keeless-passkey = {
     enable = lib.mkEnableOption "the passkey provider for keeless";
 
     package = lib.mkOption {
       type = lib.types.package;
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.keeless;
-      description = "Keeless desktop package containing the daemon and launch wrapper.";
+      description = "Desktop application package for keeless.";
     };
 
     users = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = defaultUsers;
       example = [ "alice" ];
-      description = "Desktop users with an explicit, non-zero users.users.<name>.uid.";
+      description = "Users who are allowed to use the passkey provider.";
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    assertions = map (name: {
-      assertion = validUser name;
-      message = "services.keeless-passkey: ${name} must exist and have an explicit non-root UID.";
-    }) cfg.users;
+  config = lib.mkMerge [
+    (lib.mkIf opts.enable {
+      environment.systemPackages = [ opts.package ];
+    })
 
-    boot.kernelModules = [ "uhid" ];
-    environment.systemPackages = [ cfg.package ];
-    systemd.services = builtins.listToAttrs (
-      map serviceFor (lib.unique (builtins.filter validUser cfg.users))
-    );
-  };
+    (lib.mkIf passkeyOpts.enable {
+      assertions = map (name: {
+        assertion = validUser name;
+        message = "services.keeless-passkey: ${name} must exist and have an explicit non-root UID.";
+      }) passkeyOpts.users;
+
+      boot.kernelModules = [ "uhid" ];
+      systemd.services = builtins.listToAttrs (
+        map serviceFor (lib.unique (builtins.filter validUser passkeyOpts.users))
+      );
+    })
+  ];
 }

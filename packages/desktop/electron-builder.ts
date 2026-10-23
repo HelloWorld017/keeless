@@ -55,6 +55,7 @@ export default {
 
   pacman: {
     afterRemove: 'build/linux/post_remove.sh',
+    artifactName: '${productName}-${version}-${os}-${arch}.pkg.tar.zst',
     compression: 'zstd',
     depends: [
       'alsa-lib',
