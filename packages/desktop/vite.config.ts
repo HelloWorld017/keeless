@@ -149,6 +149,13 @@ export default defineConfig(({ mode, isSsrBuild }) => {
   const isPreload = !isMain && mode === 'preload';
 
   return {
+    server: {
+      host: '127.0.0.1',
+      port: 5173,
+      strictPort: true,
+      hmr: { protocol: 'ws', host: '127.0.0.1', clientPort: 5173 },
+    },
+
     build: {
       lib: isPreload && {
         entry: './src/renderer/preload.ts',

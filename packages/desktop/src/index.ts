@@ -1,5 +1,5 @@
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import iconIco from '@/assets/icons/icon.ico?asset';
 import iconPng from '@/assets/icons/icon.png?asset';
 import keeless from '@keeless/host-desktop';
@@ -11,6 +11,8 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  net,
+  protocol,
   screen,
   shell,
   Tray,
@@ -22,6 +24,13 @@ import type { MessageFrame } from '@keeless/lesswire';
 const dirname = fileURLToPath(new URL('.', import.meta.url));
 const minimized = process.argv.slice(1).includes('--minimized');
 const hasLock = app.requestSingleInstanceLock();
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'keeless',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+]);
 
 let browserWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -85,11 +94,60 @@ const waitForOnline = (url: string) => {
         throw err;
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100 * 2 ** retry));
+      await new Promise(done => setTimeout(done, 100 * 2 ** retry));
       return wait(retry + 1);
     });
 
   return wait();
+};
+
+const installRendererProtocol = async () => {
+  const devServerUrl = __DEV__ ? process.env.ELECTRON_RENDERER_URL : undefined;
+  if (devServerUrl) {
+    await waitForOnline(devServerUrl);
+  }
+  const rendererRoot = resolve(dirname, '../renderer');
+
+  protocol.handle('keeless', async request => {
+    const url = new URL(request.url);
+    if (url.host !== 'app' || url.username || url.password) {
+      return new Response('Not found', { status: 404 });
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      return new Response('Method not allowed', { status: 405, headers: { Allow: 'GET, HEAD' } });
+    }
+
+    if (devServerUrl) {
+      const target = new URL(devServerUrl);
+      target.pathname = url.pathname;
+      target.search = url.search;
+      return net.fetch(target.href, { method: request.method });
+    }
+
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      return new Response('Invalid path', { status: 400 });
+    }
+    const filePath = resolve(rendererRoot, `.${pathname}`);
+    const relativePath = relative(rendererRoot, filePath);
+    if (
+      relativePath === '..' ||
+      relativePath.startsWith('../') ||
+      relativePath.startsWith('..\\') ||
+      isAbsolute(relativePath) ||
+      pathname.includes('\0')
+    ) {
+      return new Response('Forbidden', { status: 403 });
+    }
+    try {
+      const target = extname(pathname) ? filePath : join(rendererRoot, 'index.html');
+      return await net.fetch(pathToFileURL(target).href, { method: request.method });
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+  });
 };
 
 const installIpc = () => {
@@ -223,12 +281,7 @@ const createWindow = async () => {
   browserWindow.webContents.on('will-navigate', event => event.preventDefault());
   browserWindow.setContentProtection(true);
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    await waitForOnline(process.env.ELECTRON_RENDERER_URL);
-    await browserWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
-  } else {
-    await browserWindow.loadFile(join(dirname, '../renderer/index.html'));
-  }
+  await browserWindow.loadURL('keeless://app/');
 
   if (!minimized) {
     showWindow();
@@ -290,6 +343,7 @@ if (!hasLock) {
   app.on('activate', showWindow);
   void app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
+    await installRendererProtocol();
     host = await keeless.DesktopHost.create({
       nativeUiPath,
       getNativeUiAnchor: nativeUiAnchor,

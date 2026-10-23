@@ -8,7 +8,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "pnpm run build:dev && pnpm run \"/^dev:.*$/\"",
-    "dev:main": "cross-env ELECTRON_RENDERER_URL=\"http://localhost:5173\" electron ./dist/main/index.js",
+    "dev:main": "cross-env ELECTRON_RENDERER_URL=\"http://127.0.0.1:5173\" electron ./dist/main/index.js",
     "dev:renderer": "vite",
     "build": "pnpm run \"/^build:(?!dev).*$/\"",
     "build:dev": "cross-env NODE_ENV=development pnpm run \"/^build:(main|preload).*$/\"",
