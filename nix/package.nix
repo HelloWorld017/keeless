@@ -69,10 +69,15 @@ in
       runHook preInstall
 
       mkdir -p $out/lib/keeless $out/bin
-      cp -r packages/desktop/release/linux*-unpacked/. $out/lib/keeless/
-      makeWrapper $out/lib/keeless/keeless $out/bin/keeless \
+      cp -r packages/desktop/release/linux*-unpacked/resources $out/lib/keeless/
+
+      # Intentionally not using built binary.
+      # Binaries tampered by electron-builder cause SIGILL via ud2.
+      makeWrapper ${lib.getExe electron} $out/bin/keeless \
+        --set KEELESS_RESOURCES_PATH "$out/lib/keeless/resources" \
         --prefix LD_LIBRARY_PATH : '${lib.makeLibraryPath libBuildInputs}' \
         --prefix PATH : '${lib.makeBinPath [ pkgs.systemd pkgs.polkit pkgs.kmod ]}' \
+        --add-flags "$out/lib/keeless/resources/app.asar" \
         --add-flags "\''${NIXOS_OZONE_WL:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime}"
 
       install -Dm644 packages/desktop/src/assets/icons/icon.png \

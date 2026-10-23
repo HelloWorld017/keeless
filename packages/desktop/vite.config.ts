@@ -86,8 +86,21 @@ const binary = (): Plugin => {
         import { join } from 'node:path';
         import { fileURLToPath } from 'node:url';
         import { app } from 'electron';
-        export default app.isPackaged
-          ? join(process.resourcesPath, 'bin', ${JSON.stringify(assetName)})
+
+        const resourcesPath = (() => {
+          if (process.env.KEELESS_RESOURCES_PATH) {
+            return process.env.KEELESS_RESOURCES_PATH;
+          }
+
+          if (app.isPackaged) {
+            return process.resourcesPath;
+          }
+
+          return null;
+        })();
+
+        export default resourcesPath !== null
+          ? join(resourcesPath, 'bin', ${JSON.stringify(assetName)})
           : fileURLToPath(import.meta.ROLLUP_FILE_URL_${referenceId});
       `;
     },
