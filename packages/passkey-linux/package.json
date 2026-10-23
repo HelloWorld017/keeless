@@ -6,8 +6,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cargo build --release -p keeless_passkey_linux",
-    "build:dev": "cargo build -p keeless_passkey_linux",
+    "build": "on-platform linux build:rust",
+    "build:dev": "on-platform linux build:rust:dev",
+    "build:rust": "cargo build --release -p keeless_passkey_linux",
+    "build:rust:dev": "cargo build -p keeless_passkey_linux",
     "check": "pnpm run \"/^check:.*/\"",
     "check:format": "cargo fmt --check",
     "check:lint": "pnpm run lint",

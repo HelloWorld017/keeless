@@ -1,0 +1,21 @@
+{
+  "name": "@keeless/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "on-platform": "./on-platform.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "check": "pnpm run \"/^check:.*/\"",
+    "check:format": "pnpm run format --check",
+    "check:lint": "pnpm run lint",
+    "check:type": "pnpm run typecheck",
+    "format": "oxfmt",
+    "lint": "oxlint",
+    "typecheck": "tsgo --project tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

@@ -24,7 +24,8 @@ jobs:
           ref: ${{ inputs.sha || github.sha }}
 
       - uses: ./.github/actions/setup-linux
-      - run: nix develop -c pnpm run dist:linux
+      - run: nix develop -c pnpm --filter @keeless/desktop... run build
+      - run: nix develop -c pnpm --filter @keeless/desktop run dist:linux
 
       - uses: actions/upload-artifact@v4
         with:

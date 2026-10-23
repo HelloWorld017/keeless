@@ -14,6 +14,7 @@ in
     strictDeps = true;
     cargoArtifacts = null;
     doCheck = false;
+    doNotPostBuildInstallCargoBinaries = true;
     buildInputs = libBuildInputs;
 
     pnpmDeps = fetchPnpmDeps {
@@ -50,7 +51,8 @@ in
     buildPhase = ''
       runHook preBuild
 
-      pnpm run dist:nix \
+      pnpm --filter @keeless/desktop... run build
+      pnpm --filter @keeless/desktop run dist:nix \
         --config.electronDist=${electron.dist} \
         --config.electronVersion=${electron.version}
 
