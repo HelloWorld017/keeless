@@ -8,6 +8,7 @@ const { version } = JSON.parse(
 export default {
   appId: 'dev.nenw.keeless',
   productName: 'keeless',
+  executableName: 'keeless',
   directories: {
     output: 'release',
   },
