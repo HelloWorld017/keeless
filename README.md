@@ -9,10 +9,11 @@
 
 ## Features
 * 🗝️ **KDBX 3.1 / 4.1 Support**  
-  It uses the KDBX3.1/4.1 file format and compatible with multiple keepass implementations.
+  It uses the KDBX 3.1/4.1 file format and is compatible with multiple KeePass implementations.
   
 * 🔌 **Flexible Topology**  
-  It compiles to both wasm and native and can host in web, browser extensions, and desktop (Windows / Linux) environments.
+  It compiles to both wasm and native and can be hosted in web, browser extensions, and desktop (Windows / Linux) environments.
+  Note: The browser extension is currently unsupported.
   
 * 🪪 **Multi-Credentials**  
   Besides traditional passwords, passkeys and TOTP are supported.  
@@ -22,14 +23,39 @@
   WebDAV and local file systems are supported. Synchronization is implemented using CAS and 3-way merging.
   
 * ✨ **Modern UI**  
-  I personally don't like the design of other KeePass desktop apps, so I put some efforts on design.
+  I personally don't like the design of other KeePass desktop apps, so I put some effort into the design.
 
 ## Status
 **`Working On My Machine™`**  
 > If you intend to use this, please backup your database and expect data loss.
 
 ## Installation
-To be determined
+* **Linux**
+  * Arch Linux: Install the `*.pkg.tar.zst` file.
+  * Debian / Ubuntu: Install the `*.deb` file.
+  * NixOS: Follow the dedicated section.
+  * Other: Use the `*.AppImage` file.
+* **Windows**
+  * To be determined
+
+### NixOS Support
+```nix
+# 1. Add `keeless` to your flake inputs.
+keeless = {
+  url = "github:HelloWorld017/keeless/v1.0.0";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+# 2-a. Use the package if you don't need passkey support.
+inputs.keeless.packages.${system}.default
+
+# 2-b. Use the module if you need passkey support.
+imports = [ inputs.keeless.nixosModules.default ]
+config = {
+  programs.keeless.enable = true;
+  services.keeless-passkey.enable = true;
+};
+```
 
 ## Screenshot
 
@@ -40,22 +66,22 @@ The master key is encrypted and protected from being written out to the disk, an
 Most entry keys are also stored in an encrypted state. But all entries are temporarily decrypted while doing a search,
 url matching (look for `MemoryUnlockSession` in the code).  
 
-Also, individual entries may live long in the JavaScript memory when viewing, copying or autofilling a password,
+Also, individual entries may remain in JavaScript memory for a long time when viewing, copying or autofilling a password,
 leaving it vulnerable to memory dumps as well.
 
 #### Paranoia Mode
-For users who want extreme security, this mode ensures no passwords are kept in memory, prompting the user
-for the password on every synchronization attempt.
-However, even with Paranoia mode enabled, individual entries can also live long in the JavaScript memory.  
+For users who want more security, this mode minimizes how long passwords remain in memory and prompts you
+for your master password on every synchronization attempt.
+However, even with Paranoia mode enabled, individual entries can also remain in JavaScript memory for a long time.\
 Again, once admin permissions are stolen, there is truly very little that can be done.
 
 #### Native Master Key Input
-In the desktop app, master key inputs bypass the web renderer (Tauri WebView) and are handled using `egui`,
-which helps the master key to be easily zeroized.
+In the desktop app, master key inputs bypass the web renderer (Electron) and are handled using `egui`,
+allowing the master key to be zeroized more easily.
 
 #### Signed IPC Protocol
 All messages between the clients (App/Extension) and the core are signed and encrypted.  
-Connecting the companion web extension is based on tofu(trust on first use).
+Connecting is based on TOFU (trust on first use).
 An approval dialog ensures that only explicitly authorized devices can establish a connection and access the database.
 
 ## FAQ
@@ -67,12 +93,12 @@ An approval dialog ensures that only explicitly authorized devices can establish
 * **Why did you create this?**  
   Why not?  
   When I looked at existing desktop KeePass clients, it turned out that KeeWeb has way too outdated electron (which does not support wayland),
-  and KeePassXC does not have WebDAV support (+ it just didn't look very nice for me, in terms of aesthetics, honestly).  
+  and KeePassXC does not have WebDAV support (+ it just didn't look very nice to me, in terms of aesthetics, honestly).\
   Plus, as GPT-5.6 Sol gave me many resets (Thank you Tibo), I really wanted to give this whole vibe-coding thing a try.
 
 * **I like the design/features, but I'm not sure about the results of vibe coding.**  
   In fact, most of the architectural design was done by me, so it is not actually 100% vibe coded.
-  But anyway if you don't want those, that's where the open-source comes into play.
+  But anyway if you don't want those, that's where open source comes into play.
   As the backend and the frontend are strictly separated, you can freely fork and create your own frontend/backend implementation.  
   If you rewrite the backend, please let me know so I can use your implementation.
 
@@ -87,7 +113,7 @@ An approval dialog ensures that only explicitly authorized devices can establish
   However, if I smell any slop in the code, I can close it without any further comments.
 
 * **Can you guarantee that the memory protection thing works well?**  
-  No, I can not. But I tested for a few basic smoke tests manually on Windows.
+  No, I can not. But I ran a few basic smoke tests manually on Windows.
   If you are concerned about it, just test it yourself and share the results with me via issues.
 
 * **Is paranoia mode safe?**  
