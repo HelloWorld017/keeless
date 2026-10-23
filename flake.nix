@@ -21,6 +21,12 @@
   outputs = { self, nixpkgs, crane, fenix, flake-utils, ... }: let
     default = flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs { inherit system; };
+      pkgsVersioned = {
+        nodejs = pkgs.nodejs_24;
+        electron = pkgs.electron_42;
+        pnpm = pkgs.pnpm_11;
+      };
+
       rustToolchain = let
         inherit (fenix.packages.${system}) combine stable targets;
       in combine [
@@ -42,13 +48,11 @@
         wayland
       ];
 
-      desktopBuildInputs = with pkgs; (libBuildInputs ++ [
-        electron
-      ]);
+      desktopBuildInputs = (libBuildInputs ++ (builtins.attrValues pkgsVersioned));
     in {
       packages = rec {
         keeless = import ./nix/package.nix {
-          inherit craneLib libBuildInputs pkgs;
+          inherit craneLib libBuildInputs pkgs pkgsVersioned;
         };
         default = keeless;
       };

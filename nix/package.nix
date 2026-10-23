@@ -1,15 +1,12 @@
-{ pkgs, craneLib, libBuildInputs }:
+{ pkgs, pkgsVersioned, craneLib, libBuildInputs }:
 let
   inherit (pkgs) lib;
   inherit (pkgs) copyDesktopItems fetchPnpmDeps makeDesktopItem makeWrapper pnpmConfigHook;
+  inherit (pkgsVersioned) pnpm nodejs electron;
 
   pname = "keeless";
   version = (lib.importJSON ../package.json).version;
   src = ../.;
-
-  nodejs = pkgs.nodejs_24;
-  electron = pkgs.electron_42;
-  pnpm = pkgs.pnpm_11;
 
 in
   craneLib.buildPackage {
