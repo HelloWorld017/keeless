@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
-import type { Configuration } from 'electron-builder';
+import type { Configuration, Metadata } from 'electron-builder';
 
-const { version } = JSON.parse(
+const { author, description, homepage, version } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-) as { version: string };
+) as Metadata;
 
 export default {
   appId: 'dev.nenw.keeless',
@@ -14,6 +14,9 @@ export default {
   },
 
   extraMetadata: {
+    author,
+    description,
+    homepage,
     version,
   },
 

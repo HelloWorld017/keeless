@@ -4,6 +4,8 @@
   "private": true,
   "description": "keeless: modern password manager",
   "type": "module",
+  "author": "nenw* <khi@nenw.dev>",
+  "homepage": "https://github.com/HelloWorld017/keeless",
   "scripts": {
     "build": "pnpm -r build",
     "build:dev": "pnpm -r build:dev",
