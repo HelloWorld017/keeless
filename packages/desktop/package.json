@@ -22,6 +22,7 @@
     "dist": "electron-builder",
     "dist:linux": "electron-builder --linux --x64 --publish never",
     "dist:nix": "electron-builder --dir --linux --x64 --publish never",
+    "dist:windows": "electron-builder --win --x64 --publish never",
     "typecheck": "tsc --project tsconfig.json",
     "format": "oxfmt",
     "lint": "oxlint",

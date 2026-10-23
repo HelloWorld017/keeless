@@ -1,6 +1,6 @@
 { pkgs, craneLib, libBuildInputs }:
 let
-  inherit (pkgs) lib stdenv;
+  inherit (pkgs) lib;
   inherit (pkgs) copyDesktopItems fetchPnpmDeps makeDesktopItem makeWrapper pnpmConfigHook;
 
   pname = "keeless";
@@ -11,97 +11,88 @@ let
   electron = pkgs.electron_42;
   pnpm = pkgs.pnpm_11;
 
-  cargoArgs = {
-    pname = "${pname}-native";
-    inherit version;
-    src = craneLib.cleanCargoSource src;
-    strictDeps = true;
-    cargoExtraArgs = "-p keeless_host_desktop -p keeless_native_ui -p keeless_passkey_linux";
-    buildInputs = libBuildInputs;
-    doCheck = false;
-  };
-
-  native = craneLib.buildPackage (cargoArgs // {
-    cargoArtifacts = craneLib.buildDepsOnly cargoArgs;
-    installPhaseCommand = ''
-      install -Dm755 target/release/libkeeless_host_desktop.so $out/lib/keeless_host_desktop.node
-      install -Dm755 target/release/keeless-native-ui $out/bin/keeless-native-ui
-      install -Dm755 target/release/keeless-passkey-linux $out/bin/keeless-passkey-linux
-    '';
-  });
 in
-  stdenv.mkDerivation (finalAttrs: {
+  craneLib.buildPackage {
     inherit pname version src;
     strictDeps = true;
+    cargoArtifacts = null;
+    doCheck = false;
+    buildInputs = libBuildInputs;
 
-  pnpmDeps = fetchPnpmDeps {
-    inherit pname version src pnpm;
-    fetcherVersion = 4;
-    hash = "sha256-SckX/b8BTPOJRyK60ocUG58+nQsyXX7EgPKY9L96T9A=";
-  };
+    pnpmDeps = fetchPnpmDeps {
+      inherit pname version src pnpm;
+      fetcherVersion = 4;
+      prePnpmInstall = ''
+        pnpm config set network-concurrency 8
+      '';
+      CI = "true";
+      hash = "";
+    };
 
-  nativeBuildInputs = [
-    nodejs
-    pnpm
-    pnpmConfigHook
-    makeWrapper
-    copyDesktopItems
-  ];
+    pnpmInstallFlags = [ "--prod=false" ];
 
-  ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
-  ELECTRON_OVERRIDE_DIST_PATH = electron.dist;
-  NODE_ENV = "production";
+    nativeBuildInputs = [
+      nodejs
+      pnpm
+      pnpmConfigHook
+      makeWrapper
+      copyDesktopItems
+      pkgs.wasm-pack
+      pkgs.wasm-bindgen-cli_0_2_126
+      pkgs.binaryen
+      pkgs.lld
+    ];
 
-  buildPhase = ''
-    runHook preBuild
+    ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
+    ELECTRON_OVERRIDE_DIST_PATH = electron.dist;
+    NODE_ENV = "production";
+    CI = "true";
+    CARGO_NET_OFFLINE = "true";
+    WASM_PACK_CACHE = ".wasm-pack";
 
-    mkdir -p packages/host-desktop/dist target/release
-    cp ${native}/lib/keeless_host_desktop.node packages/host-desktop/dist/
-    cp ${native}/bin/* target/release/
+    buildPhase = ''
+      runHook preBuild
 
-    pnpm --filter @keeless/desktop... run build
-    pnpm --filter @keeless/desktop run dist:nix \
-      --config.electronDist=${electron.dist} \
-      --config.electronVersion=${electron.version}
+      pnpm run dist:nix \
+        --config.electronDist=${electron.dist} \
+        --config.electronVersion=${electron.version}
 
-    runHook postBuild
-  '';
+      runHook postBuild
+    '';
 
-  installPhase = ''
-    runHook preInstall
+    installPhase = ''
+      runHook preInstall
 
-    mkdir -p $out/lib/keeless $out/bin
-    cp -r packages/desktop/release/linux*-unpacked/. $out/lib/keeless/
-    makeWrapper $out/lib/keeless/keeless $out/bin/keeless \
-      --prefix LD_LIBRARY_PATH : '${lib.makeLibraryPath libBuildInputs}' \
-      --prefix PATH : '${lib.makeBinPath [ pkgs.systemd pkgs.polkit pkgs.kmod ]}' \
-      --add-flags "\''${NIXOS_OZONE_WL:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime}"
+      mkdir -p $out/lib/keeless $out/bin
+      cp -r packages/desktop/release/linux*-unpacked/. $out/lib/keeless/
+      makeWrapper $out/lib/keeless/keeless $out/bin/keeless \
+        --prefix LD_LIBRARY_PATH : '${lib.makeLibraryPath libBuildInputs}' \
+        --prefix PATH : '${lib.makeBinPath [ pkgs.systemd pkgs.polkit pkgs.kmod ]}' \
+        --add-flags "\''${NIXOS_OZONE_WL:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime}"
 
-    install -Dm644 packages/desktop/src/assets/icons/icon.png \
-      $out/share/icons/hicolor/512x512/apps/keeless.png
+      install -Dm644 packages/desktop/src/assets/icons/icon.png \
+        $out/share/icons/hicolor/512x512/apps/keeless.png
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
-  desktopItems = [
-    (makeDesktopItem {
-      name = "keeless";
-      desktopName = "Keeless";
-      comment = "keeless: modern password manager";
-      exec = "keeless %U";
-      icon = "keeless";
-      categories = [ "Utility" "Security" ];
-      startupWMClass = "keeless";
-    })
-  ];
+    desktopItems = [
+      (makeDesktopItem {
+        name = "keeless";
+        desktopName = "Keeless";
+        comment = "keeless: modern password manager";
+        exec = "keeless %U";
+        icon = "keeless";
+        categories = [ "Utility" "Security" ];
+        startupWMClass = "keeless";
+      })
+    ];
 
-  disallowedReferences = [ native ];
-
-  meta = {
-    description = "keeless: modern password manager";
-    homepage = "https://github.com/HelloWorld017/keeless";
-    license = lib.licenses.agpl3Only;
-    mainProgram = "keeless";
-    platforms = lib.platforms.linux;
-  };
-})
+    meta = {
+      description = "keeless: modern password manager";
+      homepage = "https://github.com/HelloWorld017/keeless";
+      license = lib.licenses.agpl3Only;
+      mainProgram = "keeless";
+      platforms = lib.platforms.linux;
+    };
+  }

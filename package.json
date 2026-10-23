@@ -7,6 +7,11 @@
   "scripts": {
     "build": "pnpm -r build",
     "build:dev": "pnpm -r build:dev",
+    "build:linux": "pnpm --filter @keeless/desktop... --filter \"!@keeless/*-windows\" run build",
+    "build:windows": "pnpm --filter @keeless/desktop... --filter \"!@keeless/*-linux\" run build",
+    "dist:linux": "pnpm run build:linux && pnpm --filter @keeless/desktop run dist:linux",
+    "dist:nix": "pnpm run build:linux && pnpm --filter @keeless/desktop run dist:nix",
+    "dist:windows": "pnpm run build:windows && pnpm --filter @keeless/desktop run dist:windows",
     "check": "pnpm -r check",
     "format": "pnpm -r format",
     "lint": "pnpm -r lint",

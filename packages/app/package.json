@@ -20,7 +20,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "pnpm run \"/^build:.*$/\"",
+    "build": "pnpm run \"/^build:(?!dev).*$/\"",
     "build:dev": "cross-env NODE_ENV=development pnpm run \"/^build:(lib).*$/\"",
     "build:app": "vite build",
     "build:lib": "vite build --mode lib",

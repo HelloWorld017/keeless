@@ -54,7 +54,11 @@
       };
 
       devShells.default = craneLib.devShell {
-        packages = [ pkgs.lld pkgs.wasm-pack ] ++ desktopBuildInputs;
+        packages = [
+          pkgs.lld
+          pkgs.wasm-pack
+          pkgs.wasm-bindgen-cli_0_2_126
+        ] ++ desktopBuildInputs;
 
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libBuildInputs;
         ELECTRON_OVERRIDE_DIST_PATH = "${pkgs.electron_42}/bin";
