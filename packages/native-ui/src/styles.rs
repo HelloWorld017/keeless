@@ -53,48 +53,48 @@ pub fn configure(context: &egui::Context) {
         visuals.window_corner_radius = CornerRadius::same(RADIUS);
         visuals.window_shadow = egui::Shadow::NONE;
         visuals.window_fill = SURFACE;
-        visuals.window_stroke = Stroke::new(1.0, BORDER);
+        visuals.window_stroke = Stroke::new(1.0_f32, BORDER);
         visuals.menu_corner_radius = CornerRadius::same(RADIUS);
         visuals.panel_fill = SURFACE;
         visuals.popup_shadow = egui::Shadow::NONE;
-        visuals.text_cursor.stroke = Stroke::new(1.0, PRIMARY);
+        visuals.text_cursor.stroke = Stroke::new(1.0_f32, PRIMARY);
         visuals.button_frame = true;
         visuals.interact_cursor = Some(egui::CursorIcon::PointingHand);
 
         let noninteractive = &mut visuals.widgets.noninteractive;
         noninteractive.bg_fill = SURFACE;
         noninteractive.weak_bg_fill = SURFACE;
-        noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
+        noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
         noninteractive.corner_radius = CornerRadius::same(RADIUS);
-        noninteractive.fg_stroke = Stroke::new(1.0, FOREGROUND);
+        noninteractive.fg_stroke = Stroke::new(1.0_f32, FOREGROUND);
         noninteractive.expansion = 0.0;
 
         let inactive = &mut visuals.widgets.inactive;
         inactive.bg_fill = SURFACE;
         inactive.weak_bg_fill = SURFACE;
-        inactive.bg_stroke = Stroke::new(1.0, BORDER);
+        inactive.bg_stroke = Stroke::new(1.0_f32, BORDER);
         inactive.corner_radius = CornerRadius::same(RADIUS);
-        inactive.fg_stroke = Stroke::new(1.0, FOREGROUND);
+        inactive.fg_stroke = Stroke::new(1.0_f32, FOREGROUND);
         inactive.expansion = 0.0;
 
         let hovered = &mut visuals.widgets.hovered;
         hovered.bg_fill = MUTED;
         hovered.weak_bg_fill = MUTED;
-        hovered.bg_stroke = Stroke::new(1.0, BORDER);
+        hovered.bg_stroke = Stroke::new(1.0_f32, BORDER);
         hovered.corner_radius = CornerRadius::same(RADIUS);
-        hovered.fg_stroke = Stroke::new(1.0, FOREGROUND);
+        hovered.fg_stroke = Stroke::new(1.0_f32, FOREGROUND);
         hovered.expansion = 0.0;
 
         let active = &mut visuals.widgets.active;
         active.bg_fill = Color32::from_rgb(235, 244, 255);
         active.weak_bg_fill = Color32::from_rgb(235, 244, 255);
-        active.bg_stroke = Stroke::new(1.0, PRIMARY);
+        active.bg_stroke = Stroke::new(1.0_f32, PRIMARY);
         active.corner_radius = CornerRadius::same(RADIUS);
-        active.fg_stroke = Stroke::new(1.0, FOREGROUND);
+        active.fg_stroke = Stroke::new(1.0_f32, FOREGROUND);
         active.expansion = 0.0;
 
         visuals.selection.bg_fill = Color32::from_rgb(219, 234, 254);
-        visuals.selection.stroke = Stroke::new(1.0, PRIMARY);
+        visuals.selection.stroke = Stroke::new(1.0_f32, PRIMARY);
     });
 }
 
@@ -123,7 +123,7 @@ pub fn description(ui: &mut egui::Ui, value: impl Into<egui::WidgetText>) {
 pub fn code(ui: &mut egui::Ui, value: &str) {
     egui::Frame::new()
         .fill(MUTED)
-        .stroke(Stroke::new(1.0, BORDER))
+        .stroke(Stroke::new(1.0_f32, BORDER))
         .corner_radius(CornerRadius::same(RADIUS))
         .inner_margin(Margin::symmetric(8, 5))
         .show(ui, |ui| {

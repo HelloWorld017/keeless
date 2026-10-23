@@ -260,7 +260,7 @@ impl VariantDictionary {
         writer.write_u16::<LittleEndian>(VD_VERSION)?;
 
         let mut entries = self.dict.iter().collect::<Vec<_>>();
-        entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+        entries.sort_unstable_by_key(|(key, _)| *key);
         for (name, vd) in entries {
             let name_bytes = name.as_bytes();
             writer.write_u8(match vd {

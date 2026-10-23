@@ -312,7 +312,7 @@ fn paint(
 ) {
     let visuals = ui.style().interact(response);
     let stroke = if failed {
-        Stroke::new(1.0, ui.visuals().error_fg_color)
+        Stroke::new(1.0_f32, ui.visuals().error_fg_color)
     } else {
         visuals.bg_stroke
     };
@@ -363,7 +363,7 @@ fn paint(
                 egui::pos2(cursor, inner.top()),
                 egui::pos2(cursor, inner.bottom()),
             ],
-            Stroke::new(1.0, color),
+            Stroke::new(1.0_f32, color),
         );
         ui.ctx().output_mut(|output| {
             output.ime = Some(egui::output::IMEOutput {

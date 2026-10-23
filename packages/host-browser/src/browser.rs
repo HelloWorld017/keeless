@@ -85,7 +85,6 @@ pub struct BrowserCore {
 #[wasm_bindgen]
 impl BrowserCore {
     #[wasm_bindgen(js_name = create)]
-    // KeelessHost intentionally uses Arc for one API across native and single-threaded WASM.
     #[allow(clippy::arc_with_non_send_sync)]
     pub async fn create() -> Result<BrowserCore, JsValue> {
         let idb = IndexedDb::open().await?;
@@ -155,6 +154,7 @@ impl BrowserCore {
     }
 
     #[wasm_bindgen(js_name = configureLocalFile)]
+    #[allow(clippy::arc_with_non_send_sync)]
     pub async fn configure_local_file(
         &self,
         file: File,

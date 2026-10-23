@@ -6,10 +6,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "electron-builder.ts",
-    "vite.config.ts"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "electron-builder.ts", "vite.config.ts"]
 }

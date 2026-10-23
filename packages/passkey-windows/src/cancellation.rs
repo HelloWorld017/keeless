@@ -74,9 +74,7 @@ impl ActiveCeremony {
     /// cancellation is signalled.
     pub fn cancellation_target(&self, transaction_id: TransactionId) -> Option<CancellationTarget> {
         let active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
-        let Some(state) = active.as_ref() else {
-            return None;
-        };
+        let state = active.as_ref()?;
         if state.transaction_id != transaction_id {
             return None;
         }
