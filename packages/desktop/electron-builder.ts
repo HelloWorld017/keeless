@@ -9,6 +9,8 @@ export default {
   appId: 'dev.nenw.keeless',
   productName: 'keeless',
   executableName: 'keeless',
+  artifactName: '${productName}-${version}-${os}-${arch}.${ext}',
+
   directories: {
     output: 'release',
   },
@@ -54,7 +56,6 @@ export default {
   pacman: {
     afterRemove: 'build/linux/post_remove.sh',
     compression: 'zstd',
-    artifactName: '${name}-${version}-${arch}.pkg.tar.zst',
     depends: [
       'alsa-lib',
       'gtk3',
