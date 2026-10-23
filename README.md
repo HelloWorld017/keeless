@@ -47,6 +47,7 @@ nix.settings = {
 };
 
 # 2. Add `keeless` to your flake inputs.
+# If you specify the nixpkgs override, the substitute would not be matched.
 keeless = {
   url = "github:HelloWorld017/keeless/flakes";
 };
