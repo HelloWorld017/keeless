@@ -23,7 +23,7 @@ in
         pnpm config set network-concurrency 8
       '';
       CI = "true";
-      hash = "";
+      hash = "sha256-KF8Z08n6XL1sb9ghOoEuT6dMebEdg5hu2C6nmYkJVrs=";
     };
 
     pnpmInstallFlags = [ "--prod=false" ];

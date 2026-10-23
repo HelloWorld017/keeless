@@ -21,12 +21,13 @@ jobs:
   workspace:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.sha || github.sha }}
 
       - uses: ./.github/actions/setup-linux
       - run: nix develop -c pnpm install --frozen-lockfile
+      - run: nix develop -c pnpm run build:dev
 
       - parallel:
         - run: nix develop -c pnpm run check
