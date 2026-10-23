@@ -21,6 +21,9 @@
   outputs = { self, nixpkgs, crane, fenix, flake-utils, ... }: let
     default = flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs { inherit system; };
+      release = if builtins.pathExists ./release.json
+        then builtins.fromJSON (builtins.readFile ./release.json)
+        else null;
       pkgsVersioned = {
         nodejs = pkgs.nodejs_24;
         electron = pkgs.electron_42;
@@ -51,6 +54,11 @@
       packages = rec {
         keeless = import ./nix/package.nix {
           inherit craneLib libBuildInputs pkgs pkgsVersioned;
+          src = if release == null then ./. else pkgs.fetchFromGitHub {
+            owner = "HelloWorld017";
+            repo = "keeless";
+            inherit (release) rev hash;
+          };
         };
         default = keeless;
       };

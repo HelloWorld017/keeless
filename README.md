@@ -40,17 +40,22 @@
 
 ### NixOS Support
 ```nix
-# 1. Add `keeless` to your flake inputs.
-keeless = {
-  url = "github:HelloWorld017/keeless/v1.0.0";
-  inputs.nixpkgs.follows = "nixpkgs";
+# 1. Add following settings to your config
+nix.settings = {
+  substituters = [ "https://github.com/HelloWorld017/keeless/releases/latest/download" ];
+  trusted-public-keys = [ "keeless.nenw.dev-1:eKVDsvA/nRl6mi0y8of31nX8xyOKdtiWvMVh0y8HXqk=" ];
 };
 
-# 2-a. Use the package if you don't need passkey support.
+# 2. Add `keeless` to your flake inputs.
+keeless = {
+  url = "github:HelloWorld017/keeless/flakes";
+};
+
+# 3-a. Use the package if you don't need passkey support.
 inputs.keeless.packages.${system}.default
 
-# 2-b. Use the module if you need passkey support.
-imports = [ inputs.keeless.nixosModules.default ]
+# 3-b. Use the module if you need passkey support.
+imports = [ inputs.keeless.nixosModules.default ];
 config = {
   programs.keeless.enable = true;
   services.keeless-passkey.enable = true;

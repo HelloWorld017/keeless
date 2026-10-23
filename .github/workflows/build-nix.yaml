@@ -28,7 +28,20 @@ jobs:
           ref: ${{ inputs.sha || github.sha }}
 
       - uses: ./.github/actions/setup-linux
-      - run: nix build .#keeless
+
+      - name: Generate release flake
+        run: |
+          rev=$(git rev-parse HEAD)
+          url="https://github.com/HelloWorld017/keeless/archive/$rev.tar.gz"
+          hash=$(nix store prefetch-file --unpack --json "$url" | jq -r .hash)
+
+          mkdir -p flakes/nix
+          cp flake.nix flake.lock Cargo.lock package.json flakes/
+          cp nix/{package,module}.nix flakes/nix/
+          jq -n --arg rev "$rev" --arg hash "$hash" '{rev: $rev, hash: $hash}' > flakes/release.json
+
+      - name: Build
+        run: nix build path:./flakes#keeless
 
       - name: Export output
         env:
@@ -55,7 +68,7 @@ jobs:
 
           # Write Info
           path_info=$(nix path-info --json --sigs "$store_path")
-          nar_hash=$(nix hash convert --to nix32 $(jq -r '.[] | .narHash' <<< "$path_info"))
+          nar_hash=$(nix hash convert --to nix32 "$(jq -r '.[] | .narHash' <<< "$path_info")")
           file_hash=$(nix hash file --type sha256 --base32 "$archive_path")
           file_size=$(stat -c %s "$archive_path")
 
@@ -74,7 +87,7 @@ jobs:
               "NarHash: sha256:\($narHash)",
               "NarSize: \(.narSize)",
               "References: \(.references | map(split("/")[-1]) | sort | join(" "))",
-              (.signatures[]? | select(startswith("keeless-1:")) | "Sig: \(.)")
+              (.signatures[]? | select(startswith("keeless.nenw.dev-1:")) | "Sig: \(.)")
             ' <<< "$path_info" > "$directory/$store_hash.narinfo"
 
           printf "%s\n" \
@@ -88,3 +101,9 @@ jobs:
           name: nix-x86_64
           if-no-files-found: error
           path: cache/*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nix-flake
+          if-no-files-found: error
+          path: flakes/

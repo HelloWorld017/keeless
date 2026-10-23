@@ -11,7 +11,8 @@ on:
     tags: ['v*']
 
 concurrency:
-  group: release-${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
+  # Serialize releases so publication cannot race on the flakes branch.
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -67,10 +68,19 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
       - uses: actions/download-artifact@v8
         with:
           pattern: '*-x86_64'
           path: artifacts
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nix-flake
+          path: flakes
 
       - name: Publish
         env:
@@ -88,3 +98,30 @@ jobs:
             artifacts/linux-x86_64/* artifacts/nix-x86_64/*
 
           gh release edit "v$VERSION" --draft=false
+
+      - name: Publish flakes branch
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          git init flakes
+          git -C flakes symbolic-ref HEAD refs/heads/flakes
+          git -C flakes add .
+
+          tree=$(git -C flakes write-tree)
+          parent=()
+
+          if git fetch origin refs/heads/flakes; then
+            old=$(git rev-parse FETCH_HEAD)
+            git -C flakes fetch .. "$old"
+            parent=(-p "$old")
+          fi
+
+          export GIT_AUTHOR_NAME='keeless-release'
+          export GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com'
+          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+
+          commit=$(git -C flakes commit-tree "$tree" "${parent[@]}" -m "Release v$VERSION")
+
+          git fetch ./flakes "$commit"
+          git push origin "$commit:refs/heads/flakes"

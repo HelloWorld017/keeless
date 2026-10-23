@@ -1,4 +1,4 @@
-{ pkgs, pkgsVersioned, craneLib, libBuildInputs }:
+{ pkgs, pkgsVersioned, craneLib, libBuildInputs, src ? ../. }:
 let
   inherit (pkgs) lib;
   inherit (pkgs) copyDesktopItems fetchPnpmDeps makeDesktopItem makeWrapper pnpmConfigHook;
@@ -6,13 +6,19 @@ let
 
   pname = "keeless";
   version = (lib.importJSON ../package.json).version;
-  src = ../.;
 
 in
   craneLib.buildPackage {
     inherit pname version src;
-    strictDeps = true;
+
+    # Keep evaluation independent of src: release sources are fetched only when
+    # building, not when looking up the output in the binary cache.
+    cargoVendorDir = craneLib.vendorCargoDeps {
+      cargoLock = ../Cargo.lock;
+    };
+
     cargoArtifacts = null;
+    strictDeps = true;
     doCheck = false;
     doNotPostBuildInstallCargoBinaries = true;
     buildInputs = libBuildInputs;
