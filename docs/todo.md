@@ -34,6 +34,7 @@
 - [ ] config에 systemd 서비스 등록화면
 - [ ] kdbx에 operations에서 쓰는 주요 작업 수행 시 zeroize로 기밀 유지되는 것 테스트코드화 하기
 - [ ] desktop 뜰 때 가장 마지막으로 사용한 database open하게 변경하기
+- [ ] cloud 비밀번호 평문으로 저장되는 거 막기
 
 ### Good to have
 - [ ] Ctrl + P 에서 Shift + Enter로 비밀번호 바로 복사

@@ -259,7 +259,12 @@ impl PasswordInputProvider for NativeUi {
         &self,
         mode: PasswordInputMode,
     ) -> HostFuture<'_, keeless_core::Result<Option<Zeroizing<Vec<u8>>>>> {
-        Box::pin(async move { self.request_password(mode).await.map_err(CoreError::Host) })
+        Box::pin(async move {
+            self.request_password(mode).await.map_err(|error| {
+                eprintln!("native UI password request failed: {error}");
+                CoreError::Host(error)
+            })
+        })
     }
 }
 
