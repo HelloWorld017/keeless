@@ -74,7 +74,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: '*-x86_64'
+          name: linux-x86_64
           path: artifacts
 
       - uses: actions/download-artifact@v8
@@ -95,33 +95,17 @@ jobs:
           fi
 
           gh release create "v$VERSION" --target "$SHA" --draft --generate-notes "${flags[@]}" \
-            artifacts/linux-x86_64/* artifacts/nix-x86_64/*
+            artifacts/*
 
-          gh release edit "v$VERSION" --draft=false
+      - uses: organization/nix-substitute-release/publish@v1
+        with:
+          tag: v${{ needs.prepare.outputs.version }}
+          artifact-name: nix-x86_64
+          flake-directory: flakes
 
-      - name: Publish flakes branch
+      - name: Finalize release
         env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          git init flakes
-          git -C flakes symbolic-ref HEAD refs/heads/flakes
-          git -C flakes add .
-
-          tree=$(git -C flakes write-tree)
-          parent=()
-
-          if git fetch origin refs/heads/flakes; then
-            old=$(git rev-parse FETCH_HEAD)
-            git -C flakes fetch .. "$old"
-            parent=(-p "$old")
-          fi
-
-          export GIT_AUTHOR_NAME='keeless-release'
-          export GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com'
-          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
-          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
-
-          commit=$(git -C flakes commit-tree "$tree" "${parent[@]}" -m "Release v$VERSION")
-
-          git fetch ./flakes "$commit"
-          git push origin "$commit:refs/heads/flakes"
+        run: gh release edit "v$VERSION" --draft=false

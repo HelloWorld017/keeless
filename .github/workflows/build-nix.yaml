@@ -43,64 +43,11 @@ jobs:
       - name: Build
         run: nix build path:./flakes#keeless
 
-      - name: Export output
-        env:
-          NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
-          NIX_CACHE_PUBLIC_KEY: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-        run: |
-          # Prepare
-          directory="./cache"
-          store_path=$(readlink -f result)
-          store_name=$(basename "$store_path")
-          store_hash=${store_name%%-*}
-          signing_key=$(mktemp)
-          mkdir $directory
-          trap 'rm -f "$signing_key"' EXIT
-          printf '%s\n' "$NIX_CACHE_PRIVATE_KEY" > "$signing_key"
-
-          # Sign
-          nix store sign --key-file "$signing_key" "$store_path"
-          nix store verify --sigs-needed 1 --option trusted-public-keys "$NIX_CACHE_PUBLIC_KEY" "$store_path"
-
-          # Archive
-          archive_path="$directory/$store_hash.nar.zst";
-          nix store dump-path "$store_path" | zstd -T0 -q > "$archive_path"
-
-          # Write Info
-          path_info=$(nix path-info --json --sigs "$store_path")
-          nar_hash=$(nix hash convert --to nix32 "$(jq -r '.[] | .narHash' <<< "$path_info")")
-          file_hash=$(nix hash file --type sha256 --base32 "$archive_path")
-          file_size=$(stat -c %s "$archive_path")
-
-          jq -r \
-            --arg path "$store_path" \
-            --arg hash "$store_hash" \
-            --arg narHash "$nar_hash" \
-            --arg fileHash "$file_hash" \
-            --arg size "$file_size" \
-            '.[] |
-              "StorePath: \($path)",
-              "URL: \($hash).nar.zst",
-              "Compression: zstd",
-              "FileHash: sha256:\($fileHash)",
-              "FileSize: \($size)",
-              "NarHash: sha256:\($narHash)",
-              "NarSize: \(.narSize)",
-              "References: \(.references | map(split("/")[-1]) | sort | join(" "))",
-              (.signatures[]? | select(startswith("keeless.nenw.dev-1:")) | "Sig: \(.)")
-            ' <<< "$path_info" > "$directory/$store_hash.narinfo"
-
-          printf "%s\n" \
-            "StoreDir: /nix/store" \
-            "WantMassQuery: 1" \
-            "Priority: 50" \
-          > "$directory/nix-cache-info"
-
-      - uses: actions/upload-artifact@v7
+      - uses: organization/nix-substitute-release@v1
         with:
-          name: nix-x86_64
-          if-no-files-found: error
-          path: cache/*
+          private-key: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+          artifact-name: nix-x86_64
 
       - uses: actions/upload-artifact@v7
         with:
